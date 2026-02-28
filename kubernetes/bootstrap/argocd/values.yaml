@@ -47,6 +47,9 @@ configs:
       clientSecret: $oidc.argocd.clientSecret
     resource.compareoptions: |
       serverSideDiff: true
+    resource.customizations.ignoreDifferences.apps_Deployment: |
+      jqPathExpressions:
+        - '.status.terminatingReplicas'
     kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
     resource.exclusions: |
       - apiGroups:
