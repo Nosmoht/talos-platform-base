@@ -1,0 +1,4 @@
+operator:
+  replicas: 1
+  satelliteSet:
+    storagePools: {}

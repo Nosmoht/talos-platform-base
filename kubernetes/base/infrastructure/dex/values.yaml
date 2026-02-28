@@ -1,0 +1,98 @@
+config:
+  issuer: https://dex.homelab.ntbc.io
+  storage:
+    type: kubernetes
+    config:
+      inCluster: true
+  connectors:
+    - type: google
+      id: google
+      name: Google
+      config:
+        clientID: $GOOGLE_CLIENT_ID
+        clientSecret: $GOOGLE_CLIENT_SECRET
+        redirectURI: https://dex.homelab.ntbc.io/callback
+  oauth2:
+    skipApprovalScreen: true
+  staticClients:
+    - id: argocd
+      name: Argo CD
+      redirectURIs:
+        - https://argocd.homelab.ntbc.io/auth/callback
+      secretEnv: ARGOCD_OIDC_CLIENT_SECRET
+    - id: argo-workflows
+      name: Argo Workflows
+      redirectURIs:
+        - https://argoworkflows.homelab.ntbc.io/oauth2/callback
+      secretEnv: ARGO_WORKFLOWS_OIDC_CLIENT_SECRET
+    - id: grafana
+      name: Grafana
+      redirectURIs:
+        - https://grafana.homelab.ntbc.io/login/generic_oauth
+      secretEnv: GRAFANA_OIDC_CLIENT_SECRET
+    - id: prometheus
+      name: Prometheus
+      redirectURIs:
+        - https://prometheus.homelab.ntbc.io/oauth2/callback
+      secretEnv: PROMETHEUS_OIDC_CLIENT_SECRET
+    - id: alertmanager
+      name: Alertmanager
+      redirectURIs:
+        - https://alertmanager.homelab.ntbc.io/oauth2/callback
+      secretEnv: ALERTMANAGER_OIDC_CLIENT_SECRET
+
+envVars:
+  - name: GOOGLE_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: dex-oidc-secrets
+        key: google-client-id
+  - name: GOOGLE_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: dex-oidc-secrets
+        key: google-client-secret
+  - name: ARGOCD_OIDC_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: dex-oidc-secrets
+        key: argocd-oidc-client-secret
+  - name: ARGO_WORKFLOWS_OIDC_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: dex-oidc-secrets
+        key: argo-workflows-oidc-client-secret
+  - name: GRAFANA_OIDC_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: dex-oidc-secrets
+        key: grafana-oidc-client-secret
+  - name: PROMETHEUS_OIDC_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: dex-oidc-secrets
+        key: prometheus-oidc-client-secret
+  - name: ALERTMANAGER_OIDC_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: dex-oidc-secrets
+        key: alertmanager-oidc-client-secret
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+podSecurityContext:
+  runAsNonRoot: true
