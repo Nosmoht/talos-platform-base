@@ -45,6 +45,8 @@ configs:
       issuer: https://dex.homelab.ntbc.io
       clientID: argocd
       clientSecret: $oidc.argocd.clientSecret
+    resource.compareoptions: |
+      serverSideDiff: true
     kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
     resource.exclusions: |
       - apiGroups:
