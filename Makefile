@@ -16,6 +16,7 @@ argocd-install:
 		--from-file=keys.txt=$${SOPS_AGE_KEY_FILE:-$$HOME/.config/sops/age/keys.txt} \
 		--dry-run=client -o yaml | kubectl apply -f -
 	kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
+	kubectl apply -f kubernetes/bootstrap/argocd/httproute.yaml
 
 argocd-bootstrap: argocd-install
 	kubectl apply -k kubernetes/bootstrap/projects/

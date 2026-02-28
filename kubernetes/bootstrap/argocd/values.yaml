@@ -7,7 +7,7 @@ global:
 
 server:
   service:
-    type: LoadBalancer
+    type: ClusterIP
 
 repoServer:
   env:
