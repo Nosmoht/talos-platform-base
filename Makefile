@@ -6,7 +6,12 @@ talos-%:
 	$(MAKE) -C talos $*
 
 argocd-install:
-	kubectl apply -k kubernetes/bootstrap/argocd/
+	kubectl apply -f kubernetes/bootstrap/argocd/namespace.yaml
+	helm upgrade --install argocd argo-cd \
+		--repo https://argoproj.github.io/argo-helm \
+		--version '7.8.*' \
+		--namespace argocd \
+		-f kubernetes/bootstrap/argocd/values.yaml
 	@kubectl create secret generic sops-age-key \
 		--namespace argocd \
 		--from-file=keys.txt=$${SOPS_AGE_KEY_FILE:-$$HOME/.config/sops/age/keys.txt} \
