@@ -44,7 +44,10 @@ configs:
     scopes: '[email]'
   params:
     server.insecure: true
+    server.dex.server.strict.tls: "true"
+    server.repo.server.strict.tls: "true"
   cm:
+    admin.enabled: "false"
     url: https://argocd.homelab.ntbc.io
     oidc.config: |
       name: Dex
