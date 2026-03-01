@@ -1,8 +1,6 @@
 config:
   storage:
-    type: kubernetes
-    config:
-      inCluster: true
+    type: memory
   oauth2:
     skipApprovalScreen: true
 
