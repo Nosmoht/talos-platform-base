@@ -18,6 +18,7 @@ argocd-install:
 	kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
 
 argocd-bootstrap: argocd-install
+	kubectl apply -f kubernetes/bootstrap/argocd/root-project.yaml
 	kubectl apply -f kubernetes/bootstrap/argocd/root-application.yaml
 
 argocd-password:

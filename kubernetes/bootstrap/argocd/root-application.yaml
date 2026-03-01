@@ -4,7 +4,7 @@ metadata:
   name: root
   namespace: argocd
 spec:
-  project: default
+  project: root-bootstrap
   source:
     repoURL: https://github.com/Nosmoht/Talos-Homelab.git
     targetRevision: main
