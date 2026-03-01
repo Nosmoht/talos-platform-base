@@ -6,12 +6,16 @@
 - **Use Gateway API, NOT Ingress** — no Ingress resources or Ingress controllers
 - **Use EndpointSlices, NOT Endpoints** — Endpoints deprecated since Kubernetes v1.33.0
 - **Commit and push every successful tested change immediately** — don't batch at end of session
+- **NEVER `kubectl apply` ArgoCD-managed resources** — commit to git, push, let ArgoCD sync; only exception is one-time bootstrap of AppProjects (chicken-and-egg)
+- **NEVER `kubectl apply` to deploy/rollout** — bootstrap manifests (`kubernetes/bootstrap/`) are the only exception
 
 ## Cluster Overview
 - Talos v1.12.4, Kubernetes v1.35.0, Cilium v1.19.0 CNI
 - Hardware: Lenovo ThinkCentre M910q (node-01..05), M920q (node-06), custom (node-gpu-01)
 - 3 control plane nodes (node-01..03), 3 workers (node-04..06), 1 GPU worker (node-gpu-01)
-- Network: 192.168.2.0/24, VIP: 192.168.2.60, gateway/DNS: 192.168.2.1
+- Network: 192.168.2.0/24, API VIP: 192.168.2.60, Gateway LB VIP: 192.168.2.70, gateway/DNS: 192.168.2.1
+- External access: Fritz!Box → Raspberry Pi (192.168.2.200, DNAT+SNAT) → Cilium L2 VIP (192.168.2.70)
+- L2 announcements: Cilium native (CiliumL2AnnouncementPolicy + CiliumLoadBalancerIPPool), NOT MetalLB
 - Storage: LINSTOR/Piraeus Operator CSI (piraeus-datastore namespace), DRBD replication
 - Runtime: gVisor available as containerd runtime handler (all nodes)
 - GitOps: ArgoCD with Kustomize base/overlays, multi-cluster ready
@@ -43,6 +47,8 @@
 - App-of-apps: single root Application manages all child apps, projects, and resources
 - Bootstrap: `make argocd-bootstrap` (Helm install + root AppProject + root app); ArgoCD self-manages after
 - Sync-wave ordering: projects(-1) → infrastructure(0) → apps(1)
+- Root app uses `root-bootstrap` AppProject (least-privilege); gateway-api resources are raw (no child Application)
+- Bootstrap cilium manifest (`kubernetes/bootstrap/cilium/cilium.yaml`) includes GatewayClass — apply manually after changes
 - Full patterns in `.claude/rules/kubernetes-gitops.md` — do NOT re-explore, read the rule
 
 ## Documentation
