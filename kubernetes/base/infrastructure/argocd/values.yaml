@@ -44,7 +44,7 @@ configs:
     scopes: '[email]'
   params:
     server.insecure: true
-    server.dex.server.strict.tls: "true"
+    server.dex.server.strict.tls: "false"
     server.repo.server.strict.tls: "true"
   cm:
     admin.enabled: "false"
