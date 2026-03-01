@@ -36,6 +36,8 @@ repoServer:
           mountPath: /custom-tools
 
 configs:
+  rbac:
+    policy.default: role:admin
   params:
     server.insecure: true
   cm:
