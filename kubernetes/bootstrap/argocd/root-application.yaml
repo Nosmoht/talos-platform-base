@@ -3,6 +3,12 @@ kind: Application
 metadata:
   name: root
   namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd
+    app.kubernetes.io/instance: homelab
+    app.kubernetes.io/component: root-application
+    app.kubernetes.io/part-of: homelab
+    app.kubernetes.io/managed-by: bootstrap
 spec:
   project: root-bootstrap
   source:
