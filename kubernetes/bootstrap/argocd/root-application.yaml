@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/Nosmoht/Talos-Homelab.git
-    targetRevision: HEAD
+    targetRevision: main
     path: kubernetes/overlays/homelab
   destination:
     server: https://kubernetes.default.svc

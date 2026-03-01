@@ -8,7 +8,7 @@ talos-%:
 argocd-install:
 	kubectl apply -f kubernetes/bootstrap/argocd/namespace.yaml
 	helm upgrade --install argocd argo/argo-cd \
-		--version '9.4.*' \
+		--version '9.4.5' \
 		--namespace argocd \
 		-f kubernetes/base/infrastructure/argocd/values.yaml
 	@kubectl create secret generic sops-age-key \
