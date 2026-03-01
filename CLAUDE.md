@@ -52,6 +52,11 @@
 - Bootstrap cilium manifest (`kubernetes/bootstrap/cilium/cilium.yaml`) includes GatewayClass — apply manually after changes
 - Full patterns in `.claude/rules/kubernetes-gitops.md` — do NOT re-explore, read the rule
 
+## Cilium NetworkPolicy Gotchas
+- `fromEntities: ["world"]` does NOT match Cilium's external Envoy proxy traffic — use `fromEntities: ["ingress"]` for Gateway API ingress
+- Cilium external Envoy proxy (`external-envoy-proxy: true`) uses `reserved:ingress` identity (ID 8), not `world`
+- After pushing changes, force ArgoCD refresh: `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard --overwrite`
+
 ## Documentation
 - All documentation in English (exception: `docs/kernel-tuning.md` is German, legacy)
 
