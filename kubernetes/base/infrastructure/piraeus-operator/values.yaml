@@ -1,4 +1,9 @@
-operator:
-  replicas: 1
-  satelliteSet:
-    storagePools: {}
+imageConfigOverride:
+  - base: quay.io/piraeusdatastore
+    components:
+      linstor-controller:
+        image: piraeus-server
+        tag: v1.33.1
+      linstor-satellite:
+        image: piraeus-server
+        tag: v1.33.1
