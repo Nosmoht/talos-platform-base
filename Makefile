@@ -10,17 +10,15 @@ argocd-install:
 	helm upgrade --install argocd argo/argo-cd \
 		--version '9.4.*' \
 		--namespace argocd \
-		-f kubernetes/bootstrap/argocd/values.yaml
+		-f kubernetes/base/infrastructure/argocd/values.yaml
 	@kubectl create secret generic sops-age-key \
 		--namespace argocd \
 		--from-file=keys.txt=$${SOPS_AGE_KEY_FILE:-$$HOME/.config/sops/age/keys.txt} \
 		--dry-run=client -o yaml | kubectl apply -f -
 	kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
-	kubectl apply -f kubernetes/bootstrap/argocd/httproute.yaml
 
 argocd-bootstrap: argocd-install
-	kubectl apply -k kubernetes/bootstrap/projects/
-	kubectl apply -k kubernetes/overlays/homelab/
+	kubectl apply -f kubernetes/bootstrap/argocd/root-application.yaml
 
 argocd-password:
 	@kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
