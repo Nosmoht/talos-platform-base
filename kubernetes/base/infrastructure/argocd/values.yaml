@@ -3,7 +3,7 @@ crds:
   keep: true
 
 global:
-  domain: ""
+  domain: argocd.homelab.ntbc.io
 
 server:
   service:
@@ -25,6 +25,7 @@ repoServer:
       subPath: ksops
     - name: sops-age
       mountPath: /sops-age
+      readOnly: true
   initContainers:
     - name: install-ksops
       image: viaductoss/ksops:v4.3.2
