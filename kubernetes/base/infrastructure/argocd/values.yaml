@@ -37,7 +37,9 @@ repoServer:
 
 configs:
   rbac:
-    policy.default: role:admin
+    policy.default: role:readonly
+    policy.csv: |
+      g, thomas.krahn.tk@gmail.com, role:admin
   params:
     server.insecure: true
   cm:
