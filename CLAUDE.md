@@ -41,7 +41,7 @@
 
 ## ArgoCD Pattern
 - App-of-apps: single root Application manages all child apps, projects, and resources
-- Bootstrap: `make argocd-bootstrap` (Helm install + root app only); ArgoCD self-manages after
+- Bootstrap: `make argocd-bootstrap` (Helm install + root AppProject + root app); ArgoCD self-manages after
 - Sync-wave ordering: projects(-1) → infrastructure(0) → apps(1)
 - Full patterns in `.claude/rules/kubernetes-gitops.md` — do NOT re-explore, read the rule
 
