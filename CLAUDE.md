@@ -5,6 +5,7 @@
 - **Do NOT use `debugfs=off`** kernel boot param — causes "failed to create root filesystem" boot loop
 - **Use Gateway API, NOT Ingress** — no Ingress resources or Ingress controllers
 - **Use EndpointSlices, NOT Endpoints** — Endpoints deprecated since Kubernetes v1.33.0
+- **Commit and push every successful tested change immediately** — don't batch at end of session
 
 ## Cluster Overview
 - Talos v1.12.4, Kubernetes v1.35.0, Cilium v1.19.0 CNI
@@ -39,9 +40,10 @@
 - `talosctl disks` deprecated — use `get disks`, `get systemdisk`, `get discoveredvolumes`
 
 ## ArgoCD Pattern
-- Bootstrap: `make argocd-bootstrap` (ArgoCD + AppProjects + Applications)
-- Application CRs co-located in `overlays/homelab/infrastructure/<component>/application.yaml`
-- Multi-source Helm with `$values` ref; AppProjects: `infrastructure` and `apps`
+- App-of-apps: single root Application manages all child apps, projects, and resources
+- Bootstrap: `make argocd-bootstrap` (Helm install + root app only); ArgoCD self-manages after
+- Sync-wave ordering: projects(-1) → infrastructure(0) → apps(1)
+- Full patterns in `.claude/rules/kubernetes-gitops.md` — do NOT re-explore, read the rule
 
 ## Documentation
 - All documentation in English (exception: `docs/kernel-tuning.md` is German, legacy)
