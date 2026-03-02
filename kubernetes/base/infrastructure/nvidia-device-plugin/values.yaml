@@ -1,5 +1,11 @@
 runtimeClassName: nvidia
 
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Equal
+    value: "present"
+    effect: NoSchedule
+
 affinity:
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:

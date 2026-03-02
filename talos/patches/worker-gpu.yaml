@@ -1,4 +1,10 @@
 machine:
+  kubelet:
+    extraConfig:
+      registerWithTaints:
+        - key: nvidia.com/gpu
+          value: "present"
+          effect: NoSchedule
   kernel:
     modules:
       - name: nvidia
