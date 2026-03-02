@@ -58,12 +58,15 @@
 - **Stale revision in auto-sync retries**: Auto-sync locks to the git revision at the time it started; pushing fixes won't help until retries exhaust. Restart the application-controller pod (`kubectl delete pod -n argocd -l app.kubernetes.io/component=application-controller`) to force re-resolution of branch HEAD
 - **SharedResourceWarning (Namespace)**: When upstream sources include a Namespace resource, don't also define it in root app — use `spec.source.kustomize.patches` on the child Application to add PSA/homelab labels instead
 - **OCI Helm repos in ArgoCD**: Use `repoURL: ghcr.io/<org>/<repo>` (no `oci://` prefix), `chart: <name>`. AppProject `sourceRepos` needs glob pattern: `ghcr.io/<org>/<repo>*`
+- **Hook Job completed but operationState stuck**: If a hook Job completes and is deleted (DeletePolicy) before ArgoCD observes completion, sync hangs. Clear `/status/operationState` via patch then refresh
 
 ## Cilium NetworkPolicy Gotchas
 - `fromEntities: ["world"]` does NOT match Cilium's external Envoy proxy traffic — use `fromEntities: ["ingress"]` for Gateway API ingress
 - Cilium external Envoy proxy (`external-envoy-proxy: true`) uses `reserved:ingress` identity (ID 8), not `world`
 - **kube-apiserver port after DNAT**: `toEntities: ["kube-apiserver"]` with `port: "443"` won't work — Cilium kube-proxy replacement DNATs ClusterIP 10.96.0.1:443 → endpoint:6443 before policy evaluation. Use `port: "6443"` in CNP egress rules
 - **K8s NetworkPolicy + CiliumNetworkPolicy AND semantics**: When both policy types select the same pod, traffic must be allowed by BOTH. Don't use K8s default-deny NetworkPolicy alongside CiliumNetworkPolicies — per-component CNPs already create implicit default-deny for selected endpoints
+- **ArgoCD hook jobs and CNPs**: Helm chart hook Jobs (e.g. admission-create/patch) run BEFORE resources are synced — CNPs in `resources/` can't unblock them. Ensure CNP endpointSelectors cover hook job pod labels, and apply CNP fixes live when debugging chicken-and-egg
+- **Debugging policy drops**: Use `hubble observe --from-ip <pod-ip>` for reliable drop visibility — `cilium-dbg monitor --type drop` can miss drops. Cilium CLI inside agent pods is `cilium-dbg`, not `cilium`
 - After pushing changes, force ArgoCD refresh: `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard --overwrite`
 
 ## Documentation
