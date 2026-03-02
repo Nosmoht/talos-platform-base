@@ -1,0 +1,42 @@
+controller:
+  type: daemonset
+
+alloy:
+  mounts:
+    varlog: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  configMap:
+    content: |
+      local.file_match "pods" {
+        path_targets = [
+          {"__path__" = "/var/log/pods/*/*/*.log"},
+        ]
+      }
+
+      loki.process "pods" {
+        stage.cri {}
+        forward_to = [loki.write.default.receiver]
+      }
+
+      loki.source.file "pods" {
+        targets    = local.file_match.pods.targets
+        forward_to = [loki.process.pods.receiver]
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.monitoring.svc:3100/loki/api/v1/push"
+        }
+        external_labels = {
+          cluster = "homelab",
+        }
+      }
+
+serviceMonitor:
+  enabled: true

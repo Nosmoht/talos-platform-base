@@ -1,0 +1,58 @@
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    path_prefix: /var/loki
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 168h
+    allow_structured_metadata: true
+  compactor:
+    working_directory: /var/loki/compactor
+    retention_enabled: true
+    delete_request_store: filesystem
+  rulerConfig:
+    storage:
+      type: local
+      local:
+        directory: /var/loki/rules
+    rule_path: /var/loki/rules/fake
+    alertmanager_url: http://monitoring-kube-prometheus-alertmanager.monitoring.svc:9093
+
+singleBinary:
+  replicas: 1
+  persistence:
+    storageClass: linstor-csi
+    size: 20Gi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+
+read:
+  replicas: 0
+
+write:
+  replicas: 0
+
+backend:
+  replicas: 0
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
