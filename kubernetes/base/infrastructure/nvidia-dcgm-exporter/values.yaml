@@ -1,5 +1,9 @@
 runtimeClassName: nvidia
 
+arguments:
+  - -f
+  - /etc/dcgm-exporter/dcp-metrics-included.csv
+
 tolerations:
   - key: nvidia.com/gpu
     operator: Equal
@@ -16,3 +20,8 @@ affinity:
         - matchExpressions:
             - key: extensions.talos.dev/nvidia-open-gpu-kernel-modules-lts
               operator: Exists
+
+serviceMonitor:
+  enabled: true
+  additionalLabels:
+    release: monitoring
