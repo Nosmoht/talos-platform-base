@@ -62,6 +62,8 @@
 ## Cilium NetworkPolicy Gotchas
 - `fromEntities: ["world"]` does NOT match Cilium's external Envoy proxy traffic — use `fromEntities: ["ingress"]` for Gateway API ingress
 - Cilium external Envoy proxy (`external-envoy-proxy: true`) uses `reserved:ingress` identity (ID 8), not `world`
+- **kube-apiserver port after DNAT**: `toEntities: ["kube-apiserver"]` with `port: "443"` won't work — Cilium kube-proxy replacement DNATs ClusterIP 10.96.0.1:443 → endpoint:6443 before policy evaluation. Use `port: "6443"` in CNP egress rules
+- **K8s NetworkPolicy + CiliumNetworkPolicy AND semantics**: When both policy types select the same pod, traffic must be allowed by BOTH. Don't use K8s default-deny NetworkPolicy alongside CiliumNetworkPolicies — per-component CNPs already create implicit default-deny for selected endpoints
 - After pushing changes, force ArgoCD refresh: `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard --overwrite`
 
 ## Documentation
