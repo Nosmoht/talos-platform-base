@@ -17,7 +17,7 @@
 - Network: 192.168.2.0/24, API VIP: 192.168.2.60, Gateway LB VIP: 192.168.2.70, gateway/DNS: 192.168.2.1
 - External access: Fritz!Box → Raspberry Pi (192.168.2.200, DNAT+SNAT) → Cilium L2 VIP (192.168.2.70)
 - L2 announcements: Cilium native (CiliumL2AnnouncementPolicy + CiliumLoadBalancerIPPool), NOT MetalLB
-- Storage: LINSTOR/Piraeus Operator CSI (piraeus-datastore namespace), DRBD replication
+- Storage: LINSTOR/Piraeus Operator CSI (piraeus-datastore namespace), DRBD replication, NVMe nodes selected via NFD label `feature.node.kubernetes.io/storage-nvme.present=true`
 - Runtime: gVisor available as containerd runtime handler (all nodes)
 - GitOps: ArgoCD with Kustomize base/overlays, multi-cluster ready
 
@@ -55,7 +55,9 @@
 ## ArgoCD Operations — Gotchas
 - **Immutable selector on chart upgrade**: Helm chart upgrades changing Deployment `spec.selector.matchLabels` require deleting the Deployment (and often Service) first — Kubernetes rejects selector patches; also check Service selector for stale labels from three-way merge
 - **Exhausted auto-sync retries**: When retries exhaust for a fixed revision, ArgoCD stops ("will not retry"); clear `/status/operationState` via patch then refresh to allow fresh auto-sync
+- **Stale revision in auto-sync retries**: Auto-sync locks to the git revision at the time it started; pushing fixes won't help until retries exhaust. Restart the application-controller pod (`kubectl delete pod -n argocd -l app.kubernetes.io/component=application-controller`) to force re-resolution of branch HEAD
 - **SharedResourceWarning (Namespace)**: When upstream sources include a Namespace resource, don't also define it in root app — use `spec.source.kustomize.patches` on the child Application to add PSA/homelab labels instead
+- **OCI Helm repos in ArgoCD**: Use `repoURL: ghcr.io/<org>/<repo>` (no `oci://` prefix), `chart: <name>`. AppProject `sourceRepos` needs glob pattern: `ghcr.io/<org>/<repo>*`
 
 ## Cilium NetworkPolicy Gotchas
 - `fromEntities: ["world"]` does NOT match Cilium's external Envoy proxy traffic — use `fromEntities: ["ingress"]` for Gateway API ingress
