@@ -2,6 +2,8 @@ controller:
   type: daemonset
 
 alloy:
+  extraArgs:
+    - --disable-reporting
   mounts:
     varlog: true
   resources:
