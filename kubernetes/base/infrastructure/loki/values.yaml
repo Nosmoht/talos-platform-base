@@ -56,3 +56,13 @@ backend:
 serviceMonitor:
   enabled: true
   interval: 30s
+
+lokiCanary:
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "present"
+      effect: NoSchedule
+    - key: drbd.linbit.com/lost-quorum
+      operator: Exists
+      effect: NoSchedule
