@@ -168,7 +168,7 @@ $(foreach node,$(ALL_NODES),$(eval $(call UPGRADE_TEMPLATE,$(node))))
 
 # Upgrade Kubernetes and re-apply extraManifests (e.g. Cilium)
 upgrade-k8s:
-	talosctl upgrade-k8s --to $(KUBERNETES_VERSION) --endpoint $(IP_node-01)
+	talosctl upgrade-k8s --to $(KUBERNETES_VERSION) -n $(IP_node-01) -e $(IP_node-01)
 
 clean:
 	rm -rf generated/controlplane/*.yaml generated/worker/*.yaml
