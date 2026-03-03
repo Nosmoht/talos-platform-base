@@ -39,7 +39,7 @@ $(foreach node,$(GPU_NODES),$(eval IMAGE_$(node) = $$(GPU_INSTALL_IMAGE)))
 	$(addprefix install-,$(ALL_NODES)) bootstrap \
 	$(addprefix apply-,$(ALL_NODES)) apply-all \
 	$(addprefix dry-run-,$(ALL_NODES)) dry-run-all \
-	$(addprefix upgrade-,$(ALL_NODES))
+	$(addprefix upgrade-,$(ALL_NODES)) upgrade-k8s
 
 all: gen-configs
 
@@ -165,6 +165,10 @@ upgrade-$(1): $$(call config-path,$(1))
 endef
 
 $(foreach node,$(ALL_NODES),$(eval $(call UPGRADE_TEMPLATE,$(node))))
+
+# Upgrade Kubernetes and re-apply extraManifests (e.g. Cilium)
+upgrade-k8s:
+	talosctl upgrade-k8s --to $(KUBERNETES_VERSION) --endpoint $(IP_node-01)
 
 clean:
 	rm -rf generated/controlplane/*.yaml generated/worker/*.yaml
