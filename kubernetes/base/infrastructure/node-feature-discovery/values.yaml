@@ -7,6 +7,3 @@ worker:
       operator: Equal
       value: "present"
       effect: NoSchedule
-    - key: drbd.linbit.com/lost-quorum
-      operator: Exists
-      effect: NoSchedule
