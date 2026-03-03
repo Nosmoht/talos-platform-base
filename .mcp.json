@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "github": {
+      "type": "stdio",
+      "command": "gh",
+      "args": ["mcp-server"],
+      "env": {
+        "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
+      }
+    },
+    "kubernetes": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "kubectl-mcp-server"],
+      "env": {
+        "KUBECONFIG": "${env:KUBECONFIG}"
+      }
+    }
+  }
+}

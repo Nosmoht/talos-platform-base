@@ -2,6 +2,18 @@
 
 Talos-based Kubernetes homelab with ArgoCD GitOps, Cilium Gateway API, and Piraeus/LINSTOR storage.
 
+## First-Time Claude Code Setup
+
+To use Claude Code effectively in this repository, complete the local setup once:
+
+1. Install required CLI tools (`gh`, `node`, `kubectl`, `talosctl`, `sops`, `yq`, `jq`).
+2. Configure access:
+   - `gh auth login`
+   - `export KUBECONFIG=/tmp/homelab-kubeconfig`
+3. Ensure MCP prerequisites are installed (GitHub and Kubernetes MCP servers).
+
+Detailed instructions are in [`.claude/mcp/SETUP.md`](.claude/mcp/SETUP.md).
+
 ## Current Bootstrap Flow
 
 1. Provision Talos nodes and generate/apply machine configs from `talos/`.

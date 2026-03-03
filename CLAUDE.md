@@ -74,5 +74,7 @@
 
 ## Context Architecture
 - Domain-specific knowledge in `.claude/rules/` — auto-loaded by path glob (not always-loaded)
-- Rules: `talos-config.md`, `talos-nodes.md`, `talos-image-factory.md`, `kubernetes-gitops.md`, `cilium-gateway-api.md`
+- Rules: `talos-config.md`, `talos-nodes.md`, `talos-image-factory.md`, `kubernetes-gitops.md`, `cilium-gateway-api.md`, `argocd-operations.md`, `manifest-quality.md`, `talos-operations.md`
+- Daily skills: `gitops-health-triage`, `talos-node-maintenance`, `cilium-policy-debug`, plus hardware/kernel skills under `.claude/skills/`
+- Delegation agents: `gitops-operator`, `talos-sre`, `platform-reliability-reviewer` under `.claude/agents/`
 - This CLAUDE.md kept minimal — only hard constraints, universal gotchas, and cluster overview
