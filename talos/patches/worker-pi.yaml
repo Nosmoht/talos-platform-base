@@ -1,0 +1,7 @@
+machine:
+  # Edge node label for explicit Gateway scheduling constraints.
+  kubelet:
+    extraConfig:
+      registerWithLabels:
+        node-role.kubernetes.io/edge: ""
+        homelab.ntbc.io/edge-gateway: "true"
