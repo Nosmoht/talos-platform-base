@@ -63,6 +63,8 @@
 - **Hook Job completed but operationState stuck**: If a hook Job completes and is deleted (DeletePolicy) before ArgoCD observes completion, sync hangs. Clear `/status/operationState` via patch then refresh
 
 ## Cilium NetworkPolicy Gotchas
+- **Alertmanager mesh requires TCP + UDP on port 9094** — memberlist gossip protocol uses both; TCP-only CNP causes cluster split-brain
+- **kube-prometheus-stack ServiceMonitors have sidecar ports** — alertmanager has `reloader-web:8080` (config-reloader), check `kubectl get servicemonitor <name> -o yaml` for all endpoint ports before writing CNPs
 - `fromEntities: ["world"]` does NOT match Cilium's external Envoy proxy traffic — use `fromEntities: ["ingress"]` for Gateway API ingress
 - Cilium external Envoy proxy (`external-envoy-proxy: true`) uses `reserved:ingress` identity (ID 8), not `world`
 - **kube-apiserver port after DNAT**: `toEntities: ["kube-apiserver"]` with `port: "443"` won't work — Cilium kube-proxy replacement DNATs ClusterIP 10.96.0.1:443 → endpoint:6443 before policy evaluation. Use `port: "6443"` in CNP egress rules
