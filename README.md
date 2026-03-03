@@ -1,18 +1,80 @@
-# Talos Homelab Migration
+# Talos Homelab
 
 Talos-based Kubernetes homelab with ArgoCD GitOps, Cilium Gateway API, and Piraeus/LINSTOR storage.
 
-## First-Time Claude Code Setup
+## Start Here (Operator Checklist)
 
-To use Claude Code effectively in this repository, complete the local setup once:
+Read these in order before making changes:
 
-1. Install required CLI tools (`gh`, `node`, `kubectl`, `talosctl`, `sops`, `yq`, `jq`).
-2. Configure access:
-   - `gh auth login`
-   - `export KUBECONFIG=/tmp/homelab-kubeconfig`
-3. Ensure MCP prerequisites are installed (GitHub and Kubernetes MCP servers).
+1. This `README.md` (safety rules + workflow)
+2. [`docs/day0-setup.md`](docs/day0-setup.md) (cluster bootstrap and architecture)
+3. [`docs/day2-operations.md`](docs/day2-operations.md) (day-to-day operations and recovery)
+4. [`CLAUDE.md`](CLAUDE.md) (hard cluster constraints used by Claude Code)
 
-Detailed instructions are in [`.claude/mcp/SETUP.md`](.claude/mcp/SETUP.md).
+## Hard Safety Rules
+
+- Do not `kubectl apply` ArgoCD-managed resources. Commit to git and let ArgoCD sync.
+- Use Gateway API resources; do not introduce Ingress resources/controllers.
+- Do not use `metal-installer-secureboot` for Talos images on this hardware.
+- Do not add `debugfs=off` boot parameter (causes Talos boot failure).
+- Keep secrets encrypted as `*.sops.yaml`; never commit plaintext secrets.
+- For Talos operations, prefer explicit node endpoint flags (`talosctl -n <ip> -e <ip>`).
+
+## Repository Layout
+
+- `kubernetes/base/infrastructure/`: shared Helm values/bases per component.
+- `kubernetes/overlays/homelab/`: ArgoCD apps, overlay values, extra resources.
+- `kubernetes/bootstrap/`: one-time bootstrap manifests (ArgoCD, Cilium).
+- `talos/patches/`, `talos/nodes/`: Talos machine config sources.
+- `talos/Makefile`: node install/apply/upgrade workflows.
+- `docs/`: runbooks, reviews, tuning notes.
+
+## First-Time Workstation Setup
+
+Install required CLIs: `talosctl`, `kubectl`, `kubectl-linstor`, `make`, `sops`, `yq`, `jq`, `gh`, `helm`.
+
+Set cluster access:
+
+```bash
+talosctl -n 192.168.2.61 -e 192.168.2.61 kubeconfig --force /tmp/homelab-kubeconfig
+export KUBECONFIG=/tmp/homelab-kubeconfig
+gh auth login
+```
+
+For Claude Code MCP setup, follow [`.claude/mcp/SETUP.md`](.claude/mcp/SETUP.md).
+
+## Safe Change Workflow
+
+For Kubernetes/GitOps changes:
+
+```bash
+# 1) Edit manifests in kubernetes/
+# 2) Validate render
+kubectl kustomize kubernetes/overlays/homelab
+kubectl apply -k kubernetes/overlays/homelab --dry-run=client
+
+# 3) Commit and push
+git add <files>
+git commit -m "fix(scope): summary"
+git push
+
+# 4) Verify ArgoCD reconciliation
+kubectl -n argocd get applications
+```
+
+For Talos config changes:
+
+```bash
+# Generate + dry-run first
+make talos-gen-configs
+make talos-dry-run-node-01
+
+# Apply config-only changes
+make talos-apply-node-01
+
+# Use upgrade when Talos version, boot args, or extensions changed
+make talos-upgrade-node-01
+```
 
 ## Current Bootstrap Flow
 
@@ -23,13 +85,17 @@ Detailed instructions are in [`.claude/mcp/SETUP.md`](.claude/mcp/SETUP.md).
    - `kubernetes/bootstrap/argocd/root-application.yaml`
 3. ArgoCD reconciles `kubernetes/overlays/homelab` (projects, infra apps, app overlays).
 
-## Source of Truth
+## Common Mistakes to Avoid
 
-- Kubernetes manifests: `kubernetes/`
-- Talos machine config sources: `talos/patches/`, `talos/nodes/`
-- Operational docs: `docs/`
+- Applying Argo-managed manifests directly with `kubectl apply`.
+- Making cluster-wide Talos changes without per-node dry-run and readiness checks.
+- Forgetting DRBD implications before reboot-triggering operations.
+- Mixing unrelated changes in one commit (Talos + app manifests + docs).
 
-## Notes
+## GPU Node Scheduling Policy
 
-- `kubelet-serving-cert-approver` and `metrics-server` are managed by ArgoCD (not Talos `extraManifests`).
-- Gateway API is used instead of Ingress.
+- Keep a single scheduling taint on `node-gpu-01`: `nvidia.com/gpu=present:NoSchedule`.
+- System addons that must run on every node (for example `alloy`, `loki-canary`, `node-feature-discovery`, GPU exporters/plugins) may tolerate only this GPU taint.
+- Do not add `drbd.linbit.com/*` tolerations to non-LINBIT workloads.
+- Keep LINBIT/Piraeus off the GPU node by LINSTOR node selection rules, not by widening tolerations.
+- For new critical addons, prefer `priorityClassName: system-node-critical` (or `system-cluster-critical` where appropriate) plus the existing GPU toleration pattern.

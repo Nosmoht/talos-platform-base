@@ -1,4 +1,4 @@
-# Claude Code Stack Audit (Homelab Migration)
+# Claude Code Stack Audit (Homelab)
 
 Date: 2026-03-03
 

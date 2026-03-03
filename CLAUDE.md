@@ -61,6 +61,20 @@
 - **SharedResourceWarning (Namespace)**: When upstream sources include a Namespace resource, don't also define it in root app — use `spec.source.kustomize.patches` on the child Application to add PSA/homelab labels instead
 - **OCI Helm repos in ArgoCD**: Use `repoURL: ghcr.io/<org>/<repo>` (no `oci://` prefix), `chart: <name>`. AppProject `sourceRepos` needs glob pattern: `ghcr.io/<org>/<repo>*`
 - **Hook Job completed but operationState stuck**: If a hook Job completes and is deleted (DeletePolicy) before ArgoCD observes completion, sync hangs. Clear `/status/operationState` via patch then refresh
+- **AppProject permission can block valid app syncs**: If an app shows `one or more synchronization tasks are not valid`, inspect denied kinds in Application status and add them to the owning AppProject `spec.clusterResourceWhitelist` in Git (then sync `root`). Example needed here: `cilium.io/CiliumClusterwideNetworkPolicy` for `infrastructure` project.
+- **Do not stop at `OutOfSync` label-only checks**: Always check `status.operationState.message` and per-resource sync results to find the first hard blocker.
+
+## Monitoring & Dashboard Gotchas
+- **Kubernetes / Scheduler dashboard "No data" has two independent causes**:
+  1. Scheduler not reachable: on Talos control planes, `kube-scheduler` may run with `--bind-address=127.0.0.1`; Prometheus scrapes on `:10259` then fail with `connection refused`.
+  2. Dashboard query filtering: dashboard JSON may filter by `cluster="$cluster"` while metrics have no `cluster` label.
+- **Permanent scheduler metrics fix (Talos)**: set `cluster.scheduler.extraArgs.bind-address: 0.0.0.0` in `talos/patches/controlplane.yaml`, regenerate controlplane configs, apply to all control-plane nodes.
+- **Permanent dashboard fix**: use a repo-managed dashboard JSON without `$cluster` variable/matchers; wire via `configMapGenerator` with `grafana_dashboard: "1"` and `disableNameSuffixHash: true`.
+- **Verify scheduler observability quickly**:
+  - `sum(up{job="kube-scheduler"})` should be `3` (for 3 control-plane nodes).
+  - `count({__name__=~"scheduler_.*",job="kube-scheduler"})` should be non-zero.
+- **Grafana sidecar import verification**: check `deploy/monitoring-grafana` container `grafana-sc-dashboard` logs for `Writing /tmp/dashboards/<dashboard>.json`.
+- **Kustomize build in this repo needs ksops plugins**: use `kustomize build --enable-alpha-plugins --enable-exec ...` for local validation; default build fails with `external plugins disabled`.
 
 ## Cilium NetworkPolicy Gotchas
 - **Alertmanager mesh requires TCP + UDP on port 9094** — memberlist gossip protocol uses both; TCP-only CNP causes cluster split-brain
@@ -70,6 +84,9 @@
 - **kube-apiserver port after DNAT**: `toEntities: ["kube-apiserver"]` with `port: "443"` won't work — Cilium kube-proxy replacement DNATs ClusterIP 10.96.0.1:443 → endpoint:6443 before policy evaluation. Use `port: "6443"` in CNP egress rules
 - **K8s NetworkPolicy + CiliumNetworkPolicy AND semantics**: When both policy types select the same pod, traffic must be allowed by BOTH. Don't use K8s default-deny NetworkPolicy alongside CiliumNetworkPolicies — per-component CNPs already create implicit default-deny for selected endpoints
 - **ArgoCD hook jobs and CNPs**: Helm chart hook Jobs (e.g. admission-create/patch) run BEFORE resources are synced — CNPs in `resources/` can't unblock them. Ensure CNP endpointSelectors cover hook job pod labels, and apply CNP fixes live when debugging chicken-and-egg
+- **hostNetwork pods (e.g. linstor-csi-node) have host identity** — don't write CNPs for them; their traffic to other pods appears as `fromEntities: ["host"]`
+- **Cross-namespace Prometheus scraping** — when adding CNPs to a new namespace with ServiceMonitors, also add egress rule in `cnp-prometheus.yaml` for the target namespace/ports
+- **DRBD satellite mesh uses port range 7000-7999** — LINSTOR assigns per-resource; use Cilium `endPort` for ranges
 - **Debugging policy drops**: Use `hubble observe --from-ip <pod-ip>` for reliable drop visibility — `cilium-dbg monitor --type drop` can miss drops. Cilium CLI inside agent pods is `cilium-dbg`, not `cilium`
 - After pushing changes, force ArgoCD refresh: `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard --overwrite`
 
