@@ -59,10 +59,11 @@ gen-configs: $(addprefix generated/controlplane/,$(addsuffix .yaml,$(CP_NODES)))
 	$(addprefix generated/worker/,$(addsuffix .yaml,$(GPU_NODES))) \
 	$(addprefix generated/worker/,$(addsuffix .yaml,$(PI_NODES)))
 
-generated/controlplane/%.yaml: patches/common.yaml patches/controlplane.yaml nodes/%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
+generated/controlplane/%.yaml: patches/common.yaml patches/drbd.yaml patches/controlplane.yaml nodes/%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
 		--with-secrets $(SECRETS_DEC) \
 		--config-patch @patches/common.yaml \
+		--config-patch @patches/drbd.yaml \
 		--config-patch @patches/controlplane.yaml \
 		--config-patch @nodes/$*.yaml \
 		--config-patch '{"machine":{"install":{"image":"$(INSTALL_IMAGE)"}}}' \
@@ -101,10 +102,11 @@ generated/worker/node-pi-%.yaml: patches/common.yaml patches/worker-pi.yaml node
 		--force
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/%.yaml: patches/common.yaml nodes/%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
+generated/worker/%.yaml: patches/common.yaml patches/drbd.yaml nodes/%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
 		--with-secrets $(SECRETS_DEC) \
 		--config-patch @patches/common.yaml \
+		--config-patch @patches/drbd.yaml \
 		--config-patch @nodes/$*.yaml \
 		--config-patch '{"machine":{"install":{"image":"$(INSTALL_IMAGE)"}}}' \
 		--output $@ \

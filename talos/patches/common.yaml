@@ -9,12 +9,6 @@ machine:
     kubePrism:
       enabled: true
       port: 7445
-  kernel:
-    modules:
-      - name: drbd
-        parameters:
-          - usermode_helper=disabled
-      - name: drbd_transport_tcp
   kubelet:
     extraArgs:
       rotate-server-certificates: true
