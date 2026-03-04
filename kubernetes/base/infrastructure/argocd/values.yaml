@@ -3,7 +3,7 @@ crds:
   keep: true
 
 global:
-  domain: argocd.homelab.ntbc.io
+  domain: argocd-int.homelab.ntbc.io
 
 server:
   service:
@@ -40,7 +40,7 @@ configs:
   rbac:
     policy.default: ''
     policy.csv: |
-      g, thomas.krahn.tk@gmail.com, role:admin
+      g, nosmoht@ntbc.io, role:admin
     scopes: '[email]'
   params:
     server.insecure: true
@@ -48,10 +48,10 @@ configs:
     server.repo.server.strict.tls: "true"
   cm:
     admin.enabled: "false"
-    url: https://argocd.homelab.ntbc.io
+    url: https://argocd-int.homelab.ntbc.io
     oidc.config: |
       name: Dex
-      issuer: https://dex.homelab.ntbc.io
+      issuer: https://dex-int.homelab.ntbc.io
       clientID: argocd
       clientSecret: $oidc.argocd.clientSecret
     resource.compareoptions: |
