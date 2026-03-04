@@ -1,4 +1,4 @@
-.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc
+.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc cilium-bootstrap cilium-bootstrap-check
 
 # Delegate all talos-* targets to talos/Makefile
 # Usage: make talos-gen-configs, make talos-apply-node-01, etc.
@@ -29,3 +29,15 @@ argocd-oidc:
 		kubernetes/overlays/homelab/infrastructure/dex/resources/secret.sops.yaml) && \
 	kubectl -n argocd patch secret argocd-secret --type merge \
 		-p "{\"stringData\":{\"oidc.argocd.clientSecret\":\"$$OIDC_SECRET\"}}"
+
+cilium-bootstrap:
+	./scripts/render-cilium-bootstrap.sh
+
+cilium-bootstrap-check:
+	@if yq -r 'select(.kind == "Secret" and (.metadata.name == "hubble-relay-client-certs" or .metadata.name == "hubble-server-certs")) | .metadata.name' \
+		kubernetes/bootstrap/cilium/cilium.yaml | rg -n '.'; then \
+		echo "error: static hubble tls secrets detected in kubernetes/bootstrap/cilium/cilium.yaml"; \
+		exit 1; \
+	else \
+		echo "ok: no static hubble tls secrets in bootstrap cilium manifest"; \
+	fi
