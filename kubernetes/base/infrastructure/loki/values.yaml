@@ -75,6 +75,8 @@ read:
 
 write:
   replicas: 2
+  nodeSelector:
+    feature.node.kubernetes.io/storage-nvme.present: "true"
   persistence:
     storageClass: linstor-csi
     size: 20Gi
@@ -88,6 +90,8 @@ write:
 
 backend:
   replicas: 2
+  nodeSelector:
+    feature.node.kubernetes.io/storage-nvme.present: "true"
   persistence:
     storageClass: linstor-csi
     size: 20Gi
