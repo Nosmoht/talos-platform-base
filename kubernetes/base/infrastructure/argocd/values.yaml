@@ -3,11 +3,14 @@ crds:
   keep: true
 
 global:
-  domain: argocd-int.homelab.ntbc.io
+  domain: localhost
 
 server:
   service:
-    type: ClusterIP
+    type: LoadBalancer
+    loadBalancerIP: 192.168.2.130
+    labels:
+      "homelab.local/expose": "true"
 
 repoServer:
   env:
@@ -40,20 +43,15 @@ configs:
   rbac:
     policy.default: ''
     policy.csv: |
-      g, nosmoht@ntbc.io, role:admin
-    scopes: '[email]'
+      g, nosmoht, role:admin
+    scopes: '[preferred_username]'
   params:
     server.insecure: true
     server.dex.server.strict.tls: "false"
     server.repo.server.strict.tls: "true"
   cm:
-    admin.enabled: "false"
-    url: https://argocd-int.homelab.ntbc.io
-    oidc.config: |
-      name: Dex
-      issuer: https://dex-int.homelab.ntbc.io
-      clientID: argocd
-      clientSecret: $oidc.argocd.clientSecret
+    admin.enabled: "true"
+    url: http://localhost:8080
     resource.compareoptions: |
       serverSideDiff: true
     resource.customizations.ignoreDifferences.apps_Deployment: |
