@@ -88,11 +88,10 @@ generated/worker/node-gpu-%.yaml: patches/common.yaml patches/worker-gpu.yaml no
 		--force
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/node-pi-%.yaml: patches/common.yaml patches/worker-pi.yaml nodes/node-pi-%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
+generated/worker/node-pi-%.yaml: patches/common.yaml nodes/node-pi-%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
 		--with-secrets $(SECRETS_DEC) \
 		--config-patch @patches/common.yaml \
-		--config-patch @patches/worker-pi.yaml \
 		--config-patch @nodes/node-pi-$*.yaml \
 		--config-patch '{"machine":{"install":{"image":"$(PI_INSTALL_IMAGE)"}}}' \
 		--output $@ \

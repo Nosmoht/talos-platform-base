@@ -1,4 +1,0 @@
-machine:
-  # Edge node label for explicit Gateway scheduling constraints.
-  nodeLabels:
-    homelab.ntbc.io/edge-gateway: "true"
