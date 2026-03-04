@@ -10,6 +10,8 @@
 ## Build, Test, and Development Commands
 - `make argocd-install`: installs Argo CD and required SOPS key secret.
 - `make argocd-bootstrap`: installs Argo CD, then applies root project/application.
+- `make cilium-bootstrap`: renders `kubernetes/bootstrap/cilium/cilium.yaml` from the Cilium chart using `CILIUM_VERSION` in root `Makefile`.
+- `make cilium-bootstrap-check`: validates bootstrap Cilium manifest has no static Hubble TLS secret resources.
 - `make talos-gen-configs`: delegates to `talos/Makefile` to generate node configs.
 - `make talos-apply-all`: applies generated Talos configs to all nodes.
 - `make -C talos dry-run-all`: validates Talos config application without changing nodes.

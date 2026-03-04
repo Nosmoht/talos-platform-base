@@ -1,6 +1,9 @@
-.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc cilium-bootstrap cilium-bootstrap-check
+CILIUM_VERSION := 1.19.0
 
-# Delegate all talos-* targets to talos/Makefile
+.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc cilium-bootstrap cilium-bootstrap-check talos-upgrade-k8s
+
+# Delegate all talos-* targets to talos/Makefile.
+# talos-upgrade-k8s is explicitly defined below with a cilium pre-check dependency.
 # Usage: make talos-gen-configs, make talos-apply-node-01, etc.
 talos-%:
 	$(MAKE) -C talos $*
@@ -30,10 +33,12 @@ argocd-oidc:
 	kubectl -n argocd patch secret argocd-secret --type merge \
 		-p "{\"stringData\":{\"oidc.argocd.clientSecret\":\"$$OIDC_SECRET\"}}"
 
-cilium-bootstrap:
-	./scripts/render-cilium-bootstrap.sh
+kubernetes/bootstrap/cilium/cilium.yaml: scripts/render-cilium-bootstrap.sh Makefile
+	CILIUM_CHART_VERSION=$(CILIUM_VERSION) ./scripts/render-cilium-bootstrap.sh
 
-cilium-bootstrap-check:
+cilium-bootstrap: kubernetes/bootstrap/cilium/cilium.yaml
+
+cilium-bootstrap-check: cilium-bootstrap
 	@if yq -r 'select(.kind == "Secret" and (.metadata.name == "hubble-relay-client-certs" or .metadata.name == "hubble-server-certs")) | .metadata.name' \
 		kubernetes/bootstrap/cilium/cilium.yaml | rg -n '.'; then \
 		echo "error: static hubble tls secrets detected in kubernetes/bootstrap/cilium/cilium.yaml"; \
@@ -41,3 +46,6 @@ cilium-bootstrap-check:
 	else \
 		echo "ok: no static hubble tls secrets in bootstrap cilium manifest"; \
 	fi
+
+talos-upgrade-k8s: cilium-bootstrap-check
+	$(MAKE) -C talos upgrade-k8s
