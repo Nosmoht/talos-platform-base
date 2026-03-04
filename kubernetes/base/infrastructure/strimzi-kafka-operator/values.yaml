@@ -1,4 +1,4 @@
-watchAnyNamespace: false
+watchAnyNamespace: true
 
 resources:
   requests:
