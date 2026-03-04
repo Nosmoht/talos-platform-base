@@ -1,6 +1,6 @@
 CILIUM_VERSION := 1.19.0
 
-.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc cilium-bootstrap cilium-bootstrap-check talos-upgrade-k8s
+.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc cilium-bootstrap cilium-bootstrap-check grafana-dashboards-check talos-upgrade-k8s
 
 # Delegate all talos-* targets to talos/Makefile.
 # talos-upgrade-k8s is explicitly defined below with a cilium pre-check dependency.
@@ -45,6 +45,14 @@ cilium-bootstrap-check: cilium-bootstrap
 		exit 1; \
 	else \
 		echo "ok: no static hubble tls secrets in bootstrap cilium manifest"; \
+	fi
+
+grafana-dashboards-check:
+	@if rg -n '\$\{DS_[A-Z0-9_]+\}|\"__inputs\"' kubernetes/overlays/homelab/infrastructure/*/resources/dashboards/*.json; then \
+		echo "error: dashboard contains import-only datasource placeholders or __inputs; use fixed datasource uid (prometheus)"; \
+		exit 1; \
+	else \
+		echo "ok: dashboards contain no DS_* placeholders or __inputs"; \
 	fi
 
 talos-upgrade-k8s: cilium-bootstrap-check
