@@ -48,7 +48,7 @@ configs:
   params:
     server.insecure: true
     server.dex.server.strict.tls: "false"
-    server.repo.server.strict.tls: "true"
+    server.repo.server.strict.tls: "false"
   cm:
     admin.enabled: "true"
     url: http://localhost:8080
