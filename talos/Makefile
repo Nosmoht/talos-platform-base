@@ -74,10 +74,11 @@ generated/controlplane/%.yaml: patches/common.yaml patches/drbd.yaml patches/con
 		--force
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/node-gpu-%.yaml: patches/common.yaml patches/worker-gpu.yaml nodes/node-gpu-%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
+generated/worker/node-gpu-%.yaml: patches/common.yaml patches/worker-gvisor.yaml patches/worker-gpu.yaml nodes/node-gpu-%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
 		--with-secrets $(SECRETS_DEC) \
 		--config-patch @patches/common.yaml \
+		--config-patch @patches/worker-gvisor.yaml \
 		--config-patch @patches/worker-gpu.yaml \
 		--config-patch @nodes/node-gpu-$*.yaml \
 		--config-patch '{"machine":{"install":{"image":"$(GPU_INSTALL_IMAGE)"}}}' \
@@ -101,10 +102,11 @@ generated/worker/node-pi-%.yaml: patches/common.yaml nodes/node-pi-%.yaml $(SECR
 		--force
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/%.yaml: patches/common.yaml patches/drbd.yaml nodes/%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
+generated/worker/%.yaml: patches/common.yaml patches/worker-gvisor.yaml patches/drbd.yaml nodes/%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
 		--with-secrets $(SECRETS_DEC) \
 		--config-patch @patches/common.yaml \
+		--config-patch @patches/worker-gvisor.yaml \
 		--config-patch @patches/drbd.yaml \
 		--config-patch @nodes/$*.yaml \
 		--config-patch '{"machine":{"install":{"image":"$(INSTALL_IMAGE)"}}}' \
