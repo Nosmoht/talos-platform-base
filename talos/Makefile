@@ -163,7 +163,7 @@ bootstrap:
 # Apply targets
 define APPLY_TEMPLATE
 apply-$(1): $$(call config-path,$(1))
-	talosctl apply-config --nodes $$(IP_$(1)) --file $$(call config-path,$(1))
+	talosctl apply-config --nodes $$(IP_$(1)) --endpoints $$(IP_$(1)) --file $$(call config-path,$(1))
 endef
 
 $(foreach node,$(ALL_NODES),$(eval $(call APPLY_TEMPLATE,$(node))))
@@ -173,7 +173,7 @@ apply-all: $(addprefix apply-,$(ALL_NODES))
 # Dry-run targets
 define DRY_RUN_TEMPLATE
 dry-run-$(1): $$(call config-path,$(1))
-	talosctl apply-config --nodes $$(IP_$(1)) --file $$(call config-path,$(1)) --dry-run
+	talosctl apply-config --nodes $$(IP_$(1)) --endpoints $$(IP_$(1)) --file $$(call config-path,$(1)) --dry-run
 endef
 
 $(foreach node,$(ALL_NODES),$(eval $(call DRY_RUN_TEMPLATE,$(node))))
@@ -183,8 +183,9 @@ dry-run-all: $(addprefix dry-run-,$(ALL_NODES))
 # Upgrade targets — apply config then upgrade to new install image
 define UPGRADE_TEMPLATE
 upgrade-$(1): $$(call config-path,$(1))
-	talosctl apply-config --nodes $$(IP_$(1)) --file $$(call config-path,$(1))
+	talosctl apply-config --nodes $$(IP_$(1)) --endpoints $$(IP_$(1)) --file $$(call config-path,$(1))
 	talosctl upgrade --nodes $$(IP_$(1)) \
+		--endpoints $$(IP_$(1)) \
 		--image $$(IMAGE_$(1)) \
 		--wait --timeout 10m
 endef

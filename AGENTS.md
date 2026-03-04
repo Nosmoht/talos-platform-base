@@ -44,3 +44,29 @@ make argocd-bootstrap
   - rollout/verification steps,
   - linked issue (if applicable),
   - screenshots only for UI/visual dashboard changes.
+
+## Codex CLI Operating Rules (Important)
+- Treat `README.md` and `CLAUDE.md` hard constraints as authoritative for all edits.
+- Never `kubectl apply` Argo CD-managed resources for rollout; commit to git and let Argo CD reconcile.
+- The only normal direct-apply exception is bootstrap content under `kubernetes/bootstrap/`.
+- Do not introduce Kubernetes `Ingress`; use Gateway API resources.
+- Do not introduce deprecated `Endpoints`; use `EndpointSlice`.
+- Keep secrets encrypted in `*.sops.yaml`; never add plaintext secret material to git.
+- For Talos operations, use explicit node endpoint flags (`talosctl -n <node-ip> -e <node-ip>`) when running commands manually.
+- Do not use `metal-installer-secureboot` or add `debugfs=off` boot args in Talos changes.
+- Keep one taint policy on GPU node `node-gpu-01`: `nvidia.com/gpu=present:NoSchedule`; avoid broad tolerations beyond documented patterns.
+
+## Validation Checklist For Codex Changes
+- For overlay/root changes, run:
+  - `kubectl kustomize kubernetes/overlays/homelab`
+  - `kubectl apply -k kubernetes/overlays/homelab --dry-run=client`
+- For Talos config changes, run:
+  - `make talos-gen-configs`
+  - `make -C talos dry-run-all` (or affected node dry-run target)
+- If editing kustomizations that use KSOPS generators, validate with plugin-enabled kustomize (`--enable-alpha-plugins --enable-exec`) where required.
+- Include runtime verification evidence for network policy/monitoring changes (Argo CD sync status, scrape success, policy-drop checks).
+
+## Cilium Bootstrap/Talos Nuance
+- `kubernetes/bootstrap/cilium/cilium.yaml` is tied to Talos `extraManifests`; avoid ad-hoc `kubectl apply` drift fixes.
+- Reconcile Cilium bootstrap changes via Talos workflow (`make talos-upgrade-k8s`) so control plane `extraManifests` stay consistent.
+- If this file contains generated TLS artifacts (for example Hubble cert secrets), track expiry and rotate before expiration as part of planned maintenance.
