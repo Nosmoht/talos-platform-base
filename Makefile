@@ -1,6 +1,6 @@
 CILIUM_VERSION := 1.19.0
 
-.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc cilium-bootstrap cilium-bootstrap-check grafana-dashboards-check talos-upgrade-k8s
+.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc cilium-bootstrap cilium-bootstrap-check grafana-dashboards-check talos-upgrade-k8s validate-gitops
 
 # Delegate all talos-* targets to talos/Makefile.
 # talos-upgrade-k8s is explicitly defined below with a cilium pre-check dependency.
@@ -57,3 +57,18 @@ grafana-dashboards-check:
 
 talos-upgrade-k8s: cilium-bootstrap-check
 	$(MAKE) -C talos upgrade-k8s
+
+validate-gitops:
+	./scripts/discover_kustomize_targets.sh
+	./scripts/render_kustomize_safe.sh
+	./scripts/discover_argocd_apps.sh
+	./scripts/verify_sops_files.sh
+	./scripts/run_conftest.sh
+	@for f in $$(cat .work/kustomize-rendered-files.txt 2>/dev/null); do \
+		echo "kubeconform: $$f"; \
+		kubeconform -strict -ignore-missing-schemas "$$f"; \
+	done
+	trivy config --severity HIGH,CRITICAL --exit-code 1 \
+		--skip-files kubernetes/bootstrap/cilium/cilium.yaml \
+		--skip-files kubernetes/overlays/homelab/infrastructure/piraeus-operator/resources/storage-pool-autovg.yaml \
+		.

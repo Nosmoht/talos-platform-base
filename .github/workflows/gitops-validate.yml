@@ -1,0 +1,290 @@
+name: GitOps Validate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: sh
+    env:
+      KUSTOMIZE_VERSION: 5.3.0
+      KUSTOMIZE_SHA256_LINUX_AMD64: 3ab32f92360d752a2a53e56be073b649abc1e7351b912c0fb32b960d1def854c
+      CONFTEST_VERSION: v0.53.0
+      TRIVY_VERSION: v0.69.2
+      SOPS_VERSION: v3.8.1
+      KSOPS_VERSION: v4.3.3
+      KUBECONFORM_VERSION: 0.6.7
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kustomize
+        uses: kustomize-everything/action-kustomize@v2.1.0
+        with:
+          version: ${{ env.KUSTOMIZE_VERSION }}
+          sha256-checksum: ${{ env.KUSTOMIZE_SHA256_LINUX_AMD64 }}
+
+      - name: Verify kustomize install
+        run: |
+          set -eu
+          kustomize version --short
+
+      - name: Setup conftest
+        uses: princespaghetti/setup-conftest@v1.2.0
+        with:
+          version: ${{ env.CONFTEST_VERSION }}
+
+      - name: Setup kubeconform
+        uses: bmuschko/setup-kubeconform@v1.0.0
+        with:
+          kubeconform-version: ${{ env.KUBECONFORM_VERSION }}
+
+      - name: Install sops and ksops (no decryption)
+        run: |
+          set -eu
+          mkdir -p "$HOME/.local/bin"
+
+          curl -fsSL "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64" -o "$HOME/.local/bin/sops"
+          chmod +x "$HOME/.local/bin/sops"
+
+          curl -fsSL "https://github.com/viaduct-ai/kustomize-sops/releases/download/${KSOPS_VERSION}/ksops_${KSOPS_VERSION#v}_Linux_x86_64.tar.gz" -o /tmp/ksops.tar.gz
+          tar -xzf /tmp/ksops.tar.gz -C /tmp
+          install -m 0755 /tmp/ksops "$HOME/.local/bin/ksops"
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Show tool versions
+        run: |
+          set -eu
+          mkdir -p .work
+          {
+            echo "kustomize: $(kustomize version --short || true)"
+            echo "conftest: $(conftest --version || true)"
+            echo "kubeconform: $(kubeconform -v || true)"
+            echo "trivy target version: ${TRIVY_VERSION}"
+            echo "sops: $(sops --version | head -n 1 || true)"
+            echo "ksops: $(ksops version 2>/dev/null || true)"
+          } | tee .work/tool-versions.txt
+
+      - name: Discover kustomize targets
+        run: ./scripts/discover_kustomize_targets.sh
+
+      - name: Render safe kustomize targets
+        run: ./scripts/render_kustomize_safe.sh
+
+      - name: Discover Argo CD Application manifests
+        run: ./scripts/discover_argocd_apps.sh
+
+      - name: Verify SOPS metadata (no decryption)
+        run: ./scripts/verify_sops_files.sh
+
+      - name: Kubeconform rendered manifests
+        run: |
+          set -eu
+          if [ ! -f .work/kustomize-rendered-files.txt ]; then
+            echo "notice: rendered file list not found, skipping kubeconform"
+            exit 0
+          fi
+
+          count=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            [ -f "$f" ] || continue
+            count=$((count + 1))
+            echo "kubeconform: $f"
+            # Ignore missing schemas for CRDs that are not vendored in CI.
+            kubeconform -strict -ignore-missing-schemas "$f"
+          done < .work/kustomize-rendered-files.txt
+
+          echo "kubeconform tested files: $count"
+
+      - name: Conftest policy checks
+        run: ./scripts/run_conftest.sh
+
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@0.34.2
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '0'
+          format: table
+          skip-files: kubernetes/bootstrap/cilium/cilium.yaml,kubernetes/overlays/homelab/infrastructure/piraeus-operator/resources/storage-pool-autovg.yaml
+          output: .work/trivy-report.txt
+          version: ${{ env.TRIVY_VERSION }}
+
+      - name: Trivy gate
+        run: |
+          set -eu
+          if [ ! -f .work/trivy-report.txt ]; then
+            echo "error: trivy report file not found at .work/trivy-report.txt"
+            exit 1
+          fi
+
+          failures=$(awk '/Failures:/ {sum += $2} END {if (sum == "") sum = 0; print sum}' .work/trivy-report.txt)
+          echo "trivy HIGH/CRITICAL failures: $failures"
+          if [ "$failures" -gt 0 ]; then
+            echo "error: trivy found HIGH/CRITICAL findings"
+            exit 1
+          fi
+
+      - name: Build PR summary
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -eu
+          mkdir -p .work
+
+          count_or_zero() {
+            file=$1
+            if [ -f "$file" ]; then
+              wc -l < "$file" | tr -d ' '
+            else
+              echo "0"
+            fi
+          }
+
+          rendered_summary="not available"
+          apps_summary="not available"
+
+          if [ -f .work/conftest-rendered.txt ]; then
+            rendered_summary=$(LC_ALL=C sed -E 's/\x1b\[[0-9;]*m//g' .work/conftest-rendered.txt | awk '/tests, .*passed, .*warnings, .*failures/ {line=$0} END {if (line != "") print line; else print "summary not found"}')
+          fi
+          if [ -f .work/conftest-applications.txt ]; then
+            apps_summary=$(LC_ALL=C sed -E 's/\x1b\[[0-9;]*m//g' .work/conftest-applications.txt | awk '/tests, .*passed, .*warnings, .*failures/ {line=$0} END {if (line != "") print line; else print "summary not found"}')
+          fi
+
+          trivy_failures="not available"
+          if [ -f .work/trivy-report.txt ]; then
+            trivy_failures=$(awk '/Failures:/ {sum += $2} END {if (sum == "") sum = 0; print sum}' .work/trivy-report.txt)
+          fi
+
+          conftest_warning_lines=".work/conftest-warnings-summary.txt"
+          trivy_top_lines=".work/trivy-top-findings.txt"
+          trivy_file_lines=".work/trivy-file-summary.txt"
+          : > "$conftest_warning_lines"
+          : > "$trivy_top_lines"
+          : > "$trivy_file_lines"
+
+          if [ -f .work/conftest-rendered.txt ] || [ -f .work/conftest-applications.txt ]; then
+            {
+              [ -f .work/conftest-rendered.txt ] && cat .work/conftest-rendered.txt
+              [ -f .work/conftest-applications.txt ] && cat .work/conftest-applications.txt
+            } | LC_ALL=C sed -E 's/\x1b\[[0-9;]*m//g' | awk '/WARN/ {print}' | head -n 10 > "$conftest_warning_lines" || true
+          fi
+
+          if [ -f .work/trivy-report.txt ]; then
+            awk '/KSV-[0-9]+ \((HIGH|CRITICAL)\):/ {print}' .work/trivy-report.txt | head -n 10 > "$trivy_top_lines" || true
+            awk '
+              /\.ya?ml \(kubernetes\)$/ {file=$1}
+              /^Failures:/ {print file " (" $2 ")"}
+            ' .work/trivy-report.txt | head -n 10 > "$trivy_file_lines" || true
+          fi
+
+          early_failure_note=""
+          if [ ! -f .work/kustomize-targets.txt ] && [ ! -f .work/conftest-rendered.txt ] && [ ! -f .work/trivy-report.txt ]; then
+            early_failure_note="Validation likely failed during tool setup before repository checks started."
+          fi
+
+          {
+            echo "<!-- gitops-validate-report -->"
+            echo "## GitOps Validate Report"
+            echo ""
+            echo "- Job status: \`$JOB_STATUS\`"
+            if [ -n "$early_failure_note" ]; then
+              echo "- Note: $early_failure_note"
+            fi
+            echo "- Kustomize targets discovered: \`$(count_or_zero .work/kustomize-targets.txt)\`"
+            echo "- Safe rendered targets: \`$(count_or_zero .work/kustomize-safe-targets.txt)\`"
+            echo "- Unsafe skipped targets: \`$(count_or_zero .work/kustomize-unsafe-targets.txt)\`"
+            echo "- Rendered output files: \`$(count_or_zero .work/kustomize-rendered-files.txt)\`"
+            echo "- Argo CD Application manifests: \`$(count_or_zero .work/argocd-applications.txt)\`"
+            echo "- SOPS-encrypted files found: \`$(count_or_zero .work/sops-files.txt)\`"
+            echo "- Conftest rendered summary: \`$rendered_summary\`"
+            echo "- Conftest applications summary: \`$apps_summary\`"
+            echo "- Trivy HIGH/CRITICAL failures: \`$trivy_failures\`"
+            echo "- Runtime validation: \`not executed in this workflow\`"
+            echo ""
+            echo "### Top Conftest Warnings"
+            if [ -s "$conftest_warning_lines" ]; then
+              sed 's/^/- /' "$conftest_warning_lines"
+            else
+              echo "- none"
+            fi
+            echo ""
+            echo "### Trivy Affected Files"
+            if [ -s "$trivy_file_lines" ]; then
+              sed 's/^/- /' "$trivy_file_lines"
+            else
+              echo "- none"
+            fi
+            echo ""
+            echo "### Top Trivy Findings"
+            if [ -s "$trivy_top_lines" ]; then
+              sed 's/^/- /' "$trivy_top_lines"
+            else
+              echo "- none"
+            fi
+            echo ""
+            echo "Artifacts in \`.work/\` include target lists and detailed reports."
+          } > .work/pr-comment.md
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- gitops-validate-report -->';
+            const path = '.work/pr-comment.md';
+            if (!fs.existsSync(path)) {
+              core.warning('PR summary file not found; skipping comment update.');
+              return;
+            }
+            const body = fs.readFileSync(path, 'utf8');
+            const issue_number = context.payload.pull_request.number;
+            const { owner, repo } = context.repo;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100
+            });
+            const existing = comments.find(c => c.user.type === 'Bot' && c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body
+              });
+            }
+
+      - name: Upload diagnostics (failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitops-validate-diagnostics
+          path: |
+            .work/
+            .work/argocd-applications.txt
