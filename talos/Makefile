@@ -43,7 +43,7 @@ $(foreach node,$(PI_NODES),$(eval IMAGE_$(node) = $$(PI_INSTALL_IMAGE)))
 	$(addprefix install-,$(ALL_NODES)) bootstrap \
 	$(addprefix apply-,$(ALL_NODES)) apply-all \
 	$(addprefix dry-run-,$(ALL_NODES)) dry-run-all \
-	$(addprefix upgrade-,$(ALL_NODES)) upgrade-k8s
+	$(addprefix upgrade-,$(ALL_NODES)) upgrade-k8s validate-generated
 
 all: gen-configs
 
@@ -181,6 +181,18 @@ endef
 $(foreach node,$(ALL_NODES),$(eval $(call DRY_RUN_TEMPLATE,$(node))))
 
 dry-run-all: $(addprefix dry-run-,$(ALL_NODES))
+
+validate-generated: gen-configs
+	@set -eu; \
+	files=$$(find generated -type f -name '*.yaml' | sort); \
+	if [ -z "$$files" ]; then \
+		echo "No generated machine configs found under talos/generated"; \
+		exit 1; \
+	fi; \
+	for f in $$files; do \
+		echo "Validating $$f"; \
+		talosctl validate --config "$$f" --mode metal --strict; \
+	done
 
 # Upgrade targets — apply config then upgrade to new install image
 define UPGRADE_TEMPLATE

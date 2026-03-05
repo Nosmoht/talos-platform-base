@@ -1,5 +1,3 @@
 machine:
-  kubelet:
-    extraConfig:
-      nodeLabels:
-        sandbox.atlas.dev/gvisor: "true"
+  nodeLabels:
+    sandbox.atlas.dev/gvisor: "true"
