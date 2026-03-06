@@ -67,14 +67,14 @@ For Talos config changes:
 
 ```bash
 # Generate + dry-run first
-make talos-gen-configs
-make talos-dry-run-node-01
+make -C talos gen-configs
+make -C talos dry-run-node-01
 
 # Apply config-only changes
-make talos-apply-node-01
+make -C talos apply-node-01
 
 # Use upgrade when Talos version, boot args, or extensions changed
-make talos-upgrade-node-01
+make -C talos upgrade-node-01
 ```
 
 ## Current Bootstrap Flow

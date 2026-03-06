@@ -30,6 +30,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Enforce Talos and Cilium ownership boundaries
+        run: |
+          set -eu
+
+          if grep -nE '^(talos-%:|talos-upgrade-k8s:|cilium-bootstrap:|cilium-bootstrap-check:|kubernetes/bootstrap/cilium/cilium.yaml:)' Makefile; then
+            echo "error: root Makefile contains Talos/Cilium lifecycle targets; move them to talos/Makefile"
+            exit 1
+          fi
+
+          defs="$(git grep -nE '^[[:space:]]*CILIUM_VERSION[[:space:]]*:=' -- Makefile talos/Makefile talos/versions.mk || true)"
+          count="$(printf "%s\n" "$defs" | grep -c . || true)"
+          if [ "$count" -ne 1 ] || ! printf "%s\n" "$defs" | grep -q '^talos/versions.mk:'; then
+            echo "error: CILIUM_VERSION must be defined exactly once in talos/versions.mk"
+            printf "%s\n" "$defs"
+            exit 1
+          fi
+
       - name: Setup kustomize
         uses: kustomize-everything/action-kustomize@v2.1.0
         with:
@@ -98,6 +115,15 @@ jobs:
           command -v yq >/dev/null 2>&1 || { echo "error: yq is required but not installed"; exit 1; }
           command -v kyverno >/dev/null 2>&1 || { echo "error: kyverno CLI is required but not installed"; exit 1; }
           command -v grep >/dev/null 2>&1 || { echo "error: grep is required but not installed"; exit 1; }
+
+      - name: Validate Cilium bootstrap from talos workflow
+        run: |
+          set -eu
+          make -C talos cilium-bootstrap-check
+          if ! git diff --exit-code -- kubernetes/bootstrap/cilium/cilium.yaml; then
+            echo "error: kubernetes/bootstrap/cilium/cilium.yaml is out of date; run 'make -C talos cilium-bootstrap'"
+            exit 1
+          fi
 
       - name: Validate Kyverno policies from source manifests
         run: |

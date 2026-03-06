@@ -55,7 +55,7 @@
 - Learner promotion automatic (~1-2 min) after EPHEMERAL reset
 - Maintenance mode `--insecure` only supports: `version`, `get disks`, `apply-config`
 - `talosctl disks` deprecated — use `get disks`, `get systemdisk`, `get discoveredvolumes`
-- **Cilium deployed via Talos `extraManifests`** (controlplane patch → GitHub raw URL) — reconcile drift with `make talos-upgrade-k8s`, NOT `kubectl apply`
+- **Cilium deployed via Talos `extraManifests`** (controlplane patch → GitHub raw URL) — reconcile drift with `make -C talos upgrade-k8s`, NOT `kubectl apply`
 - `talosctl upgrade-k8s` requires `-n <node-ip> -e <node-ip>` — `--endpoint` is a different flag (proxy endpoint)
 
 ## ArgoCD Pattern
@@ -63,7 +63,7 @@
 - Bootstrap: `make argocd-bootstrap` (Helm install + root AppProject + root app); ArgoCD self-manages after
 - Sync-wave ordering: projects(-1) → infrastructure(0) → apps(1)
 - Root app uses `root-bootstrap` AppProject (least-privilege); gateway-api resources are raw (no child Application)
-- Bootstrap cilium manifest (`kubernetes/bootstrap/cilium/cilium.yaml`) includes GatewayClass — reconcile with `make talos-upgrade-k8s` (re-applies extraManifests)
+- Bootstrap cilium manifest (`kubernetes/bootstrap/cilium/cilium.yaml`) includes GatewayClass — reconcile with `make -C talos upgrade-k8s` (re-applies extraManifests)
 - Full patterns in `.claude/rules/kubernetes-gitops.md` — do NOT re-explore, read the rule
 
 ## ArgoCD Operations — Gotchas

@@ -10,17 +10,17 @@
 ## Build, Test, and Development Commands
 - `make argocd-install`: installs Argo CD and required SOPS key secret.
 - `make argocd-bootstrap`: installs Argo CD, then applies root project/application.
-- `make cilium-bootstrap`: renders `kubernetes/bootstrap/cilium/cilium.yaml` from the Cilium chart using `CILIUM_VERSION` in root `Makefile`.
-- `make cilium-bootstrap-check`: validates bootstrap Cilium manifest has no static Hubble TLS secret resources.
-- `make talos-gen-configs`: delegates to `talos/Makefile` to generate node configs.
-- `make talos-apply-all`: applies generated Talos configs to all nodes.
+- `make -C talos cilium-bootstrap`: renders `kubernetes/bootstrap/cilium/cilium.yaml` from the Cilium chart using `CILIUM_VERSION` in `talos/versions.mk`.
+- `make -C talos cilium-bootstrap-check`: validates bootstrap Cilium manifest has no static Hubble TLS secret resources.
+- `make -C talos gen-configs`: generates Talos node configs.
+- `make -C talos apply-all`: applies generated Talos configs to all nodes.
 - `make -C talos dry-run-all`: validates Talos config application without changing nodes.
 - `make -C talos schematics`: creates Talos Image Factory schematic IDs.
 
 Example flow:
 ```bash
-make talos-gen-configs
-make talos-apply-node-01
+make -C talos gen-configs
+make -C talos apply-node-01
 make argocd-bootstrap
 ```
 
@@ -81,12 +81,12 @@ make argocd-bootstrap
 - If editing Kyverno `ClusterPolicy` resources, run:
   - `make validate-kyverno-policies`
 - For Talos config changes, run:
-  - `make talos-gen-configs`
+  - `make -C talos gen-configs`
   - `make -C talos dry-run-all` (or affected node dry-run target)
 - If editing kustomizations that use KSOPS generators, validate with plugin-enabled kustomize (`--enable-alpha-plugins --enable-exec`) where required.
 - Include runtime verification evidence for network policy/monitoring changes (Argo CD sync status, scrape success, policy-drop checks).
 
 ## Cilium Bootstrap/Talos Nuance
 - `kubernetes/bootstrap/cilium/cilium.yaml` is tied to Talos `extraManifests`; avoid ad-hoc `kubectl apply` drift fixes.
-- Reconcile Cilium bootstrap changes via Talos workflow (`make talos-upgrade-k8s`) so control plane `extraManifests` stay consistent.
+- Reconcile Cilium bootstrap changes via Talos workflow (`make -C talos upgrade-k8s`) so control plane `extraManifests` stay consistent.
 - If this file contains generated TLS artifacts (for example Hubble cert secrets), track expiry and rotate before expiration as part of planned maintenance.

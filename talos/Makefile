@@ -1,7 +1,6 @@
 CLUSTER_NAME := homelab
 ENDPOINT := https://192.168.2.60:6443
-TALOS_VERSION := v1.12.4
-KUBERNETES_VERSION := v1.35.0
+include versions.mk
 
 -include .schematic-ids.mk
 
@@ -25,7 +24,7 @@ IP_node-pi-01 := 192.168.2.68
 SECRETS_DEC := .secrets.dec.yaml
 
 # Track version variable changes — forces config regeneration when versions change
-VERSION_VARS := $(TALOS_VERSION) $(KUBERNETES_VERSION)
+VERSION_VARS := $(TALOS_VERSION) $(KUBERNETES_VERSION) $(CILIUM_VERSION)
 VERSION_STAMP := .versions.stamp
 $(shell echo '$(VERSION_VARS)' | cmp -s - $(VERSION_STAMP) || echo '$(VERSION_VARS)' > $(VERSION_STAMP))
 
@@ -43,7 +42,22 @@ $(foreach node,$(PI_NODES),$(eval IMAGE_$(node) = $$(PI_INSTALL_IMAGE)))
 	$(addprefix install-,$(ALL_NODES)) bootstrap \
 	$(addprefix apply-,$(ALL_NODES)) apply-all \
 	$(addprefix dry-run-,$(ALL_NODES)) dry-run-all \
-	$(addprefix upgrade-,$(ALL_NODES)) upgrade-k8s validate-generated
+	$(addprefix upgrade-,$(ALL_NODES)) upgrade-k8s validate-generated \
+	cilium-bootstrap cilium-bootstrap-check
+
+../kubernetes/bootstrap/cilium/cilium.yaml: ../scripts/render-cilium-bootstrap.sh versions.mk
+	CILIUM_CHART_VERSION=$(CILIUM_VERSION) ../scripts/render-cilium-bootstrap.sh
+
+cilium-bootstrap: ../kubernetes/bootstrap/cilium/cilium.yaml
+
+cilium-bootstrap-check: cilium-bootstrap
+	@if yq -r 'select(.kind == "Secret" and (.metadata.name == "hubble-relay-client-certs" or .metadata.name == "hubble-server-certs")) | .metadata.name' \
+		../kubernetes/bootstrap/cilium/cilium.yaml | grep -n '.'; then \
+		echo "error: static hubble tls secrets detected in kubernetes/bootstrap/cilium/cilium.yaml"; \
+		exit 1; \
+	else \
+		echo "ok: no static hubble tls secrets in bootstrap cilium manifest"; \
+	fi
 
 all: gen-configs
 
@@ -207,7 +221,7 @@ endef
 $(foreach node,$(ALL_NODES),$(eval $(call UPGRADE_TEMPLATE,$(node))))
 
 # Upgrade Kubernetes and re-apply extraManifests (e.g. Cilium)
-upgrade-k8s:
+upgrade-k8s: cilium-bootstrap-check
 	talosctl upgrade-k8s --to $(KUBERNETES_VERSION) -n $(IP_node-01) -e $(IP_node-01)
 
 clean:
