@@ -19,6 +19,7 @@ Read these in order before making changes:
 - Do not use `metal-installer-secureboot` for Talos images on this hardware.
 - Do not add `debugfs=off` boot parameter (causes Talos boot failure).
 - Keep secrets encrypted as `*.sops.yaml`; never commit plaintext secrets.
+- Keep cluster bootstrap/platform secrets in SOPS; use Vault + External Secrets for customer runtime secrets.
 - For Talos operations, prefer explicit node endpoint flags (`talosctl -n <ip> -e <ip>`).
 
 ## Repository Layout
