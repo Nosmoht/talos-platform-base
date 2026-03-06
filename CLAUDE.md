@@ -10,6 +10,18 @@
 - **NEVER `kubectl apply` to deploy/rollout** — bootstrap manifests (`kubernetes/bootstrap/`) are the only exception
 - **Use Kubernetes recommended labels** on all resources — `app.kubernetes.io/name`, `app.kubernetes.io/instance`, `app.kubernetes.io/version`, `app.kubernetes.io/component`, `app.kubernetes.io/part-of`, `app.kubernetes.io/managed-by` (per https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
 
+## Platform Network Interface (PNI) — Mandatory Workflow
+- **Use PNI first for platform service connectivity** — do not start with ad-hoc per-namespace CNPs when integrating with managed platform components.
+- **PNI contract for consumer namespaces**:
+  - `platform.io/network-interface-version: v1`
+  - `platform.io/network-profile: restricted|managed|privileged`
+  - capability opt-in via `platform.io/consume.<capability>: "true"`
+- **`network-profile` alone is never sufficient** for core service access; require explicit `consume.<capability>` labels.
+- **Provider-reserved labels are platform-owned only** (never set in consumer manifests): `platform.io/provider`, `platform.io/managed-by`, `platform.io/capability`.
+- **If a consumer refuses PNI**, they must ship and own self-managed CNP/KNP behavior and validation; document this explicitly in PR notes.
+- **When adding new platform integrations**, update `docs/platform-network-interface.md` capability catalog and contract examples in the same change.
+- **Keep policy ownership in infrastructure paths** (`kubernetes/overlays/homelab/infrastructure/...`); do not push operator-namespace policy ownership to consumer apps.
+
 ## Cluster Overview
 - Talos v1.12.4, Kubernetes v1.35.0, Cilium v1.19.0 CNI
 - Hardware: Lenovo ThinkCentre M910q (node-01..05), M920q (node-06), custom (node-gpu-01)
@@ -86,6 +98,7 @@
 - **ArgoCD hook jobs and CNPs**: Helm chart hook Jobs (e.g. admission-create/patch) run BEFORE resources are synced — CNPs in `resources/` can't unblock them. Ensure CNP endpointSelectors cover hook job pod labels, and apply CNP fixes live when debugging chicken-and-egg
 - **hostNetwork pods (e.g. linstor-csi-node) have host identity** — don't write CNPs for them; their traffic to other pods appears as `fromEntities: ["host"]`
 - **Cross-namespace Prometheus scraping** — when adding CNPs to a new namespace with ServiceMonitors, also add egress rule in `cnp-prometheus.yaml` for the target namespace/ports
+- **Prefer identity/capability-based selectors over namespace name allowlists** — model connectivity through PNI capabilities and provider/consumer identities, not one-off namespace tuples
 - **DRBD satellite mesh uses port range 7000-7999** — LINSTOR assigns per-resource; use Cilium `endPort` for ranges
 - **Debugging policy drops**: Use `hubble observe --from-ip <pod-ip>` for reliable drop visibility — `cilium-dbg monitor --type drop` can miss drops. Cilium CLI inside agent pods is `cilium-dbg`, not `cilium`
 - After pushing changes, force ArgoCD refresh: `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard --overwrite`

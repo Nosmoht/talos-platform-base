@@ -58,6 +58,22 @@ make argocd-bootstrap
 - Do not use `metal-installer-secureboot` or add `debugfs=off` boot args in Talos changes.
 - Keep one taint policy on GPU node `node-gpu-01`: `nvidia.com/gpu=present:NoSchedule`; avoid broad tolerations beyond documented patterns.
 
+## Platform Network Interface (PNI) Rules
+- Default to PNI for consumer-to-platform connectivity; do not begin with ad-hoc custom CNPs for managed services.
+- Consumer namespace contract:
+  - `platform.io/network-interface-version: v1`
+  - `platform.io/network-profile: restricted|managed|privileged`
+  - explicit capability opt-in labels: `platform.io/consume.<capability>: "true"`
+- Treat `network-profile` as baseline posture only; core service access must be capability-scoped.
+- Never set provider-reserved labels in consumer manifests: `platform.io/provider`, `platform.io/managed-by`, `platform.io/capability`.
+- Keep reusable capability policies platform-owned under infrastructure overlays; avoid creating per-consumer policy copies in operator namespaces.
+- If a workload does not use PNI, require self-managed CNP/KNP ownership and make that tradeoff explicit in docs/PR.
+- For new capabilities or behavior changes, update `docs/platform-network-interface.md` in the same change.
+
+## OpenCode Compatibility Notes
+- OpenCode agents should follow the same PNI contract and capability opt-in flow as Codex/Claude.
+- Keep agent instructions tool-agnostic: enforce labels/capabilities and policy ownership boundaries, not agent-specific command wrappers.
+
 ## Validation Checklist For Codex Changes
 - For overlay/root changes, run:
   - `kubectl kustomize kubernetes/overlays/homelab`
