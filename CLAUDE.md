@@ -103,6 +103,9 @@
 - **Debugging policy drops**: Use `hubble observe --from-ip <pod-ip>` for reliable drop visibility — `cilium-dbg monitor --type drop` can miss drops. Cilium CLI inside agent pods is `cilium-dbg`, not `cilium`
 - After pushing changes, force ArgoCD refresh: `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard --overwrite`
 
+## Kyverno Validation
+- After editing Kyverno `ClusterPolicy` manifests, run `make validate-kyverno-policies` before commit to catch invalid variable/JMESPath expressions via server-side dry-run.
+
 ## Documentation
 - All documentation in English (exception: `docs/kernel-tuning.md` is German, legacy)
 

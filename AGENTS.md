@@ -78,6 +78,8 @@ make argocd-bootstrap
 - For overlay/root changes, run:
   - `kubectl kustomize kubernetes/overlays/homelab`
   - `kubectl apply -k kubernetes/overlays/homelab --dry-run=client`
+- If editing Kyverno `ClusterPolicy` resources, run:
+  - `make validate-kyverno-policies`
 - For Talos config changes, run:
   - `make talos-gen-configs`
   - `make -C talos dry-run-all` (or affected node dry-run target)

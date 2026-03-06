@@ -1,6 +1,6 @@
 CILIUM_VERSION := 1.19.0
 
-.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc cilium-bootstrap cilium-bootstrap-check grafana-dashboards-check talos-upgrade-k8s validate-gitops
+.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc cilium-bootstrap cilium-bootstrap-check grafana-dashboards-check talos-upgrade-k8s validate-gitops validate-kyverno-policies
 
 # Delegate all talos-* targets to talos/Makefile.
 # talos-upgrade-k8s is explicitly defined below with a cilium pre-check dependency.
@@ -72,3 +72,10 @@ validate-gitops:
 		--skip-files kubernetes/bootstrap/cilium/cilium.yaml \
 		--skip-files kubernetes/overlays/homelab/infrastructure/piraeus-operator/resources/storage-pool-autovg.yaml \
 		.
+
+validate-kyverno-policies:
+	@echo "Server-validating Kyverno ClusterPolicies..."
+	@kubectl apply --dry-run=server \
+		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-contract-audit.yaml \
+		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-reserved-labels-audit.yaml
+	@echo "ok: Kyverno ClusterPolicies passed server-side validation"
