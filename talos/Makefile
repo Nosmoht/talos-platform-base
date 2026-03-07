@@ -178,7 +178,7 @@ bootstrap:
 
 # Apply targets
 define APPLY_TEMPLATE
-apply-$(1): $$(call config-path,$(1))
+apply-$(1): dry-run-$(1)
 	talosctl apply-config --nodes $$(IP_$(1)) --endpoints $$(IP_$(1)) --file $$(call config-path,$(1))
 endef
 
@@ -188,7 +188,7 @@ apply-all: $(addprefix apply-,$(ALL_NODES))
 
 # Dry-run targets
 define DRY_RUN_TEMPLATE
-dry-run-$(1): $$(call config-path,$(1))
+dry-run-$(1): gen-configs
 	talosctl apply-config --nodes $$(IP_$(1)) --endpoints $$(IP_$(1)) --file $$(call config-path,$(1)) --dry-run
 endef
 

@@ -67,11 +67,10 @@ kubectl -n argocd get applications
 For Talos config changes:
 
 ```bash
-# Generate + dry-run first
-make -C talos gen-configs
+# Dry-run regenerates configs automatically
 make -C talos dry-run-node-01
 
-# Apply config-only changes
+# Apply runs the per-node dry-run first
 make -C talos apply-node-01
 
 # Use upgrade when Talos version, boot args, or extensions changed
