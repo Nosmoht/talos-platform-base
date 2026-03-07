@@ -3,14 +3,23 @@ crds:
   keep: true
 
 global:
-  domain: localhost
+  domain: argocd.homelab.local
 
 server:
+  certificate:
+    enabled: true
+    issuer:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: vault-internal
+    privateKey:
+      algorithm: ECDSA
+      size: 256
+    duration: 2160h
+    renewBefore: 720h
   service:
-    type: LoadBalancer
-    loadBalancerIP: 192.168.2.130
-    labels:
-      "homelab.local/expose": "true"
+    type: ClusterIP
+    servicePortHttpsAppProtocol: https
 
 repoServer:
   env:
@@ -46,12 +55,12 @@ configs:
       g, nosmoht, role:admin
     scopes: '[preferred_username]'
   params:
-    server.insecure: true
+    server.insecure: false
     server.dex.server.strict.tls: "false"
     server.repo.server.strict.tls: "false"
   cm:
     admin.enabled: "true"
-    url: http://localhost:8080
+    url: https://argocd.homelab.local
     resource.compareoptions: |
       serverSideDiff: true
     resource.customizations.ignoreDifferences.apps_Deployment: |

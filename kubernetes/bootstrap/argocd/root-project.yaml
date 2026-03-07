@@ -34,5 +34,9 @@ spec:
       kind: Gateway
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
+    - group: gateway.networking.k8s.io
+      kind: TLSRoute
+    - group: gateway.networking.k8s.io
+      kind: BackendTLSPolicy
     - group: cert-manager.io
       kind: Certificate

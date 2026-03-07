@@ -10,7 +10,7 @@ tmp_output="$(mktemp)"
 trap 'rm -f "${tmp_render}" "${tmp_output}"' EXIT
 
 # Ensure the cilium chart repo is available locally.
-if ! helm repo list | awk '{print $1}' | rg -x 'cilium' >/dev/null; then
+if ! helm repo list 2>/dev/null | awk 'NR > 1 {print $1}' | grep -qx 'cilium'; then
   helm repo add cilium https://helm.cilium.io >/dev/null
 fi
 helm repo update cilium >/dev/null
@@ -44,8 +44,8 @@ awk -v RS='\n---\n' -v ORS='\n---\n' '
   }
 ' "${tmp_render}" >> "${tmp_output}"
 
-# Normalize trailing separators/newlines.
-perl -0pi -e 's/\n---\n\z/\n/; s/\A\n+//;' "${tmp_output}"
+# Normalize leading/trailing separators and force a single trailing newline.
+perl -0pi -e 's/\A\n+//; s/\n---\n\z/\n/; s/\n*\z/\n/;' "${tmp_output}"
 
 mv "${tmp_output}" "${OUTPUT_FILE}"
 
