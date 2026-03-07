@@ -1,0 +1,50 @@
+# Cilium Helm values for homelab cluster bootstrap manifest.
+# Used by scripts/render-cilium-bootstrap.sh to render
+# kubernetes/bootstrap/cilium/cilium.yaml via helm template.
+#
+# Only non-default values are listed. Chart defaults apply for everything else.
+
+# --- Kube-proxy replacement ---
+kubeProxyReplacement: "true"
+
+# --- IPAM ---
+ipam:
+  mode: "kubernetes"
+
+# --- Gateway API ---
+gatewayAPI:
+  enabled: true
+  enableAppProtocol: true
+
+# --- L2 Announcements & LB IPAM ---
+l2announcements:
+  enabled: true
+
+# --- Policy secrets ---
+policySecrets:
+  enabled: true
+
+# --- Hubble ---
+hubble:
+  enabled: true
+  metrics:
+    enabled:
+      - "dns:query;ignoreAAAA"
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - httpV2
+  tls:
+    auto:
+      method: cronJob
+      schedule: "0 0 1 */4 *"
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+# --- Operator ---
+operator:
+  replicas: 2

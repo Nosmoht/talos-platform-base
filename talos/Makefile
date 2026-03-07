@@ -45,7 +45,7 @@ $(foreach node,$(PI_NODES),$(eval IMAGE_$(node) = $$(PI_INSTALL_IMAGE)))
 	$(addprefix upgrade-,$(ALL_NODES)) upgrade-k8s validate-generated \
 	cilium-bootstrap cilium-bootstrap-check
 
-../kubernetes/bootstrap/cilium/cilium.yaml: ../scripts/render-cilium-bootstrap.sh versions.mk
+../kubernetes/bootstrap/cilium/cilium.yaml: ../scripts/render-cilium-bootstrap.sh versions.mk ../kubernetes/bootstrap/cilium/values.yaml ../kubernetes/bootstrap/cilium/extras.yaml
 	CILIUM_CHART_VERSION=$(CILIUM_VERSION) ../scripts/render-cilium-bootstrap.sh
 
 cilium-bootstrap: ../kubernetes/bootstrap/cilium/cilium.yaml
