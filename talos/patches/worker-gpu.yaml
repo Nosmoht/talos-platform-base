@@ -10,6 +10,7 @@ machine:
       - name: nvidia
         parameters:
           - NVreg_UsePageAttributeTable=1
+          - NVreg_DynamicPowerManagement=0
       - name: nvidia_uvm
       - name: nvidia_modeset
       - name: nvidia_drm
