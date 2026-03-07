@@ -45,6 +45,28 @@ hubble:
   ui:
     enabled: true
 
+# --- Security context ---
+# Remove SYS_MODULE — causes "operation not permitted" on some nodes
+# (runc rejects the capability). Not needed with kube-proxy replacement.
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
 # --- Operator ---
 operator:
   replicas: 2
