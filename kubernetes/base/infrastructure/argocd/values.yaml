@@ -19,7 +19,6 @@ server:
     renewBefore: 720h
   service:
     type: ClusterIP
-    servicePortHttpsAppProtocol: https
 
 repoServer:
   env:
@@ -55,7 +54,7 @@ configs:
       g, nosmoht, role:admin
     scopes: '[preferred_username]'
   params:
-    server.insecure: false
+    server.insecure: true
     server.dex.server.strict.tls: "false"
     server.repo.server.strict.tls: "false"
   cm:
