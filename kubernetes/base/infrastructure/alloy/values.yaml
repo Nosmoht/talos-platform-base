@@ -124,7 +124,7 @@ alloy:
 
       loki.write "default" {
         endpoint {
-          url = "http://loki.monitoring.svc:3100/loki/api/v1/push"
+          url = "http://loki-gateway.monitoring.svc/loki/api/v1/push"
         }
         external_labels = {
           cluster = "homelab",
