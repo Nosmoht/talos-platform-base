@@ -11,6 +11,7 @@ Read these in order before making changes:
 3. [`docs/day2-operations.md`](docs/day2-operations.md) (day-to-day operations and recovery)
 4. [`docs/platform-network-interface.md`](docs/platform-network-interface.md) (consumer onboarding for managed network capabilities)
 5. [`CLAUDE.md`](CLAUDE.md) (hard cluster constraints used by Claude Code)
+6. [`docs/claude-code-guide.md`](docs/claude-code-guide.md) (Claude Code skills, agents, and automation)
 
 ## Hard Safety Rules
 
@@ -43,7 +44,17 @@ export KUBECONFIG=/tmp/homelab-kubeconfig
 gh auth login
 ```
 
-For Claude Code MCP setup, follow [`.claude/mcp/SETUP.md`](.claude/mcp/SETUP.md).
+## Claude Code Assistance
+
+This repository includes slash-command skills, delegation agents, and auto-loaded
+context rules for Claude Code. Start a session in the repo root to use them.
+
+Common commands:
+- `/plan-talos-upgrade` / `/execute-talos-upgrade` — safe Talos version upgrades
+- `/gitops-health-triage [app\|all]` — diagnose ArgoCD sync failures
+- `/cilium-policy-debug [namespace/app]` — trace and fix connectivity drops
+
+Full catalog: [`docs/claude-code-guide.md`](docs/claude-code-guide.md). For MCP server setup, see [`.claude/mcp/SETUP.md`](.claude/mcp/SETUP.md).
 
 ## Safe Change Workflow
 
