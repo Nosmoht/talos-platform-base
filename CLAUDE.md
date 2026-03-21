@@ -51,6 +51,7 @@
 - kube-apiserver `$(POD_IP)` env var frozen at container creation; survives kubelet restarts
 - `talosctl service etcd restart` NOT supported — etcd can't be restarted via API
 - Stuck "shutting down" nodes (D-state on DRBD): only fixable with physical power cycle
+- **Upgrade sequence lock stuck on CSI unmount**: DRBD CSI volumes in D-state during `unmountPodMounts` phase deadlock the upgrade with no API recovery — `talosctl reboot`, `upgrade --force`, and `reset` all fail with "locked"; only fixable with physical power cycle. Mitigate by running `kubectl drain <node> --delete-emptydir-data --ignore-daemonsets --timeout=120s` before `talosctl upgrade` on DRBD nodes
 - Etcd member removed: `talosctl reset --system-labels-to-wipe EPHEMERAL --reboot --graceful=false`
 - Learner promotion automatic (~1-2 min) after EPHEMERAL reset
 - Maintenance mode `--insecure` only supports: `version`, `get disks`, `apply-config`
