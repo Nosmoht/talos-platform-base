@@ -23,11 +23,8 @@
 - **Keep policy ownership in infrastructure paths** (`kubernetes/overlays/homelab/infrastructure/...`); do not push operator-namespace policy ownership to consumer apps.
 
 ## Cluster Overview
-- Talos v1.12.4, Kubernetes v1.35.0, Cilium v1.19.0 CNI
-- Hardware: Lenovo ThinkCentre M910q (node-01..05), M920q (node-06), custom (node-gpu-01)
-- 3 control plane nodes (node-01..03), 3 workers (node-04..06), 1 GPU worker (node-gpu-01)
-- Network: 192.168.2.0/24, API VIP: 192.168.2.60, Gateway LB VIP: 192.168.2.70, gateway/DNS: 192.168.2.1
-- External access: Fritz!Box → Raspberry Pi (192.168.2.200, DNAT+SNAT) → Cilium L2 VIP (192.168.2.70)
+Cluster-specific details (nodes, IPs, network topology, hardware) are defined in `.claude/environment.yaml`.
+See `.claude/environment.example.yaml` for the schema. Software versions are pinned in `talos/versions.mk`.
 - L2 announcements: Cilium native (CiliumL2AnnouncementPolicy + CiliumLoadBalancerIPPool), NOT MetalLB
 - Storage: LINSTOR/Piraeus Operator CSI (piraeus-datastore namespace), DRBD replication, NVMe nodes selected via NFD label `feature.node.kubernetes.io/storage-nvme.present=true`
 - Runtime: gVisor available as containerd runtime handler (all nodes)
@@ -113,7 +110,8 @@
 ## Context Architecture
 - Domain-specific knowledge in `.claude/rules/` — auto-loaded by path glob (not always-loaded)
 - Rules: `talos-config.md`, `talos-nodes.md`, `talos-image-factory.md`, `kubernetes-gitops.md`, `cilium-gateway-api.md`, `argocd-operations.md`, `manifest-quality.md`, `talos-operations.md`
-- Daily skills: `gitops-health-triage`, `talos-node-maintenance`, `cilium-policy-debug`, plus hardware/kernel skills under `.claude/skills/`
+- Daily skills: `gitops-health-triage`, `talos-apply`, `talos-upgrade`, `cilium-policy-debug`, plus hardware/kernel skills under `.claude/skills/`
+- Deprecated: `talos-node-maintenance` (superseded by `talos-apply` + `talos-upgrade`)
 - Delegation agents: `gitops-operator`, `talos-sre`, `platform-reliability-reviewer` under `.claude/agents/`
 - Scheduled checks: `talos-update-check` (weekly, Talos releases), `nvidia-extension-check` (weekly, Image Factory digest drift)
 - This CLAUDE.md kept minimal — only hard constraints, universal gotchas, and cluster overview

@@ -33,7 +33,9 @@ Date: 2026-03-03
   - `.claude/rules/talos-operations.md`
 - Added new skills:
   - `.claude/skills/gitops-health-triage/SKILL.md`
-  - `.claude/skills/talos-node-maintenance/SKILL.md`
+  - `.claude/skills/talos-node-maintenance/SKILL.md` *(deprecated — superseded by `talos-apply` + `talos-upgrade`)*
+  - `.claude/skills/talos-apply/SKILL.md`
+  - `.claude/skills/talos-upgrade/SKILL.md`
   - `.claude/skills/cilium-policy-debug/SKILL.md`
 - Added new agents:
   - `.claude/agents/gitops-operator.md`

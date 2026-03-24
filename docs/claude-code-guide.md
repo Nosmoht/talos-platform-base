@@ -20,7 +20,8 @@ This repository ships with built-in Claude Code skills, delegation agents, and c
 | Command | Description |
 |---------|-------------|
 | `/gitops-health-triage [app\|all]` | Triage ArgoCD sync/health drift and produce a remediation plan |
-| `/talos-node-maintenance <node>` | Safe day-2 node maintenance with dry-run, apply/upgrade decision, and verification |
+| `/talos-apply <node>` | Apply config changes (sysctl, network, patches) to a single node with dry-run and verification |
+| `/talos-upgrade <node>` | Upgrade a single node's OS image with drain, DRBD safety, and rollback support |
 | `/cilium-policy-debug [namespace/app]` | Diagnose traffic drops, map to CiliumNetworkPolicy manifests, propose least-privilege fixes |
 
 ### Hardware and Tuning
@@ -96,4 +97,4 @@ Setup instructions: [`.claude/mcp/SETUP.md`](../.claude/mcp/SETUP.md)
 1. `/analyze-node-hardware <node>` — hardware profile
 2. `/update-schematics <node>` — match extensions to hardware
 3. `/optimize-node-kernel <node>` — kernel parameter tuning
-4. `/talos-node-maintenance <node>` — apply changes safely
+4. `/talos-apply <node>` — apply config changes safely
