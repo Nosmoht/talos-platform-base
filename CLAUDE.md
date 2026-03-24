@@ -115,4 +115,5 @@
 - Rules: `talos-config.md`, `talos-nodes.md`, `talos-image-factory.md`, `kubernetes-gitops.md`, `cilium-gateway-api.md`, `argocd-operations.md`, `manifest-quality.md`, `talos-operations.md`
 - Daily skills: `gitops-health-triage`, `talos-node-maintenance`, `cilium-policy-debug`, plus hardware/kernel skills under `.claude/skills/`
 - Delegation agents: `gitops-operator`, `talos-sre`, `platform-reliability-reviewer` under `.claude/agents/`
+- Scheduled checks: `talos-update-check` (weekly, Talos releases), `nvidia-extension-check` (weekly, Image Factory digest drift)
 - This CLAUDE.md kept minimal — only hard constraints, universal gotchas, and cluster overview
