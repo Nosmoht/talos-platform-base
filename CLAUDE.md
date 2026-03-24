@@ -113,5 +113,5 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - Daily skills: `gitops-health-triage`, `talos-apply`, `talos-upgrade`, `cilium-policy-debug`, plus hardware/kernel skills under `.claude/skills/`
 - Deprecated: `talos-node-maintenance` (superseded by `talos-apply` + `talos-upgrade`)
 - Delegation agents: `gitops-operator`, `talos-sre`, `platform-reliability-reviewer` under `.claude/agents/`
-- Scheduled checks: `talos-update-check` (weekly, Talos releases), `nvidia-extension-check` (weekly, Image Factory digest drift)
+- Scheduled checks: `talos-update-check` (weekly, Talos releases), `nvidia-extension-check` (weekly, Image Factory digest drift), `cilium-update-check` (weekly, Cilium stable releases)
 - This CLAUDE.md kept minimal — only hard constraints, universal gotchas, and cluster overview
