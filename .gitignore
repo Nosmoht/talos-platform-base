@@ -2,3 +2,4 @@ talos/talosconfig
 talos/generated/
 talos/.secrets.dec.yaml
 talos/.versions.stamp
+.claude/environment.yaml
