@@ -215,6 +215,7 @@ upgrade-$(1): $$(call config-path,$(1))
 	talosctl upgrade --nodes $$(IP_$(1)) \
 		--endpoints $$(IP_$(1)) \
 		--image $$(IMAGE_$(1)) \
+		--preserve \
 		--wait --timeout 10m
 endef
 
