@@ -43,7 +43,7 @@ $(foreach node,$(PI_NODES),$(eval IMAGE_$(node) = $$(PI_INSTALL_IMAGE)))
 	$(addprefix apply-,$(ALL_NODES)) apply-all \
 	$(addprefix dry-run-,$(ALL_NODES)) dry-run-all \
 	$(addprefix upgrade-,$(ALL_NODES)) upgrade-k8s validate-generated \
-	cilium-bootstrap cilium-bootstrap-check
+	cilium-bootstrap cilium-bootstrap-check validate-schematics
 
 ../kubernetes/bootstrap/cilium/cilium.yaml: ../scripts/render-cilium-bootstrap.sh versions.mk ../kubernetes/bootstrap/cilium/values.yaml ../kubernetes/bootstrap/cilium/extras.yaml
 	CILIUM_CHART_VERSION=$(CILIUM_VERSION) ../scripts/render-cilium-bootstrap.sh
@@ -161,6 +161,42 @@ talosconfig: secrets.yaml
 
 schematics: .schematic-ids.mk
 
+# Validate that .schematic-ids.mk matches current schematic YAML content.
+# Does NOT depend on .schematic-ids.mk as a Make prerequisite — that would
+# trigger regeneration first, defeating the staleness check.
+validate-schematics:
+	@set -eu; \
+	if [ ! -f .schematic-ids.mk ]; then \
+		echo "error: .schematic-ids.mk not found — run 'make schematics' first"; exit 1; \
+	fi; \
+	echo "Validating schematic IDs against Factory API..."; \
+	MISMATCH=0; \
+	STD_ID=$$(curl -sSf -X POST -H 'Content-Type: application/yaml' \
+		--data-binary @talos-factory-schematic.yaml \
+		https://factory.talos.dev/schematics | jq -r '.id') && \
+	GPU_ID=$$(curl -sSf -X POST -H 'Content-Type: application/yaml' \
+		--data-binary @talos-factory-schematic-gpu.yaml \
+		https://factory.talos.dev/schematics | jq -r '.id') && \
+	PI_ID=$$(curl -sSf -X POST -H 'Content-Type: application/yaml' \
+		--data-binary @talos-factory-schematic-pi.yaml \
+		https://factory.talos.dev/schematics | jq -r '.id') && \
+	for ID in "$$STD_ID" "$$GPU_ID" "$$PI_ID"; do \
+		if ! echo "$$ID" | grep -qE '^[0-9a-f]{64}$$'; then \
+			echo "error: Factory API returned unexpected value: $$ID"; exit 1; \
+		fi; \
+	done && \
+	CURRENT_STD=$$(grep '^SCHEMATIC_ID :=' .schematic-ids.mk | awk '{print $$3}') && \
+	CURRENT_GPU=$$(grep '^GPU_SCHEMATIC_ID :=' .schematic-ids.mk | awk '{print $$3}') && \
+	CURRENT_PI=$$(grep '^PI_SCHEMATIC_ID :=' .schematic-ids.mk | awk '{print $$3}') && \
+	if [ "$$STD_ID" != "$$CURRENT_STD" ]; then echo "MISMATCH: standard $$CURRENT_STD -> $$STD_ID"; MISMATCH=1; fi; \
+	if [ "$$GPU_ID" != "$$CURRENT_GPU" ]; then echo "MISMATCH: GPU $$CURRENT_GPU -> $$GPU_ID"; MISMATCH=1; fi; \
+	if [ "$$PI_ID" != "$$CURRENT_PI" ]; then echo "MISMATCH: Pi $$CURRENT_PI -> $$PI_ID"; MISMATCH=1; fi; \
+	if [ "$$MISMATCH" -eq 1 ]; then \
+		echo "error: stale schematic IDs — run 'make schematics' to update"; exit 1; \
+	else \
+		echo "ok: all schematic IDs match current YAML"; \
+	fi
+
 # Helper to resolve config path for a node
 config-path = generated/$(if $(filter $(1),$(CP_NODES)),controlplane,worker)/$(1).yaml
 
@@ -210,7 +246,7 @@ validate-generated: gen-configs
 
 # Upgrade targets — apply config then upgrade to new install image
 define UPGRADE_TEMPLATE
-upgrade-$(1): $$(call config-path,$(1))
+upgrade-$(1): validate-schematics $$(call config-path,$(1))
 	talosctl apply-config --nodes $$(IP_$(1)) --endpoints $$(IP_$(1)) --file $$(call config-path,$(1))
 	talosctl upgrade --nodes $$(IP_$(1)) \
 		--endpoints $$(IP_$(1)) \

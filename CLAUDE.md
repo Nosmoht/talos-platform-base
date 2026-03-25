@@ -41,6 +41,7 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - `talos/secrets.yaml` is SOPS-encrypted; auto-decrypted during config generation
 
 ## Talos Operations — Universal Gotchas
+- **Stale schematic IDs**: Editing `talos/talos-factory-schematic*.yaml` without re-running `make -C talos schematics` leaves `.schematic-ids.mk` stale — upgrades use the wrong image (missing boot params/extensions). `make -C talos validate-schematics` detects drift; `upgrade-*` Makefile targets run it automatically
 - `talosctl apply-config --dry-run` fails via VIP — use explicit `-e <node-ip>` endpoint
 - Always use `talosctl -n <ip> -e <ip>` when VIP or default endpoints may be down
 - `talosctl apply-config` with unchanged config is a no-op
