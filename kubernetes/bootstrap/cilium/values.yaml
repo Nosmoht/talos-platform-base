@@ -4,6 +4,10 @@
 #
 # Only non-default values are listed. Chart defaults apply for everything else.
 
+# --- CNI ---
+cni:
+  exclusive: false
+
 # --- Kube-proxy replacement ---
 kubeProxyReplacement: "true"
 k8sServiceHost: "127.0.0.1"
