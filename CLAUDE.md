@@ -98,6 +98,8 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - **hostNetwork pods (e.g. linstor-csi-node) have host identity** — don't write CNPs for them; their traffic to other pods appears as `fromEntities: ["host"]`
 - **Cross-namespace Prometheus scraping** — when adding CNPs to a new namespace with ServiceMonitors, also add egress rule in `cnp-prometheus.yaml` for the target namespace/ports
 - **Prefer identity/capability-based selectors over namespace name allowlists** — model connectivity through PNI capabilities and provider/consumer identities, not one-off namespace tuples
+- **CCNP on namespaces without existing CNPs activates implicit default-deny** — adding a PNI capability label to a namespace that has no CiliumNetworkPolicy/CiliumClusterwideNetworkPolicy selecting its pods will activate Cilium's implicit default-deny for those pods; do not opt in `privileged` namespaces (e.g. `argocd`) without shipping a full CNP set first
+- **Gateway-backend `toPorts` must use container ports (post-DNAT)** — Cilium evaluates `toPorts` after kube-proxy DNAT; use the pod's container port (e.g. `8080` for ArgoCD), not the Service port (e.g. `80`)
 - **DRBD satellite mesh uses port range 7000-7999** — LINSTOR assigns per-resource; use Cilium `endPort` for ranges
 - **Debugging policy drops**: Use `hubble observe --from-ip <pod-ip>` for reliable drop visibility — `cilium-dbg monitor --type drop` can miss drops. Cilium CLI inside agent pods is `cilium-dbg`, not `cilium`
 - After pushing changes, force ArgoCD refresh: `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard --overwrite`

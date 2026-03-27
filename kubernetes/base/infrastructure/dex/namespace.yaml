@@ -10,6 +10,7 @@ metadata:
     platform.io/network-interface-version: "v1"
     platform.io/network-profile: "managed"
     platform.io/consume.cnpg-postgres: "true"
+    platform.io/consume.gateway-backend: "true"
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
