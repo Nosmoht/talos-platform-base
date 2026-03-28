@@ -21,8 +21,6 @@ ipam:
 gatewayAPI:
   enabled: true
   enableAppProtocol: true
-  hostNetwork:
-    enabled: true
 
 # --- L2 Announcements & LB IPAM ---
 l2announcements:
@@ -74,16 +72,6 @@ securityContext:
       - NET_ADMIN
       - SYS_ADMIN
       - SYS_RESOURCE
-
-# --- Envoy ---
-envoy:
-  securityContext:
-    capabilities:
-      envoy:
-        - NET_ADMIN
-        - SYS_ADMIN
-        - NET_BIND_SERVICE
-      keepCapNetBindService: true
 
 # --- Operator ---
 operator:
