@@ -1,0 +1,12 @@
+- plan-talos-upgrade:
+  - what to do after plan was approved -> missing info to "/execute-talos-upgrade"
+  - auto install of required tools likq jq, yq, sops is really great. but: they should be documented as requirements.
+  - ssh-keyscan is also really great
+- execute-talos-upgrade:
+  - summary/overview before upgrade
+  - upgrade log?
+  - summary/overview after upgrade
+  - summary diff between before and after upgrade
+- what if talosctl and kubectl arent installed?
+- Skill to upgrade K8s
+- static IPAM Plugin für multus nicht installiert
