@@ -25,7 +25,7 @@
 ## Cluster Overview
 Cluster-specific details (nodes, IPs, network topology, hardware) are defined in `.claude/environment.yaml`.
 See `.claude/environment.example.yaml` for the schema. Software versions are pinned in `talos/versions.mk`.
-- L2 announcements: Cilium native (CiliumL2AnnouncementPolicy + CiliumLoadBalancerIPPool), NOT MetalLB
+- External ingress: ingress-front pod with Multus macvlan (stable MAC `02:42:c0:a8:02:46`, IP `192.168.2.70`) → Cilium Gateway API; see `docs/adr-ingress-front-stable-mac.md`
 - Storage: LINSTOR/Piraeus Operator CSI (piraeus-datastore namespace), DRBD replication, NVMe nodes selected via NFD label `feature.node.kubernetes.io/storage-nvme.present=true`
 - Runtime: gVisor available as containerd runtime handler (all nodes)
 - GitOps: ArgoCD with Kustomize base/overlays, multi-cluster ready
@@ -74,6 +74,7 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - **Hook Job completed but operationState stuck**: If a hook Job completes and is deleted (DeletePolicy) before ArgoCD observes completion, sync hangs. Clear `/status/operationState` via patch then refresh
 - **AppProject permission can block valid app syncs**: If an app shows `one or more synchronization tasks are not valid`, inspect denied kinds in Application status and add them to the owning AppProject `spec.clusterResourceWhitelist` in Git (then sync `root`). Example needed here: `cilium.io/CiliumClusterwideNetworkPolicy` for `infrastructure` project.
 - **Do not stop at `OutOfSync` label-only checks**: Always check `status.operationState.message` and per-resource sync results to find the first hard blocker.
+- **Multus DaemonSet `prune: false`**: Multus has `prune: false` (safety — orphaned CNI config blocks pod creation). Changing init containers (e.g., adding CNI plugins) won't take effect until `kubectl rollout restart daemonset kube-multus-ds -n kube-system`
 
 ## Monitoring & Dashboard Gotchas
 - **Kubernetes / Scheduler dashboard "No data" has two independent causes**:
