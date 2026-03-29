@@ -25,7 +25,7 @@
 ## Cluster Overview
 Cluster-specific details (nodes, IPs, network topology, hardware) are defined in `.claude/environment.yaml`.
 See `.claude/environment.example.yaml` for the schema. Software versions are pinned in `talos/versions.mk`.
-- External ingress: ingress-front pod with Multus macvlan (stable MAC `02:42:c0:a8:02:46`, IP `192.168.2.70`) → Cilium Gateway API; see `docs/adr-ingress-front-stable-mac.md`
+- External ingress: ingress-front macvlan (stable MAC `02:42:c0:a8:02:46`, IP `192.168.2.70`) → nginx L4 upstream via net1 (macvlan) to remote worker nodes → embedded Envoy on hostNetwork (ports 80/443); Cilium `envoy.enabled: false` + `gatewayAPI.hostNetwork.enabled: true`; see `docs/postmortem-gateway-403-hairpin.md`
 - Storage: LINSTOR/Piraeus Operator CSI (piraeus-datastore namespace), DRBD replication, NVMe nodes selected via NFD label `feature.node.kubernetes.io/storage-nvme.present=true`
 - Runtime: gVisor available as containerd runtime handler (all nodes)
 - GitOps: ArgoCD with Kustomize base/overlays, multi-cluster ready
@@ -55,6 +55,8 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - Maintenance mode `--insecure` only supports: `version`, `get disks`, `apply-config`
 - `talosctl disks` deprecated — use `get disks`, `get systemdisk`, `get discoveredvolumes`
 - **Cilium deployed via Talos `extraManifests`** (controlplane patch → GitHub raw URL) — reconcile drift with `make -C talos upgrade-k8s`, NOT `kubectl apply`
+- **`extraManifests` does NOT garbage-collect**: removing resources from `cilium.yaml` does NOT delete them from the cluster after `upgrade-k8s` — orphans must be `kubectl delete`d manually
+- **Apply Talos configs BEFORE `upgrade-k8s`**: `talosctl upgrade-k8s` reads extraManifests URLs from the LIVE node machine config. If you change the cache-bust URL in `controlplane.yaml` and `gen-configs`, you MUST `talosctl apply-config` to all CP nodes first — otherwise `upgrade-k8s` downloads from the old cached URL
 - `talosctl upgrade-k8s` requires `-n <node-ip> -e <node-ip>` — `--endpoint` is a different flag (proxy endpoint)
 
 ## ArgoCD Pattern
@@ -91,8 +93,11 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 ## Cilium NetworkPolicy Gotchas
 - **Alertmanager mesh requires TCP + UDP on port 9094** — memberlist gossip protocol uses both; TCP-only CNP causes cluster split-brain
 - **kube-prometheus-stack ServiceMonitors have sidecar ports** — alertmanager has `reloader-web:8080` (config-reloader), check `kubectl get servicemonitor <name> -o yaml` for all endpoint ports before writing CNPs
-- `fromEntities: ["world"]` does NOT match Cilium's external Envoy proxy traffic — use `fromEntities: ["ingress"]` for Gateway API ingress
-- Cilium external Envoy proxy (`external-envoy-proxy: true`) uses `reserved:ingress` identity (ID 8), not `world`
+- **`cilium.l7policy` filter applies to ALL eBPF identity-marked traffic** — not just TPROXY-redirected traffic. Any pod traffic via eth0 (Cilium CNI) gets identity-marked by eBPF. Only external LAN traffic (entering via physical NIC, no eBPF marking) bypasses the filter. This is why macvlan (net1) to remote nodes works but eth0 to the same host does not.
+- **Embedded Envoy needs `NET_BIND_SERVICE` + `keepCapNetBindService`** — for hostNetwork Gateway ports 80/443. Both must be set: `NET_BIND_SERVICE` in `securityContext.capabilities.ciliumAgent` AND `envoy.securityContext.capabilities.keepCapNetBindService: true`. Silent failure without either — no error, no LISTEN socket.
+- **"Per-Gateway Deployments" do NOT exist in Cilium 1.19** — Gateway listeners are CiliumEnvoyConfig with `nodeSelector`, processed by embedded Envoy in matching cilium-agent pods. No Deployment is created.
+- **kube-vip does NOT provide virtual MAC** — uses node's real MAC via gratuitous ARP (same as Cilium L2 announcements). Only keepalived `use_vmac` provides RFC 5798 virtual MAC (`00:00:5e:00:01:{VRID}`)
+- `fromEntities: ["ingress"]` matches Cilium's `reserved:ingress` identity (ID 8) for Gateway API backend pods
 - **kube-apiserver port after DNAT**: `toEntities: ["kube-apiserver"]` with `port: "443"` won't work — Cilium kube-proxy replacement DNATs ClusterIP 10.96.0.1:443 → endpoint:6443 before policy evaluation. Use `port: "6443"` in CNP egress rules
 - **K8s NetworkPolicy + CiliumNetworkPolicy AND semantics**: When both policy types select the same pod, traffic must be allowed by BOTH. Don't use K8s default-deny NetworkPolicy alongside CiliumNetworkPolicies — per-component CNPs already create implicit default-deny for selected endpoints
 - **ArgoCD hook jobs and CNPs**: Helm chart hook Jobs (e.g. admission-create/patch) run BEFORE resources are synced — CNPs in `resources/` can't unblock them. Ensure CNP endpointSelectors cover hook job pod labels, and apply CNP fixes live when debugging chicken-and-egg
@@ -104,6 +109,13 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - **DRBD satellite mesh uses port range 7000-7999** — LINSTOR assigns per-resource; use Cilium `endPort` for ranges
 - **Debugging policy drops**: Use `hubble observe --from-ip <pod-ip>` for reliable drop visibility — `cilium-dbg monitor --type drop` can miss drops. Cilium CLI inside agent pods is `cilium-dbg`, not `cilium`
 - After pushing changes, force ArgoCD refresh: `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard --overwrite`
+
+## Macvlan + Cilium eBPF Interaction Gotchas
+- **Macvlan bridge mode blocks same-host pod↔host traffic** — kernel limitation; pod cannot reach its own node's LAN IP via net1 (macvlan). Traffic to remote LAN hosts works fine.
+- **Pod routing table conflict**: `192.168.2.0/24 dev net1` takes precedence over Cilium eth0 default route for all LAN traffic. Adding a `/32` host route via eth0 requires `NET_ADMIN` capability, which violates `baseline` Pod Security Admission.
+- **Proxy traffic must go via macvlan to REMOTE nodes** to bypass eBPF identity marking. The ingress-front nginx uses a static upstream with all worker node LAN IPs; the local node's IP fails silently (macvlan bridge isolation) and nginx upstream failover routes to a remote node where traffic arrives as external LAN traffic (no eBPF, no L7 filter).
+- **ConfigMap subPath mounts are read-only** — cannot `sed -i` for runtime config templating. Use init container + emptyDir pattern if dynamic substitution is needed.
+- **Stable MAC is a general L2 networking requirement** (not router-specific) — VIP MAC changes on failover orphan port forwarding rules, cause ARP cache staleness (1-20+ min), and disrupt device tracking on any router/switch
 
 ## Kyverno Validation
 - After editing Kyverno `ClusterPolicy` manifests, run `make validate-kyverno-policies` before commit to catch invalid variable/JMESPath expressions via server-side dry-run.
