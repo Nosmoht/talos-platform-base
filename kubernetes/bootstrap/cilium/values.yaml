@@ -29,9 +29,12 @@ gatewayAPI:
 
 # --- Envoy ---
 # Disable standalone Envoy DaemonSet. Envoy runs embedded in cilium-agent.
-# Per-Gateway Deployments with hostNetwork replace the shared DaemonSet.
+# Gateway listeners are configured via CiliumEnvoyConfig with nodeSelector.
 envoy:
   enabled: false
+  securityContext:
+    capabilities:
+      keepCapNetBindService: true
 
 # --- Policy secrets ---
 policySecrets:
@@ -68,6 +71,7 @@ securityContext:
       - KILL
       - NET_ADMIN
       - NET_RAW
+      - NET_BIND_SERVICE
       - IPC_LOCK
       - SYS_ADMIN
       - SYS_RESOURCE
