@@ -63,7 +63,7 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - App-of-apps: single root Application manages all child apps, projects, and resources
 - Bootstrap: `make argocd-bootstrap` (Helm install + root AppProject + root app); ArgoCD self-manages after
 - Sync-wave ordering: projects(-1) → infrastructure(0) → apps(1)
-- Root app uses `root-bootstrap` AppProject (least-privilege); gateway-api resources are raw (no child Application)
+- Root app uses `root-bootstrap` AppProject (least-privilege); gateway-api is its own Application (project: infrastructure, sync-wave: 4, dest: default ns)
 - Bootstrap cilium manifest (`kubernetes/bootstrap/cilium/cilium.yaml`) includes GatewayClass — reconcile with `make -C talos upgrade-k8s` (re-applies extraManifests)
 - Full patterns in `.claude/rules/kubernetes-gitops.md` — do NOT re-explore, read the rule
 

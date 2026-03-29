@@ -16,27 +16,11 @@ spec:
   destinations:
     - namespace: argocd
       server: https://kubernetes.default.svc
-    - namespace: default
-      server: https://kubernetes.default.svc
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
-    - group: cilium.io
-      kind: CiliumLoadBalancerIPPool
-    - group: cilium.io
-      kind: CiliumL2AnnouncementPolicy
   namespaceResourceWhitelist:
     - group: argoproj.io
       kind: AppProject
     - group: argoproj.io
       kind: Application
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-    - group: gateway.networking.k8s.io
-      kind: TLSRoute
-    - group: gateway.networking.k8s.io
-      kind: BackendTLSPolicy
-    - group: cert-manager.io
-      kind: Certificate
