@@ -21,10 +21,17 @@ ipam:
 gatewayAPI:
   enabled: true
   enableAppProtocol: true
+  hostNetwork:
+    enabled: true
+    nodes:
+      matchLabels:
+        node-role.kubernetes.io/gateway: ""
 
-# --- L2 Announcements & LB IPAM ---
-l2announcements:
-  enabled: true
+# --- Envoy ---
+# Disable standalone Envoy DaemonSet. Envoy runs embedded in cilium-agent.
+# Per-Gateway Deployments with hostNetwork replace the shared DaemonSet.
+envoy:
+  enabled: false
 
 # --- Policy secrets ---
 policySecrets:
