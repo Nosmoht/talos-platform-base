@@ -123,11 +123,17 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 ## Documentation
 - All documentation in English (exception: `docs/kernel-tuning.md` is German, legacy)
 
+## Operational Patterns
+- **Upgrade planning:** Use `/plan-talos-upgrade` or `/plan-cilium-upgrade` — these skills include automated research and risk assessment steps. Do not skip these skills for ad-hoc upgrades.
+- **Pre-operation review:** Before disruptive changes (upgrades, storage migration, network topology changes), invoke `platform-reliability-reviewer` with prefix "pre-operation:" for adversarial risk assessment.
+- **Architecture decisions:** When evaluating alternatives, spawn `talos-sre` and `platform-reliability-reviewer` with the same question to get operational + reliability perspectives.
+- **After incidents:** Update CLAUDE.md gotchas if the lesson is universal. Write a postmortem to `docs/` if the incident was complex. Keep `docs/` for record, CLAUDE.md for decision-making.
+
 ## Context Architecture
 - Domain-specific knowledge in `.claude/rules/` — auto-loaded by path glob (not always-loaded)
 - Rules: `talos-config.md`, `talos-nodes.md`, `talos-image-factory.md`, `kubernetes-gitops.md`, `cilium-gateway-api.md`, `argocd-operations.md`, `manifest-quality.md`, `talos-operations.md`
 - Daily skills: `gitops-health-triage`, `talos-apply`, `talos-upgrade`, `cilium-policy-debug`, plus hardware/kernel skills under `.claude/skills/`
 - Deprecated: `talos-node-maintenance` (superseded by `talos-apply` + `talos-upgrade`)
-- Delegation agents: `gitops-operator`, `talos-sre`, `platform-reliability-reviewer` under `.claude/agents/`
+- Delegation agents: `gitops-operator`, `talos-sre`, `platform-reliability-reviewer` (supports pre-merge + pre-operation modes), `researcher` under `.claude/agents/`
 - Scheduled checks: `talos-update-check` (weekly, Talos releases), `nvidia-extension-check` (weekly, Image Factory digest drift), `cilium-update-check` (weekly, Cilium stable releases)
 - This CLAUDE.md kept minimal — only hard constraints, universal gotchas, and cluster overview

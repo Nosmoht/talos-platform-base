@@ -40,7 +40,25 @@ Agents are invoked automatically by Claude Code when a task matches their specia
 |-------|-----------|
 | `gitops-operator` | ArgoCD reconciliation failures, app-of-apps drift, safe rollout planning |
 | `talos-sre` | Node config generation, apply/upgrade safety, control-plane stability |
-| `platform-reliability-reviewer` | Pre-merge review for operational regressions, policy gaps, unsafe rollouts |
+| `platform-reliability-reviewer` | Pre-merge review (default) or pre-operation risk assessment (prefix with "pre-operation:") |
+| `researcher` | Upgrade compatibility research, CVE assessment, component evaluation via web search |
+
+### Platform Reliability Reviewer: Two Modes
+
+The `platform-reliability-reviewer` agent supports two operating modes:
+
+- **Pre-Merge Review (default):** Review diffs for regressions, policy gaps, and unsafe rollouts before merging. Output: BLOCKING/WARNING/INFO findings with severity.
+- **Pre-Operation Review:** Invoke with `"pre-operation: <change description>"` for adversarial risk assessment before disruptive operations. Output: Risk Matrix, rollback analysis, recovery gaps, Go/No-Go verdict.
+
+### Researcher Agent
+
+The `researcher` agent performs structured web research for infrastructure decisions. It is automatically spawned by `/plan-talos-upgrade` and `/plan-cilium-upgrade` skills (Step 1.5). It can also be invoked directly for ad-hoc research:
+
+```
+@researcher "Evaluate KubeVirt vs Kata Containers for VM workloads on Talos Linux"
+```
+
+Output: Sources with URLs, Findings with citations, Cluster-Specific Impact, Confidence levels.
 
 ## Auto-Loaded Context Rules
 
@@ -72,15 +90,22 @@ Setup instructions: [`.claude/mcp/SETUP.md`](../.claude/mcp/SETUP.md)
 
 ### Upgrade Talos
 
-1. `/plan-talos-upgrade` — produces a draft plan in `docs/`
+1. `/plan-talos-upgrade` — automatically researches breaking changes (spawns `researcher` agent), builds plan, and stress-tests it via adversarial risk assessment
 2. Review the plan, mark as approved
 3. `/execute-talos-upgrade docs/talos-upgrade-plan-<from>-to-<to>-<date>.md`
 
 ### Upgrade Cilium
 
-1. `/plan-cilium-upgrade` — produces a draft plan in `docs/`
+1. `/plan-cilium-upgrade` — automatically researches eBPF/Gateway API changes (spawns `researcher` agent), builds plan, and stress-tests it with Cilium-specific risk assessment
 2. Review the plan, mark as approved
 3. `/execute-cilium-upgrade docs/cilium-upgrade-plan-<from>-to-<to>-<date>.md`
+
+### Pre-operation risk assessment
+
+Before any disruptive change (upgrade, storage migration, network topology change):
+```
+@platform-reliability-reviewer "pre-operation: Migrate DRBD volumes from node-04 to node-05"
+```
 
 ### Diagnose a broken ArgoCD app
 
