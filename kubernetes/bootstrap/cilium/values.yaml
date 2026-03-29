@@ -84,6 +84,14 @@ securityContext:
       - SYS_ADMIN
       - SYS_RESOURCE
 
+# --- BPF ---
+# VLAN bypass: allow tagged packets through eBPF without dropping.
+# Required for VLAN sub-interfaces (e.g., KubeVirt VM networking on VLAN 100).
+# Without this, Cilium's eBPF programs drop 802.1Q-tagged packets on the physical NIC.
+bpf:
+  vlanBypass:
+    - 100
+
 # --- Operator ---
 operator:
   replicas: 2
