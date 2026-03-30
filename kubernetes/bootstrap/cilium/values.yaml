@@ -48,6 +48,7 @@ encryption:
     userspaceFallback: false
   strictMode:
     enabled: true
+    cidr: "10.244.0.0/16"
     allowRemoteNodeIdentities: true
 
 # --- Hubble ---
