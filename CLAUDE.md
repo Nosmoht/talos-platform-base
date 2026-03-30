@@ -28,6 +28,9 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - External ingress: ingress-front macvlan (stable MAC `02:42:c0:a8:02:46`, IP `192.168.2.70`) → nginx L4 upstream via net1 (macvlan) to remote worker nodes → embedded Envoy on hostNetwork (ports 80/443); Cilium `envoy.enabled: false` + `gatewayAPI.hostNetwork.enabled: true`; see `docs/postmortem-gateway-403-hairpin.md`
 - Storage: LINSTOR/Piraeus Operator CSI (piraeus-datastore namespace), DRBD replication, NVMe nodes selected via NFD label `feature.node.kubernetes.io/storage-nvme.present=true`
 - Runtime: gVisor available as containerd runtime handler (all nodes)
+- Encryption: Cilium WireGuard strict mode (all inter-node pod traffic encrypted, PodCIDR `10.244.0.0/16`)
+- Observability: Hubble dynamic flow export (dropped flows + DNS flows to `/var/run/cilium/hubble/`)
+- Policy enforcement: Kyverno PNI policies in Enforce mode (namespace contract, reserved labels, capability validation)
 - GitOps: ArgoCD with Kustomize base/overlays, multi-cluster ready
 
 ## Required Tools
@@ -58,6 +61,8 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - **`extraManifests` does NOT garbage-collect**: removing resources from `cilium.yaml` does NOT delete them from the cluster after `upgrade-k8s` — orphans must be `kubectl delete`d manually
 - **Apply Talos configs BEFORE `upgrade-k8s`**: `talosctl upgrade-k8s` reads extraManifests URLs from the LIVE node machine config. If you change the cache-bust URL in `controlplane.yaml` and `gen-configs`, you MUST `talosctl apply-config` to all CP nodes first — otherwise `upgrade-k8s` downloads from the old cached URL
 - `talosctl upgrade-k8s` requires `-n <node-ip> -e <node-ip>` — `--endpoint` is a different flag (proxy endpoint)
+- **`upgrade-k8s` does NOT reliably update existing ConfigMaps or create new resources**: When adding new ConfigMaps (e.g., `cilium-flowlog-config`) or adding keys to existing ones (e.g., `enable-wireguard` in `cilium-config`), `upgrade-k8s` shows "no changes" and skips them. Workaround: extract the resource from the rendered manifest with `yq` and `kubectl apply --server-side --force-conflicts --field-manager=talos -f -`, then restart the DaemonSet
+- **`hubble-generate-certs` Job blocks `upgrade-k8s`**: The Job has a hash-based name (`hubble-generate-certs-b36ef54b9b`); if it already exists from a previous run, `upgrade-k8s` fails with immutable field error. Delete all matching Jobs before running: `kubectl delete job -n kube-system -l k8s-app=hubble-generate-certs`
 
 ## ArgoCD Pattern
 - App-of-apps: single root Application manages all child apps, projects, and resources
@@ -110,6 +115,12 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - **CCNP on namespaces without existing CNPs activates implicit default-deny** — adding a PNI capability label to a namespace that has no CiliumNetworkPolicy/CiliumClusterwideNetworkPolicy selecting its pods will activate Cilium's implicit default-deny for those pods; do not opt in `privileged` namespaces (e.g. `argocd`) without shipping a full CNP set first
 - **Gateway-backend `toPorts` must use container ports (post-DNAT)** — Cilium evaluates `toPorts` after kube-proxy DNAT; use the pod's container port (e.g. `8080` for ArgoCD), not the Service port (e.g. `80`)
 - **DRBD satellite mesh uses port range 7000-7999** — LINSTOR assigns per-resource; use Cilium `endPort` for ranges
+- **WireGuard strict mode `cidr: ""` causes fatal crash** — Cilium agent dies with `Cannot parse CIDR from --encryption-strict-egress-cidr option: no '/'`. Always set explicit PodCIDR (`10.244.0.0/16`) or omit the field from Helm values entirely (but Helm renders empty string by default, so set it explicitly)
+- **WireGuard `allowRemoteNodeIdentities: true` required for hostNetwork pods** — `linstor-csi-node` and other hostNetwork pods use `reserved:remote-node` identity for cross-node traffic; setting `false` breaks DRBD replication and CSI volume mounts
+- **WireGuard does NOT encrypt macvlan (external ingress) traffic** — traffic entering via physical NIC (ingress-front → nginx → remote worker) is outside Cilium's datapath; only pod-to-pod traffic through eth0/cilium_wg0 is encrypted
+- **WireGuard two-pass deployment**: Enable with `strictMode.enabled: false` first, verify all tunnels (7 peers per node), then enable strict mode. Rolling restart with strict mode ON causes traffic blackhole between restarted (WireGuard ON) and not-yet-restarted (WireGuard OFF) nodes
+- **Hubble dynamic export `includeFilters` uses proto field names** — correct: `verdict: [DROPPED]`, `protocol: [DNS]`. Incorrect: `fields: [{name: verdict, values: [DROPPED]}]` (the `fields` wrapper is NOT valid FlowFilter proto format despite appearing in some docs)
+- **Hubble dynamic export config is hot-reloadable** — updating the `cilium-flowlog-config` ConfigMap triggers automatic reconfiguration without pod restart (agent logs: `Configuring Hubble event exporter`)
 - **Debugging policy drops**: Use `hubble observe --from-ip <pod-ip>` for reliable drop visibility — `cilium-dbg monitor --type drop` can miss drops. Cilium CLI inside agent pods is `cilium-dbg`, not `cilium`
 - After pushing changes, force ArgoCD refresh: `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard --overwrite`
 
