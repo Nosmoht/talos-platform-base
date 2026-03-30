@@ -135,10 +135,13 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 - After editing Kyverno `ClusterPolicy` manifests, run `make validate-kyverno-policies` before commit to catch invalid variable/JMESPath expressions via server-side dry-run.
 
 ## Backlog (`BACKLOG.md`)
-- **Single source of truth** for all planned work, known bugs, ideas, and operational debt
-- **When you find a bug you don't fix now** — add it to `## Bugs` with a one-line description and context (what's broken, impact, how you found it)
-- **When a task or TODO emerges during work** — add it to the appropriate section (don't let it get lost in conversation)
-- **When completing work** — check off items, add commit references, update phase status
+- **Single source of truth** for all planned work, known bugs, ideas, and tech debt
+- **Status gate**: `[~]` = proposed — NEVER start work on proposed items without asking first; only `[ ]` (agreed) items are ready for work
+- **Priority = position**: items higher in a section are higher priority
+- **Atomic items**: when adding items, keep them PR-sized (one commit or one logical change); add acceptance criteria only when non-obvious
+- **When you find a bug you don't fix now** — add it to `## Bugs` with a one-line description and context
+- **When a task or TODO emerges during work** — add it to the appropriate section as `[~]` proposed (don't let it get lost in conversation)
+- **When completing work** — check off `[x]`, add commit references, update phase/section status
 - **Read `BACKLOG.md` at session start** when the user asks to continue work or asks "what's next"
 
 ## Documentation

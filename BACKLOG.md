@@ -1,12 +1,17 @@
 # Backlog
 
-Single source of truth for all planned work, known bugs, and ideas for this repository.
+Single source of truth for all planned work, known bugs, ideas, and operational debt.
+
+**Format:** Items ordered by priority (top = highest). Status prefixes:
+- `[x]` done — `[ ]` agreed (ready for work) — `[~]` proposed (needs approval) — `[!]` blocked (reason noted)
+
+---
 
 ## Enterprise Network Redesign
 
 Blueprint: `docs/enterprise-network-architecture-blueprint.md`
 
-### Phase 1: Quick Wins (Software-Only) — COMPLETE
+### Phase 1: Quick Wins — COMPLETE
 
 - [x] Hubble dynamic flow export — dropped + DNS flows (5fc2399, f0de11a)
 - [x] WireGuard strict mode encryption (590e9ff, 7243acd, 0d764db)
@@ -18,7 +23,7 @@ Implementation log: `docs/implementation-log-phase1-network-blueprint.md`
 
 - [ ] Storage VLAN 20 for DRBD isolation (LinstorNodeConnection, StorageClass PrefNic)
 - [ ] Management VLAN 10 for API server/etcd (kube-apiserver advertise-address, etcd peer URLs)
-- [ ] Switch 802.1q trunk port configuration (physical access required)
+- [!] Switch 802.1q trunk port configuration — blocked: physical access required
 
 ### Phase 3: Runtime Security & DNS Filtering — NOT STARTED
 
@@ -28,7 +33,7 @@ Implementation log: `docs/implementation-log-phase1-network-blueprint.md`
 ### Phase 4: Policy Automation — NOT STARTED
 
 - [ ] Auto-generate default-deny CiliumNetworkPolicy on namespace PNI labeling (Kyverno generate policy)
-- [ ] Per-namespace audit mode (blocked on cilium/cilium#40621)
+- [!] Per-namespace audit mode — blocked: upstream cilium/cilium#40621
 
 ### Phase 5: Compliance & Retention — NOT STARTED
 
@@ -38,13 +43,8 @@ Implementation log: `docs/implementation-log-phase1-network-blueprint.md`
 
 ## Bugs
 
-<!-- Known bugs that need fixing but aren't urgent enough to fix right now -->
-
 ## Ideas
 
-<!-- Future improvements, nice-to-haves, things to evaluate -->
+## Tech Debt
 
-## Operational Debt
-
-<!-- Cleanup tasks, tech debt, things that work but should be better -->
 - [ ] Hubble flow export logs have no rotation config — monitor node disk pressure until Fluentbit pipeline ships logs off-node
