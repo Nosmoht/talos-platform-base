@@ -60,6 +60,39 @@ hubble:
     enabled: true
   ui:
     enabled: true
+  export:
+    dynamic:
+      enabled: true
+      config:
+        content:
+          - name: dropped-flows
+            fieldMask:
+              - source
+              - destination
+              - verdict
+              - drop_reason
+              - l4
+              - IP
+              - time
+            includeFilters:
+              - fields:
+                  - name: verdict
+                    values:
+                      - DROPPED
+            filePath: /var/run/cilium/hubble/dropped.log
+          - name: dns-flows
+            fieldMask:
+              - source
+              - destination
+              - verdict
+              - l7
+              - time
+            includeFilters:
+              - fields:
+                  - name: l7.type
+                    values:
+                      - DNS
+            filePath: /var/run/cilium/hubble/dns.log
 
 # --- Security context ---
 # Remove SYS_MODULE — causes "operation not permitted" on some nodes
