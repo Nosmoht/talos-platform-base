@@ -75,10 +75,8 @@ hubble:
               - IP
               - time
             includeFilters:
-              - fields:
-                  - name: verdict
-                    values:
-                      - DROPPED
+              - verdict:
+                  - DROPPED
             filePath: /var/run/cilium/hubble/dropped.log
           - name: dns-flows
             fieldMask:
@@ -88,10 +86,8 @@ hubble:
               - l7
               - time
             includeFilters:
-              - fields:
-                  - name: l7.type
-                    values:
-                      - DNS
+              - protocol:
+                  - DNS
             filePath: /var/run/cilium/hubble/dns.log
 
 # --- Security context ---
