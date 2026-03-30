@@ -40,6 +40,16 @@ envoy:
 policySecrets:
   enabled: true
 
+# --- Encryption ---
+encryption:
+  enabled: true
+  type: wireguard
+  wireguard:
+    userspaceFallback: false
+  strictMode:
+    enabled: false
+    allowRemoteNodeIdentities: true
+
 # --- Hubble ---
 hubble:
   enabled: true
