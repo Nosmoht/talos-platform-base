@@ -9,37 +9,42 @@ Single source of truth for all planned work, known bugs, ideas, and operational 
 
 ## Enterprise Network Redesign
 
-Blueprint: `docs/enterprise-network-architecture-blueprint.md`
+Blueprint: `docs/enterprise-network-architecture-blueprint.md` Section 15
 
-### Phase 1: Quick Wins — COMPLETE
+### Phase 1: Quick Wins (Software-Only) — COMPLETE
 
-- [x] Hubble dynamic flow export — dropped + DNS flows (5fc2399, f0de11a)
-- [x] WireGuard strict mode encryption (590e9ff, 7243acd, 0d764db)
-- [x] Kyverno PNI policies audit → enforce (c0d0ff5)
+- [x] Enable Cilium WireGuard strict mode (590e9ff, 7243acd, 0d764db)
+- [x] Enable Hubble dynamic flow export — dropped + DNS flows (5fc2399, f0de11a)
+- [x] Transition Kyverno PNI policies to enforce mode (c0d0ff5)
 
 Implementation log: `docs/implementation-log-phase1-network-blueprint.md`
 
-### Phase 2: VLAN Separation — NOT STARTED
+### Phase 2: VLAN Separation (Switch + Talos Config) — NOT STARTED
 
-- [ ] Storage VLAN 20 for DRBD isolation (LinstorNodeConnection, StorageClass PrefNic)
-- [ ] Management VLAN 10 for API server/etcd (kube-apiserver advertise-address, etcd peer URLs)
-- [!] Switch 802.1q trunk port configuration — blocked: physical access required
+- [!] Configure Netgear switch trunk ports (VLAN 10 + 20) — blocked: physical access required
+- [ ] Add VLAN patches to Talos machine config (management + storage VLAN interfaces on all nodes)
+- [ ] Configure LinstorNodeConnection for storage VLAN (DRBD replication isolated to VLAN 20)
 
-### Phase 3: Runtime Security & DNS Filtering — NOT STARTED
+### Phase 3: Observability Stack — NOT STARTED
 
-- [ ] Tetragon deployment (process-level security observability)
-- [ ] DNS-aware egress filtering (PNI capability `internet-egress-fqdn`, Cilium toFQDNs)
+- [ ] Deploy Tetragon (runtime security observability, <1% overhead DaemonSet)
+- [ ] Add Grafana compliance dashboards (policy coverage, verdict visualization)
+- [ ] Implement flow log retention pipeline (Fluentbit → MinIO with lifecycle policies)
 
-### Phase 4: Policy Automation — NOT STARTED
+### Phase 4: Advanced Security — NOT STARTED
 
-- [ ] Auto-generate default-deny CiliumNetworkPolicy on namespace PNI labeling (Kyverno generate policy)
-- [!] Per-namespace audit mode — blocked: upstream cilium/cilium#40621
+- [ ] Add DNS-aware egress filtering (PNI capability `internet-egress-fqdn`, Cilium toFQDNs)
+- [ ] Deploy kube-bench for CIS benchmark automation (continuous compliance checking)
+- [ ] Kyverno auto-generate default-deny policies (automatic isolation for new namespaces)
 
-### Phase 5: Compliance & Retention — NOT STARTED
+### Phase 5: Financial Sector Compliance — NOT STARTED
 
-- [ ] Fluentbit log shipping pipeline (Hubble dropped.log/dns.log → MinIO)
-- [ ] MinIO Object Lock (WORM) for compliance retention (PCI-DSS Req 10.7)
-- [ ] Grafana compliance dashboards (network policy coverage, DNS audit, enforcement progress)
+- [ ] Document Vault secrets management architecture (PCI-DSS key management)
+- [ ] Implement OIDC authentication for kubectl (MFA-enforced API access)
+- [ ] Deploy Trivy/Grype image scanning (continuous vulnerability detection)
+- [ ] Establish quarterly policy review cadence (DORA periodic review)
+- [ ] Create formal pen testing runbook (DORA TLPT + PCI segmentation validation)
+- [~] Implement CDE node taints if needed (dedicated node pool isolation)
 
 ## Bugs
 
