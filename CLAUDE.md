@@ -134,6 +134,13 @@ See `.claude/environment.example.yaml` for the schema. Software versions are pin
 ## Kyverno Validation
 - After editing Kyverno `ClusterPolicy` manifests, run `make validate-kyverno-policies` before commit to catch invalid variable/JMESPath expressions via server-side dry-run.
 
+## Backlog (`BACKLOG.md`)
+- **Single source of truth** for all planned work, known bugs, ideas, and operational debt
+- **When you find a bug you don't fix now** — add it to `## Bugs` with a one-line description and context (what's broken, impact, how you found it)
+- **When a task or TODO emerges during work** — add it to the appropriate section (don't let it get lost in conversation)
+- **When completing work** — check off items, add commit references, update phase status
+- **Read `BACKLOG.md` at session start** when the user asks to continue work or asks "what's next"
+
 ## Documentation
 - All documentation in English (exception: `docs/kernel-tuning.md` is German, legacy)
 
