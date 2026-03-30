@@ -47,7 +47,7 @@ encryption:
   wireguard:
     userspaceFallback: false
   strictMode:
-    enabled: false
+    enabled: true
     allowRemoteNodeIdentities: true
 
 # --- Hubble ---
