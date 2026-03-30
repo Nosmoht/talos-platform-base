@@ -53,5 +53,6 @@ validate-kyverno-policies:
 	@kubectl apply --dry-run=server \
 		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-contract-audit.yaml \
 		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-reserved-labels-audit.yaml \
-		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-vault-ca-distribution.yaml
+		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-vault-ca-distribution.yaml \
+		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-capability-validation-audit.yaml
 	@echo "ok: Kyverno ClusterPolicies passed server-side validation"
