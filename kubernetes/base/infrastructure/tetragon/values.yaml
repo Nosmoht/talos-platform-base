@@ -1,0 +1,24 @@
+tetragon:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+export:
+  stdout:
+    enabled: true
+    enabledCommand: true
+    enabledArgs: true
+
+serviceMonitor:
+  enabled: true
+
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Equal
+    value: "present"
+    effect: NoSchedule
