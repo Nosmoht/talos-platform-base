@@ -74,10 +74,6 @@ all: gen-configs
 gen-secrets:
 	talosctl gen secrets -o secrets.yaml
 
-# SOPS decryption target
-$(SECRETS_DEC): secrets.yaml
-	sops -d $< > $@
-
 gen-configs: $(addprefix generated/controlplane/,$(addsuffix .yaml,$(CP_NODES))) \
 	$(addprefix generated/worker/,$(addsuffix .yaml,$(WORKER_NODES))) \
 	$(addprefix generated/worker/,$(addsuffix .yaml,$(GPU_NODES))) \
