@@ -83,9 +83,12 @@ gen-configs: $(addprefix generated/controlplane/,$(addsuffix .yaml,$(CP_NODES)))
 	$(addprefix generated/worker/,$(addsuffix .yaml,$(GPU_NODES))) \
 	$(addprefix generated/worker/,$(addsuffix .yaml,$(PI_NODES)))
 
-generated/controlplane/%.yaml: patches/common.yaml patches/drbd.yaml patches/controlplane.yaml nodes/%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
+generated/controlplane/%.yaml: patches/common.yaml patches/drbd.yaml patches/controlplane.yaml nodes/%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
+	@tmp_secrets=$$(mktemp) && \
+	trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
+	sops -d secrets.yaml > "$$tmp_secrets" && \
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
-		--with-secrets $(SECRETS_DEC) \
+		--with-secrets "$$tmp_secrets" \
 		--config-patch @patches/common.yaml \
 		--config-patch @patches/drbd.yaml \
 		--config-patch @patches/controlplane.yaml \
@@ -95,7 +98,7 @@ generated/controlplane/%.yaml: patches/common.yaml patches/drbd.yaml patches/con
 		--output-types controlplane \
 		--talos-version $(TALOS_VERSION) \
 		--kubernetes-version $(KUBERNETES_VERSION) \
-		--force
+		--force && \
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
 generated/worker/node-gpu-%.yaml: patches/common.yaml patches/worker-gvisor.yaml patches/worker-gpu.yaml nodes/node-gpu-%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
