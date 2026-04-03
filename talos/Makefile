@@ -53,7 +53,7 @@ endef
 	$(addprefix apply-,$(ALL_NODES)) apply-all \
 	$(addprefix dry-run-,$(ALL_NODES)) dry-run-all \
 	$(addprefix upgrade-,$(ALL_NODES)) upgrade-k8s validate-generated \
-	cilium-bootstrap cilium-bootstrap-check validate-schematics
+	cilium-bootstrap cilium-bootstrap-check validate-schematics validate-secrets-cleanup
 
 ../kubernetes/bootstrap/cilium/cilium.yaml: ../scripts/render-cilium-bootstrap.sh versions.mk ../kubernetes/bootstrap/cilium/values.yaml ../kubernetes/bootstrap/cilium/extras.yaml
 	CILIUM_CHART_VERSION=$(CILIUM_VERSION) ../scripts/render-cilium-bootstrap.sh
@@ -218,6 +218,14 @@ validate-schematics:
 		echo "error: stale schematic IDs — run 'make schematics' to update"; exit 1; \
 	else \
 		echo "ok: all schematic IDs match current YAML"; \
+	fi
+
+validate-secrets-cleanup:
+	@if [ -f $(SECRETS_DEC) ]; then \
+		echo "error: decrypted secrets file $(SECRETS_DEC) found — must be cleaned up"; \
+		exit 1; \
+	else \
+		echo "ok: no decrypted secrets files found"; \
 	fi
 
 # Helper to resolve config path for a node
