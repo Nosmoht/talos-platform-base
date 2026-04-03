@@ -38,12 +38,22 @@ $(foreach node,$(CP_NODES) $(WORKER_NODES),$(eval IMAGE_$(node) = $$(INSTALL_IMA
 $(foreach node,$(GPU_NODES),$(eval IMAGE_$(node) = $$(GPU_INSTALL_IMAGE)))
 $(foreach node,$(PI_NODES),$(eval IMAGE_$(node) = $$(PI_INSTALL_IMAGE)))
 
+# Ephemeral SOPS decryption
+# Decrypts SOPS file to temporary file with automatic cleanup on exit
+# Usage: $(call decrypt_ephemeral,input_file)
+# Creates tmp_secrets variable with path to decrypted file
+define decrypt_ephemeral
+tmp_secrets=$$(mktemp) && \
+trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
+sops -d $(1) > "$$tmp_secrets"
+endef
+
 .PHONY: all gen-secrets gen-configs schematics talosconfig clean \
 	$(addprefix install-,$(ALL_NODES)) bootstrap \
 	$(addprefix apply-,$(ALL_NODES)) apply-all \
 	$(addprefix dry-run-,$(ALL_NODES)) dry-run-all \
 	$(addprefix upgrade-,$(ALL_NODES)) upgrade-k8s validate-generated \
-	cilium-bootstrap cilium-bootstrap-check validate-schematics
+	cilium-bootstrap cilium-bootstrap-check validate-schematics validate-secrets-cleanup
 
 ../kubernetes/bootstrap/cilium/cilium.yaml: ../scripts/render-cilium-bootstrap.sh versions.mk ../kubernetes/bootstrap/cilium/values.yaml ../kubernetes/bootstrap/cilium/extras.yaml
 	CILIUM_CHART_VERSION=$(CILIUM_VERSION) ../scripts/render-cilium-bootstrap.sh
@@ -64,18 +74,17 @@ all: gen-configs
 gen-secrets:
 	talosctl gen secrets -o secrets.yaml
 
-# SOPS decryption target
-$(SECRETS_DEC): secrets.yaml
-	sops -d $< > $@
-
 gen-configs: $(addprefix generated/controlplane/,$(addsuffix .yaml,$(CP_NODES))) \
 	$(addprefix generated/worker/,$(addsuffix .yaml,$(WORKER_NODES))) \
 	$(addprefix generated/worker/,$(addsuffix .yaml,$(GPU_NODES))) \
 	$(addprefix generated/worker/,$(addsuffix .yaml,$(PI_NODES)))
 
-generated/controlplane/%.yaml: patches/common.yaml patches/drbd.yaml patches/controlplane.yaml nodes/%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
+generated/controlplane/%.yaml: patches/common.yaml patches/drbd.yaml patches/controlplane.yaml nodes/%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
+	@tmp_secrets=$$(mktemp) && \
+	trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
+	sops -d secrets.yaml > "$$tmp_secrets" && \
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
-		--with-secrets $(SECRETS_DEC) \
+		--with-secrets "$$tmp_secrets" \
 		--config-patch @patches/common.yaml \
 		--config-patch @patches/drbd.yaml \
 		--config-patch @patches/controlplane.yaml \
@@ -85,12 +94,15 @@ generated/controlplane/%.yaml: patches/common.yaml patches/drbd.yaml patches/con
 		--output-types controlplane \
 		--talos-version $(TALOS_VERSION) \
 		--kubernetes-version $(KUBERNETES_VERSION) \
-		--force
+		--force && \
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/node-gpu-%.yaml: patches/common.yaml patches/worker-gvisor.yaml patches/worker-gpu.yaml nodes/node-gpu-%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
+generated/worker/node-gpu-%.yaml: patches/common.yaml patches/worker-gvisor.yaml patches/worker-gpu.yaml nodes/node-gpu-%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
+	@tmp_secrets=$$(mktemp) && \
+	trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
+	sops -d secrets.yaml > "$$tmp_secrets" && \
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
-		--with-secrets $(SECRETS_DEC) \
+		--with-secrets "$$tmp_secrets" \
 		--config-patch @patches/common.yaml \
 		--config-patch @patches/worker-gvisor.yaml \
 		--config-patch @patches/worker-gpu.yaml \
@@ -100,12 +112,15 @@ generated/worker/node-gpu-%.yaml: patches/common.yaml patches/worker-gvisor.yaml
 		--output-types worker \
 		--talos-version $(TALOS_VERSION) \
 		--kubernetes-version $(KUBERNETES_VERSION) \
-		--force
+		--force && \
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/node-pi-%.yaml: patches/common.yaml nodes/node-pi-%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
+generated/worker/node-pi-%.yaml: patches/common.yaml nodes/node-pi-%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
+	@tmp_secrets=$$(mktemp) && \
+	trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
+	sops -d secrets.yaml > "$$tmp_secrets" && \
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
-		--with-secrets $(SECRETS_DEC) \
+		--with-secrets "$$tmp_secrets" \
 		--config-patch @patches/common.yaml \
 		--config-patch @nodes/node-pi-$*.yaml \
 		--config-patch '{"machine":{"install":{"image":"$(PI_INSTALL_IMAGE)"}}}' \
@@ -113,12 +128,15 @@ generated/worker/node-pi-%.yaml: patches/common.yaml nodes/node-pi-%.yaml $(SECR
 		--output-types worker \
 		--talos-version $(TALOS_VERSION) \
 		--kubernetes-version $(KUBERNETES_VERSION) \
-		--force
+		--force && \
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/%.yaml: patches/common.yaml patches/worker-gvisor.yaml patches/drbd.yaml patches/worker-kubevirt.yaml nodes/%.yaml $(SECRETS_DEC) .schematic-ids.mk $(VERSION_STAMP)
+generated/worker/%.yaml: patches/common.yaml patches/worker-gvisor.yaml patches/drbd.yaml patches/worker-kubevirt.yaml nodes/%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
+	@tmp_secrets=$$(mktemp) && \
+	trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
+	sops -d secrets.yaml > "$$tmp_secrets" && \
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
-		--with-secrets $(SECRETS_DEC) \
+		--with-secrets "$$tmp_secrets" \
 		--config-patch @patches/common.yaml \
 		--config-patch @patches/worker-gvisor.yaml \
 		--config-patch @patches/drbd.yaml \
@@ -129,7 +147,7 @@ generated/worker/%.yaml: patches/common.yaml patches/worker-gvisor.yaml patches/
 		--output-types worker \
 		--talos-version $(TALOS_VERSION) \
 		--kubernetes-version $(KUBERNETES_VERSION) \
-		--force
+		--force && \
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
 talosconfig: secrets.yaml
@@ -196,6 +214,14 @@ validate-schematics:
 		echo "error: stale schematic IDs — run 'make schematics' to update"; exit 1; \
 	else \
 		echo "ok: all schematic IDs match current YAML"; \
+	fi
+
+validate-secrets-cleanup:
+	@if [ -f $(SECRETS_DEC) ]; then \
+		echo "error: decrypted secrets file $(SECRETS_DEC) found — must be cleaned up"; \
+		exit 1; \
+	else \
+		echo "ok: no decrypted secrets files found"; \
 	fi
 
 # Helper to resolve config path for a node
