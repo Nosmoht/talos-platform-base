@@ -125,6 +125,11 @@ jobs:
             exit 1
           fi
 
+      - name: Validate secrets cleanup from Talos workflow
+        run: |
+          set -eu
+          make -C talos validate-secrets-cleanup
+
       - name: Validate Kyverno policies from source manifests
         run: |
           set -eu
