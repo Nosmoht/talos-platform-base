@@ -38,6 +38,16 @@ $(foreach node,$(CP_NODES) $(WORKER_NODES),$(eval IMAGE_$(node) = $$(INSTALL_IMA
 $(foreach node,$(GPU_NODES),$(eval IMAGE_$(node) = $$(GPU_INSTALL_IMAGE)))
 $(foreach node,$(PI_NODES),$(eval IMAGE_$(node) = $$(PI_INSTALL_IMAGE)))
 
+# Ephemeral SOPS decryption
+# Decrypts SOPS file to temporary file with automatic cleanup on exit
+# Usage: $(call decrypt_ephemeral,input_file)
+# Creates tmp_secrets variable with path to decrypted file
+define decrypt_ephemeral
+tmp_secrets=$$(mktemp) && \
+trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
+sops -d $(1) > "$$tmp_secrets"
+endef
+
 .PHONY: all gen-secrets gen-configs schematics talosconfig clean \
 	$(addprefix install-,$(ALL_NODES)) bootstrap \
 	$(addprefix apply-,$(ALL_NODES)) apply-all \
