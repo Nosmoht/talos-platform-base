@@ -1,8 +1,4 @@
 extraVolumes:
-  - name: debugfs
-    hostPath:
-      path: /sys/kernel/debug
-      type: Directory
   - name: tracefs
     hostPath:
       path: /sys/kernel/tracing
@@ -18,19 +14,24 @@ tetragon:
       cpu: 500m
       memory: 512Mi
   extraVolumeMounts:
-    - name: debugfs
-      mountPath: /sys/kernel/debug
     - name: tracefs
       mountPath: /sys/kernel/tracing
+  prometheus:
+    serviceMonitor:
+      enabled: true
+      scrapeInterval: 10s
+
+tetragonOperator:
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "present"
+      effect: NoSchedule
 
 export:
   stdout:
-    enabled: true
     enabledCommand: true
     enabledArgs: true
-
-serviceMonitor:
-  enabled: true
 
 tolerations:
   - key: nvidia.com/gpu
