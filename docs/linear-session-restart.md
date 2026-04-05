@@ -18,12 +18,16 @@ mcp__linear__get_project(id="e359028e-d800-4f5f-8170-1a3460cee121")
 mcp__linear__list_milestones(projectId="e359028e-d800-4f5f-8170-1a3460cee121")
 ```
 
-Milestones (phase order):
-1. P0 — Gating PoCs
-2. P1 — Layer 0 Buildout
-3. P2 — Admin-tenant Bootstrap
-4. P3 — Workload Tenant Validation (runs before P2.8)
-5. Ongoing — Scheduled Checks + Drift
+Milestones (thematic — phase sequencing via blockedBy + phase/* labels):
+1. M1 — Network Foundation
+2. M2 — Storage HA
+3. M3 — VM Runtime
+4. M4 — Tenant Platform
+5. M5 — Observability & Compliance
+6. M6 — Security Hardening
+7. M7 — Platform Reliability
+8. M8 — Skills & Generalization
+9. M9 — Validation & Runbooks
 
 ### Step 2 — Load architecture documents
 
@@ -57,14 +61,15 @@ Issue label taxonomy:
 
 ### Step 4 — Check blockers
 
-P0 gates block all P1/P2 work:
-- P0.2 (machineconfig injection) blocks P1 + P2
-- P0.3 (live-migration PoC) blocks P1.3 (linstor-vm-live SC) + P2.1
-- P1.1 (cert-manager) blocks P1.2 (CAPI controllers)
-- P1.9 (VLAN 110+120 rolling apply) blocks P2.1 + P3.2
-- P1.11 (host CCNP + Kyverno guard) blocks P2.8
-- P3.3 (isolation validation) blocks P2.8
-- P2.7 (etcd DR drill) blocks P2.8
+Phase sequencing is encoded as Linear `blockedBy` relations. Key backbone:
+- NOS-13 (CAPK injection) → blocks NOS-17 (CAPK e2e)
+- NOS-17 → blocks NOS-22 (CAPI core), NOS-33 (admin-tenant CAPI)
+- NOS-16 (DRBD PoC) → blocks NOS-24 (LINSTOR SCs), NOS-49 (virtctl smoke)
+- NOS-30 (VLAN 110+120 rolling apply) → blocks NOS-33, NOS-43
+- NOS-44 (isolation validation) → blocks NOS-40 (L0 decommission)
+- NOS-46 (onboarding runbook) → blocks NOS-40
+
+Filter by `label:phase/P0` … `label:phase/P3` for phase-ordered views across themes.
 
 ## Key architectural constants
 
@@ -88,6 +93,6 @@ Linear `Todo` state = agreed (`[ ]` equivalent) — ready for work.
 
 ## What is NOT in Linear
 
-- The full plan text: `Plans/eventual-soaring-thompson.md` (read-only historical reference)
+- The architecture reference: `Plans/eventual-soaring-thompson.md` (Context + Diagram + Core Decisions + M1–M9 index, ~120 lines)
 - Research artifacts: `Plans/eventual-soaring-thompson-agent-*.md`
 - These are attached to the Linear project as attachments; fetch via `mcp__linear__get_attachment`.
