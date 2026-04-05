@@ -1,0 +1,2 @@
+- generalize linstor as one possible CSI provider (skills,agents,rules,hooks)
+- generalize cilium as one possible CNI provider (skills,agents,rules,hooks)

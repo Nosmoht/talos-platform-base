@@ -71,15 +71,15 @@ Cross-domain items that apply regardless of which files are being edited:
 - App-of-apps with `root-bootstrap` AppProject; sync-wave: projects(-1) → infrastructure(0) → apps(1)
 - Full patterns in `.claude/rules/kubernetes-gitops.md`; operational gotchas in `.claude/rules/argocd-operations.md`
 
-## Backlog (`BACKLOG.md`)
-- **Single source of truth** for all planned work, known bugs, ideas, and tech debt
-- **Status gate**: `[~]` = proposed — NEVER start work on proposed items without asking first; only `[ ]` (agreed) items are ready for work
-- **Priority = position**: items higher in a section are higher priority
-- **Atomic items**: when adding items, keep them PR-sized (one commit or one logical change); add acceptance criteria only when non-obvious
-- **When you find a bug you don't fix now** — add it to `## Bugs` with a one-line description and context
-- **When a task or TODO emerges during work** — add it to the appropriate section as `[~]` proposed (don't let it get lost in conversation)
-- **When completing work** — check off `[x]`, add commit references, update phase/section status
-- **Read `BACKLOG.md` at session start** when the user asks to continue work or asks "what's next"
+## Backlog (Linear project "Talos Homelab")
+- **Single source of truth** for all planned work, known bugs, ideas, and tech debt is **Linear** — not repo markdown files
+- **Session-start ritual**: `mcp__linear__get_project("Talos Homelab")` → `list_milestones` → `list_documents` → `list_issues(stateType=unstarted|started|backlog)`
+- See `docs/linear-session-restart.md` for the full rehydration sequence
+- **Status gate**: Linear `Backlog` state = proposed — NEVER start work on Backlog items without asking first; only `Todo` state items are ready for work
+- **When you find a bug you don't fix now** — create a Linear issue with label `Bug` + `severity/*`
+- **When a task or TODO emerges during work** — create a Linear issue in `Backlog` state with appropriate labels
+- **When completing work** — transition issue to `Done`, add commit references in the issue comment
+- **Repo markdown files** `BACKLOG.md`, `TODO.md`, `EN-TODOS.md`, `Issue.md` have been archived to `docs/archive/2026-04-05-pre-linear/` — do not edit them
 
 ## Documentation
 - All documentation in English
