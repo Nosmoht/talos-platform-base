@@ -50,6 +50,8 @@ Implementation log: `docs/implementation-log-phase1-network-blueprint.md`
 
 ## Ideas
 
+- [~] Evaluate intra-provider PNI capability (e.g. `linstor-internal`) to consolidate piraeus-datastore CNPs
+
 ## Tech Debt
 
 - [ ] Hubble flow export logs have no rotation config — monitor node disk pressure until Fluentbit pipeline ships logs off-node
