@@ -11,9 +11,14 @@
     "kubernetes": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "kubectl-mcp-server"],
+      "args": ["-y", "kubectl-mcp-server"]
+    },
+    "talos": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "talos-mcp"],
       "env": {
-        "KUBECONFIG": "${env:KUBECONFIG}"
+        "TALOS_CONTEXT": "homelab"
       }
     }
   }
