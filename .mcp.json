@@ -8,15 +8,15 @@
         "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
       }
     },
-    "kubernetes": {
+    "kubernetes-mcp-server": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "kubectl-mcp-server"]
+      "args": ["-y", "kubernetes-mcp-server@0.0.60", "--read-only", "--kubeconfig", "${env:HOME}/.kube/config", "--disable-multi-cluster"]
     },
     "talos": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "talos-mcp"],
+      "args": ["-y", "talos-mcp@0.31.4"],
       "env": {
         "TALOS_CONTEXT": "homelab"
       }

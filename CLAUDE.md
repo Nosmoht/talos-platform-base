@@ -89,6 +89,9 @@ Cross-domain items that apply regardless of which files are being edited:
 - **Pre-operation review:** Before disruptive changes (upgrades, storage migration, network topology changes), invoke `platform-reliability-reviewer` with prefix "pre-operation:" for adversarial risk assessment.
 - **Architecture decisions:** When evaluating alternatives, spawn `talos-sre` and `platform-reliability-reviewer` with the same question to get operational + reliability perspectives.
 - **After incidents:** Update CLAUDE.md gotchas if the lesson is universal. Write a postmortem to `docs/` if the incident was complex. Keep `docs/` for record, CLAUDE.md for decision-making.
+- **Talos MCP-first**: Use Talos MCP tools for all supported operations instead of `talosctl` CLI.
+  CLI-only: `upgrade-k8s` (FR #30 open), `config backup to file`, `client version`.
+  See `.claude/rules/talos-mcp-first.md`.
 
 ## Context Architecture
 - Domain-specific knowledge in `.claude/rules/` — auto-loaded by path glob (not always-loaded)
