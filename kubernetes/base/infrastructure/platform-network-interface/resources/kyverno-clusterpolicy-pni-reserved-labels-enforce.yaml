@@ -1,0 +1,82 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pni-reserved-labels-audit
+  labels:
+    app.kubernetes.io/name: platform-network-interface
+    app.kubernetes.io/instance: homelab
+    app.kubernetes.io/component: policy-governance
+    app.kubernetes.io/part-of: homelab
+    app.kubernetes.io/managed-by: argocd
+spec:
+  validationFailureAction: Enforce
+  background: true
+  admission: true
+  emitWarning: false
+  rules:
+    - name: reserved-pni-labels-namespace
+      skipBackgroundRequests: true
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      validate:
+        allowExistingViolations: true
+        message: "Reserved PNI provider labels must not be set on namespaces by consumers"
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.labels.\"platform.io/provider\" || '' }}"
+                operator: NotEquals
+                value: ""
+              - key: "{{ request.object.metadata.labels.\"platform.io/managed-by\" || '' }}"
+                operator: NotEquals
+                value: ""
+              - key: "{{ request.object.metadata.labels.\"platform.io/capability\" || '' }}"
+                operator: NotEquals
+                value: ""
+    - name: reserved-pni-labels-workload
+      skipBackgroundRequests: true
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - argocd
+                - kyverno
+                - cnpg-system
+                - monitoring
+                - piraeus-datastore
+                - redis-system
+                - kafka
+                - vault
+                - minio
+                - minio-operator
+                - cert-manager
+                - external-secrets
+      validate:
+        allowExistingViolations: true
+        message: "Reserved PNI provider labels must not be set by consumer workloads"
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.labels.\"platform.io/provider\" || '' }}"
+                operator: NotEquals
+                value: ""
+              - key: "{{ request.object.metadata.labels.\"platform.io/managed-by\" || '' }}"
+                operator: NotEquals
+                value: ""
+              - key: "{{ request.object.metadata.labels.\"platform.io/capability\" || '' }}"
+                operator: NotEquals
+                value: ""

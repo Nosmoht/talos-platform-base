@@ -56,8 +56,8 @@ install-pre-commit:
 validate-kyverno-policies:
 	@echo "Server-validating Kyverno ClusterPolicies..."
 	@kubectl apply --dry-run=server \
-		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-contract-enforce.yaml \
-		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml \
-		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-vault-ca-distribution.yaml \
-		-f kubernetes/overlays/homelab/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-capability-validation-enforce.yaml
+		-f kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-contract-enforce.yaml \
+		-f kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml \
+		-f kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-vault-ca-distribution.yaml \
+		-f kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-capability-validation-enforce.yaml
 	@echo "ok: Kyverno ClusterPolicies passed server-side validation"

@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pni-capability-registry
+  namespace: kyverno
+  labels:
+    app.kubernetes.io/name: platform-network-interface
+    app.kubernetes.io/instance: homelab
+    app.kubernetes.io/component: capability-registry
+    app.kubernetes.io/part-of: homelab
+    app.kubernetes.io/managed-by: argocd
+data:
+  interfaceVersion: "v1"
+  capabilities.yaml: |
+    capabilities:
+      - id: monitoring-scrape
+        providers:
+          - kube-prometheus-stack
+          - vault-config-operator
+      - id: logging-ship
+        providers:
+          - alloy
+          - loki
+      - id: vault-secrets
+        providers:
+          - vault-operator
+          - vault-config-operator
+          - external-secrets
+      - id: cnpg-postgres
+        providers:
+          - cloudnative-pg
+      - id: redis-managed
+        providers:
+          - redis-operator
+      - id: kafka-managed
+        providers:
+          - strimzi-kafka-operator
+      - id: s3-object
+        providers:
+          - minio-operator
+          - minio
+      - id: storage-csi
+        providers:
+          - piraeus-operator
+      - id: tls-issuance
+        providers:
+          - cert-manager
+          - cert-approver
+      - id: gateway-backend
+        providers:
+          - gateway-api
+      - id: gpu-runtime
+        providers:
+          - nvidia-device-plugin
+          - nvidia-dcgm-exporter
+          - node-feature-discovery
+      - id: hpa-metrics
+        providers:
+          - metrics-server
+      - id: internet-egress
+        providers:
+          - cilium
+      - id: controlplane-egress
+        providers:
+          - kube-apiserver
+      - id: admission-webhook-provider
+        direction: provider-ingress
+        selector: pod-label capability-provider.admission-webhook
+        providers:
+          - kyverno
+          - cloudnative-pg
+          - redis-operator
+          - piraeus-operator
+          - minio-operator
+          - vault-config-operator
+      - id: monitoring-scrape-provider
+        direction: provider-ingress
+        selector: pod-label capability-provider.monitoring-scrape
+        providers:
+          - vault-operator
+          - cloudnative-pg
+          - redis-operator
+          - strimzi-kafka-operator
+          - vault
