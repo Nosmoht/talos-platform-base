@@ -10,7 +10,8 @@ Read these in order before making changes:
 2. [`docs/day0-setup.md`](docs/day0-setup.md) (cluster bootstrap and architecture)
 3. [`docs/day2-operations.md`](docs/day2-operations.md) (day-to-day operations and recovery)
 4. [`docs/platform-network-interface.md`](docs/platform-network-interface.md) (consumer onboarding for managed network capabilities)
-5. [`CLAUDE.md`](CLAUDE.md) (hard cluster constraints used by Claude Code)
+5. [`AGENTS.md`](AGENTS.md) (canonical cluster constraints and operational knowledge — used by Claude Code and Codex CLI)
+   - **Prerequisite**: Enable GitHub Push Protection in repo Settings → Code security → Push protection
 6. [`docs/claude-code-guide.md`](docs/claude-code-guide.md) (Claude Code skills, agents, and automation)
 
 ## Hard Safety Rules

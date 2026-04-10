@@ -1,132 +1,48 @@
-# Homelab - Talos Kubernetes Cluster + ArgoCD GitOps
+# Talos Homelab — Claude Code Memory
 
-## Hard Constraints
-- **Do NOT use SecureBoot (`metal-installer-secureboot`)** — causes boot loops; always use `metal-installer`
-- **Do NOT use `debugfs=off`** kernel boot param — causes "failed to create root filesystem" boot loop
-- **Use Gateway API, NOT Ingress** — no Ingress resources or Ingress controllers
-- **Use EndpointSlices, NOT Endpoints** — Endpoints deprecated since Kubernetes v1.33.0
-- **Commit and push every successful tested change immediately** — don't batch at end of session
-- **NEVER `kubectl apply` ArgoCD-managed resources** — commit to git, push, let ArgoCD sync; only exception is one-time bootstrap of AppProjects (chicken-and-egg)
-- **NEVER `kubectl apply` to deploy/rollout** — bootstrap manifests (`kubernetes/bootstrap/`) are the only exception
-- **Use Kubernetes recommended labels** on all resources — `app.kubernetes.io/name`, `app.kubernetes.io/instance`, `app.kubernetes.io/version`, `app.kubernetes.io/component`, `app.kubernetes.io/part-of`, `app.kubernetes.io/managed-by` (per https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
-- **Follow file naming conventions that enable path-scoped rules**:
-  - CiliumNetworkPolicy: `cnp-<component>.yaml`
-  - CiliumClusterwideNetworkPolicy: `ccnp-<description>.yaml`
-  - Component directories must match their ArgoCD Application name (e.g., `kube-prometheus-stack/`, not `monitoring/`)
+@AGENTS.md
 
-## Platform Network Interface (PNI) — Mandatory Workflow
-- **Use PNI first for platform service connectivity** — do not start with ad-hoc per-namespace CNPs when integrating with managed platform components.
-- **PNI contract for consumer namespaces**:
-  - `platform.io/network-interface-version: v1`
-  - `platform.io/network-profile: restricted|managed|privileged`
-  - capability opt-in via `platform.io/consume.<capability>: "true"`
-- **`network-profile` alone is never sufficient** for core service access; require explicit `consume.<capability>` labels.
-- **Provider-reserved labels are platform-owned only** (never set in consumer manifests): `platform.io/provider`, `platform.io/managed-by`, `platform.io/capability`.
-- **If a consumer refuses PNI**, they must ship and own self-managed CNP/KNP behavior and validation; document this explicitly in PR notes.
-- **When adding new platform integrations**, update `docs/platform-network-interface.md` capability catalog and contract examples in the same change.
-- **Keep policy ownership in infrastructure paths** (`kubernetes/overlays/homelab/infrastructure/...`); do not push operator-namespace policy ownership to consumer apps.
+## Claude-Code-Specific Additions
 
-## Cluster Overview
-Cluster-specific details (nodes, IPs, network topology, hardware) are defined in `.claude/environment.yaml`.
-See `.claude/environment.example.yaml` for the schema. Software versions are pinned in `talos/versions.mk`.
-- External ingress: ingress-front macvlan (stable MAC `02:42:c0:a8:02:46`, IP `192.168.2.70`) → nginx L4 upstream via net1 (macvlan) to remote worker nodes → embedded Envoy on hostNetwork (ports 80/443); Cilium `envoy.enabled: false` + `gatewayAPI.hostNetwork.enabled: true`; see `docs/postmortem-gateway-403-hairpin.md`
-- Storage: LINSTOR/Piraeus Operator CSI (piraeus-datastore namespace), DRBD replication, NVMe nodes selected via NFD label `feature.node.kubernetes.io/storage-nvme.present=true`
-- Runtime: gVisor available as containerd runtime handler (all nodes)
-- Encryption: Cilium WireGuard strict mode (all inter-node pod traffic encrypted, PodCIDR `10.244.0.0/16`)
-- Observability: Hubble dynamic flow export (dropped flows + DNS flows to `/var/run/cilium/hubble/`)
-- Policy enforcement: Kyverno PNI policies in Enforce mode (namespace contract, reserved labels, capability validation)
-- GitOps: ArgoCD with Kustomize base/overlays, multi-cluster ready
+### Path-Scoped Auto-Loaded Rules
 
-## Quick Navigation
+Claude Code auto-loads `.claude/rules/*.md` via `paths:` frontmatter when editing matching files.
+All 13 rules activate without a manual Read step. Codex CLI has no equivalent mechanism —
+see AGENTS.md §Domain Rules for the on-demand reference table.
 
-### Kubernetes Overlay Paths
-- App overlays: `kubernetes/overlays/homelab/infrastructure/<app-name>/`
-  - Kustomization: `kustomization.yaml`
-  - Helm values: `values.yaml` (or `values-<component>.yaml`)
-  - Resources: `resources/*.yaml` (CRs, CNPs, secrets)
-- Base definitions: `kubernetes/base/infrastructure/<app-name>/` (shared, upstream defaults)
-- Application CRs: `kubernetes/overlays/homelab/apps/`
-- AppProject CRs: `kubernetes/overlays/homelab/projects/`
-- Bootstrap (one-time, do not edit): `kubernetes/bootstrap/`
+### Hooks (PreToolUse / PostToolUse enforcement)
 
-To find which overlay to edit for app X: `kubernetes/overlays/homelab/infrastructure/X/`
+Configured in `.claude/settings.local.json`. Active only under Claude Code:
 
-### Exclude from searches
-- `kubernetes/overlays/homelab/infrastructure/kubevirt/resources/kubevirt-operator.yaml` — vendor-generated (7,669 lines), do not edit
-- `kubernetes/overlays/homelab/infrastructure/kubevirt-cdi/resources/cdi-operator.yaml` — vendor-generated (5,486 lines), do not edit
-- `kubernetes/bootstrap/cilium/cilium.yaml` — generated by `make cilium-bootstrap` (2,339 lines), do not hand-edit
-- `.auto-claude/worktrees/` — Claude Code worktree snapshots, not source of truth
+| Hook | Trigger | Effect |
+|---|---|---|
+| `check-sops.sh` | PreToolUse Write\|Edit | Blocks plaintext write to `*.sops.yaml` |
+| `check-sops-bash.sh` | PreToolUse Bash | Blocks redirect/heredoc to `*.sops.yaml` |
+| `validate-gitops.sh` | PreToolUse Bash `git commit*` | Runs kustomize + dry-run |
+| `pre-drain-check.sh` | PreToolUse Bash `kubectl drain*` | DRBD safety pre-check |
+| `pre-push-verify.sh` | PreToolUse Bash `git push*` | Infrastructure push safety |
+| `require-plan-review.sh` | PreToolUse ExitPlanMode | Plan approval gate |
+| `require-probe-evidence.sh` | PostToolUse Write\|Edit | Evidence probe check |
 
-## Required Tools
-`talosctl`, `kubectl`, `kubectl linstor`, `make`, `sops` (AGE backend), `yq`, `curl`, `jq`
+Tool-agnostic SOPS enforcement is additionally enforced via pre-commit framework —
+see AGENTS.md §Tool-Agnostic Safety Invariants.
 
-## Talos-Kubernetes Interface
-Cross-domain items that apply regardless of which files are being edited:
-- **Cilium deployed via Talos `extraManifests`** (controlplane patch → GitHub raw URL) — reconcile drift with `make -C talos upgrade-k8s`, NOT `kubectl apply`
-- **`extraManifests` does NOT garbage-collect**: removing resources from `cilium.yaml` does NOT delete them after `upgrade-k8s` — orphans must be `kubectl delete`d manually
-- **Apply Talos configs BEFORE `upgrade-k8s`**: `talosctl upgrade-k8s` reads extraManifests URLs from the LIVE node machine config — apply to all CP nodes first after changing the URL
-- **`upgrade-k8s` does NOT reliably update existing ConfigMaps**: use `kubectl apply --server-side --force-conflicts --field-manager=talos` workaround
+### Subagents
 
-## ArgoCD Pattern
-- App-of-apps with `root-bootstrap` AppProject; sync-wave: projects(-1) → infrastructure(0) → apps(1)
-- Full patterns in `.claude/rules/kubernetes-gitops.md`; operational gotchas in `.claude/rules/argocd-operations.md`
+`.claude/agents/` — auto-dispatched via description matching:
 
-## Backlog (Linear project "Talos Homelab")
-- **Single source of truth** for all planned work, known bugs, ideas, and tech debt is **Linear** — not repo markdown files
-- **Session-start ritual**: `mcp__linear__get_project("Talos Homelab")` → `list_milestones` → `list_documents` → `list_issues(stateType=unstarted|started|backlog)`
-- See `docs/linear-session-restart.md` for the full rehydration sequence
-- **Status gate**: Linear `Backlog` state = proposed — NEVER start work on Backlog items without asking first; only `Todo` state items are ready for work
-- **When you find a bug you don't fix now** — create a Linear issue with label `Bug` + `severity/*`
-- **When a task or TODO emerges during work** — create a Linear issue in `Backlog` state with appropriate labels
-- **When completing work** — transition issue to `Done`, add commit references in the issue comment
-- **Repo markdown files** `BACKLOG.md`, `TODO.md`, `EN-TODOS.md`, `Issue.md` have been archived to `docs/archive/2026-04-05-pre-linear/` — do not edit them
+- `gitops-operator` — ArgoCD operations and troubleshooting
+- `talos-sre` — Talos/hardware operations perspective
+- `platform-reliability-reviewer` — adversarial risk assessment (prefix: `pre-operation:` or `pre-merge:`)
+- `researcher` — upstream research, CVE intelligence, version compatibility
 
-## Documentation
-- All documentation in English
+Under Codex CLI: no auto-dispatch — explicit invocation only. See AGENTS.md §Deltas vs Claude Code.
 
-## Operational Patterns
-- **Upgrade planning:** Use `/plan-talos-upgrade` or `/plan-cilium-upgrade` — these skills include automated research and risk assessment steps. Do not skip these skills for ad-hoc upgrades.
-- **Pre-operation review:** Before disruptive changes (upgrades, storage migration, network topology changes), invoke `platform-reliability-reviewer` with prefix "pre-operation:" for adversarial risk assessment.
-- **Architecture decisions:** When evaluating alternatives, spawn `talos-sre` and `platform-reliability-reviewer` with the same question to get operational + reliability perspectives.
-- **After incidents:** Update CLAUDE.md gotchas if the lesson is universal. Write a postmortem to `docs/` if the incident was complex. Keep `docs/` for record, CLAUDE.md for decision-making.
-- **Talos MCP-first**: Use Talos MCP tools for all supported operations instead of `talosctl` CLI.
-  CLI-only: `upgrade-k8s` (FR #30 open), `config backup to file`, `client version`.
-  See `.claude/rules/talos-mcp-first.md`.
+### Context Architecture
 
-## Context Architecture
-- Domain-specific knowledge in `.claude/rules/` — auto-loaded by path glob (not always-loaded)
-- Rules: `talos-config.md`, `talos-nodes.md`, `talos-image-factory.md`, `kubernetes-gitops.md`, `cilium-gateway-api.md`, `cilium-network-policy.md`, `argocd-operations.md`, `manifest-quality.md`, `monitoring-observability.md`, `talos-operations.md`
-- Daily skills: `gitops-health-triage`, `talos-apply`, `talos-upgrade`, `cilium-policy-debug`, plus hardware/kernel skills under `.claude/skills/`
-- Deprecated: `talos-node-maintenance` (superseded by `talos-apply` + `talos-upgrade`)
-- Delegation agents: `gitops-operator`, `talos-sre`, `platform-reliability-reviewer` (supports pre-merge + pre-operation modes), `researcher` under `.claude/agents/`
-- Scheduled checks: `talos-update-check` (weekly, Talos releases), `nvidia-extension-check` (weekly, Image Factory digest drift), `cilium-update-check` (weekly, Cilium stable releases)
-- This CLAUDE.md kept minimal — only hard constraints, universal gotchas, and cluster overview
-
-## Commit Message Rules
-
-Use Conventional Commits for all commits.
-
-Required format:
-<type>(<scope>): <subject>
-
-Examples:
-feat(api): add OAuth token refresh
-fix(ui): correct modal focus trap
-chore(ci): cache pnpm store
-
-Rules:
-- Scope is mandatory
-- Scope must reflect the affected package, app, module, or bounded context
-- Use lowercase for type and scope
-- Keep the subject concise and imperative
-- Do not create unscoped commits like `feat: ...`
-- If multiple areas change, prefer the primary scope or split into separate commits
-
-## Key Terms
-- **PNI (Platform Network Interface)**: Kyverno-enforced namespace contract for platform service access. See `docs/platform-network-interface.md`.
-- **AppProject**: ArgoCD RBAC boundary scoping which repos/namespaces an Application can deploy to.
-- **Sync-wave**: ArgoCD annotation controlling deploy order: `-1` (AppProjects) → `0` (infrastructure) → `1` (apps).
-- **Schematic**: Talos Image Factory spec embedding system extensions into installer images. See `talos/.schematic-ids.mk`.
-- **CCNP/CNP**: CiliumClusterwideNetworkPolicy / CiliumNetworkPolicy. Named `ccnp-*.yaml` / `cnp-*.yaml`.
-- **macvlan**: Virtual NIC on physical interface. Used for `ingress-front` stable MAC assignment.
-- **DRBD**: Distributed Replicated Block Device — LINSTOR replication layer for persistent storage.
+- 19 skills in `.claude/skills/` — dispatch via `/skill-name` or intent matching
+- Rules auto-load via `paths:` frontmatter (Claude-specific; Codex uses §Domain Rules table in AGENTS.md)
+- Scheduled MCP checks: `talos-update-check`, `nvidia-extension-check`, `cilium-update-check` (weekly)
+- ExitPlanMode gated by `require-plan-review.sh` hook
+- After incidents: update AGENTS.md §Hard Constraints if the lesson is universal; write postmortem to `docs/`
+- This file kept minimal — all shared operational knowledge lives in AGENTS.md

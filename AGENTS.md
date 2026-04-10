@@ -48,14 +48,11 @@ make argocd-bootstrap
   - screenshots only for UI/visual dashboard changes.
 
 ## Codex CLI Operating Rules (Important)
-- Treat `README.md` and `CLAUDE.md` hard constraints as authoritative for all edits.
+- This file (`AGENTS.md`) is the canonical source of truth. See §Hard Constraints below for cluster-wide invariants.
 - Never `kubectl apply` Argo CD-managed resources for rollout; commit to git and let Argo CD reconcile.
-- The only normal direct-apply exception is bootstrap content under `kubernetes/bootstrap/`.
-- Do not introduce Kubernetes `Ingress`; use Gateway API resources.
-- Do not introduce deprecated `Endpoints`; use `EndpointSlice`.
+- The only direct-apply exception is bootstrap content under `kubernetes/bootstrap/`.
 - Keep secrets encrypted in `*.sops.yaml`; never add plaintext secret material to git.
 - For Talos operations, use explicit node endpoint flags (`talosctl -n <node-ip> -e <node-ip>`) when running commands manually.
-- Do not use `metal-installer-secureboot` or add `debugfs=off` boot args in Talos changes.
 - Keep one taint policy on GPU node `node-gpu-01`: `nvidia.com/gpu=present:NoSchedule`; avoid broad tolerations beyond documented patterns.
 
 ## Platform Network Interface (PNI) Rules
@@ -90,3 +87,182 @@ make argocd-bootstrap
 - `kubernetes/bootstrap/cilium/cilium.yaml` is tied to Talos `extraManifests`; avoid ad-hoc `kubectl apply` drift fixes.
 - Reconcile Cilium bootstrap changes via Talos workflow (`make -C talos upgrade-k8s`) so control plane `extraManifests` stay consistent.
 - If this file contains generated TLS artifacts (for example Hubble cert secrets), track expiry and rotate before expiration as part of planned maintenance.
+
+---
+
+## Hard Constraints
+
+CLAUDE.md imports this file via `@AGENTS.md`. Both tools treat this section as canonical. Do NOT relax these without repo-maintainer approval.
+
+- **No SecureBoot** — `metal-installer-secureboot` causes boot loops; always use `metal-installer`
+- **No `debugfs=off`** — causes "failed to create root filesystem" boot loop in Talos
+- **Gateway API only** — no `kind: Ingress` or Ingress controllers; use HTTPRoute/TLSRoute
+- **EndpointSlices only** — `kind: Endpoints` deprecated since Kubernetes v1.33.0; use `EndpointSlice`
+- **Commit and push every successful tested change immediately** — do not batch at end of session
+- **NEVER `kubectl apply` ArgoCD-managed resources** — commit to git, push, let ArgoCD sync; only exception: one-time bootstrap AppProjects (`kubernetes/bootstrap/`)
+- **Kubernetes recommended labels on all resources** — `app.kubernetes.io/{name,instance,version,component,part-of,managed-by}`
+- **File naming conventions** — `cnp-<component>.yaml`, `ccnp-<description>.yaml`; component dirs must match ArgoCD Application name
+- **PNI first** for consumer-to-platform connectivity — do not begin with ad-hoc CNPs for managed platform services
+  - Consumer labels: `platform.io/network-interface-version: v1`, `platform.io/network-profile: restricted|managed|privileged`, `platform.io/consume.<capability>: "true"`
+  - Never set provider-reserved labels in consumer manifests: `platform.io/provider`, `platform.io/managed-by`, `platform.io/capability`
+
+## Cluster Overview
+
+Software versions pinned in `talos/versions.mk`. Full topology in `.claude/environment.yaml` (gitignored — schema: `.claude/environment.example.yaml`).
+
+**Codex CLI**: read `.claude/environment.yaml` at session start — contains node IPs, hardware layout, network topology. Claude Code loads this on demand via skill references.
+
+| Role | Nodes | IPs | Hardware |
+|------|-------|-----|----------|
+| Control Plane | node-01..03 | 192.168.2.61-63 | Lenovo ThinkCentre M910q |
+| Workers | node-04..06 | 192.168.2.64-66 | M910q (04-05), M920q (06) |
+| GPU Worker | node-gpu-01 | 192.168.2.67 | Custom build, r8152 USB NIC |
+
+- API VIP: `192.168.2.60` · Gateway VIP: `192.168.2.70` · PodCIDR: `10.244.0.0/16`
+- Storage: LINSTOR/Piraeus CSI (DRBD, NVMe nodes via NFD label `feature.node.kubernetes.io/storage-nvme.present=true`)
+- Networking: Cilium WireGuard strict mode · Gateway API (hostNetwork Envoy) · macvlan `ingress-front`
+- GitOps: ArgoCD with Kustomize base/overlays · sync-wave: projects(-1) → infrastructure(0) → apps(1)
+- Required tools: `talosctl`, `kubectl`, `kubectl linstor`, `make`, `sops` (AGE), `yq`, `curl`, `jq`
+- Exclude from search: `kubevirt-operator.yaml` (7669 lines), `cdi-operator.yaml` (5486 lines), `bootstrap/cilium/cilium.yaml` (generated), `.auto-claude/worktrees/`
+
+## Key Terms
+
+- **PNI** — Platform Network Interface: Kyverno-enforced namespace contract for platform service access. See `docs/platform-network-interface.md`.
+- **AppProject** — ArgoCD RBAC boundary scoping repos/namespaces an Application can deploy to.
+- **Sync-wave** — ArgoCD annotation for deploy order: `-1` (AppProjects) → `0` (infra) → `1` (apps).
+- **Schematic** — Talos Image Factory spec embedding system extensions into installer images. See `talos/.schematic-ids.mk`.
+- **CCNP/CNP** — CiliumClusterwideNetworkPolicy / CiliumNetworkPolicy. Named `ccnp-*.yaml` / `cnp-*.yaml`.
+- **macvlan** — Virtual NIC on physical interface; used for `ingress-front` stable MAC assignment.
+- **DRBD** — Distributed Replicated Block Device — LINSTOR replication layer for persistent storage.
+
+## Operational Patterns
+
+- **Upgrade planning**: Use `/plan-talos-upgrade` or `/plan-cilium-upgrade` skills — include automated research and risk assessment. Do not skip for ad-hoc upgrades.
+- **Pre-operation review**: Before disruptive changes, invoke `platform-reliability-reviewer` with prefix `pre-operation:` for adversarial risk assessment.
+- **Architecture decisions**: Spawn `talos-sre` + `platform-reliability-reviewer` with the same question for dual-perspective analysis.
+- **After incidents**: Update §Hard Constraints above if the lesson is universal. Write postmortem to `docs/` for complex incidents.
+- **Talos MCP-first**: Use Talos MCP tools for all supported operations instead of `talosctl` CLI. CLI-only: `upgrade-k8s`, `config backup to file`, `client version`. See `.claude/rules/talos-mcp-first.md`.
+- **Talos-Kubernetes interface gotchas**:
+  - Cilium deployed via Talos `extraManifests` — reconcile drift with `make -C talos upgrade-k8s`, NOT `kubectl apply`
+  - `extraManifests` does NOT garbage-collect: removing resources from `cilium.yaml` does NOT delete them — orphans must be `kubectl delete`d manually
+  - Apply Talos configs BEFORE `upgrade-k8s`: reads extraManifests URLs from LIVE node config — apply to all CP nodes first
+  - `upgrade-k8s` does NOT reliably update existing ConfigMaps: use `kubectl apply --server-side --force-conflicts --field-manager=talos`
+
+## Tool-Agnostic Safety Invariants
+
+Enforcement layers that apply regardless of which AI tool is used:
+
+| Safety Gate | Enforced via | Fail Reason |
+|---|---|---|
+| Plaintext write to `*.sops.yaml` (Write/Edit) | Claude PreToolUse hook `check-sops.sh` | Plaintext secrets must never reach git |
+| Bash redirect/heredoc to `*.sops.yaml` | Claude PreToolUse hook `check-sops-bash.sh` | Bypasses file-write gate via shell redirect |
+| SOPS encryption state of all `*.sops.yaml` | pre-commit hook wrapping `scripts/verify_sops_files.sh` | Tool-agnostic; enforced at `git commit` time |
+| AWS/GitHub tokens in any file | pre-commit `gitleaks` hook | Credential leak prevention |
+| Literal tokens in `.codex/config.toml` | pre-commit `check-codex-config-placeholders.sh` | Env vars must use `${VAR}` expansion, not literals |
+| `git commit --no-verify` bypass | CI `gitleaks-action` (required PR check) | Last backstop — blocks merge even if local hooks bypassed |
+| Forbidden Kubernetes kinds (Ingress, Endpoints) | CI `hard-constraints-check.yml` (required PR check) | Server-side enforcement of §Hard Constraints |
+
+**Codex CLI note**: No PreToolUse hooks fire under Codex. SOPS protection begins at `git commit` via pre-commit framework. Run `make install-pre-commit` after cloning.
+
+## Domain Rules — On-Demand Reference
+
+Claude Code auto-loads each rule via `paths:` frontmatter. **Codex CLI**: scan this table before editing files in the listed context and read the rule file with the Read tool.
+
+| Editing context | Rule file |
+|---|---|
+| ArgoCD sync, App/Project drift, reconcile ops | `.claude/rules/argocd-operations.md` |
+| Cilium Gateway API, HTTPRoute, TLSPolicy | `.claude/rules/cilium-gateway-api.md` |
+| CiliumNetworkPolicy (`cnp-*.yaml`, `ccnp-*.yaml`) | `.claude/rules/cilium-network-policy.md` |
+| ArgoCD Application/Kustomize overlays | `.claude/rules/kubernetes-gitops.md` |
+| LINSTOR/Piraeus/DRBD storage changes | `.claude/rules/linstor-storage-guardrails.md` |
+| Manifest quality (labels, naming conventions) | `.claude/rules/manifest-quality.md` |
+| Prometheus, Grafana, kube-prometheus-stack | `.claude/rules/monitoring-observability.md` |
+| Glob/Grep search scope | `.claude/rules/search-scope.md` |
+| Talos machine config / patches | `.claude/rules/talos-config.md` |
+| Talos Image Factory / schematics | `.claude/rules/talos-image-factory.md` |
+| Talos operations (prefer MCP over CLI) | `.claude/rules/talos-mcp-first.md` |
+| Talos node inventory / endpoint flags | `.claude/rules/talos-nodes.md` |
+| Talos lifecycle (apply, upgrade, drain) | `.claude/rules/talos-operations.md` |
+
+## Operational Runbooks (Skills)
+
+Claude Code dispatches skills via `/skill-name` or intent matching (except Manual-only). **Codex CLI**: use the trigger phrase; Codex reads the SKILL.md as a Markdown runbook. Skills with Refs load additional context from their `references/` subdir.
+
+| Trigger phrase | Skill path | Notes |
+|---|---|---|
+| analyze node hardware | `.claude/skills/analyze-node-hardware/` | Manual-only |
+| debug Cilium policy | `.claude/skills/cilium-policy-debug/` | Manual-only, Refs |
+| cluster health snapshot | `.claude/skills/cluster-health-snapshot/` | Manual-only |
+| execute Cilium upgrade | `.claude/skills/execute-cilium-upgrade/` | Manual-only |
+| execute Talos upgrade | `.claude/skills/execute-talos-upgrade/` | Manual-only |
+| gitops health triage | `.claude/skills/gitops-health-triage/` | Manual-only, Refs |
+| linstor storage triage | `.claude/skills/linstor-storage-triage/` | Manual-only |
+| linstor volume repair | `.claude/skills/linstor-volume-repair/` | Manual-only, Refs |
+| onboard workload namespace | `.claude/skills/onboard-workload-namespace/` | Manual-only |
+| optimize node kernel | `.claude/skills/optimize-node-kernel/` | Manual-only |
+| plan Cilium upgrade | `.claude/skills/plan-cilium-upgrade/` | High-privilege (Bash+Write+Agent), Refs |
+| plan Talos upgrade | `.claude/skills/plan-talos-upgrade/` | High-privilege (Bash+Write+Agent) |
+| PNI capability add | `.claude/skills/pni-capability-add/` | Manual-only |
+| talos apply | `.claude/skills/talos-apply/` | Manual-only, Refs |
+| talos node maintenance | `.claude/skills/talos-node-maintenance/` | Manual-only, Refs |
+| talos upgrade | `.claude/skills/talos-upgrade/` | Manual-only |
+| update schematics | `.claude/skills/update-schematics/` | Manual-only |
+| validate gitops | `.claude/skills/validate-gitops/` | Manual-only |
+| verify component deployment | `.claude/skills/verify-component-deployment/` | Manual-only |
+
+**Manual-only**: `disable-model-invocation: true` — only runnable via `/skill-name`, never auto-dispatched. **High-privilege**: has Bash+Write+Agent tools — confirm each destructive step under Codex (no runtime `allowed-tools` enforcement).
+
+## MCP Server Configuration
+
+### Repo-local (Codex CLI — `.codex/config.toml`)
+
+Codex auto-loads `.codex/config.toml` from the repo root. `approval_policy = "on-request"` is hard-pinned — do not relax. Contains three MCP servers (github, kubernetes-mcp-server, talos).
+
+### User-global fallback (`~/.codex/config.toml`)
+
+Add to your user config if you prefer global configuration. Env-var syntax for Codex TOML uses `${VAR}` (not `${env:VAR}` like `.mcp.json`):
+
+```toml
+[mcp_servers.github]
+command = "gh"
+args = ["mcp-server"]
+env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }
+
+[mcp_servers.kubernetes-mcp-server]
+command = "npx"
+args = ["-y", "kubernetes-mcp-server@0.0.60", "--read-only", "--kubeconfig", "${HOME}/.kube/config", "--disable-multi-cluster"]
+
+[mcp_servers.talos]
+command = "npx"
+args = ["-y", "talos-mcp@0.31.4"]
+env = { TALOS_CONTEXT = "homelab" }
+```
+
+**Linear MCP** (optional, for backlog ritual): user-personal, configure in `~/.codex/config.toml` with your Linear API token.
+
+Claude Code uses `.mcp.json` in the repo root (unchanged).
+
+## Session-Start Ritual (both agents)
+
+At session start, scan the Linear backlog before doing any work:
+
+1. `mcp__linear__get_project("Talos Homelab")` → `list_milestones` → `list_documents`
+2. `list_issues(stateType=unstarted|started|backlog)` — identify what is in `Todo` state
+3. **Status gate**: Linear `Backlog` = proposed — NEVER start Backlog items without asking the user first; only `Todo` items are ready for work
+4. During work: create Linear issues for bugs found (`Bug` label + `severity/*`) and emerging tasks (in `Backlog` state)
+5. When completing work: transition issue to `Done`, add commit references in issue comment
+
+See `docs/linear-session-restart.md` for the full rehydration sequence.
+
+**If Linear MCP is not configured**: ask the user for the current issue ID and skip the backlog scan. Backlog state ≠ Todo state — never start work without explicit authorization.
+
+## Deltas vs Claude Code (For Codex CLI Users)
+
+These differences are permanent by design. They are documented here, not hidden.
+
+1. **No PreToolUse interception**: SOPS protection fires at `git commit` (pre-commit framework), not during editing. Plaintext in `*.sops.yaml` during the session is not blocked — only caught before commit. Run `make install-pre-commit` after cloning.
+2. **No auto-subagent dispatch**: `platform-reliability-reviewer`, `talos-sre`, `gitops-operator`, `researcher` run only on explicit request. For pre-merge review, ask: *"Run platform-reliability-reviewer on this diff."*
+3. **No automatic `.claude/environment.yaml` load**: Read this file explicitly at session start for cluster topology.
+4. **No `paths:` rule auto-loading**: See §Domain Rules above — scan the table before editing files in a listed context and read the rule with the Read tool.
+5. **`--no-verify` bypass is possible locally**: Required PR checks (`gitleaks-action`, `hard-constraints-check`) block merge server-side. Local hooks are defense-in-depth, not the last line.
+6. **GitHub Push Protection** must be enabled in repo settings (one-time manual step): Settings → Code security → Push protection → Enable. This is a hard prerequisite for server-side secret blocking.
