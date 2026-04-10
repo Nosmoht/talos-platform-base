@@ -1,3 +1,7 @@
+podLabels:
+  platform.io/capability-consumer.monitoring-scrape: "true"
+  platform.io/capability-consumer.controlplane-egress: "true"
+
 resources:
   requests:
     cpu: 100m

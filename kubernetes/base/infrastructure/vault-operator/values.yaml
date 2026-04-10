@@ -1,5 +1,9 @@
 watchNamespace: vault
 
+podLabels:
+  platform.io/capability-consumer.controlplane-egress: "true"
+  platform.io/capability-provider.monitoring-scrape: "true"
+
 resources:
   requests:
     cpu: 100m
