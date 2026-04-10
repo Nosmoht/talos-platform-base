@@ -9,8 +9,9 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: managed
-    platform.io/consume.vault-secrets: "true"
     platform.io/consume.controlplane-egress: "true"
+    platform.io/consume.monitoring-scrape: "true"
+    platform.io/consume.vault-secrets: "true"
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted

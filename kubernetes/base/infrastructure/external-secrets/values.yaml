@@ -5,6 +5,17 @@ processClusterExternalSecret: false
 processClusterGenerator: false
 processClusterPushSecret: false
 
+podLabels:
+  platform.io/capability-provider.monitoring-scrape: "true"
+
+webhook:
+  podLabels:
+    platform.io/capability-provider.monitoring-scrape: "true"
+
+certController:
+  podLabels:
+    platform.io/capability-provider.monitoring-scrape: "true"
+
 serviceMonitor:
   enabled: true
   renderMode: skipIfMissing
