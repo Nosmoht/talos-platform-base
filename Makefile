@@ -1,4 +1,4 @@
-.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc grafana-dashboards-check validate-gitops validate-kyverno-policies
+.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit
 
 argocd-install:
 	kubectl apply -f kubernetes/bootstrap/argocd/namespace.yaml
@@ -47,6 +47,11 @@ validate-gitops:
 		--skip-files kubernetes/bootstrap/cilium/cilium.yaml \
 		--skip-files kubernetes/overlays/homelab/infrastructure/piraeus-operator/resources/storage-pool-autovg.yaml \
 		.
+
+install-pre-commit:
+	uvx pre-commit install
+	uvx pre-commit run --all-files || true
+	@echo "pre-commit hooks installed. Run 'uvx pre-commit run --all-files' to validate the full repo."
 
 validate-kyverno-policies:
 	@echo "Server-validating Kyverno ClusterPolicies..."
