@@ -15,7 +15,8 @@
       "command": "talos-mcp",
       "args": [],
       "env": {
-        "TALOS_CONTEXT": "homelab"
+        "TALOS_CONTEXT": "homelab",
+        "TALOS_MCP_ALLOWED_PATHS": "/Users/ntbc/workspace/Talos-Homelab/talos/"
       }
     }
   }
