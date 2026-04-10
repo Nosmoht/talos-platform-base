@@ -142,6 +142,7 @@ Software versions pinned in `talos/versions.mk`. Full topology in `.claude/envir
 - **Architecture decisions**: Spawn `talos-sre` + `platform-reliability-reviewer` with the same question for dual-perspective analysis.
 - **After incidents**: Update §Hard Constraints above if the lesson is universal. Write postmortem to `docs/` for complex incidents.
 - **Talos MCP-first**: Use Talos MCP tools for all supported operations instead of `talosctl` CLI. CLI-only: `upgrade-k8s`, `config backup to file`, `client version`. See `.claude/rules/talos-mcp-first.md`.
+- **Kubernetes MCP-first**: Use `mcp__kubernetes-mcp-server__*` tools for all supported read operations instead of `kubectl`. CLI-only: write ops, exec, drain, describe, logs-follow, kustomize, kubectl-linstor, token-negative reads. See `.claude/rules/kubernetes-mcp-first.md`.
 - **Talos-Kubernetes interface gotchas**:
   - Cilium deployed via Talos `extraManifests` — reconcile drift with `make -C talos upgrade-k8s`, NOT `kubectl apply`
   - `extraManifests` does NOT garbage-collect: removing resources from `cilium.yaml` does NOT delete them — orphans must be `kubectl delete`d manually
@@ -183,6 +184,7 @@ Claude Code auto-loads each rule via `paths:` frontmatter. **Codex CLI**: scan t
 | Talos operations (prefer MCP over CLI) | `.claude/rules/talos-mcp-first.md` |
 | Talos node inventory / endpoint flags | `.claude/rules/talos-nodes.md` |
 | Talos lifecycle (apply, upgrade, drain) | `.claude/rules/talos-operations.md` |
+| Kubernetes operations (prefer MCP over kubectl) | `.claude/rules/kubernetes-mcp-first.md` |
 
 ## Operational Runbooks (Skills)
 
