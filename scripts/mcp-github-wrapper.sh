@@ -1,18 +1,19 @@
 #!/bin/sh
-# MCP GitHub server wrapper — pulls auth token from macOS keychain via gh CLI.
-# Called by Claude Code .mcp.json (and optionally Codex .codex/config.toml).
-# Fails loudly on missing/empty token — prevents silent anonymous auth fallback.
+# MCP GitHub server wrapper — pulls auth token from gh CLI (macOS Keychain / Linux libsecret).
+# Called via PATH-installed symlink created by `make mcp-install`.
+# Fails loudly on missing/empty token — prevents silent anonymous-auth fallback.
+# Token is injected only into the github-mcp-server child process — never exported to shell env.
 set -eu
 
-GH_BIN="${GH_BIN:-/opt/homebrew/bin/gh}"
-GITHUB_MCP_BIN="${GITHUB_MCP_BIN:-/opt/homebrew/bin/github-mcp-server}"
+GH_BIN="${GH_BIN:-$(command -v gh 2>/dev/null || true)}"
+GITHUB_MCP_BIN="${GITHUB_MCP_BIN:-$(command -v github-mcp-server 2>/dev/null || true)}"
 
-if [ ! -x "$GH_BIN" ]; then
-  echo "mcp-github-wrapper: $GH_BIN not found or not executable" >&2
+if [ -z "$GH_BIN" ] || [ ! -x "$GH_BIN" ]; then
+  echo "mcp-github-wrapper: 'gh' not found in PATH — install GitHub CLI (https://cli.github.com)" >&2
   exit 1
 fi
-if [ ! -x "$GITHUB_MCP_BIN" ]; then
-  echo "mcp-github-wrapper: $GITHUB_MCP_BIN not found or not executable" >&2
+if [ -z "$GITHUB_MCP_BIN" ] || [ ! -x "$GITHUB_MCP_BIN" ]; then
+  echo "mcp-github-wrapper: 'github-mcp-server' not found in PATH — run 'make mcp-install'" >&2
   exit 1
 fi
 

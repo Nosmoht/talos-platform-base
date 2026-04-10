@@ -51,6 +51,12 @@ Install git commit hooks (SOPS encryption guard + secret scanner):
 make install-pre-commit
 ```
 
+Install MCP server binaries and wrapper symlink (required for Claude Code and Codex CLI):
+
+```bash
+make mcp-install
+```
+
 ## Claude Code Assistance
 
 This repository includes slash-command skills, delegation agents, and auto-loaded
@@ -61,7 +67,7 @@ Common commands:
 - `/gitops-health-triage [app\|all]` — diagnose ArgoCD sync failures
 - `/cilium-policy-debug [namespace/app]` — trace and fix connectivity drops
 
-Full catalog: [`docs/claude-code-guide.md`](docs/claude-code-guide.md). For MCP server setup, see [`.claude/mcp/SETUP.md`](.claude/mcp/SETUP.md).
+Full catalog: [`docs/claude-code-guide.md`](docs/claude-code-guide.md). For MCP server setup, see [`docs/mcp-setup.md`](docs/mcp-setup.md).
 
 ## Safe Change Workflow
 

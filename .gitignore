@@ -5,6 +5,10 @@ talos/.versions.stamp
 .claude/environment.yaml
 Plans/
 
+# MCP config local overrides and pre-apply snapshots
+.mcp.json.local
+.mcp.json.bak-*
+
 # Auto Claude data directory
 .auto-claude/
 

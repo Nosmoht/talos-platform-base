@@ -19,6 +19,13 @@ repos:
         files: '^\.codex/config\.toml$'
         pass_filenames: false
 
+      - id: check-mcp-config-portable
+        name: MCP configs must use bare PATH commands (no absolute paths or variables)
+        entry: sh scripts/check-mcp-config-portable.sh
+        language: system
+        files: '^(\.mcp\.json|\.codex/config\.toml)$'
+        pass_filenames: false
+
   # gitleaks — secret scanner. Pin to a commit SHA for reproducible builds.
   # To update: look up the desired release tag on github.com/gitleaks/gitleaks/releases,
   # find its merge commit SHA, and replace the rev value below.

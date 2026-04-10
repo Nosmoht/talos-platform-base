@@ -214,32 +214,46 @@ Claude Code dispatches skills via `/skill-name` or intent matching (except Manua
 
 ## MCP Server Configuration
 
-### Repo-local (Codex CLI — `.codex/config.toml`)
+All three MCP servers (github, kubernetes-mcp-server, talos) use **bare PATH-resolved command names**
+in both `.mcp.json` and `.codex/config.toml`. Run `make mcp-install` once after cloning to install
+the binaries and register the wrapper symlink. See [`docs/mcp-setup.md`](docs/mcp-setup.md) for full
+instructions, per-OS install details, and troubleshooting.
 
-Codex auto-loads `.codex/config.toml` from the repo root. `approval_policy = "on-request"` is hard-pinned — do not relax. Contains three MCP servers (github, kubernetes-mcp-server, talos).
+**Why bare commands?** Codex CLI does not expand `${VAR}` in `command`/`args` — PATH resolution is
+the only portable approach that works in both Claude Code and Codex without per-developer edits.
+
+### Repo-local (both agents)
+
+`.mcp.json` (Claude Code) and `.codex/config.toml` (Codex CLI) in the repo root both use:
+- `mcp-github-wrapper` — PATH-installed symlink pointing to `scripts/mcp-github-wrapper.sh`
+- `kubernetes-mcp-server` — Homebrew (macOS) or npm binary
+- `talos-mcp` — npm binary
+
+The wrapper fetches the GitHub token from `gh auth token` at spawn time and injects it only into
+the `github-mcp-server` child process — the token is never exported to the shell environment.
+
+`approval_policy = "on-request"` is hard-pinned in `.codex/config.toml` — do not relax.
 
 ### User-global fallback (`~/.codex/config.toml`)
 
-Add to your user config if you prefer global configuration. On macOS, prefer the keychain-backed wrapper script — no static tokens required:
+If you prefer global configuration, use bare commands here too — no absolute paths:
 
 ```toml
 [mcp_servers.github]
-command = "/absolute/path/to/repo/scripts/mcp-github-wrapper.sh"
+command = "mcp-github-wrapper"
 args = []
 
 [mcp_servers.kubernetes-mcp-server]
-command = "/opt/homebrew/bin/kubernetes-mcp-server"
+command = "kubernetes-mcp-server"
 args = ["--read-only", "--disable-multi-cluster"]
 
 [mcp_servers.talos]
-command = "/opt/homebrew/bin/talos-mcp"
+command = "talos-mcp"
 args = []
 env = { TALOS_CONTEXT = "homelab" }
 ```
 
 **Linear MCP** (optional, for backlog ritual): user-personal, configure in `~/.codex/config.toml` with your Linear API token.
-
-Claude Code uses `.mcp.json` in the repo root (unchanged).
 
 ## Session-Start Ritual (both agents)
 

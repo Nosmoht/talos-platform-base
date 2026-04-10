@@ -2,17 +2,17 @@
   "mcpServers": {
     "github": {
       "type": "stdio",
-      "command": "${PWD}/scripts/mcp-github-wrapper.sh",
+      "command": "mcp-github-wrapper",
       "args": []
     },
     "kubernetes-mcp-server": {
       "type": "stdio",
-      "command": "/opt/homebrew/bin/kubernetes-mcp-server",
+      "command": "kubernetes-mcp-server",
       "args": ["--read-only", "--disable-multi-cluster"]
     },
     "talos": {
       "type": "stdio",
-      "command": "/opt/homebrew/bin/talos-mcp",
+      "command": "talos-mcp",
       "args": [],
       "env": {
         "TALOS_CONTEXT": "homelab"
