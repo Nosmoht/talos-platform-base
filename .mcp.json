@@ -2,21 +2,18 @@
   "mcpServers": {
     "github": {
       "type": "stdio",
-      "command": "gh",
-      "args": ["mcp-server"],
-      "env": {
-        "GITHUB_TOKEN": "${env:GITHUB_TOKEN}"
-      }
+      "command": "${PWD}/scripts/mcp-github-wrapper.sh",
+      "args": []
     },
     "kubernetes-mcp-server": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "kubernetes-mcp-server@0.0.60", "--read-only", "--kubeconfig", "${env:HOME}/.kube/config", "--disable-multi-cluster"]
+      "command": "/opt/homebrew/bin/kubernetes-mcp-server",
+      "args": ["--read-only", "--disable-multi-cluster"]
     },
     "talos": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "talos-mcp@0.31.4"],
+      "command": "/opt/homebrew/bin/talos-mcp",
+      "args": [],
       "env": {
         "TALOS_CONTEXT": "homelab"
       }

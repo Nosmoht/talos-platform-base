@@ -220,21 +220,20 @@ Codex auto-loads `.codex/config.toml` from the repo root. `approval_policy = "on
 
 ### User-global fallback (`~/.codex/config.toml`)
 
-Add to your user config if you prefer global configuration. Env-var syntax for Codex TOML uses `${VAR}` (not `${env:VAR}` like `.mcp.json`):
+Add to your user config if you prefer global configuration. On macOS, prefer the keychain-backed wrapper script — no static tokens required:
 
 ```toml
 [mcp_servers.github]
-command = "gh"
-args = ["mcp-server"]
-env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }
+command = "/absolute/path/to/repo/scripts/mcp-github-wrapper.sh"
+args = []
 
 [mcp_servers.kubernetes-mcp-server]
-command = "npx"
-args = ["-y", "kubernetes-mcp-server@0.0.60", "--read-only", "--kubeconfig", "${HOME}/.kube/config", "--disable-multi-cluster"]
+command = "/opt/homebrew/bin/kubernetes-mcp-server"
+args = ["--read-only", "--disable-multi-cluster"]
 
 [mcp_servers.talos]
-command = "npx"
-args = ["-y", "talos-mcp@0.31.4"]
+command = "/opt/homebrew/bin/talos-mcp"
+args = []
 env = { TALOS_CONTEXT = "homelab" }
 ```
 
