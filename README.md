@@ -35,7 +35,7 @@ Read these in order before making changes:
 
 ## First-Time Workstation Setup
 
-Install required CLIs: `talosctl`, `kubectl`, `kubectl-linstor`, `make`, `sops`, `yq`, `jq`, `gh`, `helm`.
+Install required CLIs: `talosctl`, `kubectl`, `kubectl-linstor`, `make`, `sops`, `yq`, `jq`, `gh`, `helm`, `uv`.
 
 Set cluster access:
 
@@ -43,6 +43,12 @@ Set cluster access:
 talosctl -n 192.168.2.61 -e 192.168.2.61 kubeconfig --force /tmp/homelab-kubeconfig
 export KUBECONFIG=/tmp/homelab-kubeconfig
 gh auth login
+```
+
+Install git commit hooks (SOPS encryption guard + secret scanner):
+
+```bash
+make install-pre-commit
 ```
 
 ## Claude Code Assistance
