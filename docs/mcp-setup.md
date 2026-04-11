@@ -51,6 +51,30 @@ The wrapper script (`scripts/mcp-github-wrapper.sh`) runs at MCP server spawn ti
 
 To rotate: run `gh auth login` again. The wrapper picks up the new token on the next server spawn.
 
+## Talos MCP Environment Variables
+
+The `talos` MCP server supports these environment variables (set in `.mcp.json` and `.codex/config.toml`):
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `TALOS_CONTEXT` | Talos context name from `~/.talos/config` | first context |
+| `TALOS_MCP_ALLOWED_PATHS` | Comma-separated **remote Talos-node** path prefixes that `talos_read_file` and `talos_list_files` may read via gRPC. **Unset = unrestricted.** | (none — unrestricted) |
+| `TALOS_MCP_READ_ONLY` | Set to `true` to expose only read-only tools | false |
+
+### `TALOS_MCP_ALLOWED_PATHS` details
+
+This variable restricts **which paths on the Talos nodes** the AI can read — it has no relation to the local workstation filesystem. The repo sets an explicit restrictive allowlist (defense-in-depth):
+
+```
+/proc,/sys,/var/log,/run,/usr/local/etc,/etc/os-release
+```
+
+**Included:** hardware probes (`/proc/cpuinfo`, `/proc/net/*`), kernel config (`/proc/config.gz`), NIC/block device info (`/sys/class/net/*`, `/sys/block/*`), service logs (`/var/log`), runtime state (`/run`), extension configs (`/usr/local/etc`), OS version metadata (`/etc/os-release`).
+
+**Excluded deliberately:** bare `/etc` (exposes `/etc/kubernetes/kubelet.conf` bearer token and PKI material — use `talos_get machineconfig` instead), `/var/lib` (etcd/kubelet state — use `talos_etcd`/`talos_get`), `/boot`, `/home`, `/root`.
+
+To extend for a new use case, edit the value in `.mcp.json:19` and `.codex/config.toml:32`, then restart the MCP client.
+
 ## Troubleshooting
 
 ### `mcp-github-wrapper: not found`

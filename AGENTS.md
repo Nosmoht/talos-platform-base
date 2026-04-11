@@ -252,7 +252,7 @@ args = ["--read-only", "--disable-multi-cluster"]
 [mcp_servers.talos]
 command = "talos-mcp"
 args = []
-env = { TALOS_CONTEXT = "homelab" }
+env = { TALOS_CONTEXT = "homelab", TALOS_MCP_ALLOWED_PATHS = "/proc,/sys,/var/log,/run,/usr/local/etc,/etc/os-release" }
 ```
 
 **Linear MCP** (optional, for backlog ritual): user-personal, configure in `~/.codex/config.toml` with your Linear API token.

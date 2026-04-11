@@ -16,7 +16,7 @@
       "args": [],
       "env": {
         "TALOS_CONTEXT": "homelab",
-        "TALOS_MCP_ALLOWED_PATHS": "/Users/ntbc/workspace/Talos-Homelab/talos/"
+        "TALOS_MCP_ALLOWED_PATHS": "/proc,/sys,/var/log,/run,/usr/local/etc,/etc/os-release"
       }
     }
   }
