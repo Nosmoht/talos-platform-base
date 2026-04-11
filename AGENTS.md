@@ -171,10 +171,10 @@ Claude Code auto-loads each rule via `paths:` frontmatter. **Codex CLI**: scan t
 
 | Editing context | Rule file |
 |---|---|
-| ArgoCD sync, App/Project drift, reconcile ops | `.claude/rules/argocd-operations.md` |
+| ArgoCD sync, App/Project drift, reconcile ops | `.claude/rules/argocd-troubleshooting.md` |
 | Cilium Gateway API, HTTPRoute, TLSPolicy | `.claude/rules/cilium-gateway-api.md` |
 | CiliumNetworkPolicy (`cnp-*.yaml`, `ccnp-*.yaml`) | `.claude/rules/cilium-network-policy.md` |
-| ArgoCD Application/Kustomize overlays | `.claude/rules/kubernetes-gitops.md` |
+| ArgoCD Application/Kustomize overlays | `.claude/rules/argocd-structure.md` |
 | LINSTOR/Piraeus/DRBD storage changes | `.claude/rules/linstor-storage-guardrails.md` |
 | Manifest quality (labels, naming conventions) | `.claude/rules/manifest-quality.md` |
 | Prometheus, Grafana, kube-prometheus-stack | `.claude/rules/monitoring-observability.md` |

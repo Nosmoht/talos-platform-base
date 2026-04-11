@@ -23,10 +23,10 @@ Before editing, read the applicable rule file:
 
 | Context | Rule file |
 |---------|-----------|
-| ArgoCD Applications, sync issues, drift | `.claude/rules/argocd-operations.md` |
+| ArgoCD Applications, sync issues, drift | `.claude/rules/argocd-troubleshooting.md` |
 | HTTPRoute, TLSRoute, Gateway, GatewayClass | `.claude/rules/cilium-gateway-api.md` |
 | `cnp-*.yaml`, `ccnp-*.yaml` files | `.claude/rules/cilium-network-policy.md` |
-| Kustomize overlays, ksops generators, sync-waves | `.claude/rules/kubernetes-gitops.md` |
+| Kustomize overlays, ksops generators, sync-waves | `.claude/rules/argocd-structure.md` |
 | Helm values, resource limits, labels | `.claude/rules/manifest-quality.md` |
 | Grafana dashboards, PrometheusRule, ServiceMonitor | `.claude/rules/monitoring-observability.md` |
 | LINSTOR StorageClass, Piraeus resources | `.claude/rules/linstor-storage-guardrails.md` |
