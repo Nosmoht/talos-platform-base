@@ -255,21 +255,17 @@ args = []
 env = { TALOS_CONTEXT = "homelab", TALOS_MCP_ALLOWED_PATHS = "/proc,/sys,/var/log,/run,/usr/local/etc,/etc/os-release" }
 ```
 
-**Linear MCP** (optional, for backlog ritual): user-personal, configure in `~/.codex/config.toml` with your Linear API token.
-
 ## Session-Start Ritual (both agents)
 
-At session start, scan the Linear backlog before doing any work:
+At session start, scan the GitHub Issues backlog before doing any work. Use the `github` MCP server (see §MCP Server Configuration above) — fall back to `gh` CLI only if the MCP tool errors.
 
-1. `mcp__linear__get_project("Talos Homelab")` → `list_milestones` → `list_documents`
-2. `list_issues(stateType=unstarted|started|backlog)` — identify what is in `Todo` state
-3. **Status gate**: Linear `Backlog` = proposed — NEVER start Backlog items without asking the user first; only `Todo` items are ready for work
-4. During work: create Linear issues for bugs found (`Bug` label + `severity/*`) and emerging tasks (in `Backlog` state)
-5. When completing work: transition issue to `Done`, add commit references in issue comment
+1. `mcp__github__list_issues(state="open", labels=["ready"])` — identify issues marked ready for work
+2. `mcp__github__list_issues(state="open", labels=["in-progress"])` — resume anything started but not finished
+3. **Status gate**: only the `ready` label authorizes work to begin. Issues without `ready` (proposals, drafts, untriaged) must NOT be started without explicit user authorization — ask first.
+4. During work: create GitHub Issues for bugs found (`bug` label + `severity/*`) and emerging tasks (no `ready` label until triaged).
+5. When completing work: close the issue with a commit reference in the close comment.
 
-See `docs/linear-session-restart.md` for the full rehydration sequence.
-
-**If Linear MCP is not configured**: ask the user for the current issue ID and skip the backlog scan. Backlog state ≠ Todo state — never start work without explicit authorization.
+**Fallback** (MCP unavailable): `gh issue list --state open --label ready` and `gh issue list --state open --label in-progress`.
 
 ## Deltas vs Claude Code (For Codex CLI Users)
 
