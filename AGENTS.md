@@ -204,7 +204,9 @@ Claude Code dispatches skills via `/skill-name` or intent matching (except Manua
 | plan Cilium upgrade | `.claude/skills/plan-cilium-upgrade/` | High-privilege (Bash+Write+Agent), Refs |
 | plan Talos upgrade | `.claude/skills/plan-talos-upgrade/` | High-privilege (Bash+Write+Agent) |
 | PNI capability add | `.claude/skills/pni-capability-add/` | Manual-only |
+| argocd app unstick | `.claude/skills/argocd-app-unstick/` | Manual-only |
 | etcd snapshot restore | `.claude/skills/etcd-snapshot-restore/` | Manual-only |
+| hubble cert rotate | `.claude/skills/hubble-cert-rotate/` | Manual-only |
 | sops key rotate | `.claude/skills/sops-key-rotate/` | Manual-only |
 | talos apply | `.claude/skills/talos-apply/` | Manual-only, Refs |
 | talos config diff | `.claude/skills/talos-config-diff/` | Manual-only |
