@@ -69,7 +69,7 @@ Rules activate automatically based on the files being discussed. No user action 
 | `talos-config` | Machine config generation, patch ordering, boot-critical configuration |
 | `talos-nodes` | Node hardware profiles, IP assignments, node-specific config binding |
 | `talos-image-factory` | Image Factory schematic management, extension selection, boot images |
-| `talos-operations` | Node upgrades, maintenance procedures, recovery patterns |
+| `talos-mcp-first` | Talos operations, lifecycle, gotchas (MCP-first) — see AGENTS.md §Domain Rules for canonical rule list |
 | `kubernetes-gitops` | Kustomize patterns, ArgoCD sync practices, GitOps-first workflow |
 | `argocd-operations` | Safe sync patterns, app-of-apps orchestration, operational gotchas |
 | `cilium-gateway-api` | Gateway API ingress, network policy patterns, L2 announcements |

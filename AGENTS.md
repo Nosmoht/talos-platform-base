@@ -181,9 +181,8 @@ Claude Code auto-loads each rule via `paths:` frontmatter. **Codex CLI**: scan t
 | Glob/Grep search scope | `.claude/rules/search-scope.md` |
 | Talos machine config / patches | `.claude/rules/talos-config.md` |
 | Talos Image Factory / schematics | `.claude/rules/talos-image-factory.md` |
-| Talos operations (prefer MCP over CLI) | `.claude/rules/talos-mcp-first.md` |
+| Talos operations / lifecycle (MCP-first, apply, upgrade, gotchas) | `.claude/rules/talos-mcp-first.md` |
 | Talos node inventory / endpoint flags | `.claude/rules/talos-nodes.md` |
-| Talos lifecycle (apply, upgrade, drain) | `.claude/rules/talos-operations.md` |
 | Kubernetes operations (prefer MCP over kubectl) | `.claude/rules/kubernetes-mcp-first.md` |
 
 ## Operational Runbooks (Skills)

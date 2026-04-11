@@ -24,9 +24,8 @@ Before editing, read the applicable rule file:
 |---------|-----------|
 | Machine config patches, `talconfig.yaml` | `.claude/rules/talos-config.md` |
 | Image Factory schematics, system extensions | `.claude/rules/talos-image-factory.md` |
-| `talosctl` operations vs MCP tools | `.claude/rules/talos-mcp-first.md` |
+| `talosctl` operations, lifecycle, gotchas (MCP-first) | `.claude/rules/talos-mcp-first.md` |
 | Node IPs, endpoint flags, inventory | `.claude/rules/talos-nodes.md` |
-| Apply, upgrade, drain lifecycle | `.claude/rules/talos-operations.md` |
 
 ## Patch Ordering
 

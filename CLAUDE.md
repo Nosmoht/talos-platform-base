@@ -7,7 +7,7 @@
 ### Path-Scoped Auto-Loaded Rules
 
 Claude Code auto-loads `.claude/rules/*.md` via `paths:` frontmatter when editing matching files.
-All 14 rules activate without a manual Read step. Codex CLI has no equivalent mechanism —
+All 13 rules activate without a manual Read step. Codex CLI has no equivalent mechanism —
 see AGENTS.md §Domain Rules for the on-demand reference table.
 
 ### Hooks (PreToolUse / PostToolUse enforcement)
