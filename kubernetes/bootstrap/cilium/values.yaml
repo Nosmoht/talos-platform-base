@@ -131,6 +131,7 @@ securityContext:
 bpf:
   vlanBypass:
     - 100
+    - 110
 
 # --- Operator ---
 operator:
