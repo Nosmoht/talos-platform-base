@@ -1,0 +1,65 @@
+# Omada SDN Controller — base Helm values.
+# Community chart: mbentley/omada-controller-helm (OCI).
+# Manages the TP-Link SG3428 switch from inside the cluster.
+
+image:
+  repository: mbentley/omada
+  tag: "5.15"
+  pullPolicy: IfNotPresent
+
+# --- Persistence (DRBD-replicated) ---
+persistence:
+  data:
+    enabled: true
+    size: 5Gi
+    storageClassName: linstor-csi
+    accessMode: ReadWriteOnce
+  logs:
+    enabled: true
+    size: 2Gi
+    storageClassName: linstor-csi
+    accessMode: ReadWriteOnce
+
+# --- Service exposure ---
+# VIP is assigned from the overlay-scoped CiliumLoadBalancerIPPool
+# (resources/cilium-lb-pool.yaml). Do not hardcode the IP here.
+service:
+  type: LoadBalancer
+
+# --- Placement: pin to a storage-capable worker (NVMe + LINSTOR primary) ---
+# DRBD RWO is active-passive; unpinned scheduler can land pod where the replica
+# is outdated and the pod sticks in ContainerCreating.
+nodeSelector:
+  feature.node.kubernetes.io/storage-nvme.present: "true"
+
+# --- Resources ---
+resources:
+  requests:
+    cpu: 200m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+# --- Security context ---
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 508
+  runAsGroup: 508
+  fsGroup: 508
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: false  # Omada writes to /opt/tplink/EAPController/data
+
+# --- Ingress disabled — using LoadBalancer VIP + future HTTPRoute ---
+ingress:
+  enabled: false
+
+# --- TP-Link Cloud access OFF ---
+# The chart does not expose this as a values key; disable via the controller UI
+# (Settings -> Controller -> Cloud Access) at first launch. See the cutover ADR
+# for the post-install checklist.
