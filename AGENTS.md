@@ -57,10 +57,15 @@ make argocd-bootstrap
 
 ## Platform Network Interface (PNI) Rules
 - Default to PNI for consumer-to-platform connectivity; do not begin with ad-hoc custom CNPs for managed services.
-- Consumer namespace contract:
+- Consumer namespace contract (namespace-level labels):
   - `platform.io/network-interface-version: v1`
   - `platform.io/network-profile: restricted|managed|privileged`
   - explicit capability opt-in labels: `platform.io/consume.<capability>: "true"`
+- **Consumer pod contract (pod-level labels, in addition to namespace labels):**
+  - Every pod that consumes a PNI capability must carry `platform.io/capability-consumer.<capability>: "true"` on the pod template (not only the namespace).
+  - Namespace labels gate the `network-profile` posture; pod-level `capability-consumer.*` labels are matched by each CCNP's `endpointSelector` to actually allow the traffic.
+  - Missing pod-level label → Cilium drops outbound traffic with "Policy denied" even if the namespace is correctly labeled. This failure mode is invisible until strict enforcement activates (e.g. after a Cilium agent restart).
+  - Set via Helm `podLabels` / `podMetadata.labels` in values; see `kubernetes/overlays/homelab/infrastructure/kube-prometheus-stack/values.yaml` and `kubernetes/base/infrastructure/loki/values.yaml` for reference patterns.
 - Treat `network-profile` as baseline posture only; core service access must be capability-scoped.
 - Never set provider-reserved labels in consumer manifests: `platform.io/provider`, `platform.io/managed-by`, `platform.io/capability`.
 - Keep reusable capability policies platform-owned under infrastructure overlays; avoid creating per-consumer policy copies in operator namespaces.
@@ -174,6 +179,7 @@ Claude Code auto-loads each rule via `paths:` frontmatter. **Codex CLI**: scan t
 | ArgoCD sync, App/Project drift, reconcile ops | `.claude/rules/argocd-troubleshooting.md` |
 | Cilium Gateway API, HTTPRoute, TLSPolicy | `.claude/rules/cilium-gateway-api.md` |
 | CiliumNetworkPolicy (`cnp-*.yaml`, `ccnp-*.yaml`) | `.claude/rules/cilium-network-policy.md` |
+| Cilium agent / service BPF-map desync, ClusterIP timeouts | `.claude/rules/cilium-service-sync.md` |
 | ArgoCD Application/Kustomize overlays | `.claude/rules/argocd-structure.md` |
 | LINSTOR/Piraeus/DRBD storage changes | `.claude/rules/linstor-storage-guardrails.md` |
 | MinIO tenant/operator changes, S3 backend proposals | `.claude/rules/minio-exit.md` |
