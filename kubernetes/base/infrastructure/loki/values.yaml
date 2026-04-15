@@ -67,6 +67,9 @@ singleBinary:
 
 read:
   replicas: 2
+  podLabels:
+    platform.io/capability-consumer.s3-object: "true"
+    platform.io/capability-consumer.storage-csi: "true"
   resources:
     requests:
       cpu: 200m
@@ -79,6 +82,9 @@ write:
   replicas: 2
   nodeSelector:
     feature.node.kubernetes.io/storage-nvme.present: "true"
+  podLabels:
+    platform.io/capability-consumer.s3-object: "true"
+    platform.io/capability-consumer.storage-csi: "true"
   persistence:
     storageClass: linstor-csi
     size: 20Gi
@@ -94,6 +100,9 @@ backend:
   replicas: 2
   nodeSelector:
     feature.node.kubernetes.io/storage-nvme.present: "true"
+  podLabels:
+    platform.io/capability-consumer.s3-object: "true"
+    platform.io/capability-consumer.storage-csi: "true"
   persistence:
     storageClass: linstor-csi
     size: 20Gi
@@ -110,6 +119,8 @@ serviceMonitor:
   interval: 30s
 
 lokiCanary:
+  podLabels:
+    platform.io/capability-consumer.s3-object: "true"
   tolerations:
     - key: nvidia.com/gpu
       operator: Equal
