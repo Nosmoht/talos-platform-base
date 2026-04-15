@@ -33,8 +33,13 @@ persistence:
 # --- Service exposure ---
 # The VIP is assigned from the CiliumLoadBalancerIPPool in ./resources/.
 # L2 announcement is handled by the matching CiliumL2AnnouncementPolicy.
+# The sharing-key annotation allows the side-car Service in resources/
+# (svc-udp-29814.yaml) to reuse the same VIP for UDP/29814 (required
+# because the chart declares 29814 only as TCP).
 service:
   type: LoadBalancer
+  annotations:
+    io.cilium/lb-ipam-sharing-key: omada-controller
 
 # --- Placement: pin to a storage-capable worker (NVMe + LINSTOR primary) ---
 nodeSelector:
