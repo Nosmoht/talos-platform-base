@@ -27,8 +27,8 @@ spec:
           Unknown PNI capability label on namespace {{ request.object.metadata.name }}.
           Valid capabilities: monitoring-scrape, logging-ship, vault-secrets, cnpg-postgres,
           redis-managed, kafka-managed, rabbitmq-managed, s3-object, storage-csi, tls-issuance,
-          gateway-backend, gpu-runtime, hpa-metrics, internet-egress, controlplane-egress,
-          admission-webhook-provider, monitoring-scrape-provider.
+          gateway-backend, external-gateway-routes, gpu-runtime, hpa-metrics, internet-egress,
+          controlplane-egress, admission-webhook-provider, monitoring-scrape-provider.
         foreach:
           - list: "request.object.metadata.labels | items(@, 'key', 'value')"
             preconditions:
@@ -53,6 +53,7 @@ spec:
                       - platform.io/consume.storage-csi
                       - platform.io/consume.tls-issuance
                       - platform.io/consume.gateway-backend
+                      - platform.io/consume.external-gateway-routes
                       - platform.io/consume.gpu-runtime
                       - platform.io/consume.hpa-metrics
                       - platform.io/consume.internet-egress

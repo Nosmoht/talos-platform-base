@@ -53,6 +53,14 @@ data:
       - id: gateway-backend
         providers:
           - gateway-api
+      - id: external-gateway-routes
+        providers:
+          - gateway-api
+        # Opt-in to attach HTTPRoutes to the *.homelab.ntbc.io listener on
+        # homelab-gateway. Network policy is unchanged — uses existing
+        # gateway-backend capability for Envoy->consumer traffic; this label only
+        # controls Gateway-API allowedRoutes selection on the external-https
+        # listener.
       - id: gpu-runtime
         providers:
           - nvidia-device-plugin
