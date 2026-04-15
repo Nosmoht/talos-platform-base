@@ -132,6 +132,17 @@ bpf:
   vlanBypass:
     - 100
     - 110
+    - 120
+    - 130
+
+# --- L2 announcements / LoadBalancer ---
+# Enable Cilium as the L2 announcer for Service type=LoadBalancer VIPs.
+# Replaces kube-vip / MetalLB for L2 ARP announcements on the homelab LAN.
+l2announcements:
+  enabled: true
+loadBalancer:
+  l2:
+    enabled: true
 
 # --- Operator ---
 operator:
