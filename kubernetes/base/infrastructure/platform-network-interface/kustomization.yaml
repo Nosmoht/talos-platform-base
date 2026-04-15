@@ -6,6 +6,7 @@ resources:
   - resources/kyverno-clusterpolicy-pni-contract-enforce.yaml
   - resources/kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml
   - resources/kyverno-clusterpolicy-pni-capability-validation-enforce.yaml
+  - resources/kyverno-clusterpolicy-external-httproute-hostnames-enforce.yaml
   - resources/kyverno-clusterpolicy-vault-ca-distribution.yaml
   - resources/ccnp-pni-monitoring-dns-visibility.yaml
   - resources/ccnp-pni-admission-webhook-provider-ingress.yaml

@@ -1,0 +1,41 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: external-httproute-hostnames-enforce
+  labels:
+    app.kubernetes.io/name: platform-network-interface
+    app.kubernetes.io/instance: homelab
+    app.kubernetes.io/component: kyverno-policy
+    app.kubernetes.io/part-of: homelab
+    app.kubernetes.io/managed-by: argocd
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-external-listener-hostnames
+      match:
+        any:
+          - resources:
+              kinds:
+                - HTTPRoute
+      preconditions:
+        all:
+          - key: "external-https"
+            operator: AnyIn
+            value: "{{ request.object.spec.parentRefs[].sectionName || `[]` }}"
+      validate:
+        message: >-
+          HTTPRoute attached to the external-https listener (sectionName=external-https
+          on homelab-gateway) must only declare hostnames ending in
+          .homelab.ntbc.io. The external listener is the public ingress path; any
+          other hostname would either never match (dead route) or - worse - leak
+          internal hostnames to the public attack surface. If you need an internal
+          route, attach to sectionName=https instead.
+        foreach:
+          - list: "request.object.spec.hostnames || `[]`"
+            deny:
+              conditions:
+                all:
+                  - key: "{{ regex_match('^.*\\.homelab\\.ntbc\\.io$', '{{ element }}') }}"
+                    operator: Equals
+                    value: false
