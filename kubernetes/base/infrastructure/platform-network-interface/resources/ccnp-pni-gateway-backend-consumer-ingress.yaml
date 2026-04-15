@@ -29,6 +29,9 @@ spec:
             # Dex OIDC (container port)
             - port: "5556"
               protocol: TCP
+            # plane.so api/web (Django/Uvicorn default container port)
+            - port: "8000"
+              protocol: TCP
             # kb-mcp MCP server (container port)
             - port: "8001"
               protocol: TCP
