@@ -1,0 +1,81 @@
+name: Freeze Guard
+
+# Enforces the Harness-Freeze policy documented in Plans/swirling-strolling-alpaca.md.
+# Blocks PRs touching frozen primitive paths unless:
+#   (a) the PR carries the 'freeze-exception' label (manual maintainer override), or
+#   (b) all changes stay within the defined carve-out sub-paths.
+#
+# Must be added as a required status check in Branch Protection Rules:
+# Settings → Branches → main → Require status checks → "Freeze Guard / freeze-guard"
+
+on:
+  pull_request:
+    paths:
+      - '.claude/skills/**'
+      - '.claude/rules/**'
+      - '.claude/agents/**'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  freeze-guard:
+    name: Freeze Guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check freeze compliance
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HAS_EXCEPTION: ${{ contains(github.event.pull_request.labels.*.name, 'freeze-exception') }}
+        run: |
+          set -euo pipefail
+
+          if [ "${HAS_EXCEPTION}" = "true" ]; then
+            echo "::notice::PR carries 'freeze-exception' label — freeze check bypassed."
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only "origin/${BASE_REF}...HEAD" -- \
+            '.claude/skills/' '.claude/rules/' '.claude/agents/' 2>/dev/null || true)
+
+          if [ -z "$CHANGED" ]; then
+            echo "No changes to frozen paths detected."
+            exit 0
+          fi
+
+          VIOLATIONS=""
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            case "$file" in
+              .claude/skills/validate-gitops/*) continue ;;
+              .claude/skills/gitops-health-triage/*) continue ;;
+            esac
+            VIOLATIONS="${VIOLATIONS}  - ${file}"$'\n'
+          done <<EOF
+          $CHANGED
+          EOF
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Freeze violation: the kube-agent-harness is under active development."
+            echo ""
+            echo "These paths are frozen until the harness is declared 'done' (hard stop 2026-07-13):"
+            echo "$VIOLATIONS"
+            echo "Frozen scope:  .claude/skills/**, .claude/rules/**, .claude/agents/**"
+            echo "Carve-out:     .claude/hooks/** (not triggered), .claude/skills/validate-gitops/**, .claude/skills/gitops-health-triage/**"
+            echo ""
+            echo "Resolution options:"
+            echo "  1. Move the change into the harness repo (github.com/devobagmbh/kube-agent-harness)."
+            echo "  2. If this is an emergency bug-fix, add the 'freeze-exception' label and document rationale in the PR description."
+            echo "  3. Append the idea as a backlog entry in docs/freeze-learnings.md for the switch-project."
+            echo ""
+            echo "Policy: Plans/swirling-strolling-alpaca.md (§Freeze-Regel)."
+            exit 1
+          fi
+
+          echo "All changes are within carve-out paths. OK."
