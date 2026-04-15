@@ -176,6 +176,7 @@ Claude Code auto-loads each rule via `paths:` frontmatter. **Codex CLI**: scan t
 | CiliumNetworkPolicy (`cnp-*.yaml`, `ccnp-*.yaml`) | `.claude/rules/cilium-network-policy.md` |
 | ArgoCD Application/Kustomize overlays | `.claude/rules/argocd-structure.md` |
 | LINSTOR/Piraeus/DRBD storage changes | `.claude/rules/linstor-storage-guardrails.md` |
+| MinIO tenant/operator changes, S3 backend proposals | `.claude/rules/minio-exit.md` |
 | Manifest quality (labels, naming conventions) | `.claude/rules/manifest-quality.md` |
 | Prometheus, Grafana, kube-prometheus-stack | `.claude/rules/monitoring-observability.md` |
 | Glob/Grep search scope | `.claude/rules/search-scope.md` |
