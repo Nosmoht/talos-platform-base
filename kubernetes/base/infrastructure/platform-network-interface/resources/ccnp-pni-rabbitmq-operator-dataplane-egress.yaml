@@ -14,7 +14,10 @@ spec:
       k8s:io.kubernetes.pod.namespace: rabbitmq-system
       platform.io/capability-consumer.rabbitmq-operator-dataplane: "true"
   egress:
-    # Managed RabbitMQ server pods: AMQP, Erlang cluster, management, epmd, prometheus.
+    # Operator → managed RabbitMQ server: HTTP management API only.
+    # Operators do not speak AMQP or Erlang distribution; broker-internal Erlang
+    # clustering (4369/25672) belongs in a future server↔server CCNP scoped to
+    # multi-replica RabbitmqClusters, not in this operator-dataplane capability.
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: rabbitmq-system
@@ -22,17 +25,7 @@ spec:
             app.kubernetes.io/part-of: rabbitmq
       toPorts:
         - ports:
-            - port: "5672"    # AMQP
-              protocol: TCP
-            - port: "5671"    # AMQPS
-              protocol: TCP
             - port: "15672"   # Management HTTP
               protocol: TCP
             - port: "15671"   # Management HTTPS
-              protocol: TCP
-            - port: "15692"   # Prometheus
-              protocol: TCP
-            - port: "4369"    # epmd
-              protocol: TCP
-            - port: "25672"   # Erlang distribution / clustering
               protocol: TCP
