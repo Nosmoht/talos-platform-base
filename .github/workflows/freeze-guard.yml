@@ -10,10 +10,9 @@ name: Freeze Guard
 
 on:
   pull_request:
-    paths:
-      - '.claude/skills/**'
-      - '.claude/rules/**'
-      - '.claude/agents/**'
+    # No paths filter — the job must run on every PR so the required-status-check
+    # reports a concrete result. The path check is performed inside the job.
+    branches: [main]
 
 permissions:
   contents: read
