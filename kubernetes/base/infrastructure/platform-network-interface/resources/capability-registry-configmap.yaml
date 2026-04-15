@@ -35,6 +35,10 @@ data:
       - id: kafka-managed
         providers:
           - strimzi-kafka-operator
+      - id: rabbitmq-managed
+        providers:
+          - rabbitmq-cluster-operator
+          - rabbitmq-messaging-topology-operator
       - id: s3-object
         providers:
           - minio-operator
