@@ -111,6 +111,13 @@ spec:
                 - minio-operator
                 - cert-manager
                 - external-secrets
+                # Tenant namespaces that host their own operator-managed
+                # provider instances (e.g. RabbitmqCluster plane-mq, Redis
+                # redis). A follow-up PR should replace this per-namespace
+                # exempt list with an ownerReferences-based rule that allows
+                # capability-provider.* only on pods controlled by trusted
+                # CRD kinds (RabbitmqCluster, Redis, CNPGCluster).
+                - plane
       validate:
         allowExistingViolations: true
         message: >-
