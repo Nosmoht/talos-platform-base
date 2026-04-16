@@ -219,33 +219,18 @@ jobs:
       - name: Conftest policy checks
         run: ./scripts/run_conftest.sh
 
-      - name: Trivy config scan
-        uses: aquasecurity/trivy-action@v0.34.0
+      # Install the Trivy binary via the upstream setup action (no scan logic).
+      # We then invoke scripts/run_trivy.sh so local and CI run the exact same
+      # wrapper (single point of truth for --ignorefile + --skip-files).
+      # trivy-action@v0.34.0 silently stripped --ignorefile when consuming
+      # trivyignores: .trivyignore.yaml, which made the YAML ignores no-op.
+      - name: Setup Trivy
+        uses: aquasecurity/setup-trivy@v0.2.0
         with:
-          scan-type: config
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: '0'
-          format: table
-          skip-files: kubernetes/bootstrap/cilium/cilium.yaml,kubernetes/overlays/homelab/infrastructure/piraeus-operator/resources/storage-pool-autovg.yaml
-          trivyignores: .trivyignore.yaml
-          output: .work/trivy-report.txt
           version: ${{ env.TRIVY_VERSION }}
 
-      - name: Trivy gate
-        run: |
-          set -eu
-          if [ ! -f .work/trivy-report.txt ]; then
-            echo "error: trivy report file not found at .work/trivy-report.txt"
-            exit 1
-          fi
-
-          failures=$(awk '/Failures:/ {sum += $2} END {if (sum == "") sum = 0; print sum}' .work/trivy-report.txt)
-          echo "trivy HIGH/CRITICAL failures: $failures"
-          if [ "$failures" -gt 0 ]; then
-            echo "error: trivy found HIGH/CRITICAL findings"
-            exit 1
-          fi
+      - name: Trivy config scan + gate
+        run: ./scripts/run_trivy.sh
 
       - name: Build PR summary
         if: always()
