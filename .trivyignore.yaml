@@ -20,22 +20,6 @@
 
 misconfigurations:
   # ========================================================================
-  # (0) ingress-front DHCP init containers — NET_RAW required by udhcpc
-  # ========================================================================
-  - id: AVD-KSV-0119
-    paths:
-      - kubernetes/overlays/homelab/infrastructure/ingress-front/resources/deployment.yaml
-    statement: >-
-      ingress-front init containers `net1-dhcp-register` + `net2-dhcp-register`
-      run udhcpc against the FRITZ!Box to register each macvlan VIP's MAC in
-      the DHCP host table (see deployment.yaml inline doc block). udhcpc
-      crafts DHCPDISCOVER packets on raw sockets — NET_RAW is unavoidable.
-      Containers already carry `capabilities.drop: [ALL]` and
-      `readOnlyRootFilesystem: true`; NET_RAW is the single elevated
-      capability they hold.
-    expired_at: 2027-04-16
-
-  # ========================================================================
   # (1) rabbitmq-cluster-operator
   # ========================================================================
   - id: AVD-KSV-0014
