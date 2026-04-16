@@ -42,10 +42,14 @@ misconfigurations:
     paths:
       - kubernetes/overlays/homelab/infrastructure/rabbitmq-cluster-operator/resources/cluster-operator.yaml
     statement: >-
-      BASELINE — removed in commit 4 after Kustomize patch adds
-      readOnlyRootFilesystem: true to the rabbitmq-cluster-operator
-      container + tmpfs at /tmp. See plan Layer 3.
-    expired_at: 2026-07-16
+      The raw upstream bundle does NOT set readOnlyRootFilesystem, but
+      kustomization.yaml patches it to true on the rendered operator
+      Deployment (see kubernetes/overlays/.../rabbitmq-cluster-operator/
+      resources/kustomization.yaml patch block). Trivy scans the raw file,
+      not the rendered output, so the finding persists in static scan but
+      is not actually deployed. Annual review should confirm the patch
+      still resolves at render time.
+    expired_at: 2027-04-16
   - id: AVD-KSV-0041
     paths:
       - kubernetes/overlays/homelab/infrastructure/rabbitmq-cluster-operator/resources/cluster-operator.yaml
