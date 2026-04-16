@@ -146,6 +146,7 @@ Software versions pinned in `talos/versions.mk`. Full topology in `.claude/envir
 - **Pre-operation review**: Before disruptive changes, invoke `platform-reliability-reviewer` with prefix `pre-operation:` for adversarial risk assessment.
 - **Architecture decisions**: Spawn `talos-sre` + `platform-reliability-reviewer` with the same question for dual-perspective analysis.
 - **After incidents**: Update §Hard Constraints above if the lesson is universal. Write postmortem to `docs/` for complex incidents.
+- **Full-cluster cold cutover**: follow `docs/runbook-cold-cluster-cutover.md` (drain order, shutdown-umount escape hatch, drain-only ArgoCD interaction, NVMe-label pinning trap, hook interaction).
 - **Talos MCP-first**: Use Talos MCP tools for all supported operations instead of `talosctl` CLI. CLI-only: `upgrade-k8s`, `config backup to file`, `client version`. See `.claude/rules/talos-mcp-first.md`.
 - **Kubernetes MCP-first**: Use `mcp__kubernetes-mcp-server__*` tools for all supported read operations instead of `kubectl`. CLI-only: write ops, exec, drain, describe, logs-follow, kustomize, kubectl-linstor, token-negative reads. See `.claude/rules/kubernetes-mcp-first.md`.
 - **Talos-Kubernetes interface gotchas**:
