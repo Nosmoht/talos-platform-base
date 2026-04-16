@@ -20,9 +20,19 @@ Install Trivy locally so the pre-commit hook works:
 - macOS: `brew install aquasecurity/trivy/trivy`
 - Linux: see <https://aquasecurity.github.io/trivy/latest/getting-started/installation/>
 
-Target version in CI: see `TRIVY_VERSION` in `.github/workflows/gitops-validate.yml`.
-Local version does not need to match exactly; Trivy's config-scan rules
-are stable across minor releases.
+**Pinned version**: `.trivy-version` at the repo root is the single
+source of truth for both CI (via `aquasecurity/setup-trivy` input)
+and `scripts/run_trivy.sh` (which warns on mismatch). To match CI
+exactly, install the pinned version:
+
+```bash
+cat .trivy-version  # e.g. v0.69.2
+# then install that specific version — brew tap ships the latest,
+# asdf/mise/devbox readers consume .trivy-version directly
+```
+
+Mismatched local versions produce a warning (not an error) so you can
+still test upgrade candidates before bumping the pin.
 
 ## Exception file
 

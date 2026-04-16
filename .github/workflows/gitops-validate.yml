@@ -21,7 +21,6 @@ jobs:
       KUSTOMIZE_SHA256_LINUX_AMD64: 3ab32f92360d752a2a53e56be073b649abc1e7351b912c0fb32b960d1def854c
       CONFTEST_VERSION: v0.53.0
       KYVERNO_CLI_VERSION: v1.17.1
-      TRIVY_VERSION: v0.69.2
       SOPS_VERSION: v3.8.1
       KSOPS_VERSION: v4.3.3
       KUBECONFORM_VERSION: 0.6.7
@@ -95,7 +94,7 @@ jobs:
             echo "kustomize: $(kustomize version --short || true)"
             echo "conftest: $(conftest --version || true)"
             echo "kubeconform: $(kubeconform -v || true)"
-            echo "trivy target version: ${TRIVY_VERSION}"
+            echo "trivy target version: $(cat .trivy-version)"
             echo "sops: $(sops --version | head -n 1 || true)"
             echo "ksops: $(ksops version 2>/dev/null || true)"
           } | tee .work/tool-versions.txt
@@ -219,15 +218,23 @@ jobs:
       - name: Conftest policy checks
         run: ./scripts/run_conftest.sh
 
-      # Install the Trivy binary via the upstream setup action (no scan logic).
-      # We then invoke scripts/run_trivy.sh so local and CI run the exact same
-      # wrapper (single point of truth for --ignorefile + --skip-files).
-      # trivy-action@v0.34.0 silently stripped --ignorefile when consuming
-      # trivyignores: .trivyignore.yaml, which made the YAML ignores no-op.
+      # CI invokes the same scripts/run_trivy.sh wrapper as local pre-commit
+      # so both paths share --ignorefile + --skip-files + severity gate.
+      # Version pinned via .trivy-version (single source of truth) so setup-trivy
+      # installs the same binary used locally and cannot drift.
+      #
+      # Why not trivy-action? @v0.34.0 reads `trivyignores:` input but does not
+      # add --ignorefile to the actual invocation, silently dropping YAML-format
+      # ignores. Fixed in trivy-action@v0.35.0 (PR #508, 2026-03-07); but the
+      # setup-trivy + script split gives us identical local/CI code regardless.
+      - name: Read trivy version pin
+        id: trivy_version
+        run: echo "version=$(cat .trivy-version)" >> "$GITHUB_OUTPUT"
+
       - name: Setup Trivy
-        uses: aquasecurity/setup-trivy@v0.2.0
+        uses: aquasecurity/setup-trivy@v0.2.6
         with:
-          version: ${{ env.TRIVY_VERSION }}
+          version: ${{ steps.trivy_version.outputs.version }}
 
       - name: Trivy config scan + gate
         run: ./scripts/run_trivy.sh
