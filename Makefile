@@ -53,10 +53,7 @@ validate-gitops:
 		echo "kubeconform: $$f"; \
 		kubeconform -strict -ignore-missing-schemas "$$f"; \
 	done
-	trivy config --severity HIGH,CRITICAL --exit-code 1 \
-		--skip-files kubernetes/bootstrap/cilium/cilium.yaml \
-		--skip-files kubernetes/overlays/homelab/infrastructure/piraeus-operator/resources/storage-pool-autovg.yaml \
-		.
+	./scripts/run_trivy.sh
 
 install-pre-commit:
 	uvx pre-commit install
