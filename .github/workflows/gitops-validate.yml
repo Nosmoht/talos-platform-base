@@ -228,6 +228,7 @@ jobs:
           exit-code: '0'
           format: table
           skip-files: kubernetes/bootstrap/cilium/cilium.yaml,kubernetes/overlays/homelab/infrastructure/piraeus-operator/resources/storage-pool-autovg.yaml
+          trivyignores: .trivyignore.yaml
           output: .work/trivy-report.txt
           version: ${{ env.TRIVY_VERSION }}
 
