@@ -3,7 +3,7 @@ crds:
   keep: true
 
 global:
-  domain: argocd.homelab.local
+  domain: argocd.lan.homelab.ntbc.io
 
 server:
   certificate:
@@ -59,7 +59,7 @@ configs:
     server.repo.server.strict.tls: "false"
   cm:
     admin.enabled: "true"
-    url: https://argocd.homelab.local
+    url: https://argocd.lan.homelab.ntbc.io
     resource.compareoptions: |
       serverSideDiff: true
     resource.customizations.ignoreDifferences.apps_Deployment: |
