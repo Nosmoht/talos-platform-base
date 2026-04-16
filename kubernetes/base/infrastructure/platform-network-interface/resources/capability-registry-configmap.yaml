@@ -30,14 +30,21 @@ data:
         providers:
           - cloudnative-pg
       - id: redis-managed
+        selector: pod-label capability-provider.redis-managed
+        # Operator that labels broker pods with capability-provider.redis-managed.
         providers:
           - redis-operator
       - id: kafka-managed
         providers:
           - strimzi-kafka-operator
       - id: rabbitmq-managed
+        selector: pod-label capability-provider.rabbitmq-managed
+        # Operator that labels broker pods with capability-provider.rabbitmq-managed.
+        # Note: rabbitmq-cluster-operator (control-plane) creates the broker pods
+        # but is itself a control-plane component, not a data-path provider.
+        # messaging-topology-operator reconciles via management API
+        # (operator-dataplane CCNP).
         providers:
-          - rabbitmq-cluster-operator
           - rabbitmq-messaging-topology-operator
       - id: s3-object
         providers:

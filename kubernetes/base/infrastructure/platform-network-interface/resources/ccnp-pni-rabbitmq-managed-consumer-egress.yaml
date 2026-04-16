@@ -15,12 +15,11 @@ spec:
       k8s:io.cilium.k8s.namespace.labels.platform.io/network-interface-version: "v1"
       platform.io/capability-consumer.rabbitmq-managed: "true"
   egress:
-    # RabbitMQ server pods (managed by cluster-operator) in rabbitmq-system
+    # RabbitMQ broker pods (any namespace, identified by capability-provider label
+    # set on the RabbitmqCluster pod template via spec.override.statefulSet)
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: rabbitmq-system
-            app.kubernetes.io/component: rabbitmq
-            app.kubernetes.io/part-of: rabbitmq
+            platform.io/capability-provider.rabbitmq-managed: "true"
       toPorts:
         - ports:
             - port: "5672"   # AMQP

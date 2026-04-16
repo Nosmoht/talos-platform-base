@@ -20,9 +20,7 @@ spec:
     # multi-replica RabbitmqClusters, not in this operator-dataplane capability.
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: rabbitmq-system
-            app.kubernetes.io/component: rabbitmq
-            app.kubernetes.io/part-of: rabbitmq
+            platform.io/capability-provider.rabbitmq-managed: "true"
       toPorts:
         - ports:
             - port: "15672"   # Management HTTP

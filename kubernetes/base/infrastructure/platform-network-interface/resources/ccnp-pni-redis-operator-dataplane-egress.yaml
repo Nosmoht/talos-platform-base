@@ -14,13 +14,19 @@ spec:
       k8s:io.kubernetes.pod.namespace: redis-system
       name: redis-operator
   egress:
-    # Managed Redis replication and Sentinel pods
+    # Managed Redis replication and Sentinel pods (any namespace).
+    # capability-provider label identifies the broker; managed-by + redis_setup_type
+    # discriminate operator-controlled pods and target ports. Tenant-set
+    # capability-provider.* is blocked by Kyverno reserved-labels policy
+    # (defense-in-depth via managed-by which the operator sets itself).
     - toEndpoints:
         - matchLabels:
-            app.kubernetes.io/name: redis
+            platform.io/capability-provider.redis-managed: "true"
+            app.kubernetes.io/managed-by: redis-operator
             redis_setup_type: replication
         - matchLabels:
-            app.kubernetes.io/name: redis-sentinel
+            platform.io/capability-provider.redis-managed: "true"
+            app.kubernetes.io/managed-by: redis-operator
             redis_setup_type: sentinel
       toPorts:
         - ports:

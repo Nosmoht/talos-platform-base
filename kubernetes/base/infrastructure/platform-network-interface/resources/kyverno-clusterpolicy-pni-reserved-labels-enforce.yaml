@@ -59,6 +59,7 @@ spec:
                 - monitoring
                 - piraeus-datastore
                 - redis-system
+                - rabbitmq-system
                 - kafka
                 - vault
                 - minio
@@ -80,3 +81,49 @@ spec:
               - key: "{{ request.object.metadata.labels.\"platform.io/capability\" || '' }}"
                 operator: NotEquals
                 value: ""
+    - name: reserved-pni-capability-provider-labels-workload
+      skipBackgroundRequests: true
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - argocd
+                - kyverno
+                - cnpg-system
+                - monitoring
+                - piraeus-datastore
+                - redis-system
+                - rabbitmq-system
+                - kafka
+                - vault
+                - minio
+                - minio-operator
+                - cert-manager
+                - external-secrets
+      validate:
+        allowExistingViolations: true
+        message: >-
+          platform.io/capability-provider.* labels are reserved for provider pods
+          in operator namespaces and select PNI provider endpoints. Consumer
+          workloads must not set them — a fat-fingered or malicious capability-provider
+          label silently enables cross-namespace ingress on the capability's data ports.
+          See docs/platform-network-interface.md §Reserved Labels.
+        foreach:
+          - list: "request.object.metadata.labels | items(@, 'key', 'value')"
+            deny:
+              conditions:
+                all:
+                  - key: "{{ element.key }}"
+                    operator: Equals
+                    value: "platform.io/capability-provider.*"

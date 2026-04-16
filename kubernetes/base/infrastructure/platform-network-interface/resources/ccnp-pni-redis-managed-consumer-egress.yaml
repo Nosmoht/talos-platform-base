@@ -15,10 +15,11 @@ spec:
       k8s:io.cilium.k8s.namespace.labels.platform.io/network-interface-version: "v1"
       platform.io/capability-consumer.redis-managed: "true"
   egress:
-    # Redis instances (managed by redis-operator)
+    # Redis instances (any namespace, identified by capability-provider label
+    # set on the operator-managed pod template)
     - toEndpoints:
         - matchLabels:
-            app.kubernetes.io/name: redis
+            platform.io/capability-provider.redis-managed: "true"
       toPorts:
         - ports:
             - port: "6379"
