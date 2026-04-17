@@ -115,7 +115,7 @@ generated/worker/node-gpu-%.yaml: patches/common.yaml patches/worker-gvisor.yaml
 		--force && \
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/node-pi-%.yaml: patches/common.yaml patches/worker-pi.yaml nodes/node-pi-%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
+generated/worker/node-pi-%.yaml: patches/common.yaml patches/worker-pi.yaml patches/pi-firewall.yaml nodes/node-pi-%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
 	@tmp_secrets=$$(mktemp) && \
 	trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
 	sops -d secrets.yaml > "$$tmp_secrets" && \
@@ -123,6 +123,7 @@ generated/worker/node-pi-%.yaml: patches/common.yaml patches/worker-pi.yaml node
 		--with-secrets "$$tmp_secrets" \
 		--config-patch @patches/common.yaml \
 		--config-patch @patches/worker-pi.yaml \
+		--config-patch @patches/pi-firewall.yaml \
 		--config-patch @nodes/node-pi-$*.yaml \
 		--config-patch '{"machine":{"install":{"image":"$(PI_INSTALL_IMAGE)"}}}' \
 		--output $@ \
