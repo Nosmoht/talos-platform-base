@@ -122,6 +122,7 @@ Software versions pinned in `talos/versions.mk`. Full topology in `.claude/envir
 | Control Plane | node-01..03 | 192.168.2.61-63 | Lenovo ThinkCentre M910q |
 | Workers | node-04..06 | 192.168.2.64-66 | M910q (04-05), M920q (06) |
 | GPU Worker | node-gpu-01 | 192.168.2.67 | Custom build, r8152 USB NIC |
+| Pi / WAN Edge | node-pi-01 | per `.claude/environment.yaml` | Raspberry Pi 4B, arm64 — sole WAN entrypoint since 2026-04-17, taint-isolated |
 
 - API VIP: `192.168.2.60` · Gateway VIP: `192.168.2.70` · PodCIDR: `10.244.0.0/16`
 - Storage: LINSTOR/Piraeus CSI (DRBD, NVMe nodes via NFD label `feature.node.kubernetes.io/storage-nvme.present=true`)
