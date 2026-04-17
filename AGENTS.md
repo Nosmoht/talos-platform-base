@@ -125,7 +125,7 @@ Software versions pinned in `talos/versions.mk`. Full topology in `.claude/envir
 
 - API VIP: `192.168.2.60` · Gateway VIP: `192.168.2.70` · PodCIDR: `10.244.0.0/16`
 - Storage: LINSTOR/Piraeus CSI (DRBD, NVMe nodes via NFD label `feature.node.kubernetes.io/storage-nvme.present=true`)
-- Networking: Cilium WireGuard strict mode · Gateway API (hostNetwork Envoy) · macvlan `ingress-front`
+- Networking: Cilium WireGuard strict mode · Gateway API (hostNetwork Envoy) · WAN via `pi-public-ingress` on `node-pi-01` (hostNetwork nginx stream, since 2026-04-17) · LAN via macvlan `ingress-front` (internal VIP for `*.homelab.local` / `*.lan.homelab.ntbc.io`)
 - GitOps: ArgoCD with Kustomize base/overlays · sync-wave: projects(-1) → infrastructure(0) → apps(1)
 - Required tools: `talosctl`, `kubectl`, `kubectl linstor`, `make`, `sops` (AGE), `yq`, `curl`, `jq`
 - Exclude from search: `kubevirt-operator.yaml` (7669 lines), `cdi-operator.yaml` (5486 lines), `bootstrap/cilium/cilium.yaml` (generated), `.auto-claude/worktrees/`
@@ -137,7 +137,8 @@ Software versions pinned in `talos/versions.mk`. Full topology in `.claude/envir
 - **Sync-wave** — ArgoCD annotation for deploy order: `-1` (AppProjects) → `0` (infra) → `1` (apps).
 - **Schematic** — Talos Image Factory spec embedding system extensions into installer images. See `talos/.schematic-ids.mk`.
 - **CCNP/CNP** — CiliumClusterwideNetworkPolicy / CiliumNetworkPolicy. Named `ccnp-*.yaml` / `cnp-*.yaml`.
-- **macvlan** — Virtual NIC on physical interface; used for `ingress-front` stable MAC assignment.
+- **macvlan** — Virtual NIC on physical interface; used for `ingress-front` stable-MAC LAN VIP. *macvlan-on-pod + FritzBox port-forward is structurally unsupported on FRITZ!OS ≥ 8.25* — see `docs/2026-04-15-fritzbox-macvlan-port-forward-exhaustion.md`. WAN ingress uses `pi-public-ingress` hostNetwork instead.
+- **pi-public-ingress** — hostNetwork nginx stream pod on `node-pi-01`; sole WAN entrypoint since 2026-04-17. FritzBox port-forwards TCP/443 directly to the Pi's NIC (no macvlan). Performs SNI allowlist filtering against `*.homelab.ntbc.io` and L4-proxies to gateway worker nodes. Node is cordoned via `homelab.io/pi-reserved=true:NoSchedule` taint. See `docs/adr-pi-sole-public-ingress.md`.
 - **DRBD** — Distributed Replicated Block Device — LINSTOR replication layer for persistent storage.
 
 ## Operational Patterns
