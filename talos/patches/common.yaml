@@ -14,6 +14,14 @@ machine:
       rotate-server-certificates: true
   network:
     disableSearchDomain: true
+  registries:
+    # docker.io resolves AAAA-only on this network and nodes have no working
+    # IPv6 egress — pulls fail with "network is unreachable". Redirect to
+    # Google's transparent docker.io mirror (IPv4-reachable, no auth required).
+    mirrors:
+      docker.io:
+        endpoints:
+          - https://mirror.gcr.io
   sysctls:
     # --- Performance: Storage I/O (dirty page tuning for SSD/NVMe) ---
     vm.dirty_ratio: "10"
