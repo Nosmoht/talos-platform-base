@@ -156,6 +156,7 @@ Software versions pinned in `talos/versions.mk`. Full topology in `.claude/envir
   - `extraManifests` does NOT garbage-collect: removing resources from `cilium.yaml` does NOT delete them — orphans must be `kubectl delete`d manually
   - Apply Talos configs BEFORE `upgrade-k8s`: reads extraManifests URLs from LIVE node config — apply to all CP nodes first
   - `upgrade-k8s` does NOT reliably update existing ConfigMaps: use `kubectl apply --server-side --force-conflicts --field-manager=talos`
+  - `extraManifests` are URL-cached per full URL (incl. query string): editing `kubernetes/bootstrap/cilium/cilium.yaml` content alone is invisible to nodes. Bump the `?v=<version>-<n>` cache-bust marker in `talos/patches/controlplane.yaml`, regenerate configs, and re-apply to ALL control-plane nodes BEFORE `upgrade-k8s` — otherwise nodes serve the stale manifest and any admission denial (Kyverno, etc.) reappears unchanged.
 
 ## Tool-Agnostic Safety Invariants
 
