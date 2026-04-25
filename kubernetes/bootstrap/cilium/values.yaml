@@ -144,6 +144,21 @@ loadBalancer:
   l2:
     enabled: true
 
+# --- cilium-secrets Namespace labels ---
+# PNI contract (platform.io/network-interface-version + network-profile) is required by
+# the pni-contract-enforce Kyverno policy. Without these labels, `talosctl upgrade-k8s`
+# re-applying the bootstrap manifest is denied at admission.
+# PSA labels match the live state and prevent non-SSA apply from stripping them.
+secretsNamespaceLabels:
+  platform.io/network-interface-version: v1
+  platform.io/network-profile: privileged
+  pod-security.kubernetes.io/enforce: restricted
+  pod-security.kubernetes.io/enforce-version: latest
+  pod-security.kubernetes.io/audit: restricted
+  pod-security.kubernetes.io/audit-version: latest
+  pod-security.kubernetes.io/warn: restricted
+  pod-security.kubernetes.io/warn-version: latest
+
 # --- Operator ---
 operator:
   replicas: 2
