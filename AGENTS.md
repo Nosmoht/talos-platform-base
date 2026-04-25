@@ -181,18 +181,21 @@ Claude Code auto-loads each rule via `paths:` frontmatter. **Codex CLI**: scan t
 | Editing context | Rule file |
 |---|---|
 | ArgoCD sync, App/Project drift, reconcile ops | `.claude/rules/argocd-troubleshooting.md` |
+| Cilium bootstrap via Talos `extraManifests` (Hubble cert-gen, ConfigMap update gotcha) | `.claude/rules/cilium-bootstrap.md` |
 | Cilium Gateway API, HTTPRoute, TLSPolicy | `.claude/rules/cilium-gateway-api.md` |
 | CiliumNetworkPolicy (`cnp-*.yaml`, `ccnp-*.yaml`) | `.claude/rules/cilium-network-policy.md` |
 | Cilium agent / service BPF-map desync, ClusterIP timeouts | `.claude/rules/cilium-service-sync.md` |
 | ArgoCD Application/Kustomize overlays | `.claude/rules/argocd-structure.md` |
+| Generic CSI patterns (driver-agnostic mount/unmount, Talos-upgrade unmount-deadlock) | `.claude/rules/k8s-csi.md` |
+| Generic CNI patterns (Multus / secondary networks, CNI-agnostic eBPF/policy semantics) | `.claude/rules/k8s-cni.md` |
 | LINSTOR/Piraeus/DRBD storage changes | `.claude/rules/linstor-storage-guardrails.md` |
 | MinIO tenant/operator changes, S3 backend proposals | `.claude/rules/minio-exit.md` |
 | Manifest quality (labels, naming conventions) | `.claude/rules/manifest-quality.md` |
 | Prometheus, Grafana, kube-prometheus-stack | `.claude/rules/monitoring-observability.md` |
 | Glob/Grep search scope | `.claude/rules/search-scope.md` |
-| Talos machine config / patches | `.claude/rules/talos-config.md` |
+| Talos machine config / patches / lifecycle / API behaviour / node recovery | `.claude/rules/talos-config.md` |
 | Talos Image Factory / schematics | `.claude/rules/talos-image-factory.md` |
-| Talos operations / lifecycle (MCP-first, apply, upgrade, gotchas) | `.claude/rules/talos-mcp-first.md` |
+| Talos MCP-vs-CLI tool policy + parameter defaults | `.claude/rules/talos-mcp-first.md` |
 | Talos node inventory / endpoint flags | `.claude/rules/talos-nodes.md` |
 | Kubernetes operations (prefer MCP over kubectl) | `.claude/rules/kubernetes-mcp-first.md` |
 
