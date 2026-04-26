@@ -281,13 +281,26 @@ env = { TALOS_CONTEXT = "homelab", TALOS_MCP_ALLOWED_PATHS = "/proc,/sys,/var/lo
 
 At session start, scan the GitHub Issues backlog before doing any work. Use the `github` MCP server (see §MCP Server Configuration above) — fall back to `gh` CLI only if the MCP tool errors.
 
-1. `mcp__github__list_issues(state="open", labels=["ready"])` — identify issues marked ready for work
-2. `mcp__github__list_issues(state="open", labels=["in-progress"])` — resume anything started but not finished
-3. **Status gate**: only the `ready` label authorizes work to begin. Issues without `ready` (proposals, drafts, untriaged) must NOT be started without explicit user authorization — ask first.
-4. During work: create GitHub Issues for bugs found (`bug` label + `severity/*`) and emerging tasks (no `ready` label until triaged).
+1. `mcp__github__list_issues(state="open", labels=["status: ready"])` — identify issues marked ready for work
+2. `mcp__github__list_issues(state="open", labels=["status: in-progress"])` — resume anything started but not finished
+3. **Status gate**: only the `status: ready` label authorizes work to begin. Issues without `status: ready` (proposals, drafts, untriaged, `status: triage`) must NOT be started without explicit user authorization — ask first.
+4. During work: create GitHub Issues for bugs found (`bug` label + `severity/*`) and emerging tasks (no `status: ready` label until triaged).
 5. When completing work: close the issue with a commit reference in the close comment.
 
-**Fallback** (MCP unavailable): `gh issue list --state open --label ready` and `gh issue list --state open --label in-progress`.
+**Risk classification** (set during triage alongside `status: ready`):
+- `risk: low` — reversible, narrow scope, portable; routine path with single human gate at PR review
+- `risk: medium` — touches multiple subsystems OR has rollback cost; requires SPEC-approval gate before `status: ready`
+- `risk: high` — infra-mutating, secret-touching, production-impacting; requires SPEC-approval + secondary signature from a domain reviewer (`talos-sre` for Talos, `platform-reliability-reviewer` for cluster-wide changes)
+
+**Lifecycle states** (label-driven):
+- (no status label) — backlog, not yet triaged
+- `status: triage` — being triaged
+- `status: ready` — authorized for agent or human pickup
+- `status: in-progress` — actively being worked
+- `status: needs-review` — implementation complete, awaiting review
+- `status: blocked` — stuck on dependency or external factor (preserves full context for human untangling)
+
+**Fallback** (MCP unavailable): `gh issue list --state open --label "status: ready"` and `gh issue list --state open --label "status: in-progress"`.
 
 ## Deltas vs Claude Code (For Codex CLI Users)
 
