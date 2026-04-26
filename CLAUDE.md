@@ -35,6 +35,10 @@ see AGENTS.md §Tool-Agnostic Safety Invariants.
 - `talos-sre` — Talos/hardware operations perspective
 - `platform-reliability-reviewer` — adversarial risk assessment (prefix: `pre-operation:` or `pre-merge:`)
 - `researcher` — upstream research, CVE intelligence, version compatibility
+- `builder-implementer` — executes approved /implement-issue plan in isolated context (Phase 4); writes `.work/issue-<N>/implementation-summary.md`
+- `builder-evaluator` — verifies implementation against acceptance criteria in isolated context (Phase 7.5); read-only by tool restriction; writes `.work/issue-<N>/evaluator-findings.md`
+
+The builder-implementer and builder-evaluator subagents enforce Anthropic Principle 1 ("separate the judge from the builder") via mechanical context-window isolation per [Tier-1 Claude Code docs](https://code.claude.com/docs/en/sub-agents). See `docs/issue-workflow.md` for the full lifecycle and `/implement-issue` Skill phase mapping.
 
 Under Codex CLI: no auto-dispatch — explicit invocation only. See AGENTS.md §Deltas vs Claude Code.
 

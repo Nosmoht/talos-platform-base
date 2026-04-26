@@ -281,6 +281,8 @@ env = { TALOS_CONTEXT = "homelab", TALOS_MCP_ALLOWED_PATHS = "/proc,/sys,/var/lo
 
 At session start, scan the GitHub Issues backlog before doing any work. Use the `github` MCP server (see §MCP Server Configuration above) — fall back to `gh` CLI only if the MCP tool errors.
 
+> **Full lifecycle reference**: see `docs/issue-workflow.md` for state-machine diagram, `scripts/issue-state.sh` invocation contract, subagent dispatch points, and the `/implement-issue` Skill phase mapping.
+
 1. `mcp__github__list_issues(state="open", labels=["status: ready"])` — identify issues marked ready for work
 2. `mcp__github__list_issues(state="open", labels=["status: in-progress"])` — resume anything started but not finished
 3. **Status gate**: only the `status: ready` label authorizes work to begin. Issues without `status: ready` (proposals, drafts, untriaged, `status: triage`) must NOT be started without explicit user authorization — ask first.
@@ -307,7 +309,7 @@ At session start, scan the GitHub Issues backlog before doing any work. Use the 
 These differences are permanent by design. They are documented here, not hidden.
 
 1. **No PreToolUse interception**: SOPS protection fires at `git commit` (pre-commit framework), not during editing. Plaintext in `*.sops.yaml` during the session is not blocked — only caught before commit. Run `make install-pre-commit` after cloning.
-2. **No auto-subagent dispatch**: `platform-reliability-reviewer`, `talos-sre`, `gitops-operator`, `researcher` run only on explicit request. For pre-merge review, ask: *"Run platform-reliability-reviewer on this diff."*
+2. **No auto-subagent dispatch**: `platform-reliability-reviewer`, `talos-sre`, `gitops-operator`, `researcher`, `builder-implementer`, `builder-evaluator` run only on explicit request. For pre-merge review, ask: *"Run platform-reliability-reviewer on this diff."* The builder-implementer / builder-evaluator subagents have no Codex CLI equivalent — Codex falls back to inline implementation with reduced Anthropic-Principle-1 guarantee (logged warning); see `docs/issue-workflow.md` §Codex CLI compatibility.
 3. **No automatic `.claude/environment.yaml` load**: Read this file explicitly at session start for cluster topology.
 4. **No `paths:` rule auto-loading**: See §Domain Rules above — scan the table before editing files in a listed context and read the rule with the Read tool.
 5. **`--no-verify` bypass is possible locally**: Required PR checks (`gitleaks-action`, `hard-constraints-check`) block merge server-side. Local hooks are defense-in-depth, not the last line.
