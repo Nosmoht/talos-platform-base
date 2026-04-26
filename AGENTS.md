@@ -206,7 +206,11 @@ Claude Code dispatches skills via `/skill-name` or intent matching (except Manua
 | Trigger phrase | Skill path | Notes |
 |---|---|---|
 | analyze node hardware | `.claude/skills/analyze-node-hardware/` | Manual-only |
+| audit IRQ affinity | `.claude/skills/irq-affinity-auditor/` | Manual-only (Phase-1a primitive) |
+| audit kernel parameters | `.claude/skills/kernel-param-auditor/` | Manual-only, Refs (Phase-1a primitive) |
+| audit NIC health | `.claude/skills/nic-health-audit/` | Manual-only, Refs (Phase-1a primitive) |
 | debug Cilium policy | `.claude/skills/cilium-policy-debug/` | Manual-only, Refs |
+| detect link flaps | `.claude/skills/link-flap-detector/` | Manual-only, Refs (Phase-1a primitive) |
 | cluster health snapshot | `.claude/skills/cluster-health-snapshot/` | Manual-only |
 | execute Cilium upgrade | `.claude/skills/execute-cilium-upgrade/` | Manual-only |
 | execute Talos upgrade | `.claude/skills/execute-talos-upgrade/` | Manual-only |
