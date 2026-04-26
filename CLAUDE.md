@@ -40,6 +40,8 @@ see AGENTS.md §Tool-Agnostic Safety Invariants.
 
 The builder-implementer and builder-evaluator subagents enforce Anthropic Principle 1 ("separate the judge from the builder") via mechanical context-window isolation per [Tier-1 Claude Code docs](https://code.claude.com/docs/en/sub-agents). See `docs/issue-workflow.md` for the full lifecycle and `/implement-issue` Skill phase mapping.
 
+**Session-restart caveat**: Claude Code scans `.claude/agents/` at session start only. Newly-added subagent definitions are NOT registered mid-session (or post-`/compact`). After adding or renaming a subagent file, start a fresh Claude Code session in the repo cwd. See `docs/issue-workflow.md` §Discovery / session-restart caveat.
+
 Under Codex CLI: no auto-dispatch — explicit invocation only. See AGENTS.md §Deltas vs Claude Code.
 
 ### Context Architecture

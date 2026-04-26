@@ -150,6 +150,24 @@ specific tool access, and independent permissions."
 - **PASS rule**: zero CRITICAL findings AND zero unaddressed criteria AND zero
   Hard Constraint violations. Anything else: FAIL.
 
+### Discovery / session-restart caveat
+
+Claude Code scans `.claude/agents/` **at session start only**. Adding a new
+subagent definition mid-session (or post-`/compact`) does NOT register it with
+the Agent dispatcher; calls fail with `Agent type '<name>' not found`. To pick
+up a newly-added or renamed subagent, **start a fresh Claude Code session** in
+the repo cwd. This applies to `builder-implementer`, `builder-evaluator`, and
+any future subagent additions. (Same root cause as the cache-breaking actions
+in `~/workspace/claude-config/rules/session-optimization.md`.)
+
+Validated empirically on 2026-04-26: builder-* files were created mid-session;
+after `/compact` they remained absent from the available-agents list while
+pre-existing subagents (`gitops-operator`, `platform-reliability-reviewer`,
+etc.) continued to dispatch normally. Frontmatter was identical-shape — the
+issue is harness state, not file content.
+
+Codex CLI is unaffected (no auto-discovery; subagents are invoked explicitly).
+
 ## /implement-issue phase mapping
 
 The `/implement-issue` Skill (in `~/workspace/claude-config/skills/implement-issue/`)
