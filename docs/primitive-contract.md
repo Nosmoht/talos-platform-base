@@ -84,6 +84,15 @@ Aggregate-verdict precedence: `CRITICAL > WARNING > HEALTHY > PRECONDITION_NOT_M
 
 If preconditions are unmet (contract unreadable, sysfs path missing, no nodes discovered), emit a top-level `verdict: PRECONDITION_NOT_MET`, empty `results: []`, and `preconditions.met: false`. The skill exits 0 — the PRECONDITION_NOT_MET verdict is information, not a process error.
 
+### Primitive-specific extensions
+
+Primitives MAY extend the schema with additional keys when the extension carries audit-grade information that downstream consumers (Phase-5 composite #113) need to differentiate severity classes or audit dimensions. Two extension points exist:
+
+- **Per-result extensions** — added on each `results[].*` entry. Example: `kernel-param-auditor` adds `role: "cp|worker|storage|gpu"` so the composite can group findings by node-role.
+- **Per-metric extensions** — added on each `results[].metrics.<key>` entry. Example: `kernel-param-auditor` adds `layer: "1|2|3"` (Universal / OS-vendor / cluster-tuning) plus a top-level `summary.by_layer.{1,2,3}.{healthy,warning,critical}` rollup. See `.claude/skills/kernel-param-auditor/references/role-baselines.md` for the layer definitions.
+
+**Forward-compat clause**: downstream consumers MUST tolerate unknown extension keys (do not fail on them). When adding an extension, document it in the primitive's `SKILL.md` §Hard Rules so the contract is discoverable.
+
 ## B4. Auto-Discovery + Portability + Baselines
 
 **Auto-Discovery**: Node list via `resources_list(apiVersion="v1", kind="Node")`. Extract internal IPs from `items[].status.addresses[?type=="InternalIP"].address`; map IP → `items[].metadata.name`. Phase-1a primitives target ALL nodes including taint-isolated nodes (e.g. `node-pi-01`) — Talos MCP `talos_read_file` does not require pod-schedulability, so the `homelab.io/pi-reserved=true:NoSchedule` taint is irrelevant.
