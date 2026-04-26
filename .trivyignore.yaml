@@ -181,3 +181,37 @@ misconfigurations:
       Secrets. Secret RBAC is upstream-required.
       Upstream: github.com/rabbitmq/messaging-topology-operator.
     expired_at: 2027-04-16
+
+  # ========================================================================
+  # (5) pi-public-ingress — sole WAN entrypoint (hostNetwork+hostPort architectural)
+  # ========================================================================
+  - id: AVD-KSV-0024
+    paths:
+      - kubernetes/overlays/homelab/infrastructure/pi-public-ingress/resources/deployment.yaml
+    statement: >-
+      pi-public-ingress is the sole WAN entrypoint since 2026-04-17 (see
+      docs/adr-pi-sole-public-ingress.md). FritzBox forwards TCP/443 directly
+      to the Pi NIC; the nginx stream pod must bind hostPort 443 to receive
+      those packets. The macvlan-on-pod alternative was demonstrated
+      structurally unsupported on FRITZ!OS ≥ 8.25 (see
+      docs/2026-04-15-fritzbox-macvlan-port-forward-exhaustion.md). Removing
+      hostPort breaks the entire public ingress chain. Node-pi-01 is
+      taint-isolated (homelab.io/pi-reserved=true:NoSchedule) so blast radius
+      of the host port is bounded to one node.
+    expired_at: 2027-04-16
+  - id: AVD-KSV-0009
+    paths:
+      - kubernetes/overlays/homelab/infrastructure/pi-public-ingress/resources/deployment.yaml
+    statement: >-
+      pi-public-ingress requires hostNetwork:true on node-pi-01 because it is
+      the sole WAN entrypoint (see docs/adr-pi-sole-public-ingress.md). The
+      nginx stream pod must share the host network namespace so FritzBox
+      port-forwards (TCP/443 → Pi NIC) deliver packets directly to the pod's
+      listener; without hostNetwork the Pod-CIDR-routed alternative fails for
+      the same FRITZ!OS ≥ 8.25 macvlan-port-forward exhaustion reason
+      documented in docs/2026-04-15-fritzbox-macvlan-port-forward-exhaustion.md.
+      Same architectural coupling as the KSV-0024 entry above; both findings
+      collapse to a single root cause (Pi-NIC-direct WAN delivery). Node-pi-01
+      is taint-isolated (homelab.io/pi-reserved=true:NoSchedule), bounding
+      blast radius of host-namespace sharing to one node.
+    expired_at: 2027-04-16
