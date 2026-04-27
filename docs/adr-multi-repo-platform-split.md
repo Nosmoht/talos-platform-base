@@ -30,7 +30,7 @@ existing repo evolving into the base layer and history preserved via
 |---|---|---|---|
 | **`talos-platform-base`** (current Talos-Homelab repo, renamed) | Nosmoht | personal | Talos templates, Cilium/Piraeus/KubeVirt/Kyverno/cert-manager Helm bases, ArgoCD bootstrap (parameterized), AGENTS.md core constraints. NO cluster identity. |
 | **`kube-agent-harness`** (existing private repo, reused as plugin) | devobagmbh | private | `.claude/{skills,agents,rules,references,hooks}` extracted from current repo + existing harness content. Acts as Claude-Code plugin for both cluster repos. |
-| **`talos-homelab-cluster`** (new repo via filter-repo) | Nosmoht | personal | `kubernetes/overlays/homelab/**`, `talos/nodes/`, `.claude/environment.yaml`, homelab-specific ADRs. Consumes base + plugin. |
+| **`talos-homelab-cluster`** (new repo via filter-repo) | Nosmoht | personal | `kubernetes/overlays/homelab/**`, `talos/nodes/`, `cluster.yaml` (cluster-identity SOT at repo root), homelab-specific ADRs. Consumes base + plugin. |
 | **`talos-office-lab-cluster`** (new repo, scaffold from template) | corporate / devobagmbh | private | Office-lab cluster identity. Consumes base + plugin. |
 
 **Per-cluster trust model** (resolves #66): Each cluster is a self-rooted peer.
@@ -93,9 +93,12 @@ fallback only.
 - `kubernetes/base/infrastructure/**/namespace.yaml` and PNI CCNP files — `instance: homelab`, `part-of: homelab` labels (~14 files).
 - `kubernetes/bootstrap/argocd/root-application.yaml` — hardcoded `repoURL` and `path` (raw YAML, not a template).
 
+**Cluster-identity SOT location**: A single `cluster.yaml` at the repo **root** (gitignored) carries cluster name, API VIP, repo URL, overlay name, NTP server, node IPs, and hardware hints. `cluster.yaml.example` is committed as the schema template. The path is tool-agnostic — the repo must work with vanilla `make` + `kubectl` + `talosctl` even without any AI tooling installed; therefore the SOT does NOT live under `.claude/` (that namespace is reserved for tool integration only). This relocation from `.claude/environment.yaml` is part of Phase 1.
+
 **Parameterization mechanisms:**
-- Talos Makefile: `CLUSTER ?= homelab`, `include clusters/$(CLUSTER).mk`. Default preserves current behaviour.
-- ArgoCD root-application: render via `envsubst` or Make target generating the manifest from a template (`root-application.yaml.tmpl`) into a gitignored `_out/` path that `make argocd-bootstrap` applies. Template variables: `${REPO_URL}`, `${OVERLAY}`, `${CLUSTER_NAME}`. Document the mechanism in the Phase-1 sub-issue acceptance.
+- Talos Makefile reads from `cluster.yaml` via `yq -e` (no parallel `.mk` files; Makefile becomes a first-class consumer of the same SOT that ArgoCD Application CRs use). Multi-cluster usage: `make ENV=<path> gen-configs`. `ENV ?= ../cluster.yaml`.
+- ArgoCD root-application: single template (`root-application.yaml.tmpl`) rendered via `envsubst` from `cluster.yaml` values into gitignored `_out/`. Template variables: `${REPO_URL}`, `${OVERLAY}`, `${CLUSTER_NAME}`, `${TARGET_REVISION:-main}`. Validation via `yq -e` (fail-fast on missing keys).
+- NTP: per-cluster required value in `cluster.yaml` (`cluster.ntp_server`); `talos/patches/common.yaml` loses its `TimeSyncConfig` block; per-cluster patch template applies the value at gen-config time. Rejected sane-public-default: silent fallback when corporate firewall blocks public NTP would mask real time-sync breakage.
 - Helm values cluster-specific tokens: extract into per-overlay `values-<cluster>.yaml` or kustomize `patchesStrategicMerge` overlays.
 - Namespace labels: `instance:` and `part-of:` become per-overlay kustomize patches against base namespace manifests.
 
