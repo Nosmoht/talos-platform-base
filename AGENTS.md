@@ -169,7 +169,7 @@ Enforcement layers that apply regardless of which AI tool is used:
 | SOPS encryption state of all `*.sops.yaml` | pre-commit hook wrapping `scripts/verify_sops_files.sh` | Tool-agnostic; enforced at `git commit` time |
 | AWS/GitHub tokens in any file | pre-commit `gitleaks` hook | Credential leak prevention |
 | Literal tokens in `.codex/config.toml` | pre-commit `check-codex-config-placeholders.sh` | Env vars must use `${VAR}` expansion, not literals |
-| `git commit --no-verify` bypass | CI `gitleaks-action` (required PR check) | Last backstop — blocks merge even if local hooks bypassed |
+| `git commit --no-verify` bypass | CI `gitleaks` CLI in `gitops-validate.yml` `secret-scan` job (required PR check) | Last backstop — blocks merge even if local hooks bypassed |
 | Forbidden Kubernetes kinds (Ingress, Endpoints) | CI `hard-constraints-check.yml` (required PR check) | Server-side enforcement of §Hard Constraints |
 
 **Codex CLI note**: No PreToolUse hooks fire under Codex. SOPS protection begins at `git commit` via pre-commit framework. Run `make install-pre-commit` after cloning.
@@ -312,5 +312,5 @@ These differences are permanent by design. They are documented here, not hidden.
 2. **No auto-subagent dispatch**: `platform-reliability-reviewer`, `talos-sre`, `gitops-operator`, `researcher`, `builder-implementer`, `builder-evaluator` run only on explicit request. For pre-merge review, ask: *"Run platform-reliability-reviewer on this diff."* The builder-implementer / builder-evaluator subagents have no Codex CLI equivalent — Codex falls back to inline implementation with reduced Anthropic-Principle-1 guarantee (logged warning); see `docs/issue-workflow.md` §Codex CLI compatibility.
 3. **No automatic `.claude/environment.yaml` load**: Read this file explicitly at session start for cluster topology.
 4. **No `paths:` rule auto-loading**: See §Domain Rules above — scan the table before editing files in a listed context and read the rule with the Read tool.
-5. **`--no-verify` bypass is possible locally**: Required PR checks (`gitleaks-action`, `hard-constraints-check`) block merge server-side. Local hooks are defense-in-depth, not the last line.
+5. **`--no-verify` bypass is possible locally**: Required PR checks (`gitleaks` CLI in `gitops-validate.yml`, `hard-constraints-check`) block merge server-side. Local hooks are defense-in-depth, not the last line.
 6. **GitHub Push Protection** must be enabled in repo settings (one-time manual step): Settings → Code security → Push protection → Enable. This is a hard prerequisite for server-side secret blocking.
