@@ -4,8 +4,6 @@ metadata:
   name: cert-manager
   labels:
     app.kubernetes.io/name: cert-manager
-    app.kubernetes.io/instance: homelab
-    app.kubernetes.io/part-of: homelab
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: managed

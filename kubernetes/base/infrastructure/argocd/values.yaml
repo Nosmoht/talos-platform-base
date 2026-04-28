@@ -2,9 +2,6 @@ crds:
   install: true
   keep: true
 
-global:
-  domain: argocd.lan.homelab.ntbc.io
-
 server:
   certificate:
     enabled: true
@@ -59,7 +56,6 @@ configs:
     server.repo.server.strict.tls: "false"
   cm:
     admin.enabled: "true"
-    url: https://argocd.lan.homelab.ntbc.io
     resource.compareoptions: |
       serverSideDiff: true
     resource.customizations.ignoreDifferences.apps_Deployment: |

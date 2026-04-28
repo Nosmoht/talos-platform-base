@@ -93,7 +93,7 @@ fallback only.
 - `kubernetes/base/infrastructure/**/namespace.yaml` and PNI CCNP files — `instance: homelab`, `part-of: homelab` labels (~14 files).
 - `kubernetes/bootstrap/argocd/root-application.yaml` — hardcoded `repoURL` and `path` (raw YAML, not a template).
 
-**Cluster-identity SOT location**: A single `cluster.yaml` at the repo **root** (gitignored) carries cluster name, API VIP, repo URL, overlay name, NTP server, node IPs, and hardware hints. `cluster.yaml.example` is committed as the schema template. The path is tool-agnostic — the repo must work with vanilla `make` + `kubectl` + `talosctl` even without any AI tooling installed; therefore the SOT does NOT live under `.claude/` (that namespace is reserved for tool integration only). This relocation from `.claude/environment.yaml` is part of Phase 1.
+**Cluster-identity SOT location**: A single `cluster.yaml` at the repo **root** (gitignored) carries cluster name, API VIP, repo URL, overlay name, NTP server, node IPs, and hardware hints. `cluster.yaml.example` is committed as the schema template. The path is tool-agnostic — the repo must work with vanilla `make` + `kubectl` + `talosctl` even without any AI tooling installed; therefore the SOT does NOT live under `.claude/` (that namespace is reserved for tool integration only). This relocation from `cluster.yaml` is part of Phase 1.
 
 **Parameterization mechanisms:**
 - Talos Makefile reads from `cluster.yaml` via `yq -e` (no parallel `.mk` files; Makefile becomes a first-class consumer of the same SOT that ArgoCD Application CRs use). Multi-cluster usage: `make ENV=<path> gen-configs`. `ENV ?= ../cluster.yaml`.

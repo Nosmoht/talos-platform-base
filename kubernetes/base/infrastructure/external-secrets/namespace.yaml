@@ -4,8 +4,6 @@ metadata:
   name: external-secrets
   labels:
     app.kubernetes.io/name: external-secrets
-    app.kubernetes.io/instance: homelab
-    app.kubernetes.io/part-of: homelab
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: managed

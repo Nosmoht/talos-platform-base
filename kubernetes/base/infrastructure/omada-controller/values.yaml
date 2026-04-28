@@ -9,7 +9,7 @@ image:
 
 config:
   # Runs the container as non-root. Required for PSA baseline enforcement on
-  # the omada-controller namespace (see overlays/homelab/infrastructure/namespaces-psa.yaml).
+  # the omada-controller namespace (see overlays/<cluster>/infrastructure/namespaces-psa.yaml).
   rootless: true
   timezone: Europe/Berlin
 

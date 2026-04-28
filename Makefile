@@ -1,4 +1,6 @@
-.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall
+.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall migrate-cluster-yaml .argocd-bootstrap-render
+
+ENV ?= cluster.yaml
 
 # MCP server versions — pinned to verified official sources (homebrew/core, containers/k8s, npm/talos-mcp).
 MCP_GITHUB_VERSION  := 0.33.0
@@ -22,9 +24,40 @@ argocd-install:
 		--dry-run=client -o yaml | kubectl apply -f -
 	kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
 
-argocd-bootstrap: argocd-install
-	kubectl apply -f kubernetes/bootstrap/argocd/root-project.yaml
-	kubectl apply -f kubernetes/bootstrap/argocd/root-application.yaml
+migrate-cluster-yaml: cluster.yaml.example
+	@if [ -e .claude/environment.yaml ] && [ ! -e cluster.yaml ]; then \
+	  git mv .claude/environment.yaml cluster.yaml 2>/dev/null || mv .claude/environment.yaml cluster.yaml; \
+	  echo "Migrated .claude/environment.yaml -> cluster.yaml"; \
+	fi; \
+	if [ ! -e cluster.yaml ]; then \
+	  cp cluster.yaml.example cluster.yaml && \
+	  echo "Created cluster.yaml from cluster.yaml.example -- fill in your cluster values"; \
+	fi; \
+	if ! yq -e '.cluster.ntp_server' cluster.yaml >/dev/null 2>&1; then \
+	  echo "ERROR: cluster.yaml missing .cluster.ntp_server -- add it (e.g. yq -i '.cluster.ntp_server = \"<ntp-ip>\"' cluster.yaml)"; \
+	  exit 1; \
+	fi
+
+.argocd-bootstrap-render:
+	@CLUSTER_NAME=$$(yq -e '.cluster.name' $(ENV)); \
+	 REPO_URL=$$(yq -e '.repo.url' $(ENV)); \
+	 OVERLAY=$$(yq -e '.cluster.overlay' $(ENV)); \
+	 TARGET_REVISION=$$(yq -e '.cluster.target_revision // "main"' $(ENV)); \
+	 for v in "$$CLUSTER_NAME" "$$REPO_URL" "$$OVERLAY" "$$TARGET_REVISION"; do \
+	   case "$$v" in *\$$*) echo "ERROR: cluster.yaml value contains '$$' which is unsafe for envsubst: $$v"; exit 1;; esac; \
+	 done; \
+	 mkdir -p kubernetes/bootstrap/argocd/_out; \
+	 export CLUSTER_NAME REPO_URL OVERLAY TARGET_REVISION; \
+	 envsubst '$$CLUSTER_NAME $$REPO_URL $$OVERLAY $$TARGET_REVISION' \
+	   < kubernetes/bootstrap/argocd/root-application.yaml.tmpl \
+	   > kubernetes/bootstrap/argocd/_out/root-application.yaml; \
+	 envsubst '$$CLUSTER_NAME $$REPO_URL' \
+	   < kubernetes/bootstrap/argocd/root-project.yaml.tmpl \
+	   > kubernetes/bootstrap/argocd/_out/root-project.yaml
+
+argocd-bootstrap: argocd-install .argocd-bootstrap-render
+	kubectl apply -f kubernetes/bootstrap/argocd/_out/root-project.yaml
+	kubectl apply -f kubernetes/bootstrap/argocd/_out/root-application.yaml
 
 argocd-password:
 	@kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo

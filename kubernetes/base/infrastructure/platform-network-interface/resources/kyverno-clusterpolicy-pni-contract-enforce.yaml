@@ -4,9 +4,7 @@ metadata:
   name: pni-contract-audit
   labels:
     app.kubernetes.io/name: platform-network-interface
-    app.kubernetes.io/instance: homelab
     app.kubernetes.io/component: policy-governance
-    app.kubernetes.io/part-of: homelab
     app.kubernetes.io/managed-by: argocd
 spec:
   validationFailureAction: Enforce

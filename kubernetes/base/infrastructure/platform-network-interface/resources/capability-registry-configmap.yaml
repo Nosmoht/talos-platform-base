@@ -5,9 +5,7 @@ metadata:
   namespace: kyverno
   labels:
     app.kubernetes.io/name: platform-network-interface
-    app.kubernetes.io/instance: homelab
     app.kubernetes.io/component: capability-registry
-    app.kubernetes.io/part-of: homelab
     app.kubernetes.io/managed-by: argocd
 data:
   interfaceVersion: "v1"
@@ -63,8 +61,8 @@ data:
       - id: external-gateway-routes
         providers:
           - gateway-api
-        # Opt-in to attach HTTPRoutes to the *.homelab.ntbc.io listener on
-        # homelab-gateway. Network policy is unchanged — uses existing
+        # Opt-in to attach HTTPRoutes to the *.<your-cluster-fqdn> listener on
+        # the cluster gateway. Network policy is unchanged — uses existing
         # gateway-backend capability for Envoy->consumer traffic; this label only
         # controls Gateway-API allowedRoutes selection on the external-https
         # listener.

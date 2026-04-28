@@ -4,8 +4,6 @@ metadata:
   name: minio-operator
   labels:
     app.kubernetes.io/name: minio-operator
-    app.kubernetes.io/instance: homelab
-    app.kubernetes.io/part-of: homelab
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: managed

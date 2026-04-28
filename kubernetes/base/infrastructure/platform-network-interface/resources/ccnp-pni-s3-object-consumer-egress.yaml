@@ -4,9 +4,7 @@ metadata:
   name: pni-s3-object-consumer-egress
   labels:
     app.kubernetes.io/name: platform-network-interface
-    app.kubernetes.io/instance: homelab
     app.kubernetes.io/component: network-policy
-    app.kubernetes.io/part-of: homelab
     app.kubernetes.io/managed-by: argocd
 spec:
   endpointSelector:

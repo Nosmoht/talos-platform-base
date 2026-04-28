@@ -1,24 +1,48 @@
-CLUSTER_NAME := homelab
-ENDPOINT := https://192.168.2.60:6443
+ENV ?= ../cluster.yaml
+
+# Goals that work without cluster.yaml (CI uses these for static validation).
+NO_ENV_GOALS := cilium-bootstrap cilium-bootstrap-check schematics validate-schematics validate-secrets-cleanup clean
+NEEDS_ENV    := $(strip $(filter-out $(NO_ENV_GOALS),$(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)))
+
+ifneq ($(NEEDS_ENV),)
+ifeq ($(wildcard $(ENV)),)
+$(error Cluster config not found: $(ENV). Run 'make migrate-cluster-yaml' from repo root, or copy ../cluster.yaml.example to ../cluster.yaml.)
+endif
+
+CLUSTER_NAME := $(strip $(shell yq -e '.cluster.name' $(ENV) 2>/dev/null))
+ifeq ($(strip $(CLUSTER_NAME)),)
+$(error cluster.yaml is missing required key '.cluster.name')
+endif
+
+API_VIP    := $(strip $(shell yq -e '.cluster.api_vip' $(ENV) 2>/dev/null))
+ENDPOINT   := https://$(API_VIP):6443
+NTP_SERVER := $(strip $(shell yq -e '.cluster.ntp_server' $(ENV) 2>/dev/null))
+ifeq ($(strip $(NTP_SERVER)),)
+$(error cluster.yaml is missing required key '.cluster.ntp_server')
+endif
+
+CP_NODES     := $(shell yq -e '.nodes.control_plane[].name' $(ENV) 2>/dev/null | tr '\n' ' ')
+WORKER_NODES := $(shell yq -e '.nodes.workers[].name' $(ENV) 2>/dev/null | tr '\n' ' ')
+GPU_NODES    := $(shell yq '.nodes.gpu_workers // [] | .[].name' $(ENV) 2>/dev/null | tr '\n' ' ')
+PI_NODES     := $(shell yq '.nodes.pi_nodes // [] | .[].name' $(ENV) 2>/dev/null | tr '\n' ' ')
+ALL_NODES    := $(CP_NODES) $(WORKER_NODES) $(GPU_NODES) $(PI_NODES)
+
+# Per-node IP map: $(IP_<node-name>) := <ip>
+$(foreach n,$(shell yq -r '(.nodes.control_plane + .nodes.workers + (.nodes.gpu_workers // []) + (.nodes.pi_nodes // []))[] | "\(.name)=\(.ip)"' $(ENV) 2>/dev/null),\
+  $(eval IP_$(word 1,$(subst =, ,$(n))) := $(word 2,$(subst =, ,$(n)))))
+
+OUTPUT_ROOT := _out/$(CLUSTER_NAME)
+$(shell mkdir -p $(OUTPUT_ROOT)/controlplane $(OUTPUT_ROOT)/worker)
+# Eagerly render the per-cluster NTP patch so it is present before Make
+# evaluates pattern-rule prerequisites.  Re-rendering on every parse is
+# cheap (pure envsubst, no secrets) and avoids a GNU Make 3.81 pattern-rule
+# bootstrap issue where the cluster.yaml target is built during the first
+# pass but cannot yet satisfy the pattern-rule prerequisite in the same run.
+$(shell NTP_SERVER='$(NTP_SERVER)' envsubst '$$NTP_SERVER' < patches/cluster.yaml.tmpl > $(OUTPUT_ROOT)/cluster.yaml)
+endif
 include versions.mk
 
 -include .schematic-ids.mk
-
-CP_NODES := node-01 node-02 node-03
-WORKER_NODES := node-04 node-05 node-06
-GPU_NODES := node-gpu-01
-PI_NODES := node-pi-01
-ALL_NODES := $(CP_NODES) $(WORKER_NODES) $(GPU_NODES) $(PI_NODES)
-
-# Node IPs (192.168.2.0/24 network)
-IP_node-01 := 192.168.2.61
-IP_node-02 := 192.168.2.62
-IP_node-03 := 192.168.2.63
-IP_node-04 := 192.168.2.64
-IP_node-05 := 192.168.2.65
-IP_node-06 := 192.168.2.66
-IP_node-gpu-01 := 192.168.2.67
-IP_node-pi-01 := 192.168.2.68
 
 # SOPS-decrypted secrets (intermediate file)
 SECRETS_DEC := .secrets.dec.yaml
@@ -48,7 +72,8 @@ trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
 sops -d $(1) > "$$tmp_secrets"
 endef
 
-.PHONY: all gen-secrets gen-configs schematics talosconfig clean \
+.PHONY: all gen-secrets gen-configs _gen-configs-phase1 _gen-configs-phase2 \
+	schematics talosconfig clean \
 	$(addprefix install-,$(ALL_NODES)) bootstrap \
 	$(addprefix apply-,$(ALL_NODES)) apply-all \
 	$(addprefix dry-run-,$(ALL_NODES)) dry-run-all \
@@ -74,18 +99,39 @@ all: gen-configs
 gen-secrets:
 	talosctl gen secrets -o secrets.yaml
 
-gen-configs: $(addprefix generated/controlplane/,$(addsuffix .yaml,$(CP_NODES))) \
-	$(addprefix generated/worker/,$(addsuffix .yaml,$(WORKER_NODES))) \
-	$(addprefix generated/worker/,$(addsuffix .yaml,$(GPU_NODES))) \
-	$(addprefix generated/worker/,$(addsuffix .yaml,$(PI_NODES)))
+# Per-cluster NTP patch rendered from template
+$(OUTPUT_ROOT)/cluster.yaml: patches/cluster.yaml.tmpl $(ENV) | $(OUTPUT_ROOT)
+	NTP_SERVER='$(NTP_SERVER)' envsubst '$$NTP_SERVER' < $< > $@
 
-generated/controlplane/%.yaml: patches/common.yaml patches/drbd.yaml patches/controlplane.yaml nodes/%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
+$(OUTPUT_ROOT):
+	mkdir -p $(OUTPUT_ROOT)/controlplane $(OUTPUT_ROOT)/worker
+
+# gen-configs uses a two-phase recursive-make to work around a GNU Make 3.81
+# limitation where pattern-rule matching fails for targets inside directories
+# that do not yet exist at Makefile parse time.  Phase 1 creates the output
+# directory tree and renders the per-cluster NTP patch; phase 2 builds all
+# node configs (by then the directories and cluster.yaml are guaranteed to
+# exist before Make starts pattern-rule analysis).
+gen-configs:
+	$(MAKE) _gen-configs-phase1
+	$(MAKE) _gen-configs-phase2
+
+_gen-configs-phase1: $(OUTPUT_ROOT)/cluster.yaml
+
+_gen-configs-phase2: \
+	$(addprefix $(OUTPUT_ROOT)/controlplane/,$(addsuffix .yaml,$(CP_NODES))) \
+	$(addprefix $(OUTPUT_ROOT)/worker/,$(addsuffix .yaml,$(WORKER_NODES))) \
+	$(addprefix $(OUTPUT_ROOT)/worker/,$(addsuffix .yaml,$(GPU_NODES))) \
+	$(addprefix $(OUTPUT_ROOT)/worker/,$(addsuffix .yaml,$(PI_NODES)))
+
+$(OUTPUT_ROOT)/controlplane/%.yaml: patches/common.yaml $(OUTPUT_ROOT)/cluster.yaml patches/drbd.yaml patches/controlplane.yaml nodes/%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP) | $(OUTPUT_ROOT)
 	@tmp_secrets=$$(mktemp) && \
 	trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
 	sops -d secrets.yaml > "$$tmp_secrets" && \
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
 		--with-secrets "$$tmp_secrets" \
 		--config-patch @patches/common.yaml \
+		--config-patch @$(OUTPUT_ROOT)/cluster.yaml \
 		--config-patch @patches/drbd.yaml \
 		--config-patch @patches/controlplane.yaml \
 		--config-patch @nodes/$*.yaml \
@@ -97,13 +143,14 @@ generated/controlplane/%.yaml: patches/common.yaml patches/drbd.yaml patches/con
 		--force && \
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/node-gpu-%.yaml: patches/common.yaml patches/worker-gvisor.yaml patches/worker-gpu.yaml nodes/node-gpu-%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
+$(OUTPUT_ROOT)/worker/node-gpu-%.yaml: patches/common.yaml $(OUTPUT_ROOT)/cluster.yaml patches/worker-gvisor.yaml patches/worker-gpu.yaml nodes/node-gpu-%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP) | $(OUTPUT_ROOT)
 	@tmp_secrets=$$(mktemp) && \
 	trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
 	sops -d secrets.yaml > "$$tmp_secrets" && \
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
 		--with-secrets "$$tmp_secrets" \
 		--config-patch @patches/common.yaml \
+		--config-patch @$(OUTPUT_ROOT)/cluster.yaml \
 		--config-patch @patches/worker-gvisor.yaml \
 		--config-patch @patches/worker-gpu.yaml \
 		--config-patch @nodes/node-gpu-$*.yaml \
@@ -115,13 +162,14 @@ generated/worker/node-gpu-%.yaml: patches/common.yaml patches/worker-gvisor.yaml
 		--force && \
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/node-pi-%.yaml: patches/common.yaml patches/worker-pi.yaml patches/pi-firewall.yaml nodes/node-pi-%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
+$(OUTPUT_ROOT)/worker/node-pi-%.yaml: patches/common.yaml $(OUTPUT_ROOT)/cluster.yaml patches/worker-pi.yaml patches/pi-firewall.yaml nodes/node-pi-%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP) | $(OUTPUT_ROOT)
 	@tmp_secrets=$$(mktemp) && \
 	trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
 	sops -d secrets.yaml > "$$tmp_secrets" && \
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
 		--with-secrets "$$tmp_secrets" \
 		--config-patch @patches/common.yaml \
+		--config-patch @$(OUTPUT_ROOT)/cluster.yaml \
 		--config-patch @patches/worker-pi.yaml \
 		--config-patch @patches/pi-firewall.yaml \
 		--config-patch @nodes/node-pi-$*.yaml \
@@ -133,13 +181,14 @@ generated/worker/node-pi-%.yaml: patches/common.yaml patches/worker-pi.yaml patc
 		--force && \
 	yq eval-all 'del(select(.kind == "HostnameConfig").auto)' -i $@
 
-generated/worker/%.yaml: patches/common.yaml patches/worker-gvisor.yaml patches/drbd.yaml patches/worker-kubevirt.yaml nodes/%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP)
+$(OUTPUT_ROOT)/worker/%.yaml: patches/common.yaml $(OUTPUT_ROOT)/cluster.yaml patches/worker-gvisor.yaml patches/drbd.yaml patches/worker-kubevirt.yaml nodes/%.yaml secrets.yaml .schematic-ids.mk $(VERSION_STAMP) | $(OUTPUT_ROOT)
 	@tmp_secrets=$$(mktemp) && \
 	trap 'rm -f "$$tmp_secrets"' EXIT HUP INT TERM && \
 	sops -d secrets.yaml > "$$tmp_secrets" && \
 	talosctl gen config $(CLUSTER_NAME) $(ENDPOINT) \
 		--with-secrets "$$tmp_secrets" \
 		--config-patch @patches/common.yaml \
+		--config-patch @$(OUTPUT_ROOT)/cluster.yaml \
 		--config-patch @patches/worker-gvisor.yaml \
 		--config-patch @patches/drbd.yaml \
 		--config-patch @patches/worker-kubevirt.yaml \
@@ -227,7 +276,7 @@ validate-secrets-cleanup:
 	fi
 
 # Helper to resolve config path for a node
-config-path = generated/$(if $(filter $(1),$(CP_NODES)),controlplane,worker)/$(1).yaml
+config-path = $(OUTPUT_ROOT)/$(if $(filter $(1),$(CP_NODES)),controlplane,worker)/$(1).yaml
 
 # Install targets — initial config apply to fresh nodes (--insecure, no TLS yet)
 define INSTALL_TEMPLATE
@@ -263,9 +312,9 @@ dry-run-all: $(addprefix dry-run-,$(ALL_NODES))
 
 validate-generated: gen-configs
 	@set -eu; \
-	files=$$(find generated -type f -name '*.yaml' | sort); \
+	files=$$(find $(OUTPUT_ROOT) -type f -name '*.yaml' | sort); \
 	if [ -z "$$files" ]; then \
-		echo "No generated machine configs found under talos/generated"; \
+		echo "No generated machine configs found under talos/$(OUTPUT_ROOT)"; \
 		exit 1; \
 	fi; \
 	for f in $$files; do \
@@ -291,5 +340,5 @@ upgrade-k8s: cilium-bootstrap-check
 	talosctl upgrade-k8s --to $(KUBERNETES_VERSION) -n $(IP_node-01) -e $(IP_node-01)
 
 clean:
-	rm -rf generated/controlplane/*.yaml generated/worker/*.yaml
+	rm -rf _out/
 	rm -f $(SECRETS_DEC) $(VERSION_STAMP)

@@ -126,9 +126,7 @@ alloy:
         endpoint {
           url = "http://loki-gateway.monitoring.svc/loki/api/v1/push"
         }
-        external_labels = {
-          cluster = "homelab",
-        }
+        external_labels = {}
       }
 
 serviceMonitor:

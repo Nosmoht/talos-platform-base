@@ -5,14 +5,14 @@ metadata:
   namespace: argocd
   labels:
     app.kubernetes.io/name: argocd
-    app.kubernetes.io/instance: homelab
+    app.kubernetes.io/instance: ${CLUSTER_NAME}
     app.kubernetes.io/component: project
-    app.kubernetes.io/part-of: homelab
+    app.kubernetes.io/part-of: ${CLUSTER_NAME}
     app.kubernetes.io/managed-by: bootstrap
 spec:
   description: Bootstrap scope for root app-of-apps
   sourceRepos:
-    - https://github.com/Nosmoht/Talos-Homelab.git
+    - ${REPO_URL}
   destinations:
     - namespace: argocd
       server: https://kubernetes.default.svc

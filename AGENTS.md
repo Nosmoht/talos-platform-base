@@ -113,16 +113,16 @@ CLAUDE.md imports this file via `@AGENTS.md`. Both tools treat this section as c
 
 ## Cluster Overview
 
-Software versions pinned in `talos/versions.mk`. Full topology in `.claude/environment.yaml` (gitignored — schema: `.claude/environment.example.yaml`).
+Software versions pinned in `talos/versions.mk`. Full topology in `cluster.yaml` (gitignored — schema: `cluster.yaml.example`).
 
-**Codex CLI**: read `.claude/environment.yaml` at session start — contains node IPs, hardware layout, network topology. Claude Code loads this on demand via skill references.
+**Codex CLI**: read `cluster.yaml` at session start — contains node IPs, hardware layout, network topology. Claude Code loads this on demand via skill references.
 
 | Role | Nodes | IPs | Hardware |
 |------|-------|-----|----------|
 | Control Plane | node-01..03 | 192.168.2.61-63 | Lenovo ThinkCentre M910q |
 | Workers | node-04..06 | 192.168.2.64-66 | M910q (04-05), M920q (06) |
 | GPU Worker | node-gpu-01 | 192.168.2.67 | Custom build, r8152 USB NIC |
-| Pi / WAN Edge | node-pi-01 | per `.claude/environment.yaml` | Raspberry Pi 4B, arm64 — sole WAN entrypoint since 2026-04-17, taint-isolated |
+| Pi / WAN Edge | node-pi-01 | per `cluster.yaml` | Raspberry Pi 4B, arm64 — sole WAN entrypoint since 2026-04-17, taint-isolated |
 
 - API VIP: `192.168.2.60` · Gateway VIP: `192.168.2.70` · PodCIDR: `10.244.0.0/16`
 - Storage: LINSTOR/Piraeus CSI (DRBD, NVMe nodes via NFD label `feature.node.kubernetes.io/storage-nvme.present=true`)
@@ -310,7 +310,7 @@ These differences are permanent by design. They are documented here, not hidden.
 
 1. **No PreToolUse interception**: SOPS protection fires at `git commit` (pre-commit framework), not during editing. Plaintext in `*.sops.yaml` during the session is not blocked — only caught before commit. Run `make install-pre-commit` after cloning.
 2. **No auto-subagent dispatch**: `platform-reliability-reviewer`, `talos-sre`, `gitops-operator`, `researcher`, `builder-implementer`, `builder-evaluator` run only on explicit request. For pre-merge review, ask: *"Run platform-reliability-reviewer on this diff."* The builder-implementer / builder-evaluator subagents have no Codex CLI equivalent — Codex falls back to inline implementation with reduced Anthropic-Principle-1 guarantee (logged warning); see `docs/issue-workflow.md` §Codex CLI compatibility.
-3. **No automatic `.claude/environment.yaml` load**: Read this file explicitly at session start for cluster topology.
+3. **No automatic `cluster.yaml` load**: Read this file explicitly at session start for cluster topology.
 4. **No `paths:` rule auto-loading**: See §Domain Rules above — scan the table before editing files in a listed context and read the rule with the Read tool.
 5. **`--no-verify` bypass is possible locally**: Required PR checks (`gitleaks` CLI in `gitops-validate.yml`, `hard-constraints-check`) block merge server-side. Local hooks are defense-in-depth, not the last line.
 6. **GitHub Push Protection** must be enabled in repo settings (one-time manual step): Settings → Code security → Push protection → Enable. This is a hard prerequisite for server-side secret blocking.
