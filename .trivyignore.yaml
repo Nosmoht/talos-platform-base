@@ -67,7 +67,7 @@ misconfigurations:
   # ========================================================================
   - id: AVD-KSV-0009
     paths:
-      - kubernetes/overlays/homelab/infrastructure/multus-cni/resources/daemonset.yaml
+      - kubernetes/base/infrastructure/multus-cni/daemonset.yaml
     statement: >-
       hostNetwork is required for Multus — it writes /host/etc/cni/net.d
       configs via hostPath and must share the host's netns to configure
@@ -76,7 +76,7 @@ misconfigurations:
     expired_at: 2027-04-16
   - id: AVD-KSV-0014
     paths:
-      - kubernetes/overlays/homelab/infrastructure/multus-cni/resources/daemonset.yaml
+      - kubernetes/base/infrastructure/multus-cni/daemonset.yaml
     statement: >-
       Multus init + runtime containers write CNI binaries to
       /host/opt/cni/bin via bidirectional mount propagation — the
@@ -86,7 +86,7 @@ misconfigurations:
     expired_at: 2027-04-16
   - id: AVD-KSV-0017
     paths:
-      - kubernetes/overlays/homelab/infrastructure/multus-cni/resources/daemonset.yaml
+      - kubernetes/base/infrastructure/multus-cni/daemonset.yaml
     statement: >-
       privileged: true required for CNI binary installation onto host
       (/opt/cni/bin via bidirectional mountPropagation) and for the
@@ -95,7 +95,7 @@ misconfigurations:
     expired_at: 2027-04-16
   - id: AVD-KSV-0118
     paths:
-      - kubernetes/overlays/homelab/infrastructure/multus-cni/resources/daemonset.yaml
+      - kubernetes/base/infrastructure/multus-cni/daemonset.yaml
     statement: >-
       Multus DaemonSet intentionally runs as root for hostPath access
       to /etc/cni/net.d + /opt/cni/bin. Non-root mode not supported
@@ -103,7 +103,7 @@ misconfigurations:
     expired_at: 2027-04-16
   - id: AVD-KSV-0046
     paths:
-      - kubernetes/overlays/homelab/infrastructure/multus-cni/resources/rbac.yaml
+      - kubernetes/base/infrastructure/multus-cni/rbac.yaml
     statement: >-
       ClusterRole wildcard on k8s.cni.cncf.io/*/* is Multus upstream
       standard for managing NetworkAttachmentDefinition CRs. Scoping
@@ -115,8 +115,8 @@ misconfigurations:
   # ========================================================================
   - id: AVD-KSV-0014
     paths:
-      - kubernetes/overlays/homelab/infrastructure/kubevirt/resources/kubevirt-operator.yaml
-      - kubernetes/overlays/homelab/infrastructure/kubevirt-cdi/resources/cdi-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt/kubevirt-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt-cdi/cdi-operator.yaml
     statement: >-
       Vendored upstream operator bundles (7,669 / 5,486 lines). Patching
       the Deployment via Kustomize would drift on every upstream release.
@@ -125,8 +125,8 @@ misconfigurations:
     expired_at: 2027-04-16
   - id: AVD-KSV-0041
     paths:
-      - kubernetes/overlays/homelab/infrastructure/kubevirt/resources/kubevirt-operator.yaml
-      - kubernetes/overlays/homelab/infrastructure/kubevirt-cdi/resources/cdi-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt/kubevirt-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt-cdi/cdi-operator.yaml
     statement: >-
       KubeVirt + CDI operators reconcile TLS certs + webhook credentials
       stored in cluster-scoped Secrets. Secret-management RBAC required
@@ -134,8 +134,8 @@ misconfigurations:
     expired_at: 2027-04-16
   - id: AVD-KSV-0046
     paths:
-      - kubernetes/overlays/homelab/infrastructure/kubevirt/resources/kubevirt-operator.yaml
-      - kubernetes/overlays/homelab/infrastructure/kubevirt-cdi/resources/cdi-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt/kubevirt-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt-cdi/cdi-operator.yaml
     statement: >-
       Operators manage their own CRDs + DataVolume/VirtualMachine
       resources across all namespaces. Wildcard resource verbs are
@@ -143,15 +143,15 @@ misconfigurations:
     expired_at: 2027-04-16
   - id: AVD-KSV-0053
     paths:
-      - kubernetes/overlays/homelab/infrastructure/kubevirt/resources/kubevirt-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt/kubevirt-operator.yaml
     statement: >-
       pods/exec required by virt-operator for VM console + VNC proxy
       flows + live-migration orchestration. Upstream-required.
     expired_at: 2027-04-16
   - id: AVD-KSV-0056
     paths:
-      - kubernetes/overlays/homelab/infrastructure/kubevirt/resources/kubevirt-operator.yaml
-      - kubernetes/overlays/homelab/infrastructure/kubevirt-cdi/resources/cdi-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt/kubevirt-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt-cdi/cdi-operator.yaml
     statement: >-
       Operators manage services/endpoints/endpointslices for virt-api,
       virt-handler, CDI uploadproxy, and CDI clone service. Upstream-
@@ -159,8 +159,8 @@ misconfigurations:
     expired_at: 2027-04-16
   - id: AVD-KSV-0114
     paths:
-      - kubernetes/overlays/homelab/infrastructure/kubevirt/resources/kubevirt-operator.yaml
-      - kubernetes/overlays/homelab/infrastructure/kubevirt-cdi/resources/cdi-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt/kubevirt-operator.yaml
+      - kubernetes/base/infrastructure/kubevirt-cdi/cdi-operator.yaml
     statement: >-
       KubeVirt virt-operator + CDI cdi-operator manage their own
       MutatingWebhookConfiguration + ValidatingWebhookConfiguration
