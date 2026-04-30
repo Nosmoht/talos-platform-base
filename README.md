@@ -6,13 +6,23 @@ Cluster-agnostic GitOps platform base for Talos-on-Kubernetes deployments.
 
 - Talos machine-config patches (control-plane without `extraManifests`, common, drbd, worker-{gpu,gvisor,kubevirt,pi})
 - Talos `Makefile` with `cluster.yaml`-driven multi-cluster config generation
-- Helm bases for ArgoCD, Cilium, Piraeus, Kyverno, cert-manager, vault, dex,
-  kube-prometheus-stack, alloy, loki, NFD, KubeVirt-CDI, Tetragon, MinIO,
-  Strimzi, CloudNativePG, Redis, Local-Path Provisioner, Metrics Server,
-  NVIDIA-DCGM, NVIDIA Device Plugin, Omada Controller (parameterized)
+- 22 Helm-base infrastructure components under `kubernetes/base/infrastructure/`:
+  alloy, argocd, cert-approver, cert-manager, dex, external-secrets,
+  kube-prometheus-stack, kubevirt, kubevirt-cdi, kyverno, local-path-provisioner,
+  loki, metrics-server, multus-cni, node-feature-discovery, nvidia-dcgm-exporter,
+  nvidia-device-plugin, piraeus-operator, platform-network-interface, tetragon,
+  vault-config-operator, vault-operator
+- Cilium Helm values + `extras.yaml` under `kubernetes/bootstrap/cilium/` (the
+  consumer-side cluster repo renders `cilium.yaml` via `make cilium-bootstrap`)
 - Parameterized ArgoCD bootstrap (`root-application.yaml.tmpl`, `root-project.yaml.tmpl`)
 - conftest policies, `validate-gitops` pipeline, hard-constraints checks
-- Pre-commit hooks for SOPS encryption + secret-scan (consumer-side)
+- Pre-commit hooks for secret-scan (gitleaks); consumer-side adds SOPS pre-commit
+
+> **Caveat (v0.1.1)**: Not every base component is standalone-renderable today.
+> Some `kustomization.yaml` files are empty or missing — those components are
+> currently inputs-only (Helm values consumed by overlays). Restoration of
+> the input-only components to standalone-renderable is tracked for v0.2.0.
+> See the v0.1.1 CHANGELOG **Known issues in v0.1.0** section for the current list.
 
 ## What this does NOT provide
 
@@ -44,7 +54,7 @@ See: [ADR — Multi-Repo Platform Split](./docs/adr-multi-repo-platform-split.md
 .
 ├── Makefile                              # base-side validation + MCP install
 ├── kubernetes/
-│   ├── base/infrastructure/<comp>/       # 24 cluster-agnostic Helm-base components
+│   ├── base/infrastructure/<comp>/       # 22 cluster-agnostic Helm-base components
 │   └── bootstrap/
 │       ├── argocd/                       # parameterized templates (envsubst)
 │       └── cilium/                       # base Helm values for cilium.yaml render
