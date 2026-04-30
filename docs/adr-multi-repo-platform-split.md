@@ -51,6 +51,50 @@ plugin mechanism (project-level `claude plugin install` + global
 skill access must clone `kube-agent-harness` separately and symlink — manual
 fallback only.
 
+## Component Classification — Consumer-in-Base / Backend-in-Overlay
+
+Added 2026-04-30 as part of Phase 1.5 (#160) after Phase 1 (#146 / PR #153)
+exposed a structural defect: the original Phase-1 classification used
+**directory location** as the criterion (`kubernetes/base/` = base,
+`kubernetes/overlays/<cluster>/` = cluster), which left six backend providers
+parked in `base/` and three platform-generic components parked in overlay-only.
+
+The corrected classification rule, adopted as a binding architectural
+principle:
+
+> Authentication and Observability are platform concerns and belong in base.
+> Their backend storage is a tenant choice and belongs in overlay.
+
+| Layer | Lives in | Examples |
+|---|---|---|
+| **Platform Consumer** (the *what*) | `talos-platform-base` | Dex (auth), Loki / Grafana / kube-prometheus-stack / Tetragon / Alloy (observability) |
+| **Backend Provider** (the *how*) | per-cluster repo overlay | cloudnative-pg → Postgres for Dex; minio → S3 for Loki; redis-operator / strimzi-kafka-operator / omada-controller → tenant workloads |
+
+PNI is the contract layer between the two. Base consumers declare a capability
+via PNI labels (`platform.io/consume.cnpg-postgres`,
+`platform.io/consume.s3-object`); the overlay binds the capability to a
+concrete backend (cnpg cluster + secret, MinIO tenant + credentials).
+
+**Corollary on PNI itself:** PNI is platform architecture and stays in base.
+The RFC1918 except-lists in PNI egress CCNPs
+(`ccnp-pni-internet-egress-consumer-egress.yaml` excluding `10/8`,
+`172.16/12`, `192.168/16` from `0.0.0.0/0`) are the standard "don't reach
+private networks" guard, generic across all clusters — they are NOT
+homelab-specific hardcodes. The default Kubernetes ServiceCIDR API IP allowed
+in `ccnp-pni-controlplane-egress-consumer-egress.yaml` is generic across
+Talos-default clusters.
+
+**Corollary on hardcoded backend coordinates:** No file under
+`kubernetes/base/` may contain a concrete backend coordinate (Service DNS,
+endpoint URL, credential secret name). Phase 1 missed
+`kubernetes/base/infrastructure/loki/values.yaml:17` (`endpoint:
+minio.minio.svc.cluster.local:443`); Phase 1.5 fixes this by moving the
+endpoint into the overlay Helm-values patch.
+
+This principle governs all future component-classification decisions: the
+question is never "where does the directory live today?" but "is this the
+platform's *what* or the tenant's *how*?"
+
 ## Consumption Mechanism — Day-0 Bootstrap vs. Day-2 Reconciliation
 
 Cluster repos must consume the base repo at two distinct phases with
