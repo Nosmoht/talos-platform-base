@@ -5,10 +5,10 @@ resources:
   - namespace.yaml
 
 helmCharts:
-  - name: argo-cd
-    repo: https://argoproj.github.io/argo-helm
-    version: 9.4.5
-    releaseName: argocd
-    namespace: argocd
+  - name: kyverno
+    repo: https://kyverno.github.io/kyverno
+    version: 3.7.1
+    releaseName: kyverno
+    namespace: kyverno
     valuesFile: values.yaml
     includeCRDs: true

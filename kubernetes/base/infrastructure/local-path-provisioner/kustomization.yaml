@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# local-path-provisioner is upstream-distributed as a Helm chart inside a
+# git repo (path: deploy/chart/local-path-provisioner) — NOT a Helm registry.
+# kustomize `helmCharts:` cannot pull from git+path. Consumer overlays add
+# the upstream chart via their Application CR's multi-source pattern.
+# Standalone-rendering this base directory yields no resources (kube-system
+# is a pre-existing system namespace; no namespace.yaml to declare).
+#
+# Empty `resources:` list is intentional — kustomize emits an empty document
+# stream which kubeconform/conftest tolerate gracefully.
+resources: []

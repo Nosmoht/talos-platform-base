@@ -5,10 +5,10 @@ resources:
   - namespace.yaml
 
 helmCharts:
-  - name: argo-cd
-    repo: https://argoproj.github.io/argo-helm
-    version: 9.4.5
-    releaseName: argocd
-    namespace: argocd
+  - name: vault-operator
+    repo: oci://ghcr.io/bank-vaults/helm-charts
+    version: 1.23.4
+    releaseName: vault-operator
+    namespace: vault
     valuesFile: values.yaml
     includeCRDs: true

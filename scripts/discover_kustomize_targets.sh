@@ -21,7 +21,7 @@ append_targets_from_root() {
     dir=$(dirname "$kfile")
 
     case "$dir" in
-      kubernetes/base/*|*/.git/*|docs/*|*/docs/*|talos/generated/*|*/talos/generated/*|vendor/*|*/vendor/*|third_party/*|*/third_party/*)
+      */.git/*|docs/*|*/docs/*|talos/generated/*|*/talos/generated/*|vendor/*|*/vendor/*|third_party/*|*/third_party/*)
         continue
         ;;
     esac
@@ -36,8 +36,24 @@ append_targets_from_root() {
   done
 }
 
+# Explicit base-component glob: matches one-level-deep kustomization.yaml in
+# `kubernetes/base/infrastructure/<comp>/`. Avoids surfacing nested helm
+# chart-internal kustomizations under `charts/` or `templates/`.
+append_base_components() {
+  root="kubernetes/base/infrastructure"
+  if [ ! -d "$root" ]; then
+    return
+  fi
+  for kfile in "$root"/*/kustomization.yaml; do
+    [ -f "$kfile" ] || continue
+    dir=$(dirname "$kfile")
+    printf '%s\n' "$dir" >> "$tmp_file"
+  done
+}
+
 append_targets_from_root "kubernetes/overlays"
 append_targets_from_root "kubernetes/bootstrap"
+append_base_components
 
 if [ -s "$tmp_file" ]; then
   sort -u "$tmp_file" > "$out_file"

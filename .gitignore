@@ -13,6 +13,9 @@ Plans/
 .mcp.json.local
 .mcp.json.bak-*
 
+# Kustomize-extracted Helm charts (rendered at build time, not stored in repo)
+kubernetes/base/infrastructure/*/charts/
+
 # Auto Claude data directory
 .auto-claude/
 

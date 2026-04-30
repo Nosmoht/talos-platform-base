@@ -104,7 +104,7 @@ Setup instructions: [`.claude/mcp/SETUP.md`](../.claude/mcp/SETUP.md)
 
 Before any disruptive change (upgrade, storage migration, network topology change):
 ```
-@platform-reliability-reviewer "pre-operation: Migrate DRBD volumes from node-04 to node-05"
+@platform-reliability-reviewer "pre-operation: Migrate DRBD volumes from <source-node> to <target-node>"
 ```
 
 ### Diagnose a broken ArgoCD app

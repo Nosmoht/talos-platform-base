@@ -74,7 +74,7 @@ while IFS= read -r dir; do
   out_log="$render_dir/$slug.log"
 
   echo "rendering: $dir"
-  if kustomize build "$dir" > "$out_yaml" 2> "$out_log"; then
+  if kustomize build --enable-helm "$dir" > "$out_yaml" 2> "$out_log"; then
     printf '%s\n' "$out_yaml" >> "$rendered_file"
     rm -f "$out_log"
   else

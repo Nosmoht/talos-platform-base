@@ -25,6 +25,26 @@ CP_NODES     := $(shell yq -e '.nodes.control_plane[].name' $(ENV) 2>/dev/null |
 WORKER_NODES := $(shell yq -e '.nodes.workers[].name' $(ENV) 2>/dev/null | tr '\n' ' ')
 GPU_NODES    := $(shell yq '.nodes.gpu_workers // [] | .[].name' $(ENV) 2>/dev/null | tr '\n' ' ')
 PI_NODES     := $(shell yq '.nodes.pi_nodes // [] | .[].name' $(ENV) 2>/dev/null | tr '\n' ' ')
+
+# Semantic-validity guards (post-yq parse). These catch malformed cluster.yaml
+# whose yq error was swallowed by '2>/dev/null', preventing silent partial
+# applies or empty-IP talosctl invocations.
+ifeq ($(strip $(CP_NODES)),)
+$(error cluster.yaml has no .nodes.control_plane[] entries — check yq parse and schema)
+endif
+ifeq ($(strip $(WORKER_NODES)),)
+$(error cluster.yaml has no .nodes.workers[] entries — gpu_workers/pi_nodes are optional, workers is required)
+endif
+
+# Node-name input validation: only safe Make-variable characters allowed.
+# Reject names with whitespace, $, :, =, #, * — these break the IP_<name> map
+# at $(eval IP_$(word ...)) time and cause silent IP misresolution.
+INVALID_NODE_NAMES := $(strip $(foreach n,$(CP_NODES) $(WORKER_NODES) $(GPU_NODES) $(PI_NODES),\
+  $(if $(shell printf '%s' '$(n)' | grep -E '[^A-Za-z0-9._-]' >/dev/null 2>&1 && echo bad),$(n))))
+ifneq ($(INVALID_NODE_NAMES),)
+$(error cluster.yaml node name(s) contain disallowed characters (only [A-Za-z0-9._-] permitted): $(INVALID_NODE_NAMES))
+endif
+
 ALL_NODES    := $(CP_NODES) $(WORKER_NODES) $(GPU_NODES) $(PI_NODES)
 
 # Per-node IP map: $(IP_<node-name>) := <ip>
@@ -286,9 +306,23 @@ endef
 
 $(foreach node,$(ALL_NODES),$(eval $(call INSTALL_TEMPLATE,$(node))))
 
-# Bootstrap etcd on first control plane node
+# Bootstrap etcd on the first control-plane node listed in cluster.yaml.
+#
+# Guard: re-running bootstrap against an already-bootstrapped node is dangerous.
+# If the target node is part of an existing etcd cluster, this would attempt
+# to initialize a NEW etcd cluster — destroying quorum on surviving CPs.
+# The guard refuses to run if `talosctl etcd members` returns ≥1 member,
+# requiring BOOTSTRAP_FORCE=1 to override (e.g. genuine fresh-install retry).
+BOOTSTRAP_NODE := $(firstword $(CP_NODES))
+BOOTSTRAP_IP   := $(IP_$(BOOTSTRAP_NODE))
 bootstrap:
-	talosctl bootstrap --nodes $(IP_node-01) --endpoints $(IP_node-01)
+	@if [ -z "$(BOOTSTRAP_FORCE)" ] && talosctl etcd members --nodes $(BOOTSTRAP_IP) --endpoints $(BOOTSTRAP_IP) >/dev/null 2>&1; then \
+	  echo "error: $(BOOTSTRAP_NODE) ($(BOOTSTRAP_IP)) appears to be part of an existing etcd cluster."; \
+	  echo "       Re-running bootstrap would destroy quorum. Refusing."; \
+	  echo "       For a genuine fresh-install retry, run: make bootstrap BOOTSTRAP_FORCE=1"; \
+	  exit 1; \
+	fi
+	talosctl bootstrap --nodes $(BOOTSTRAP_IP) --endpoints $(BOOTSTRAP_IP)
 
 # Apply targets
 define APPLY_TEMPLATE
@@ -337,7 +371,7 @@ $(foreach node,$(ALL_NODES),$(eval $(call UPGRADE_TEMPLATE,$(node))))
 
 # Upgrade Kubernetes and re-apply extraManifests (e.g. Cilium)
 upgrade-k8s: cilium-bootstrap-check
-	talosctl upgrade-k8s --to $(KUBERNETES_VERSION) -n $(IP_node-01) -e $(IP_node-01)
+	talosctl upgrade-k8s --to $(KUBERNETES_VERSION) -n $(BOOTSTRAP_IP) -e $(BOOTSTRAP_IP)
 
 clean:
 	rm -rf _out/

@@ -95,7 +95,7 @@ Primitives MAY extend the schema with additional keys when the extension carries
 
 ## B4. Auto-Discovery + Portability + Baselines
 
-**Auto-Discovery**: Node list via `resources_list(apiVersion="v1", kind="Node")`. Extract internal IPs from `items[].status.addresses[?type=="InternalIP"].address`; map IP → `items[].metadata.name`. Phase-1a primitives target ALL nodes including taint-isolated nodes (e.g. `node-pi-01`) — Talos MCP `talos_read_file` does not require pod-schedulability, so the `homelab.io/pi-reserved=true:NoSchedule` taint is irrelevant.
+**Auto-Discovery**: Node list via `resources_list(apiVersion="v1", kind="Node")`. Extract internal IPs from `items[].status.addresses[?type=="InternalIP"].address`; map IP → `items[].metadata.name`. Primitives target ALL nodes including taint-isolated edge nodes — Talos MCP `talos_read_file` does not require pod-schedulability, so cluster-specific reservation taints are irrelevant.
 
 **Portability** (5 don'ts that apply Phase-1a-wide):
 1. No hardware-hardcoded values (interface names, NIC vendor strings) — discover via probe

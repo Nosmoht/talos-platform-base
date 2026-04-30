@@ -1,10 +1,9 @@
 cluster:
   allowSchedulingOnControlPlanes: true
-  extraManifests:
-    - https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/experimental-install.yaml
-    # Cache-busting: Talos caches extraManifests; changing the URL forces re-download.
-    # Update the version query param when bumping CILIUM_VERSION in versions.mk.
-    - https://raw.githubusercontent.com/Nosmoht/Talos-Homelab/main/kubernetes/bootstrap/cilium/cilium.yaml?v=1.19.2-9
+  # NOTE: extraManifests are cluster-specific — the consumer cluster repo
+  # layers its own controlplane patch with the appropriate URL list (typically
+  # the Gateway API CRDs and a rendered cilium.yaml that carries cluster-specific
+  # Hubble TLS certificates). Do not add extraManifests here.
   scheduler:
     extraArgs:
       bind-address: 0.0.0.0

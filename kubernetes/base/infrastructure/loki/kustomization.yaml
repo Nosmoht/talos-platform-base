@@ -5,10 +5,10 @@ resources:
   - namespace.yaml
 
 helmCharts:
-  - name: argo-cd
-    repo: https://argoproj.github.io/argo-helm
-    version: 9.4.5
-    releaseName: argocd
-    namespace: argocd
+  - name: loki
+    repo: https://grafana.github.io/helm-charts
+    version: 6.53.0
+    releaseName: loki
+    namespace: monitoring
     valuesFile: values.yaml
     includeCRDs: true
