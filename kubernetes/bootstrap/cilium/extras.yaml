@@ -9,5 +9,5 @@ spec:
   parametersRef:
     group: cilium.io
     kind: CiliumGatewayClassConfig
-    name: homelab-gateway-config
+    name: cluster-gateway-config
     namespace: default

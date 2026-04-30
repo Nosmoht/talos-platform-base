@@ -286,9 +286,11 @@ endef
 
 $(foreach node,$(ALL_NODES),$(eval $(call INSTALL_TEMPLATE,$(node))))
 
-# Bootstrap etcd on first control plane node
+# Bootstrap etcd on the first control-plane node listed in cluster.yaml
+BOOTSTRAP_NODE := $(firstword $(CP_NODES))
+BOOTSTRAP_IP   := $(IP_$(BOOTSTRAP_NODE))
 bootstrap:
-	talosctl bootstrap --nodes $(IP_node-01) --endpoints $(IP_node-01)
+	talosctl bootstrap --nodes $(BOOTSTRAP_IP) --endpoints $(BOOTSTRAP_IP)
 
 # Apply targets
 define APPLY_TEMPLATE
@@ -337,7 +339,7 @@ $(foreach node,$(ALL_NODES),$(eval $(call UPGRADE_TEMPLATE,$(node))))
 
 # Upgrade Kubernetes and re-apply extraManifests (e.g. Cilium)
 upgrade-k8s: cilium-bootstrap-check
-	talosctl upgrade-k8s --to $(KUBERNETES_VERSION) -n $(IP_node-01) -e $(IP_node-01)
+	talosctl upgrade-k8s --to $(KUBERNETES_VERSION) -n $(BOOTSTRAP_IP) -e $(BOOTSTRAP_IP)
 
 clean:
 	rm -rf _out/

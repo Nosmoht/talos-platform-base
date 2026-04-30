@@ -2,6 +2,9 @@ machine:
   kubelet:
     extraConfig:
       registerWithTaints:
-        - key: homelab.io/pi-reserved
+        # Default reservation taint for Pi/edge workers. Consumer cluster repos
+        # may override the key (e.g. via a controlplane.yaml.patch overlay) if a
+        # different taint convention is desired.
+        - key: platform.io/pi-reserved
           value: "true"
           effect: NoSchedule

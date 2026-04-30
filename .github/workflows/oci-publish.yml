@@ -1,0 +1,61 @@
+name: Publish OCI artifact
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Install oras
+        uses: oras-project/setup-oras@v1
+        with:
+          version: 1.2.0
+
+      - name: Login to ghcr.io
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build tarball
+        run: |
+          mkdir -p _release
+          tar --exclude='./.git' \
+              --exclude='./.github' \
+              --exclude='./_release' \
+              -czf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" .
+
+      - name: Generate checksums
+        working-directory: _release
+        run: sha256sum *.tar.gz > checksums.txt
+
+      - name: Push OCI artifact
+        working-directory: _release
+        run: |
+          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          oras push \
+            "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
+            --artifact-type "application/vnd.talos-platform-base.v1+tar" \
+            "talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz:application/gzip" \
+            "checksums.txt:text/plain"
+
+      - name: Tag :latest
+        run: |
+          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          oras tag \
+            "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
+            latest

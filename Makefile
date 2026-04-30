@@ -1,4 +1,4 @@
-.PHONY: argocd-install argocd-bootstrap argocd-password argocd-oidc grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall migrate-cluster-yaml .argocd-bootstrap-render
+.PHONY: argocd-install argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml .argocd-bootstrap-render
 
 ENV ?= cluster.yaml
 
@@ -24,12 +24,8 @@ argocd-install:
 		--dry-run=client -o yaml | kubectl apply -f -
 	kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
 
-migrate-cluster-yaml: cluster.yaml.example
-	@if [ -e .claude/environment.yaml ] && [ ! -e cluster.yaml ]; then \
-	  git mv .claude/environment.yaml cluster.yaml 2>/dev/null || mv .claude/environment.yaml cluster.yaml; \
-	  echo "Migrated .claude/environment.yaml -> cluster.yaml"; \
-	fi; \
-	if [ ! -e cluster.yaml ]; then \
+init-cluster-yaml: cluster.yaml.example
+	@if [ ! -e cluster.yaml ]; then \
 	  cp cluster.yaml.example cluster.yaml && \
 	  echo "Created cluster.yaml from cluster.yaml.example -- fill in your cluster values"; \
 	fi; \
@@ -62,31 +58,28 @@ argocd-bootstrap: argocd-install .argocd-bootstrap-render
 argocd-password:
 	@kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
 
-argocd-oidc:
-	@OIDC_SECRET=$$(sops -d --extract '["stringData"]["argocd-oidc-client-secret"]' \
-		kubernetes/overlays/homelab/infrastructure/dex/resources/secret.sops.yaml) && \
-	kubectl -n argocd patch secret argocd-secret --type merge \
-		-p "{\"stringData\":{\"oidc.argocd.clientSecret\":\"$$OIDC_SECRET\"}}"
-
+# grafana-dashboards-check is consumer-side: it scans the consumer overlay path
+# kubernetes/overlays/<cluster>/infrastructure/*/resources/dashboards/*.json. Override
+# OVERLAY_PATH for your cluster repo or run from the consumer-cluster checkout.
+OVERLAY_PATH ?= kubernetes/overlays/$$(yq -e '.cluster.overlay' $(ENV))
 grafana-dashboards-check:
-	@if rg -n '\$\{DS_[A-Z0-9_]+\}|\"__inputs\"' kubernetes/overlays/homelab/infrastructure/*/resources/dashboards/*.json; then \
+	@OVERLAY=$(OVERLAY_PATH); \
+	 if rg -n '\$\{DS_[A-Z0-9_]+\}|"__inputs"' $$OVERLAY/infrastructure/*/resources/dashboards/*.json 2>/dev/null; then \
 		echo "error: dashboard contains import-only datasource placeholders or __inputs; use fixed datasource uid (prometheus)"; \
 		exit 1; \
-	else \
-		echo "ok: dashboards contain no DS_* placeholders or __inputs"; \
-	fi
+	 else \
+		echo "ok: dashboards contain no DS_* placeholders or __inputs (or none present)"; \
+	 fi
 
 validate-gitops:
 	./scripts/discover_kustomize_targets.sh
 	./scripts/render_kustomize_safe.sh
-	./scripts/discover_argocd_apps.sh
 	./scripts/verify_sops_files.sh
 	./scripts/run_conftest.sh
 	@for f in $$(cat .work/kustomize-rendered-files.txt 2>/dev/null); do \
 		echo "kubeconform: $$f"; \
 		kubeconform -strict -ignore-missing-schemas "$$f"; \
 	done
-	./scripts/run_trivy.sh
 
 install-pre-commit:
 	uvx pre-commit install

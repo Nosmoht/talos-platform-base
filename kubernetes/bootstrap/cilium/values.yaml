@@ -1,4 +1,4 @@
-# Cilium Helm values for homelab cluster bootstrap manifest.
+# Cilium Helm values for cluster bootstrap manifest (base; consumer overlays may patch).
 # Used by scripts/render-cilium-bootstrap.sh to render
 # kubernetes/bootstrap/cilium/cilium.yaml via helm template.
 #
@@ -137,7 +137,7 @@ bpf:
 
 # --- L2 announcements / LoadBalancer ---
 # Enable Cilium as the L2 announcer for Service type=LoadBalancer VIPs.
-# Replaces kube-vip / MetalLB for L2 ARP announcements on the homelab LAN.
+# Replaces kube-vip / MetalLB for L2 ARP announcements on the cluster LAN.
 l2announcements:
   enabled: true
 loadBalancer:

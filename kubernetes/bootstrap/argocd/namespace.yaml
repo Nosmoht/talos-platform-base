@@ -4,8 +4,8 @@ metadata:
   name: argocd
   labels:
     app.kubernetes.io/name: argocd
-    app.kubernetes.io/instance: homelab
-    app.kubernetes.io/part-of: homelab
+    app.kubernetes.io/instance: argocd
+    app.kubernetes.io/part-of: gitops
     app.kubernetes.io/managed-by: bootstrap
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/enforce-version: latest

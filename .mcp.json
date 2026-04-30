@@ -15,7 +15,7 @@
       "command": "talos-mcp",
       "args": [],
       "env": {
-        "TALOS_CONTEXT": "homelab",
+        "TALOS_CONTEXT": "cluster",
         "TALOS_MCP_ALLOWED_PATHS": "/proc,/sys,/var/log,/run,/usr/local/etc,/etc/os-release"
       }
     }
