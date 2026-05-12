@@ -9,6 +9,7 @@ permissions:
   contents: read
   packages: write
   id-token: write       # cosign keyless OIDC
+  attestations: write   # actions/attest-build-provenance
 
 jobs:
   publish:
@@ -126,12 +127,19 @@ jobs:
         # Anchors signing to the workflow's GitHub OIDC token identity
         # (the workflow ref, the repository, and the tag pattern).
         # Verify command + identity regex documented in
-        # docs/primitive-contract.md.
+        # docs/oci-artifact-verification.md.
         run: |
           set -euo pipefail
           OWNER_LC='${{ steps.push.outputs.owner_lc }}'
           cosign sign --yes \
             "ghcr.io/${OWNER_LC}/talos-platform-base@${{ steps.digest.outputs.digest }}"
+
+      - name: Attach SLSA build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/${{ steps.push.outputs.owner_lc }}/talos-platform-base
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          push-to-registry: true
 
       - name: Tag :latest
         run: |
