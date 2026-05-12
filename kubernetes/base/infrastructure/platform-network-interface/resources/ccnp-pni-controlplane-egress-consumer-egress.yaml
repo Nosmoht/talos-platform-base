@@ -13,14 +13,19 @@ spec:
       k8s:io.cilium.k8s.namespace.labels.platform.io/network-interface-version: "v1"
       platform.io/capability-consumer.controlplane-egress: "true"
   egress:
-    # Kubernetes API server ClusterIP
-    - toCIDRSet:
-        - cidr: 10.96.0.1/32
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-    # Kubernetes API server post-DNAT (Cilium kube-proxy replacement)
+    # Kubernetes API server — `toEntities: kube-apiserver` covers both
+    # ClusterIP (pre-DNAT) and host:port (post-DNAT) under Cilium
+    # kube-proxy replacement (KPR) with socketLB.enabled, which is the
+    # base's bootstrap default (see kubernetes/bootstrap/cilium/values.yaml).
+    #
+    # The previous v0.1.0 form hardcoded the kubeadm-default service
+    # ClusterIP `10.96.0.1/32` — a cluster-specific value that breaks
+    # on Talos installations with a different --service-cidr (e.g.,
+    # k3s-style `10.43.0.0/16`). Consumers on standard kube-proxy
+    # (no KPR) must add a sibling CCNP in their overlay pinning the
+    # actual service ClusterIP for their cluster.
+    # See docs/oci-artifact-verification.md and CHANGELOG v0.1.1
+    # BREAKING CHANGES for migration notes.
     - toEntities:
         - kube-apiserver
       toPorts:
