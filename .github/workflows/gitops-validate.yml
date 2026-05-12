@@ -402,4 +402,6 @@ jobs:
           "$HOME/.local/bin/gitleaks" version
 
       - name: Run gitleaks (full history)
-        run: gitleaks detect --source . --redact --verbose --exit-code 1 --no-banner
+        # --config: pin shared .gitleaks.toml so this scan and the
+        # pre-commit hook cannot drift across the project lifecycle.
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose --exit-code 1 --no-banner

@@ -13,6 +13,32 @@ CLUSTER_NAME := $(strip $(shell yq -e '.cluster.name' $(ENV) 2>/dev/null))
 ifeq ($(strip $(CLUSTER_NAME)),)
 $(error cluster.yaml is missing required key '.cluster.name')
 endif
+# yq -e on a missing field returns the literal "null" via `2>/dev/null`
+# in some yq versions — explicitly reject that token so downstream
+# $(OUTPUT_ROOT) is never built from a non-real cluster name.
+ifeq ($(strip $(CLUSTER_NAME)),null)
+$(error cluster.yaml .cluster.name resolved to 'null' — schema mismatch on the .cluster.name field)
+endif
+# Charset validation — REQUIRED before $(CLUSTER_NAME) is used in any
+# parse-time $(shell ...) like `mkdir -p $(OUTPUT_ROOT)/...`. Without
+# this, a value like `foo'; whoami; echo bar` would break out of any
+# shell quoting and execute arbitrary commands during Make-parse
+# evaluation.
+#
+# This validation uses PURE Make string functions ($(findstring) plus
+# $(foreach)) — no $(shell …), no sub-shell, no lexical-substitution-
+# to-shell vector. The value stays inside Make's string-handling layer
+# at all times, so semicolons, quotes, command-substitutions, or any
+# other shell metachar cannot trigger a code-execution path.
+#
+# Approach: enumerate the disallowed character set, $(findstring) each
+# against $(CLUSTER_NAME). If any is found, $(error) at parse time.
+# The whitelist is [A-Za-z0-9._-]; we list everything ELSE that ASCII
+# printable can contain plus whitespace and a few control hazards.
+CLUSTER_NAME_DISALLOWED_CHARS := \\ / \# ; & | $$ ` ' " < > ( ) { } [ ] = ! @ % ^ * ? : , ~ + $(space)
+$(foreach _c,$(CLUSTER_NAME_DISALLOWED_CHARS),\
+  $(if $(findstring $(_c),$(CLUSTER_NAME)),\
+    $(error cluster.yaml .cluster.name contains disallowed character — got value: $(CLUSTER_NAME))))
 
 API_VIP    := $(strip $(shell yq -e '.cluster.api_vip' $(ENV) 2>/dev/null))
 ENDPOINT   := https://$(API_VIP):6443
@@ -36,6 +62,16 @@ ifeq ($(strip $(WORKER_NODES)),)
 $(error cluster.yaml has no .nodes.workers[] entries — gpu_workers/pi_nodes are optional, workers is required)
 endif
 
+# yq -r on a missing field emits the literal token "null". The regex
+# below (line 42-46) accepts "null" because it contains only [A-Za-z];
+# this filter catches the yq-missing-field case explicitly so it
+# doesn't slip through as a literal node name.
+NULL_NODES := $(filter null,$(CP_NODES) $(WORKER_NODES) $(GPU_NODES) $(PI_NODES))
+ifneq ($(strip $(NULL_NODES)),)
+$(error cluster.yaml has node entries with missing/null .name field — \
+  CP=[$(CP_NODES)] W=[$(WORKER_NODES)] GPU=[$(GPU_NODES)] PI=[$(PI_NODES)])
+endif
+
 # Node-name input validation: only safe Make-variable characters allowed.
 # Reject names with whitespace, $, :, =, #, * — these break the IP_<name> map
 # at $(eval IP_$(word ...)) time and cause silent IP misresolution.
@@ -47,9 +83,33 @@ endif
 
 ALL_NODES    := $(CP_NODES) $(WORKER_NODES) $(GPU_NODES) $(PI_NODES)
 
+# IP charset validation — every .ip in cluster.yaml must contain only
+# IP-valid characters (hex digits + dot + colon, covering IPv4 and
+# IPv6). The yq pipeline runs without ever Make-substituting the .ip
+# VALUES into a shell command — yq's stdout is piped directly into
+# grep's stdin. The grep counts NON-matching lines; result is a clean
+# integer immune to lexical-substitution attacks.
+#
+# This complements the node-name regex (lines 78-82) and the
+# $(CLUSTER_NAME) validation (lines 22-41): all three close the
+# parse-time-injection class without trusting yq output to be safe
+# shell input.
+INVALID_IP_COUNT := $(strip $(shell yq -r '(.nodes.control_plane + .nodes.workers + (.nodes.gpu_workers // []) + (.nodes.pi_nodes // []))[].ip' $(ENV) 2>/dev/null | LC_ALL=C grep -cvE '^[0-9a-fA-F.:]+$$' || true))
+ifneq ($(INVALID_IP_COUNT),0)
+$(error cluster.yaml has $(INVALID_IP_COUNT) node entries with non-IP characters in .ip field — \
+  inspect with: yq -r '(.nodes.control_plane + .nodes.workers + (.nodes.gpu_workers // []) + (.nodes.pi_nodes // []))[].ip' $(ENV))
+endif
+
 # Per-node IP map: $(IP_<node-name>) := <ip>
 $(foreach n,$(shell yq -r '(.nodes.control_plane + .nodes.workers + (.nodes.gpu_workers // []) + (.nodes.pi_nodes // []))[] | "\(.name)=\(.ip)"' $(ENV) 2>/dev/null),\
   $(eval IP_$(word 1,$(subst =, ,$(n))) := $(word 2,$(subst =, ,$(n)))))
+
+# IP-map consistency: every parsed node MUST have a non-empty
+# $(IP_<name>). Catches the schema-drift case (e.g., cluster.yaml uses
+# `address:` instead of `ip:`) where node-name parses but IP doesn't.
+$(foreach n,$(ALL_NODES),\
+  $(if $(IP_$(n)),,\
+    $(error cluster.yaml node '$(n)' has no .ip field — IP map population failed, downstream talosctl --nodes invocations would target '')))
 
 OUTPUT_ROOT := _out/$(CLUSTER_NAME)
 $(shell mkdir -p $(OUTPUT_ROOT)/controlplane $(OUTPUT_ROOT)/worker)
