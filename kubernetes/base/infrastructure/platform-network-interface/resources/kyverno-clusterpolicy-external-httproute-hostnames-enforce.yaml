@@ -9,6 +9,24 @@ metadata:
 spec:
   validationFailureAction: Enforce
   background: true
+  # Two-rule design closes the M2 fail-open vector:
+  #   Rule 1 (this rule): the actual hostname-pattern check, guarded by
+  #     preconditions that require both an attached external listener
+  #     AND a non-empty `external_hostname_pattern` in the cluster-config
+  #     ConfigMap. If the precondition fails the rule SKIPS, but rule 2
+  #     then fires to either succeed (precondition met → pattern present)
+  #     or DENY admission (precondition not met → ConfigMap missing/empty).
+  #   Rule 2 (require-cluster-config-pattern): a defensive deny that
+  #     fires when an external-listener HTTPRoute is admitted while the
+  #     cluster-config ConfigMap is missing or carries an empty pattern.
+  #     Closes the fail-open class: previously a missing ConfigMap let
+  #     `regex_match` template-resolve against `<nil>`/empty and admit any
+  #     hostname.
+  #
+  # Consumer requirement: the consumer overlay MUST ship a `cluster-config`
+  # ConfigMap in the `kyverno` namespace with `external_hostname_pattern`
+  # set to a valid Go regex. See docs/primitive-contract.md
+  # §"External HTTPRoute hostname enforcement".
   rules:
     - name: external-https-hostnames-must-match-cluster-domain
       match:
@@ -26,6 +44,12 @@ spec:
           - key: "{{ request.object.spec.parentRefs[?sectionName == 'external-https'] | length(@) }}"
             operator: GreaterThan
             value: "0"
+          # Fail-closed guard: rule only evaluates when the pattern is
+          # actually present. The missing-pattern case is caught by
+          # rule 2 below, which DENIES admission rather than skipping.
+          - key: "{{ clusterConfig.data.external_hostname_pattern || '' }}"
+            operator: NotEquals
+            value: ""
       validate:
         message: >-
           HTTPRoute attached to the external-https listener (sectionName=external-https)
@@ -42,3 +66,33 @@ spec:
                   - key: "{{ regex_match('{{ clusterConfig.data.external_hostname_pattern }}', '{{ element }}') }}"
                     operator: Equals
                     value: false
+    - name: require-cluster-config-pattern
+      match:
+        any:
+          - resources:
+              kinds:
+                - HTTPRoute
+      context:
+        - name: clusterConfig
+          configMap:
+            name: cluster-config
+            namespace: kyverno
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.parentRefs[?sectionName == 'external-https'] | length(@) }}"
+            operator: GreaterThan
+            value: "0"
+      validate:
+        message: >-
+          External HTTPRoute admission requires the `cluster-config` ConfigMap
+          in the `kyverno` namespace to carry a non-empty
+          `external_hostname_pattern`. Consumer overlay missing this
+          ConfigMap silently fail-opens hostname enforcement on the public
+          listener. See docs/primitive-contract.md §"External HTTPRoute
+          hostname enforcement".
+        deny:
+          conditions:
+            any:
+              - key: "{{ clusterConfig.data.external_hostname_pattern || '' }}"
+                operator: Equals
+                value: ""
