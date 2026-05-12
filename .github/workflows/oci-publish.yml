@@ -8,6 +8,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write       # cosign keyless OIDC
+  attestations: write   # actions/attest-build-provenance
 
 jobs:
   publish:
@@ -26,34 +28,126 @@ jobs:
         with:
           version: 1.2.0
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.5.0
+
       - name: Login to ghcr.io
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" \
             | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build tarball
+        # Explicit allowlist: consumer-visible payload only. Switched
+        # from `tar --exclude=…` to a positional include list so the
+        # tarball cannot accidentally ship `.git`, `.github`, `vendor/`,
+        # `_release/`, `Plans/`, secrets, or any future generated state.
+        # Supply-chain hygiene rule: allowlist beats blocklist.
+        #
+        # REQUIRED entries fail loudly if missing (catches accidental
+        # deletes). OPTIONAL entries are included if present and silently
+        # skipped if not — these are files introduced by later commits
+        # in the v0.1.1 series so the workflow stays order-tolerant.
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p _release
-          tar --exclude='./.git' \
-              --exclude='./.github' \
-              --exclude='./_release' \
-              -czf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" .
+
+          REQUIRED=(
+            kubernetes/ talos/ policies/ scripts/ docs/
+            AGENTS.md CHANGELOG.md CLAUDE.md LICENSE README.md
+            Makefile .ci-renderable-components.txt .pre-commit-config.yaml
+          )
+          OPTIONAL=(
+            .gitleaks.toml
+          )
+
+          INCLUDE=()
+          for p in "${REQUIRED[@]}"; do
+            [ -e "$p" ] || { echo "::error::Required tarball entry missing: $p"; exit 1; }
+            INCLUDE+=("$p")
+          done
+          for p in "${OPTIONAL[@]}"; do
+            [ -e "$p" ] && INCLUDE+=("$p") || echo "::notice::Optional tarball entry not present (skipping): $p"
+          done
+
+          tar -czf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" "${INCLUDE[@]}"
+
+      - name: Verify tarball contents
+        # Catch the class of regression where an excluded path is
+        # accidentally included (or vice versa) — diff against an
+        # expected fixture committed to the repo.
+        run: |
+          set -euo pipefail
+          mkdir -p .work
+          tar -tzf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" \
+            | sort > .work/tarball-contents.txt
+          if [ -f .ci-oci-tarball-expected.txt ]; then
+            if ! diff -u .ci-oci-tarball-expected.txt .work/tarball-contents.txt; then
+              echo "::error::Tarball contents diverge from .ci-oci-tarball-expected.txt"
+              echo "If the divergence is intentional, update the fixture: \`mv .work/tarball-contents.txt .ci-oci-tarball-expected.txt\`"
+              exit 1
+            fi
+          else
+            echo "::notice::No .ci-oci-tarball-expected.txt fixture present; skipping diff. Run \`mv .work/tarball-contents.txt .ci-oci-tarball-expected.txt\` to lock it in."
+          fi
 
       - name: Generate checksums
         working-directory: _release
         run: sha256sum *.tar.gz > checksums.txt
 
       - name: Push OCI artifact
+        id: push
         working-directory: _release
         run: |
+          set -euo pipefail
           OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
           oras push \
             "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
             --artifact-type "application/vnd.talos-platform-base.v1+tar" \
             "talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz:application/gzip" \
             "checksums.txt:text/plain"
+          echo "owner_lc=${OWNER_LC}" >> "$GITHUB_OUTPUT"
+
+      - name: Capture artifact digest
+        id: digest
+        run: |
+          set -euo pipefail
+          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
+          DIGEST=$(oras manifest fetch --descriptor \
+            "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
+            | jq -r .digest)
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+            echo "::error::failed to capture artifact digest after oras push"
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Captured digest: $DIGEST"
+
+      - name: cosign sign (keyless OIDC)
+        # Anchors signing to the workflow's GitHub OIDC token identity
+        # (the workflow ref, the repository, and the tag pattern).
+        # Verify command + identity regex documented in
+        # docs/oci-artifact-verification.md.
+        run: |
+          set -euo pipefail
+          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
+          cosign sign --yes \
+            "ghcr.io/${OWNER_LC}/talos-platform-base@${{ steps.digest.outputs.digest }}"
+
+      - name: Attach SLSA build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/${{ steps.push.outputs.owner_lc }}/talos-platform-base
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          push-to-registry: true
 
       - name: Tag :latest
+        # Skip on SemVer pre-release tags (`v*-*`). Pre-release artifacts
+        # must not become the default that consumers pin to via `:latest`.
+        # Caveat: a tag like `v1.0.0-final` is also skipped — official
+        # SemVer §9 treats any hyphenated suffix as a pre-release
+        # identifier, so this matches the spec.
+        if: ${{ !contains(github.ref_name, '-') }}
         run: |
           OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
           oras tag \

@@ -13,7 +13,12 @@ spec:
       k8s:io.cilium.k8s.namespace.labels.platform.io/network-interface-version: "v1"
       platform.io/capability-consumer.gateway-backend: "true"
   ingress:
-    # Cilium Gateway API proxy (reserved:ingress identity)
+    # Cilium Gateway API proxy (reserved:ingress identity).
+    # Ports listed here MUST be platform-component container ports
+    # only — never tenant-application ports. Consumer overlays that
+    # ship tenant apps with custom container ports (e.g., plane.so on
+    # 8000, kb-mcp on 8001) add a sibling CCNP in their own overlay.
+    # See CHANGELOG v0.1.1 BREAKING CHANGES for migration notes.
     - fromEntities:
         - ingress
       toPorts:
@@ -26,12 +31,6 @@ spec:
               protocol: TCP
             # Dex OIDC (container port)
             - port: "5556"
-              protocol: TCP
-            # plane.so api/web (Django/Uvicorn default container port)
-            - port: "8000"
-              protocol: TCP
-            # kb-mcp MCP server (container port)
-            - port: "8001"
               protocol: TCP
             # Vault UI (container port)
             - port: "8200"
