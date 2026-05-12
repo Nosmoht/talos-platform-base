@@ -25,4 +25,5 @@ resources:
   - resources/ccnp-pni-rabbitmq-managed-consumer-egress.yaml
   - resources/ccnp-pni-gateway-backend-consumer-ingress.yaml
   - resources/ccnp-pni-monitoring-scrape-consumer-egress.yaml
+  - resources/ccnp-pni-monitoring-scrape-provider-egress.yaml
   - resources/ccnp-pni-internet-egress-consumer-egress.yaml
