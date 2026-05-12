@@ -1,0 +1,37 @@
+name: Preflight
+
+# Asserts release-time org-policy preconditions before remediation
+# commits land:
+#   - branch-protection required-checks include the expected names
+#   - GitHub Actions allowlist permits cosign + attest-build-provenance
+#   - GHCR tag immutability is enabled for the published package
+#
+# Required as a branch-protection status check. Workflow / job name MUST
+# remain stable across revisions ("Preflight" / "preflight") so branch
+# protection does not silently detach (see plan §0 sequencing).
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run preflight checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash scripts/preflight-checks.sh

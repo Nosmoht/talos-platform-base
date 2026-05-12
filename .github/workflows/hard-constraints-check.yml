@@ -7,9 +7,12 @@ name: Hard Constraints Check
 
 on:
   pull_request:
-    paths:
-      - 'kubernetes/**'
-      - 'talos/**'
+
+# Note: paths: filter intentionally removed. Path-filtered required-checks
+# count as "skipped/successful" in branch protection — a PR touching only
+# scripts/, docs/, or .github/ would silently bypass this gate. The grep
+# steps below short-circuit cleanly when CHANGED is empty for the workflow's
+# original scope, so the cost of always running is negligible.
 
 permissions:
   contents: read
@@ -25,49 +28,70 @@ jobs:
           fetch-depth: 0
 
       - name: Check forbidden Kubernetes kinds (Ingress, Endpoints)
+        shell: bash
         run: |
           set -euo pipefail
           FAIL=0
           CHANGED_K8S=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' 2>/dev/null || true)
-          if [ -n "$CHANGED_K8S" ]; then
-            MATCHES=$(echo "$CHANGED_K8S" | xargs grep -lE '^kind:\s*(Ingress|Endpoints)\b' 2>/dev/null || true)
-            if [ -n "$MATCHES" ]; then
-              echo "::error::Forbidden resource kind (Ingress or Endpoints) detected in:"
-              echo "$MATCHES"
-              echo "Fix: Use HTTPRoute/TLSRoute (Gateway API) instead of Ingress; use EndpointSlice instead of Endpoints."
-              FAIL=1
+          [ -n "$CHANGED_K8S" ] || exit 0
+          MATCHES=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            [ -f "$f" ] || continue
+            if grep -lE '^kind:[[:space:]]*(Ingress|Endpoints)\b' "$f" >/dev/null 2>&1; then
+              MATCHES="${MATCHES}${f}"$'\n'
             fi
+          done <<<"$CHANGED_K8S"
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Forbidden resource kind (Ingress or Endpoints) detected in:"
+            printf '%s' "$MATCHES"
+            echo "Fix: Use HTTPRoute/TLSRoute (Gateway API) instead of Ingress; use EndpointSlice instead of Endpoints."
+            FAIL=1
           fi
           exit $FAIL
 
       - name: Check forbidden Talos installer image (SecureBoot)
+        shell: bash
         run: |
           set -euo pipefail
           FAIL=0
           CHANGED_TALOS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'talos/**' 2>/dev/null || true)
-          if [ -n "$CHANGED_TALOS" ]; then
-            MATCHES=$(echo "$CHANGED_TALOS" | xargs grep -l 'metal-installer-secureboot' 2>/dev/null || true)
-            if [ -n "$MATCHES" ]; then
-              echo "::error::Forbidden SecureBoot installer image (metal-installer-secureboot) detected in:"
-              echo "$MATCHES"
-              echo "Fix: Use metal-installer (SecureBoot causes boot loops on this cluster)."
-              FAIL=1
+          [ -n "$CHANGED_TALOS" ] || exit 0
+          MATCHES=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            [ -f "$f" ] || continue
+            if grep -l 'metal-installer-secureboot' "$f" >/dev/null 2>&1; then
+              MATCHES="${MATCHES}${f}"$'\n'
             fi
+          done <<<"$CHANGED_TALOS"
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Forbidden SecureBoot installer image (metal-installer-secureboot) detected in:"
+            printf '%s' "$MATCHES"
+            echo "Fix: Use metal-installer (SecureBoot causes boot loops on this cluster)."
+            FAIL=1
           fi
           exit $FAIL
 
       - name: Check forbidden kernel boot parameter (debugfs=off)
+        shell: bash
         run: |
           set -euo pipefail
           FAIL=0
           CHANGED_ALL=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' 'talos/**' 2>/dev/null || true)
-          if [ -n "$CHANGED_ALL" ]; then
-            MATCHES=$(echo "$CHANGED_ALL" | xargs grep -l 'debugfs=off' 2>/dev/null || true)
-            if [ -n "$MATCHES" ]; then
-              echo "::error::Forbidden kernel boot parameter (debugfs=off) detected in:"
-              echo "$MATCHES"
-              echo "Fix: Remove debugfs=off — it causes 'failed to create root filesystem' boot loops with Cilium."
-              FAIL=1
+          [ -n "$CHANGED_ALL" ] || exit 0
+          MATCHES=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            [ -f "$f" ] || continue
+            if grep -l 'debugfs=off' "$f" >/dev/null 2>&1; then
+              MATCHES="${MATCHES}${f}"$'\n'
             fi
+          done <<<"$CHANGED_ALL"
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Forbidden kernel boot parameter (debugfs=off) detected in:"
+            printf '%s' "$MATCHES"
+            echo "Fix: Remove debugfs=off — it causes 'failed to create root filesystem' boot loops with Cilium."
+            FAIL=1
           fi
           exit $FAIL
