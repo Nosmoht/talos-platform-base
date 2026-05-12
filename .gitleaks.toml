@@ -1,0 +1,22 @@
+# Shared gitleaks configuration — pinned for both pre-commit and CI so
+# their rulesets cannot silently diverge across the project lifecycle.
+#
+# `useDefault = true` inherits gitleaks's bundled default rules. Add
+# project-specific custom rules under [[rules]] when needed; do NOT
+# disable defaults without a documented justification.
+
+[extend]
+useDefault = true
+
+# Allowlist — files exempted from secret scanning. Each entry MUST:
+#   1. Use anchored RE2 regex (^…$) and escape `.` so the entry does
+#      not over-match (e.g. `\.toml` not `.toml`).
+#   2. Be a test fixture that does NOT contain real-shaped tokens.
+#      Use placeholder values like `PLACEHOLDER_NOT_A_REAL_TOKEN`.
+#   3. Carry a short justification.
+#
+# This list is intentionally minimal.
+[allowlist]
+paths = [
+  '''^scripts/test/codex-leak\.toml$''',   # placeholder values only — see scripts/check-codex-config-placeholders.sh tests
+]
