@@ -27,6 +27,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install ripgrep
+        # scripts/render_kustomize_safe.sh uses `rg` for ksops/sops-generator
+        # detection. Not preinstalled on ubuntu-latest GitHub runners as of
+        # 2026-05; explicit install keeps the workflow self-contained.
+        run: |
+          set -eu
+          if ! command -v rg >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends ripgrep
+          fi
+          rg --version | head -1
+
       - name: Setup kustomize
         uses: kustomize-everything/action-kustomize@v2.1.0
         with:
