@@ -83,9 +83,33 @@ endif
 
 ALL_NODES    := $(CP_NODES) $(WORKER_NODES) $(GPU_NODES) $(PI_NODES)
 
+# IP charset validation — every .ip in cluster.yaml must contain only
+# IP-valid characters (hex digits + dot + colon, covering IPv4 and
+# IPv6). The yq pipeline runs without ever Make-substituting the .ip
+# VALUES into a shell command — yq's stdout is piped directly into
+# grep's stdin. The grep counts NON-matching lines; result is a clean
+# integer immune to lexical-substitution attacks.
+#
+# This complements the node-name regex (lines 78-82) and the
+# $(CLUSTER_NAME) validation (lines 22-41): all three close the
+# parse-time-injection class without trusting yq output to be safe
+# shell input.
+INVALID_IP_COUNT := $(strip $(shell yq -r '(.nodes.control_plane + .nodes.workers + (.nodes.gpu_workers // []) + (.nodes.pi_nodes // []))[].ip' $(ENV) 2>/dev/null | LC_ALL=C grep -cvE '^[0-9a-fA-F.:]+$$' || true))
+ifneq ($(INVALID_IP_COUNT),0)
+$(error cluster.yaml has $(INVALID_IP_COUNT) node entries with non-IP characters in .ip field — \
+  inspect with: yq -r '(.nodes.control_plane + .nodes.workers + (.nodes.gpu_workers // []) + (.nodes.pi_nodes // []))[].ip' $(ENV))
+endif
+
 # Per-node IP map: $(IP_<node-name>) := <ip>
 $(foreach n,$(shell yq -r '(.nodes.control_plane + .nodes.workers + (.nodes.gpu_workers // []) + (.nodes.pi_nodes // []))[] | "\(.name)=\(.ip)"' $(ENV) 2>/dev/null),\
   $(eval IP_$(word 1,$(subst =, ,$(n))) := $(word 2,$(subst =, ,$(n)))))
+
+# IP-map consistency: every parsed node MUST have a non-empty
+# $(IP_<name>). Catches the schema-drift case (e.g., cluster.yaml uses
+# `address:` instead of `ip:`) where node-name parses but IP doesn't.
+$(foreach n,$(ALL_NODES),\
+  $(if $(IP_$(n)),,\
+    $(error cluster.yaml node '$(n)' has no .ip field — IP map population failed, downstream talosctl --nodes invocations would target '')))
 
 OUTPUT_ROOT := _out/$(CLUSTER_NAME)
 $(shell mkdir -p $(OUTPUT_ROOT)/controlplane $(OUTPUT_ROOT)/worker)
