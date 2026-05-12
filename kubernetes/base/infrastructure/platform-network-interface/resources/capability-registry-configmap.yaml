@@ -7,96 +7,260 @@ metadata:
     app.kubernetes.io/name: platform-network-interface
     app.kubernetes.io/component: capability-registry
     app.kubernetes.io/managed-by: argocd
+  annotations:
+    # Sync wave -2: registry must exist before any Kyverno policy that
+    # reads it via context.configMap. Kyverno policies bootstrap at
+    # wave 0; CRDs/AppProjects at -1. -2 keeps the registry strictly
+    # before its consumers and avoids a chicken-and-egg deadlock on
+    # green-field cluster bootstrap.
+    argocd.argoproj.io/sync-wave: "-2"
 data:
-  interfaceVersion: "v1"
+  interfaceVersion: "v2"
   capabilities.yaml: |
+    # PNI Capability Registry — v2 schema
+    # ====================================
+    # Source of truth for capability vocabulary. Read by Kyverno policies
+    # (via context.configMap), by `scripts/render-capability-reference.sh`
+    # which regenerates docs/capability-reference.md, and by
+    # `scripts/lint-consume-labels.sh` which consumer cluster repos run
+    # against their own kustomizations.
+    #
+    # Schema per entry:
+    #   id              string, required             stable label suffix
+    #   stability       ga | beta | preview          consumer-facing maturity
+    #   instanced       bool, default false          if true, requires <instance> suffix
+    #   instance_source dict | string                CRD GVK or 'kv-mount' / 'external'
+    #   implementations list of { tool, endpoint }   current implementing tool(s)
+    #   description     string                       prose, rendered into reference doc
+    #   deprecated      bool                         if true, kept for alias compat only
+    #   sunset          ISO-8601 date                conftest fails when now > sunset
+    #   split_into      list of new IDs              when a deprecated cap was split
+    #   replaced_by     string                       when a deprecated cap was renamed
+    #   disambiguation  string                       prose, helps consumers pick after split
     capabilities:
+
+      # ─── Singletons (non-instanced) ──────────────────────────────────
+
       - id: monitoring-scrape
-        providers:
-          - kube-prometheus-stack
-          - vault-config-operator
-      - id: logging-ship
-        providers:
-          - alloy
-          - loki
-      - id: vault-secrets
-        providers:
-          - vault-operator
-          - vault-config-operator
-          - external-secrets
-      - id: cnpg-postgres
-        providers:
-          - cloudnative-pg
-      - id: redis-managed
-        selector: pod-label capability-provider.redis-managed
-        # Operator that labels broker pods with capability-provider.redis-managed.
-        providers:
-          - redis-operator
-      - id: kafka-managed
-        providers:
-          - strimzi-kafka-operator
-      - id: rabbitmq-managed
-        selector: pod-label capability-provider.rabbitmq-managed
-        # Operator that labels broker pods with capability-provider.rabbitmq-managed.
-        # Note: rabbitmq-cluster-operator (control-plane) creates the broker pods
-        # but is itself a control-plane component, not a data-path provider.
-        # messaging-topology-operator reconciles via management API
-        # (operator-dataplane CCNP).
-        providers:
-          - rabbitmq-messaging-topology-operator
-      - id: s3-object
-        providers:
-          - minio-operator
-          - minio
-      - id: storage-csi
-        providers:
-          - piraeus-operator
-      - id: tls-issuance
-        providers:
-          - cert-manager
-          - cert-approver
-      - id: gateway-backend
-        providers:
-          - gateway-api
-      - id: external-gateway-routes
-        providers:
-          - gateway-api
-        # Opt-in to attach HTTPRoutes to the *.<your-cluster-fqdn> listener on
-        # the cluster gateway. Network policy is unchanged — uses existing
-        # gateway-backend capability for Envoy->consumer traffic; this label only
-        # controls Gateway-API allowedRoutes selection on the external-https
-        # listener.
-      - id: gpu-runtime
-        providers:
-          - nvidia-device-plugin
-          - nvidia-dcgm-exporter
-          - node-feature-discovery
+        stability: ga
+        implementations:
+          - tool: kube-prometheus-stack
+            endpoint: { port: http-metrics, protocol: prometheus-scrape-v1 }
+        description: |
+          Prometheus-format /metrics scrape endpoint. The consumer here is
+          the Prometheus scraper; the producer is the workload exposing
+          /metrics. Direction is intentional: Prometheus consumes the
+          endpoint surface.
+
       - id: hpa-metrics
-        providers:
-          - metrics-server
+        stability: ga
+        implementations:
+          - tool: metrics-server
+            endpoint: { port: https, protocol: k8s-metrics-api-v1beta1 }
+        description: |
+          Resource Metrics API (`metrics.k8s.io`) for HorizontalPodAutoscaler
+          and `kubectl top`. Distinct from monitoring-scrape: aggregated
+          short-window CPU/memory, not arbitrary Prometheus metrics.
+
+      - id: tls-issuance
+        stability: ga
+        implementations:
+          - tool: cert-manager
+            endpoint: { port: https, protocol: cert-manager-webhook-v1 }
+        description: |
+          X.509 certificate issuance via cert-manager Issuer/ClusterIssuer.
+          Consumed by any workload that owns a Certificate resource.
+
+      - id: gateway-backend
+        stability: ga
+        implementations:
+          - tool: cilium-gateway-api
+            endpoint: { port: http, protocol: http-1.1 }
+        description: |
+          Backend of an HTTPRoute attached to a platform Gateway. Consumer
+          is the workload serving Gateway traffic; producer is the
+          envoy/cilium ingress dataplane.
+
+      - id: external-gateway-routes
+        stability: ga
+        implementations:
+          - tool: gateway-api
+            endpoint: { port: https, protocol: tls-passthrough }
+        description: |
+          Permission to attach HTTPRoutes to the cluster's external-https
+          Gateway listener. Network policy unchanged (uses gateway-backend
+          for Envoy→consumer traffic); this label controls Gateway-API
+          `allowedRoutes` selection only.
+
+      - id: gpu-runtime
+        stability: beta
+        implementations:
+          - tool: nvidia-device-plugin
+          - tool: nvidia-dcgm-exporter
+          - tool: node-feature-discovery
+        description: |
+          NVIDIA GPU scheduling and telemetry. Node-local device plugin;
+          no Service endpoint, opt-in is namespace-level only.
+
       - id: internet-egress
-        providers:
-          - cilium
+        stability: ga
+        implementations:
+          - tool: cilium
+        description: |
+          Egress to public internet IP ranges. Excludes RFC1918, link-local,
+          loopback, multicast. Enforced as a CIDR-based egress CCNP.
+
       - id: controlplane-egress
-        providers:
-          - kube-apiserver
+        stability: ga
+        implementations:
+          - tool: kube-apiserver
+            endpoint: { port: https, protocol: kubernetes-api-v1 }
+        description: |
+          Egress to the in-cluster kube-apiserver. Required for any
+          workload using a ServiceAccount token, watching CRs, etc.
+
+      # ─── Split: storage-csi → block-storage-replicated/local ─────────
+
+      - id: storage-csi
+        deprecated: true
+        sunset: "2026-11-13"
+        split_into: [block-storage-replicated, block-storage-local]
+        disambiguation: |
+          Use block-storage-replicated for stateful workloads needing
+          cross-node DRBD replication (databases, message brokers,
+          object stores). Use block-storage-local for ephemeral or
+          single-node workloads (build caches, scratch space). Setting
+          both is rarely correct.
+
+      - id: block-storage-replicated
+        stability: beta
+        implementations:
+          - tool: piraeus-operator
+        description: |
+          Cross-node replicated block storage via LINSTOR/DRBD. Higher
+          latency, survives node loss.
+
+      - id: block-storage-local
+        stability: ga
+        implementations:
+          - tool: local-path-provisioner
+        description: |
+          Node-local block storage. Lowest latency, lost on node failure.
+          PVs are not portable across nodes.
+
+      # ─── Instanced capabilities (per-tenant data isolation) ──────────
+
+      - id: vault-secrets
+        stability: ga
+        instanced: true
+        instance_source: kv-mount
+        implementations:
+          - tool: vault-operator
+            endpoint: { port: https, protocol: vault-kv-v2 }
+        description: |
+          HashiCorp Vault secrets access. Instance unit is a KV mount path
+          (e.g. `team-foo`). Each mount maps to a Vault policy with a
+          single tenant's secret scope. Instance enumeration is static —
+          maintained in vault-operator Helm values, not CRD-watched.
+
+      - id: cnpg-postgres
+        stability: ga
+        instanced: true
+        instance_source:
+          apiVersion: postgresql.cnpg.io/v1
+          kind: Cluster
+        implementations:
+          - tool: cloudnative-pg
+            endpoint: { port: postgres, protocol: pgwire-v3 }
+        description: |
+          PostgreSQL via CloudNative-PG. Instance unit is one CNPG
+          `Cluster` CR. Consumers scope per cluster; cross-instance L4
+          access is denied.
+
+      - id: redis-managed
+        stability: beta
+        instanced: true
+        instance_source:
+          apiVersion: redis.redis.opstreelabs.in/v1beta2
+          kind: RedisReplication
+        implementations:
+          - tool: redis-operator
+            endpoint: { port: redis, protocol: resp3 }
+        description: |
+          Redis via OT-Container-Kit redis-operator. Instance unit is a
+          RedisReplication / RedisCluster / RedisStandalone / RedisSentinel
+          CR. Consumers scope per CR.
+
+      - id: rabbitmq-managed
+        stability: beta
+        instanced: true
+        instance_source:
+          apiVersion: rabbitmq.com/v1beta1
+          kind: RabbitmqCluster
+        implementations:
+          - tool: rabbitmq-cluster-operator
+            endpoint: { port: amqp, protocol: amqp-0-9-1 }
+        description: |
+          RabbitMQ via the official cluster-operator. Instance unit is a
+          RabbitmqCluster CR. messaging-topology-operator reconciles
+          topology via the management API (operator-dataplane path,
+          internal to PNI).
+
+      - id: kafka-managed
+        stability: preview
+        instanced: true
+        instance_source:
+          apiVersion: kafka.strimzi.io/v1beta2
+          kind: Kafka
+        implementations:
+          - tool: strimzi-kafka-operator
+            endpoint: { port: tcp-clients, protocol: kafka-wire }
+        description: |
+          Apache Kafka via Strimzi. Instance unit is a Kafka CR.
+
+      - id: s3-object
+        stability: ga
+        instanced: true
+        instance_source: bucket
+        implementations:
+          - tool: minio-operator
+            endpoint: { port: https, protocol: s3-api }
+          - tool: external
+        description: |
+          S3-API object storage. Instance unit is a bucket name. May
+          resolve to in-cluster MinIO or external S3; for external,
+          CCNP is FQDN/CIDR-based and no producer pod exists.
+
+      # ─── Operator plumbing (internal — NOT for tenant consumption) ───
+
       - id: admission-webhook-provider
-        direction: provider-ingress
-        selector: pod-label capability-provider.admission-webhook
-        providers:
-          - kyverno
-          - cloudnative-pg
-          - redis-operator
-          - piraeus-operator
-          - minio-operator
-          - vault-config-operator
-          - rabbitmq-messaging-topology-operator
+        stability: ga
+        internal: true
+        description: |
+          Reserved. Internal capability allowing kube-apiserver →
+          ValidatingAdmissionWebhook traffic to land at operator pods
+          carrying capability-provider.admission-webhook. Not part of
+          the tenant PNI vocabulary.
+
       - id: monitoring-scrape-provider
-        direction: provider-ingress
-        selector: pod-label capability-provider.monitoring-scrape
-        providers:
-          - vault-operator
-          - cloudnative-pg
-          - redis-operator
-          - strimzi-kafka-operator
-          - vault
+        deprecated: true
+        sunset: "2026-08-13"
+        replaced_by: monitoring-scrape
+        description: |
+          Legacy alias from v0.1.0. The provider side of monitoring-scrape
+          is now represented by `capability-provider.monitoring-scrape` on
+          pods directly; this consume-side surrogate is redundant.
+
+      # ─── Renamed-to-alias bridges (kept for grace window) ────────────
+
+      - id: logging-ship
+        stability: ga
+        description: |
+          Egress from a workload to the log aggregation pipeline (alloy
+          and/or loki). Kept as a single capability in v2; a future split
+          into logs-ingest / logs-query will land when a second log
+          backend or a downstream log-query consumer appears.
+        implementations:
+          - tool: alloy
+          - tool: loki
+            endpoint: { port: http, protocol: loki-push-v1 }
