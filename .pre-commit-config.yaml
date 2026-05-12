@@ -19,3 +19,6 @@ repos:
     rev: v8.24.3
     hooks:
       - id: gitleaks
+        # Pin shared .gitleaks.toml so pre-commit and CI cannot drift
+        # silently across the project lifecycle.
+        args: ["--config=.gitleaks.toml"]
