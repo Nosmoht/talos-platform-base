@@ -142,6 +142,12 @@ jobs:
           push-to-registry: true
 
       - name: Tag :latest
+        # Skip on SemVer pre-release tags (`v*-*`). Pre-release artifacts
+        # must not become the default that consumers pin to via `:latest`.
+        # Caveat: a tag like `v1.0.0-final` is also skipped — official
+        # SemVer §9 treats any hyphenated suffix as a pre-release
+        # identifier, so this matches the spec.
+        if: ${{ !contains(github.ref_name, '-') }}
         run: |
           OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
           oras tag \
