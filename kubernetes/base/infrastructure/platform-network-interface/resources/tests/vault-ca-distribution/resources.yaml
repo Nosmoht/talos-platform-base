@@ -1,0 +1,62 @@
+---
+# Case 1: tenant namespace, opt-in only — generate must fire.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-consumer
+  labels:
+    platform.io/network-interface-version: "v1"
+    platform.io/network-profile: "managed"
+    platform.io/consume.vault-secrets: "true"
+---
+# Case 2: argocd-shaped — privileged network-profile excludes.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd-shaped
+  labels:
+    platform.io/network-interface-version: "v1"
+    platform.io/network-profile: "privileged"
+    platform.io/consume.vault-secrets: "true"
+---
+# Case 3: cert-manager-shaped — opt-out via vault-ca-distribution=skip.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager-shaped
+  labels:
+    platform.io/network-interface-version: "v1"
+    platform.io/network-profile: "managed"
+    platform.io/consume.vault-secrets: "true"
+    platform.io/vault-ca-distribution: "skip"
+---
+# Case 4: external-secrets-shaped — same opt-out path.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets-shaped
+  labels:
+    platform.io/network-interface-version: "v1"
+    platform.io/network-profile: "managed"
+    platform.io/consume.vault-secrets: "true"
+    platform.io/vault-ca-distribution: "skip"
+---
+# Case 5: monitoring-shaped — no consume.vault-secrets label.
+# Match selector misses; rule never evaluates.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring-shaped
+  labels:
+    platform.io/network-interface-version: "v1"
+    platform.io/network-profile: "managed"
+---
+# Source for the generate-clone — vault-ca Secret in cert-manager.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vault-ca
+  namespace: cert-manager
+type: Opaque
+data:
+  ca.crt: ZmFrZS1mb3ItdGVzdC1vbmx5  # base64 "fake-for-test-only"
