@@ -32,12 +32,59 @@ jobs:
             | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build tarball
+        # Explicit allowlist: consumer-visible payload only. Switched
+        # from `tar --exclude=…` to a positional include list so the
+        # tarball cannot accidentally ship `.git`, `.github`, `vendor/`,
+        # `_release/`, `Plans/`, secrets, or any future generated state.
+        # Supply-chain hygiene rule: allowlist beats blocklist.
+        #
+        # REQUIRED entries fail loudly if missing (catches accidental
+        # deletes). OPTIONAL entries are included if present and silently
+        # skipped if not — these are files introduced by later commits
+        # in the v0.1.1 series so the workflow stays order-tolerant.
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p _release
-          tar --exclude='./.git' \
-              --exclude='./.github' \
-              --exclude='./_release' \
-              -czf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" .
+
+          REQUIRED=(
+            kubernetes/ talos/ policies/ scripts/ docs/
+            AGENTS.md CHANGELOG.md CLAUDE.md LICENSE README.md
+            Makefile .ci-renderable-components.txt .pre-commit-config.yaml
+          )
+          OPTIONAL=(
+            .gitleaks.toml
+          )
+
+          INCLUDE=()
+          for p in "${REQUIRED[@]}"; do
+            [ -e "$p" ] || { echo "::error::Required tarball entry missing: $p"; exit 1; }
+            INCLUDE+=("$p")
+          done
+          for p in "${OPTIONAL[@]}"; do
+            [ -e "$p" ] && INCLUDE+=("$p") || echo "::notice::Optional tarball entry not present (skipping): $p"
+          done
+
+          tar -czf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" "${INCLUDE[@]}"
+
+      - name: Verify tarball contents
+        # Catch the class of regression where an excluded path is
+        # accidentally included (or vice versa) — diff against an
+        # expected fixture committed to the repo.
+        run: |
+          set -euo pipefail
+          mkdir -p .work
+          tar -tzf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" \
+            | sort > .work/tarball-contents.txt
+          if [ -f .ci-oci-tarball-expected.txt ]; then
+            if ! diff -u .ci-oci-tarball-expected.txt .work/tarball-contents.txt; then
+              echo "::error::Tarball contents diverge from .ci-oci-tarball-expected.txt"
+              echo "If the divergence is intentional, update the fixture: \`mv .work/tarball-contents.txt .ci-oci-tarball-expected.txt\`"
+              exit 1
+            fi
+          else
+            echo "::notice::No .ci-oci-tarball-expected.txt fixture present; skipping diff. Run \`mv .work/tarball-contents.txt .ci-oci-tarball-expected.txt\` to lock it in."
+          fi
 
       - name: Generate checksums
         working-directory: _release
