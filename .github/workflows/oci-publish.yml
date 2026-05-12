@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write       # cosign keyless OIDC
 
 jobs:
   publish:
@@ -25,6 +26,9 @@ jobs:
         uses: oras-project/setup-oras@v1
         with:
           version: 1.2.0
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.5.0
 
       - name: Login to ghcr.io
         run: |
@@ -91,14 +95,43 @@ jobs:
         run: sha256sum *.tar.gz > checksums.txt
 
       - name: Push OCI artifact
+        id: push
         working-directory: _release
         run: |
+          set -euo pipefail
           OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
           oras push \
             "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
             --artifact-type "application/vnd.talos-platform-base.v1+tar" \
             "talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz:application/gzip" \
             "checksums.txt:text/plain"
+          echo "owner_lc=${OWNER_LC}" >> "$GITHUB_OUTPUT"
+
+      - name: Capture artifact digest
+        id: digest
+        run: |
+          set -euo pipefail
+          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
+          DIGEST=$(oras manifest fetch --descriptor \
+            "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
+            | jq -r .digest)
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+            echo "::error::failed to capture artifact digest after oras push"
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Captured digest: $DIGEST"
+
+      - name: cosign sign (keyless OIDC)
+        # Anchors signing to the workflow's GitHub OIDC token identity
+        # (the workflow ref, the repository, and the tag pattern).
+        # Verify command + identity regex documented in
+        # docs/primitive-contract.md.
+        run: |
+          set -euo pipefail
+          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
+          cosign sign --yes \
+            "ghcr.io/${OWNER_LC}/talos-platform-base@${{ steps.digest.outputs.digest }}"
 
       - name: Tag :latest
         run: |
