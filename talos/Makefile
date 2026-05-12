@@ -13,6 +13,32 @@ CLUSTER_NAME := $(strip $(shell yq -e '.cluster.name' $(ENV) 2>/dev/null))
 ifeq ($(strip $(CLUSTER_NAME)),)
 $(error cluster.yaml is missing required key '.cluster.name')
 endif
+# yq -e on a missing field returns the literal "null" via `2>/dev/null`
+# in some yq versions — explicitly reject that token so downstream
+# $(OUTPUT_ROOT) is never built from a non-real cluster name.
+ifeq ($(strip $(CLUSTER_NAME)),null)
+$(error cluster.yaml .cluster.name resolved to 'null' — schema mismatch on the .cluster.name field)
+endif
+# Charset validation — REQUIRED before $(CLUSTER_NAME) is used in any
+# parse-time $(shell ...) like `mkdir -p $(OUTPUT_ROOT)/...`. Without
+# this, a value like `foo'; whoami; echo bar` would break out of any
+# shell quoting and execute arbitrary commands during Make-parse
+# evaluation.
+#
+# This validation uses PURE Make string functions ($(findstring) plus
+# $(foreach)) — no $(shell …), no sub-shell, no lexical-substitution-
+# to-shell vector. The value stays inside Make's string-handling layer
+# at all times, so semicolons, quotes, command-substitutions, or any
+# other shell metachar cannot trigger a code-execution path.
+#
+# Approach: enumerate the disallowed character set, $(findstring) each
+# against $(CLUSTER_NAME). If any is found, $(error) at parse time.
+# The whitelist is [A-Za-z0-9._-]; we list everything ELSE that ASCII
+# printable can contain plus whitespace and a few control hazards.
+CLUSTER_NAME_DISALLOWED_CHARS := \\ / \# ; & | $$ ` ' " < > ( ) { } [ ] = ! @ % ^ * ? : , ~ + $(space)
+$(foreach _c,$(CLUSTER_NAME_DISALLOWED_CHARS),\
+  $(if $(findstring $(_c),$(CLUSTER_NAME)),\
+    $(error cluster.yaml .cluster.name contains disallowed character — got value: $(CLUSTER_NAME))))
 
 API_VIP    := $(strip $(shell yq -e '.cluster.api_vip' $(ENV) 2>/dev/null))
 ENDPOINT   := https://$(API_VIP):6443
@@ -34,6 +60,16 @@ $(error cluster.yaml has no .nodes.control_plane[] entries — check yq parse an
 endif
 ifeq ($(strip $(WORKER_NODES)),)
 $(error cluster.yaml has no .nodes.workers[] entries — gpu_workers/pi_nodes are optional, workers is required)
+endif
+
+# yq -r on a missing field emits the literal token "null". The regex
+# below (line 42-46) accepts "null" because it contains only [A-Za-z];
+# this filter catches the yq-missing-field case explicitly so it
+# doesn't slip through as a literal node name.
+NULL_NODES := $(filter null,$(CP_NODES) $(WORKER_NODES) $(GPU_NODES) $(PI_NODES))
+ifneq ($(strip $(NULL_NODES)),)
+$(error cluster.yaml has node entries with missing/null .name field — \
+  CP=[$(CP_NODES)] W=[$(WORKER_NODES)] GPU=[$(GPU_NODES)] PI=[$(PI_NODES)])
 endif
 
 # Node-name input validation: only safe Make-variable characters allowed.
