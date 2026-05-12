@@ -1,0 +1,88 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pni-reserved-annotations-enforce
+  labels:
+    app.kubernetes.io/name: platform-network-interface
+    app.kubernetes.io/component: policy-governance
+    app.kubernetes.io/managed-by: argocd
+spec:
+  validationFailureAction: Enforce
+  background: true
+  admission: true
+  emitWarning: false
+  # PNI v2 introduces two reserved annotations on Service objects:
+  #   - platform.io/capability-endpoint.<cap>[.<inst>]   names the port
+  #   - platform.io/capability-protocol.<cap>[.<inst>]   names the wire format
+  # These annotations are how downstream tooling (dashboards, the
+  # capability reference doc generator, the deprecation scanner)
+  # discovers concrete service:port mappings for a capability. A tenant
+  # manifest that forges these annotations on a tenant-namespace Service
+  # could shadow the real provider entry in any tool that trusts the
+  # annotations as ground truth.
+  #
+  # This policy denies tenant-set capability-endpoint.* /
+  # capability-protocol.* annotations on Service objects. Trust is
+  # decided per-Service from labels that the platform operators set on
+  # managed Services (see reserved-labels policy for the parallel
+  # pod-side trust model).
+  rules:
+    - name: reserved-capability-annotations-service
+      skipBackgroundRequests: true
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+      validate:
+        allowExistingViolations: true
+        message: >-
+          PNI violation: Service '{{request.object.metadata.name}}' in
+          namespace '{{request.object.metadata.namespace}}' carries a
+          reserved annotation 'platform.io/capability-{endpoint,protocol}.*'
+          but the Service does not carry a recognised platform-operator
+          managed-by signature.
+          The capability-endpoint.* / capability-protocol.* annotations
+          are reserved for Services managed by a trusted platform
+          operator. They are how PNI tooling discovers the concrete
+          service:port mapping for a capability — forging them silently
+          redirects discovery.
+          See docs/capability-reference.md and ADR
+          adr-capability-producer-consumer-symmetry.md §Reserved-annotation
+          enforcement.
+        foreach:
+          - list: "request.object.metadata.annotations | items(@, 'key', 'value')"
+            preconditions:
+              all:
+                - key: "{{ element.key }}"
+                  operator: AnyIn
+                  value:
+                    - "platform.io/capability-endpoint.*"
+                    - "platform.io/capability-protocol.*"
+            deny:
+              conditions:
+                all:
+                  # Deny UNLESS at least one trusted-operator managed-by
+                  # signature is present on the Service. The exempt list
+                  # mirrors the in-cluster set of platform operators that
+                  # set capability-endpoint/protocol annotations on their
+                  # owned Services.
+                  - key: "{{ request.object.metadata.labels.\"app.kubernetes.io/managed-by\" || '' }}"
+                    operator: AnyNotIn
+                    value:
+                      - argocd
+                      - cloudnative-pg
+                      - cert-manager
+                      - cilium
+                      - dex
+                      - kube-prometheus-stack
+                      - kyverno
+                      - local-path-provisioner
+                      - loki
+                      - metrics-server
+                      - minio-operator
+                      - piraeus-operator
+                      - rabbitmq-cluster-operator
+                      - redis-operator
+                      - strimzi-cluster-operator
+                      - vault-operator
