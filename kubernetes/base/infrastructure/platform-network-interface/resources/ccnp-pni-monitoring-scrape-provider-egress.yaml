@@ -1,0 +1,49 @@
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: pni-monitoring-scrape-provider-egress
+  labels:
+    app.kubernetes.io/name: platform-network-interface
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/managed-by: argocd
+spec:
+  # PNI: capability provider (Prometheus / kube-prometheus-stack) egresses
+  # to capability consumers (workloads exposing scrape endpoints).
+  #
+  # This CCNP replaces the legacy `pni-monitoring-scrape-consumer-egress`
+  # (removed in 16b). It tightens the destination selector from namespace-
+  # level (`consume.monitoring-scrape=true` on the namespace) to the full
+  # three-label PNI scheme:
+  #     namespace.platform.io/network-interface-version: v1
+  #     namespace.platform.io/consume.monitoring-scrape:  "true"
+  #     pod.platform.io/capability-consumer.monitoring-scrape: "true"
+  # That is the same selector form used by all 17 sibling consumer-side
+  # CCNPs in this family, so monitoring-scrape now matches the convention
+  # rather than diverging from it.
+  #
+  # Co-existence window with the old CCNP (16a → 16b):
+  #   * After 16a lands, both `pni-monitoring-scrape-consumer-egress`
+  #     (legacy, namespace-only destination selector) AND this CCNP
+  #     (provider-egress, three-label destination selector) are applied.
+  #   * Cilium evaluates network policies as a UNION of allow rules.
+  #     Egress permitted under either CCNP is allowed. The legacy
+  #     CCNP is more permissive, so scraping continues to work even
+  #     for workloads that have not yet adopted the pod-level
+  #     capability-consumer label.
+  #   * Consumer cluster overlays should add
+  #     `platform.io/capability-consumer.monitoring-scrape: "true"`
+  #     to every scrape-target pod template during the co-existence
+  #     window. Verify in each cluster with `argocd app get` before
+  #     proceeding to 16b.
+  #   * After 16b removes the legacy CCNP, only this CCNP applies and
+  #     workloads without the pod-level label can no longer be scraped.
+  endpointSelector:
+    matchLabels:
+      k8s:io.kubernetes.pod.namespace: monitoring
+      app.kubernetes.io/name: prometheus
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.cilium.k8s.namespace.labels.platform.io/network-interface-version: "v1"
+            k8s:io.cilium.k8s.namespace.labels.platform.io/consume.monitoring-scrape: "true"
+            k8s:platform.io/capability-consumer.monitoring-scrape: "true"
