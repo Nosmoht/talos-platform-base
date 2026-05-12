@@ -3,10 +3,12 @@
 # in env blocks — no literal tokens (API keys, passwords, etc.) must be committed.
 #
 # Called by pre-commit framework on changes to .codex/config.toml.
+# Also accepts an optional path argument (for testing against fixtures):
+#   scripts/check-codex-config-placeholders.sh [path/to/config.toml]
 
 set -euo pipefail
 
-CONFIG=".codex/config.toml"
+CONFIG="${1:-.codex/config.toml}"
 
 if [ ! -f "$CONFIG" ]; then
   echo "check-codex-config-placeholders: $CONFIG not found, skipping."
@@ -38,7 +40,12 @@ while IFS= read -r line; do
       echo "       Replace with a \${ENV_VAR} placeholder to avoid committing secrets." >&2
       FAIL=1
     fi
-  done < <(echo "$line" | grep -oE '[A-Z_]+ = "[^"]*"' || true)
+  # Match any TOML bare-key assignment, both UPPER_SNAKE and lower_snake.
+  # TOML spec bare keys: [A-Za-z0-9_-]+. The previous form `[A-Z_]+`
+  # missed lowercase keys (`api_token = "literal"`) — a leak-prevention
+  # fail-open class. RE2 syntax used here is compatible with bash's
+  # grep -E (POSIX BRE/ERE).
+  done < <(echo "$line" | grep -oE '[A-Za-z_][A-Za-z0-9_-]*[[:space:]]*=[[:space:]]*"[^"]*"' || true)
 
 done < "$CONFIG"
 
