@@ -14,13 +14,33 @@ spec:
       k8s:io.cilium.k8s.namespace.labels.platform.io/network-interface-version: "v1"
       platform.io/capability-consumer.internet-egress: "true"
   egress:
-    # Public internet only (RFC1918 excluded)
+    # Public internet only — RFC1918 + additional IANA-reserved blocks
+    # excluded. The non-RFC1918 entries are critical on cloud-hosted
+    # consumers where 169.254.169.254 (RFC3927 link-local) is the
+    # instance-metadata-service endpoint and a credential-exfiltration
+    # vector for any pod with `consume.internet-egress: "true"`.
+    # IANA Special-Purpose Address Registry references:
+    #   10.0.0.0/8         RFC1918 private
+    #   172.16.0.0/12      RFC1918 private
+    #   192.168.0.0/16     RFC1918 private
+    #   100.64.0.0/10      RFC6598 CGNAT (Tailscale, some cloud service CIDRs)
+    #   127.0.0.0/8        RFC1122 loopback
+    #   169.254.0.0/16     RFC3927 link-local (includes cloud IMDS)
+    #   224.0.0.0/4        RFC5771 multicast
+    #   240.0.0.0/4        RFC1112 reserved-future
+    # IPv6 out of scope while base is IPv4-only; add when dual-stack
+    # support lands (fc00::/7 ULA, fe80::/10 link-local).
     - toCIDRSet:
         - cidr: 0.0.0.0/0
           except:
             - 10.0.0.0/8
             - 172.16.0.0/12
             - 192.168.0.0/16
+            - 100.64.0.0/10
+            - 127.0.0.0/8
+            - 169.254.0.0/16
+            - 224.0.0.0/4
+            - 240.0.0.0/4
     # DNS
     - toEndpoints:
         - matchLabels:
