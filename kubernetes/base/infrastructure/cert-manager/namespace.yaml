@@ -9,6 +9,10 @@ metadata:
     platform.io/network-profile: managed
     platform.io/consume.vault-secrets: "true"
     platform.io/consume.controlplane-egress: "true"
+    # cert-manager owns the source `vault-ca` Secret. Opt out of the
+    # pni-vault-ca-distribution generate policy so the policy does not
+    # try to clone the Secret into its own source namespace.
+    platform.io/vault-ca-distribution: skip
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted

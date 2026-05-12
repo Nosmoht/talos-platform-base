@@ -10,6 +10,11 @@ metadata:
     platform.io/consume.controlplane-egress: "true"
     platform.io/consume.monitoring-scrape: "true"
     platform.io/consume.vault-secrets: "true"
+    # external-secrets manages its own CA trust store for Vault upstream
+    # access. Opt out of the pni-vault-ca-distribution generate policy
+    # — the cloned vault-ca Secret would duplicate state already managed
+    # by the operator.
+    platform.io/vault-ca-distribution: skip
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted

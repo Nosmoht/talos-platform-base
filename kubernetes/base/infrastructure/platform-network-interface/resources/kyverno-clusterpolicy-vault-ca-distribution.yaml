@@ -11,6 +11,34 @@ spec:
   background: true
   admission: true
   emitWarning: false
+  # Trust model:
+  #   Match selector (positive opt-in):
+  #     consume.vault-secrets: "true"      — namespace declares it
+  #                                          consumes the vault-secrets
+  #                                          capability.
+  #   Exclude (label-based opt-out, two paths):
+  #     network-profile: privileged        — platform-controller
+  #                                          namespaces (argocd, kyverno,
+  #                                          piraeus, tetragon, NFD).
+  #                                          Privileged controllers are
+  #                                          assumed to handle their
+  #                                          own trust material.
+  #     vault-ca-distribution: skip        — explicit opt-out for
+  #                                          non-privileged platform
+  #                                          namespaces that consume
+  #                                          vault-secrets but manage
+  #                                          their own vault-ca
+  #                                          (cert-manager owns the
+  #                                          source Secret;
+  #                                          external-secrets uses its
+  #                                          own CA store).
+  #
+  # The hardcoded namespace exempt list (kube-system, argocd,
+  # cert-manager, vault, external-secrets, monitoring) leaked tenant /
+  # platform-specific names into the base manifest, requiring a base
+  # release to add a new exempt namespace. The label-based form moves
+  # the decision to the namespace owner — the platform team adds the
+  # opt-out label on the namespace they own.
   rules:
     - name: distribute-vault-ca-to-vault-secrets-consumers
       skipBackgroundRequests: false
@@ -26,15 +54,13 @@ spec:
       exclude:
         any:
           - resources:
-              names:
-                - kube-system
-                - kube-public
-                - kube-node-lease
-                - argocd
-                - cert-manager
-                - vault
-                - external-secrets
-                - monitoring
+              selector:
+                matchLabels:
+                  platform.io/network-profile: privileged
+          - resources:
+              selector:
+                matchLabels:
+                  platform.io/vault-ca-distribution: skip
       generate:
         synchronize: true
         generateExisting: true
