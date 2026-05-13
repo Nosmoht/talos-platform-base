@@ -88,7 +88,7 @@ Authoritative refs:
 |---|---|---|---|
 | Producer Namespace | `platform.io/provide.<cap>[.<inst>]: "true"` | yes | base manifests (RBAC-gated) |
 | Producer Pod | `platform.io/capability-provider.<cap>[.<inst>]: "true"` | yes | producer Helm `podLabels` |
-| Producer Service | annotations `platform.io/capability-endpoint.<cap>[.<inst>]: <port-name>` and `platform.io/capability-protocol.<cap>[.<inst>]: <wire>` | yes | producer Helm `service.annotations` (discovery only — not enforced) |
+| Producer Service | annotations `platform.io/capability-endpoint.<cap>[.<inst>]: <port-name>` and `platform.io/capability-protocol.<cap>[.<inst>]: <wire>` | yes | producer Helm `service.annotations` — discovery semantics only (not used by CCNP `endpointSelector`); tenant-set forgery on Services denied by `pni-reserved-annotations-enforce` |
 | Consumer Namespace | `platform.io/consume.<cap>[.<inst>]: "true"` | no | consumer manifests |
 | Consumer Pod | `platform.io/capability-consumer.<cap>[.<inst>]: "true"` | no | consumer Helm `podLabels` |
 

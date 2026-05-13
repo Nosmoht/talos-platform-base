@@ -29,30 +29,40 @@ this base when working in a consumer-cluster checkout.
 
 ### Path-scoped auto-loaded rules
 
-Recommended rule files (frontmatter `paths:`) that the plugin should
-ship and that automatically attach when editing matching files:
+Rule frontmatter `paths:` accepts glob patterns only (not content
+predicates); content-trigger logic lives in the rule prose, which the
+loaded LLM applies when it sees the matching token in-context.
+
+Recommended rule files the plugin should ship — `paths:` is a glob:
 
 | Rule | `paths:` glob | Purpose |
 |---|---|---|
-| `pni-capability-first.md` | `kubernetes/**/*.yaml` (any namespace, pod, or service manifest) | Reinforces capability-selector form; flags `app.kubernetes.io/name: <tool>` in CCNP `endpointSelector` |
+| `pni-capability-first.md` | `kubernetes/**/*.yaml` | Rule prose tells the model: when the diff selects on `app.kubernetes.io/name: <tool>` inside a CCNP `endpointSelector`, suggest the capability-selector form |
 | `pni-reserved-labels.md` | `kubernetes/**/namespace*.yaml`, `kubernetes/**/values*.yaml`, `kubernetes/**/ccnp-*.yaml`, `kubernetes/**/cnp-*.yaml` | Loads when reserved keys may be set; explains namespace-anchored trust and producer/consumer split |
-| `pni-instanced-suffix.md` | matches files containing `consume.cnpg-postgres`, `consume.vault-secrets`, `consume.redis-managed`, `consume.rabbitmq-managed`, `consume.kafka-managed`, `consume.s3-object` | Catches bare-suffix usage on instanced capabilities before audit-mode advisory fires |
+| `pni-instanced-suffix.md` | `kubernetes/**/*.yaml` | Rule prose tells the model: when the file contains `consume.cnpg-postgres`, `consume.vault-secrets`, `consume.redis-managed`, `consume.rabbitmq-managed`, `consume.kafka-managed`, or `consume.s3-object` without an `.<inst>` suffix, flag it before the audit-mode advisory fires |
 | `talos-hard-constraints.md` | `talos/patches/**/*.yaml` | Reinforces "no `debugfs=off`", "no `secureboot` installer" |
 | `gateway-api-only.md` | `kubernetes/**/*.yaml` | Catches `kind: Ingress` insertions before CI rejects them |
 | `endpointslices-only.md` | `kubernetes/**/*.yaml` | Catches `kind: Endpoints` (deprecated since K8s 1.33.0) |
 
 ### Subagents
 
+Existing in the harness plugin today (CLAUDE.md §Subagents lists them):
+
 | Subagent | Purpose | When dispatched |
 |---|---|---|
 | `gitops-operator` | renders, validates, suggests minimal kustomize patches | edit-time on `kubernetes/**` |
 | `talos-sre` | reviews Talos patches against hard constraints, knows boot-loop traps | edit-time on `talos/**` |
 | `platform-reliability-reviewer` | reviews PR diffs touching CCNPs, registry, Kyverno policies, ADRs | explicit on PR-prep |
-| `pni-capability-architect` | new — reviews PR diffs touching the capability registry or PNI policies; checks that namespace-anchored trust invariants hold, that new caps follow the granularity rule | explicit on registry edits |
 | `researcher` | open-ended cross-repo research with web budgets | explicit |
 | `builder-implementer` / `builder-evaluator` | issue-implementation pipeline (see issue-workflow.md) | `/implement-issue` skill |
 
-The capability-architect subagent is new and v2-specific. Its checks:
+**Proposed (not yet shipped — open a plugin-side issue to add):**
+
+| Subagent | Purpose | When dispatched |
+|---|---|---|
+| `pni-capability-architect` | reviews PR diffs touching the capability registry or PNI policies; checks that namespace-anchored trust invariants hold, that new caps follow the granularity rule | explicit on registry edits |
+
+The proposed `pni-capability-architect` checks:
 
 1. New cap entries carry `id`, `stability`, `instanced`, `implementations`, `description`.
 2. `instanced: true` entries declare `instance_source` (apiVersion/kind).

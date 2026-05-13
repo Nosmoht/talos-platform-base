@@ -60,14 +60,14 @@ flowchart LR
     direction TB
     Make[Makefile<br/>validate-gitops<br/>validate-kyverno-policies]
     Boot["kubernetes/bootstrap/<br/>(parameterized templates)"]
-    Infra["kubernetes/base/infrastructure/<br/>22 Helm-based components"]
+    Infra["kubernetes/base/infrastructure/<br/>22 standalone-renderable components<br/>(12 Helm-based, 10 resources-only)"]
     Talos["talos/<br/>machine-config patches +<br/>cluster.yaml-driven Makefile"]
     Pol["policies/<br/>conftest Rego"]
     Scripts["scripts/<br/>render + lint helpers"]
     Docs["docs/<br/>ADRs + reference"]
     CI[".github/workflows/<br/>gitops-validate<br/>oci-publish<br/>hard-constraints-check"]
     Reg["PNI capability registry<br/>(ConfigMap, sync-wave -2)"]
-    Pol2["Kyverno ClusterPolicies<br/>PNI contract + reserved-labels<br/>+ reserved-annotations<br/>+ instanced-suffix (audit)"]
+    Pol2["7 Kyverno ClusterPolicies<br/>pni-contract-enforce<br/>pni-reserved-labels-enforce<br/>pni-reserved-annotations-enforce<br/>pni-capability-validation-enforce<br/>pni-instanced-suffix-required (audit)<br/>external-httproute-hostnames-enforce<br/>vault-ca-distribution"]
     CCNP["16 static CCNPs<br/>capability-selector"]
 
     Reg -.->|"data source for"| Pol2

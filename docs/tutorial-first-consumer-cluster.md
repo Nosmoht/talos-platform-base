@@ -39,14 +39,30 @@ By the end you will have:
 
 ## Step 1 — Pin and verify the OCI artifact
 
-```bash
-# Pick a tag — list them on GHCR.
-gh api /users/nosmoht/packages/container/talos-platform-base/versions \
-  --jq '.[].metadata.container.tags[]' | sort -V | tail -5
+Pick the most recent tag. Three lookup options, in order of preference:
 
-# Pick the most recent stable tag (substitute below).
-TAG=v0.1.0
+```bash
+# (a) Browse GHCR in the browser — no auth required for public images:
+#     https://github.com/nosmoht/talos-platform-base/pkgs/container/talos-platform-base
+#
+# (b) Query the public GHCR registry API anonymously (works without any
+#     OAuth scope):
+TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:nosmoht/talos-platform-base:pull" | jq -r .token)
+curl -s -H "Authorization: Bearer ${TOKEN}" \
+  https://ghcr.io/v2/nosmoht/talos-platform-base/tags/list \
+  | jq -r '.tags[]' | grep -E '^v[0-9]' | sort -V | tail -5
+#
+# (c) Authenticated `gh` (requires read:packages scope, NOT in gh's
+#     default scope set — refresh first):
+#       gh auth refresh -h github.com -s read:packages
+#       gh api /users/nosmoht/packages/container/talos-platform-base/versions \
+#         --jq '.[].metadata.container.tags[]' | sort -V | tail -5
+
 OWNER=nosmoht
+TAG=$(curl -s "https://ghcr.io/v2/${OWNER}/talos-platform-base/tags/list" \
+        -H "Authorization: Bearer $(curl -s "https://ghcr.io/token?scope=repository:${OWNER}/talos-platform-base:pull" | jq -r .token)" \
+      | jq -r '.tags[]' | grep -E '^v[0-9]' | sort -V | tail -1)
+echo "Picked TAG=${TAG}"
 ```
 
 Verify cosign signature + provenance (see

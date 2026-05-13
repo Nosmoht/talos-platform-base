@@ -13,7 +13,7 @@ and [pni-cookbook.md](docs/pni-cookbook.md) for concrete recipes.
 
 - Talos machine-config patches (control-plane without `extraManifests`, common, drbd, worker-{gpu,gvisor,kubevirt,pi})
 - Talos `Makefile` with `cluster.yaml`-driven multi-cluster config generation
-- 22 Helm-base infrastructure components under `kubernetes/base/infrastructure/`:
+- 22 standalone-renderable infrastructure components under `kubernetes/base/infrastructure/` (12 Helm-based + 10 resources-only):
   alloy, argocd, cert-approver, cert-manager, dex, external-secrets,
   kube-prometheus-stack, kubevirt, kubevirt-cdi, kyverno, local-path-provisioner,
   loki, metrics-server, multus-cni, node-feature-discovery, nvidia-dcgm-exporter,
@@ -60,7 +60,7 @@ See: [ADR — Multi-Repo Platform Split](./docs/adr-multi-repo-platform-split.md
 .
 ├── Makefile                              # base-side validation + MCP install
 ├── kubernetes/
-│   ├── base/infrastructure/<comp>/       # 22 cluster-agnostic Helm-base components
+│   ├── base/infrastructure/<comp>/       # 22 components (12 Helm-based, 10 resources-only)
 │   └── bootstrap/
 │       ├── argocd/                       # parameterized templates (envsubst)
 │       └── cilium/                       # base Helm values for cilium.yaml render

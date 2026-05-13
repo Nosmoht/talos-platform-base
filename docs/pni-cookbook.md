@@ -70,10 +70,15 @@ spec:
         platform.io/capability-consumer.vault-secrets.team-foo: "true"
 ```
 
-The audit-mode policy `pni-instanced-suffix-required-audit` would
-emit a PolicyReport entry if you wrote `consume.cnpg-postgres` without
-the `.team-foo` suffix. Per-instance L4 CCNPs are created by the
-**consumer overlay** that deploys the `Cluster` CR (not by this base).
+The base ships the **vocabulary contract + audit-mode advisory** only.
+The audit policy `pni-instanced-suffix-required-audit` emits a
+PolicyReport entry if you wrote `consume.cnpg-postgres` without the
+`.team-foo` suffix — but the advisory does **not** create CCNPs.
+Per-instance L4 enforcement (one CCNP per `<inst>`) is the **consumer
+overlay's** responsibility — the overlay that deploys the `Cluster` CR
+must also ship the per-instance CCNP that grants reachability from
+`consume.cnpg-postgres.team-foo` pods to `capability-provider.cnpg-postgres.team-foo`
+pods. See ADR §"Per-instance enforcement is consumer-overlay responsibility".
 
 ### 1.3 Look up which capabilities exist
 
@@ -176,28 +181,37 @@ webhook:
 
 ### 2.3 Chart does not expose `podLabels`
 
-Some upstream charts (`vault-config-operator`) hardcode pod labels and
-do not expose a `podLabels` value. Solve with a kustomize strategic-merge
-patch:
+Some upstream charts (`vault-config-operator`) hardcode pod labels via
+chart-internal helpers (`<chart>.selectorLabels`) and do not expose a
+`podLabels` value. Solve with a kustomize strategic-merge patch that
+merges into the chart-rendered Deployment template — kustomize merges
+the labels map. Excerpt from
+`kubernetes/base/infrastructure/vault-config-operator/kustomization.yaml`:
 
 ```yaml
-# kustomization.yaml
 patches:
   - target:
+      group: apps
+      version: v1
       kind: Deployment
-      name: vault-config-operator-controller-manager
+      name: vault-config-operator
     patch: |
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: vault-config-operator-controller-manager
+        name: vault-config-operator
       spec:
         template:
           metadata:
             labels:
-              platform.io/capability-provider.admission-webhook: "true"
               platform.io/capability-provider.monitoring-scrape: "true"
+              platform.io/capability-provider.admission-webhook: "true"
 ```
+
+The `target.name` MUST match the Deployment name the chart actually
+renders (`helm template` to verify if unsure) — chart conventions vary
+and assuming a `-controller-manager` suffix will hit "no resources
+matched" patch errors.
 
 ### 2.4 Component must NOT live in a system namespace
 
@@ -207,18 +221,32 @@ Trust is namespace-anchored: a system namespace cannot carry
 `provide.<cap>` without violating the base's "no exemptions" rule.
 
 `metrics-server` was relocated `kube-system → metrics-server` for this
-reason; the override goes in the component's `kustomization.yaml`:
+reason. The relocation has two parts in
+`kubernetes/base/infrastructure/metrics-server/kustomization.yaml`:
+
+1. Ship a dedicated `namespace.yaml` and add it to `resources:`.
+2. Pin `helmCharts[].namespace` to the new namespace so the chart
+   renders Deployment / Service / RBAC into it directly. No JSON-patch
+   needed — kustomize re-renders the chart into the requested namespace.
 
 ```yaml
-namespace: metrics-server
-patches:
-  - target:
-      kind: Deployment
-    patch: |-
-      - op: replace
-        path: /metadata/namespace
-        value: metrics-server
+resources:
+  - namespace.yaml          # ships the new namespace with provide.<cap>
+
+helmCharts:
+  - name: metrics-server
+    repo: https://kubernetes-sigs.github.io/metrics-server
+    version: 3.12.2
+    releaseName: metrics-server
+    namespace: metrics-server    # <-- relocation lives here
+    valuesFile: values.yaml
+    includeCRDs: true
 ```
+
+Consumer overlays that previously referenced
+`kube-system/metrics-server` (ServiceMonitor targets, manual `kubectl`
+wiring) MUST update to `metrics-server/metrics-server` — flag in the
+OCI tag CHANGELOG when this kind of relocation ships.
 
 ### 2.5 Adding a new capability to the registry
 
