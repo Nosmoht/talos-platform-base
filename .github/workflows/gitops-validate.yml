@@ -108,6 +108,29 @@ jobs:
       - name: Verify helm install
         run: helm version --short
 
+      - name: Install yq
+        # render-component.sh + verify-rendered.sh use yq for chart.lock.yaml
+        # parsing and CRD/manifest splitting. yq is not preinstalled on
+        # ubuntu-latest GitHub runners.
+        run: |
+          set -eu
+          if ! command -v yq >/dev/null 2>&1; then
+            sudo wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+            sudo chmod +x /usr/local/bin/yq
+          fi
+          yq --version
+
+      - name: Verify rendered manifests are reproducible (drift gate)
+        # Phase B re-render gate: re-runs scripts/render-component.sh for
+        # every component with a chart.lock.yaml in a tmpdir and diffs
+        # against the committed _rendered/ tree. Drift = build fails.
+        # This is the load-bearing guarantee that committed _rendered/
+        # YAML is reproducible from chart.lock.yaml + values.yaml +
+        # _rendered-overlay/. Without this gate, a developer could
+        # hand-edit the committed output and the change would silently
+        # ship to consumer clusters.
+        run: ./scripts/verify-rendered.sh
+
       - name: Discover kustomize targets
         run: ./scripts/discover_kustomize_targets.sh
 
