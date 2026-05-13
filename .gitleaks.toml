@@ -25,4 +25,21 @@ paths = [
   # the placeholder data does NOT contain real-shaped tokens and is
   # documented inline.
   '''^kubernetes/base/infrastructure/platform-network-interface/resources/tests/[^/]+/resources\.yaml$''',
+
+  # Phase B rendered-manifests outputs that include a Helm-rendered
+  # `kind: Secret` whose `data.<key>` is *configuration*, not a credential.
+  # gitleaks `detect` walks the full git history (fetch-depth: 0), so
+  # these files surface even on PRs that don't directly modify them
+  # (e.g. PR #24 chore/tool-pinning sees them via the merged-base graph
+  # while PR #26 introduces them).
+  # Real credential Secrets are ESO-provisioned (Phase A) and never
+  # appear in the rendered tree.
+  #
+  # dex/_rendered/manifests.yaml — Secret `dex` carries `data.config.yaml`
+  #   = base64(dex runtime config: oauth2.skipApprovalScreen, storage.type).
+  # kube-prometheus-stack/_rendered/manifests.yaml — Secret
+  #   `alertmanager-kube-prometheus-stack-alertmanager` carries
+  #   `data.alertmanager.yaml` = base64(alertmanager routing config).
+  '''^kubernetes/base/infrastructure/dex/_rendered/manifests\.yaml$''',
+  '''^kubernetes/base/infrastructure/kube-prometheus-stack/_rendered/manifests\.yaml$''',
 ]
