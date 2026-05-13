@@ -27,7 +27,7 @@ jobs:
       CONFTEST_VERSION: v0.53.0
       KYVERNO_CLI_VERSION: v1.17.1
       KUBECONFORM_VERSION: 0.6.7
-      HELM_VERSION: 3.16.4
+      HELM_VERSION: 3.20.2
 
     steps:
       - name: Checkout
