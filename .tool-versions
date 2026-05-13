@@ -19,3 +19,4 @@ cosign 2.4.1
 conftest 0.53.0
 kyverno-cli 1.17.1
 kubeconform 0.6.7
+yq 4.53.2

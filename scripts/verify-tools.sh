@@ -34,6 +34,7 @@ extract_version() {
     conftest)    conftest --version 2>/dev/null | awk '/^Version:/ {print $2}' | sed -E 's/^v//' ;;
     kyverno-cli) kyverno version 2>/dev/null | awk '/^Version:/ {print $2}' | sed -E 's/^v//' ;;
     kubeconform) kubeconform -v 2>/dev/null | sed -E 's/^v//' ;;
+    yq)          yq --version 2>/dev/null | awk '{print $NF}' | sed -E 's/^v//' ;;
     *) echo "" ;;
   esac
 }
