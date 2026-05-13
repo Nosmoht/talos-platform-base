@@ -73,7 +73,7 @@ the actual enforcement.
 
 Capabilities with multi-tenant data carry an instance suffix. Schema:
 
-```
+```text
 platform.io/consume.<cap>.<instance>:  "true"
 platform.io/capability-consumer.<cap>.<instance>:  "true"
 platform.io/provide.<cap>.<instance>:  "true"
@@ -227,7 +227,7 @@ discovery and shadow the real provider in downstream tooling.
 Every PNI Kyverno policy MUST set `validate.message` (or
 `foreach[].deny.message`) to a template of the form:
 
-```
+```text
 PNI violation: <resource kind> '<name>' in namespace '<ns>' <what is wrong>.
 Add '<label key>: "<value>"' to <correct subject>.
 See docs/capability-reference.md#<cap>

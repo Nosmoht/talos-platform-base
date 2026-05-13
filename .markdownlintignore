@@ -1,0 +1,21 @@
+vendor/
+charts/
+node_modules/
+.work/
+Plans/
+**/CHANGELOG.md
+docs/capability-reference.md
+
+# TODO: clean up legacy docs and remove from this ignore list.
+# Tracked in https://github.com/Nosmoht/talos-platform-base/issues/22
+# (open after PR #21 merges).
+# These files pre-date the markdownlint CI gate; violations are
+# mechanical (MD022/MD032/MD040 — blank lines around headings/lists,
+# language hint on bare ``` fences). New work in these files MUST
+# comply with .markdownlint.yaml; bulk cleanup is a separate PR.
+docs/adr-multi-repo-platform-split.md
+docs/issue-workflow.md
+docs/mcp-setup.md
+docs/primitive-contract.md
+kubernetes/AGENTS.md
+talos/AGENTS.md

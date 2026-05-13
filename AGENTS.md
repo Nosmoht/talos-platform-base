@@ -20,7 +20,7 @@ cluster repos that pin a specific tag of this base.
 - `talos/`: Talos machine config inputs (`patches/`), Makefile with `cluster.yaml`-driven multi-cluster generation.
 - `policies/`: conftest Rego policies for kustomize-rendered manifests.
 - `scripts/`: cluster-agnostic validation, render and helper scripts.
-- `docs/`: platform-base reference docs (issue workflow, MCP setup, primitive contract, ADR for the multi-repo split).
+- `docs/`: platform-base reference docs. See [`docs/README.md`](docs/README.md) for the navigable map (architecture, contract cookbook, ADRs, workflow refs).
 
 ## Build, Test, and Development Commands
 
@@ -65,22 +65,72 @@ referencing both the cluster repo and this base.
 - Direct-apply exception: bootstrap content under `kubernetes/bootstrap/`.
 - Keep secret material out of base — there is no `*.sops.yaml` in this repo.
 
-## Platform Network Interface (PNI) Rules
+## Platform Network Interface (PNI) — v2 Capability-First Contract
 
-PNI is the platform's tenant-network contract. Base ships only the generic
-pattern (namespace/pod label conventions, Kyverno enforcement policies, the 18
-capability CCNPs whose CIDR rules use IANA-reserved RFC1918 blocks as RFC-standard
-"private network" exclusions). Consumer cluster overlays carry the only
-cluster-specific value (`cluster-config-cm.yaml` with `external_hostname_pattern`).
+PNI is the platform's tenant-network contract. The architecture is
+**capability-first**: capabilities are the stable interface, tools are
+swappable implementations. Trust is **namespace-anchored**: a pod's
+`capability-provider.<cap>` claim is valid only if its namespace declares
+the matching `provide.<cap>` label. There is no central tool-signature
+whitelist.
 
-- Default to PNI for consumer-to-platform connectivity.
-- Consumer namespace contract (namespace-level labels):
-  - `platform.io/network-interface-version: v1`
-  - `platform.io/network-profile: restricted|managed|privileged`
-  - explicit capability opt-in: `platform.io/consume.<capability>: "true"`
-- Consumer pod contract (pod-level labels):
-  - Every pod that consumes a PNI capability must carry `platform.io/capability-consumer.<capability>: "true"` on the pod template.
-- Never set provider-reserved labels in consumer manifests: `platform.io/provider`, `platform.io/managed-by`, `platform.io/capability`.
+Authoritative refs:
+
+- [ADR — Capability Producer/Consumer Symmetry](docs/adr-capability-producer-consumer-symmetry.md) — design decision, alternatives, consequences
+- [`docs/capability-architecture.md`](docs/capability-architecture.md) — architecture overview + enforcement summary
+- [`docs/pni-cookbook.md`](docs/pni-cookbook.md) — how-to recipes (consumer/producer manifests)
+- [`docs/capability-reference.md`](docs/capability-reference.md) — per-capability catalogue (auto-generated; do not hand-edit)
+- Registry source of truth: `kubernetes/base/infrastructure/platform-network-interface/resources/capability-registry-configmap.yaml`
+
+### Five label/annotation sites per capability
+
+| Site | Key | Reserved | Set by |
+|---|---|---|---|
+| Producer Namespace | `platform.io/provide.<cap>[.<inst>]: "true"` | yes | base manifests (RBAC-gated) |
+| Producer Pod | `platform.io/capability-provider.<cap>[.<inst>]: "true"` | yes | producer Helm `podLabels` |
+| Producer Service | annotations `platform.io/capability-endpoint.<cap>[.<inst>]: <port-name>` and `platform.io/capability-protocol.<cap>[.<inst>]: <wire>` | yes | producer Helm `service.annotations` — discovery semantics only (not used by CCNP `endpointSelector`); tenant-set forgery on Services denied by `pni-reserved-annotations-enforce` |
+| Consumer Namespace | `platform.io/consume.<cap>[.<inst>]: "true"` | no | consumer manifests |
+| Consumer Pod | `platform.io/capability-consumer.<cap>[.<inst>]: "true"` | no | consumer Helm `podLabels` |
+
+`<inst>` suffix is mandatory for capabilities marked `instanced: true` in
+the registry (`vault-secrets`, `cnpg-postgres`, `redis-managed`,
+`rabbitmq-managed`, `kafka-managed`, `s3-object`). Audit-mode policy
+`pni-instanced-suffix-required-audit` flags missing suffixes via
+PolicyReport without blocking.
+
+Namespace contract also carries:
+
+- `platform.io/network-interface-version: v1`
+- `platform.io/network-profile: restricted|managed|privileged`
+
+### Reserved-label rule
+
+Reserved keys MUST NOT appear on tenant-owned resources. Concretely:
+
+- `platform.io/provide.*` — settable only by base manifests (RBAC).
+- `platform.io/capability-provider.*` — settable on a workload only if its namespace carries the matching `provide.*` (namespace-anchored rule in `kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml`).
+- `platform.io/capability-endpoint.*` / `capability-protocol.*` on a Service — settable only by producer charts (admission policy `pni-reserved-annotations-enforce`).
+- Legacy keys still forbidden everywhere: `platform.io/provider`, `platform.io/managed-by`, `platform.io/capability`.
+
+### Capability-first selectors
+
+CCNPs use `capability-provider.<cap>` and `capability-consumer.<cap>`
+selectors, never tool-name labels. A Prometheus → Victoria-Metrics or
+Loki → Victoria-Logs swap is a label move on the producer pod template,
+not a CCNP edit.
+
+Exception: cluster-singleton plumbing without a capability fit
+(e.g. `kube-dns` in `monitoring-dns-visibility`) keeps the tool selector
+and is explicitly documented as such.
+
+### Out of scope for the base
+
+The base ships the **vocabulary contract + advisory** only. Per-instance
+generate/mutate Kyverno machinery (one CCNP per CR instance) is
+**consumer-overlay responsibility** — the base does not deploy the
+instance CRs (Vault server, CNPG `Cluster`, `RabbitmqCluster`,
+`RedisFailover`, `Kafka`, `LinstorCluster`) so per-instance enforcement
+is plugged in by the consumer overlay that deploys the tool.
 
 ## Validation Checklist For Codex Changes
 
@@ -109,10 +159,16 @@ without repo-maintainer approval.
 - **Kubernetes recommended labels on all resources** — `app.kubernetes.io/{name,instance,version,component,part-of,managed-by}`
 - **File naming conventions** — `cnp-<component>.yaml`, `ccnp-<description>.yaml`; component dirs must match ArgoCD Application name
 - **PNI first** for consumer-to-platform connectivity — do not begin with ad-hoc CNPs for managed platform services
+- **Capability selectors only** for new CCNPs — never `app.kubernetes.io/name: <tool>`; selector MUST be `capability-provider.<cap>` or `capability-consumer.<cap>`. Documented plumbing exceptions are explicitly named in the file header.
+- **Namespace-anchored producer trust** — every component setting `capability-provider.<cap>` on its pod template MUST also ship its own `namespace.yaml` carrying `platform.io/provide.<cap>: "true"`. No kube-system exemptions; relocate to a dedicated namespace instead.
 
 ## Key Terms
 
-- **PNI** — Platform Network Interface: Kyverno-enforced namespace contract for platform service access. Base ships the pattern; consumer overlays carry environment-specific values.
+- **PNI** — Platform Network Interface: Kyverno+Cilium contract for capability-mediated access. v2 = capability-first, namespace-anchored, instance-aware (see ADR).
+- **Capability** — stable, tool-agnostic identifier for a platform service (`monitoring-scrape`, `tls-issuance`, `cnpg-postgres`, …). Registry: `capability-registry-configmap.yaml`.
+- **Instanced capability** — capability whose data plane is partitioned per tenant (`cnpg-postgres.<cluster>`, `vault-secrets.<mount>`); requires the `<inst>` label suffix.
+- **Producer/Consumer symmetry** — for every capability, five sites carry the contract (namespace, pod, service annotation × producer/consumer). See AGENTS.md §PNI table.
+- **Namespace-anchored trust** — `capability-provider.<cap>` on a pod is valid iff its namespace carries `provide.<cap>: "true"`. No central tool-signature whitelist.
 - **AppProject** — ArgoCD RBAC boundary scoping repos/namespaces an Application can deploy to.
 - **Sync-wave** — ArgoCD annotation for deploy order: `-1` (AppProjects) → `0` (infra) → `1` (apps).
 - **Schematic** — Talos Image Factory spec embedding system extensions into installer images. Cluster-side input lives in consumer repo's `talos/talos-factory-schematic*.yaml`.

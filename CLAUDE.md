@@ -34,3 +34,18 @@ This base ships none.
 - After incidents in a consumer cluster: update `AGENTS.md` §Hard Constraints
   here only if the lesson is universal across clusters; environment-specific
   postmortems stay in the consumer repo.
+
+### Knowledge Map
+
+For deep dives, read these in addition to AGENTS.md:
+
+- **Capability-first architecture** → `docs/capability-architecture.md`
+- **PNI cookbook (manifest recipes)** → `docs/pni-cookbook.md`
+- **Per-capability catalogue (auto-generated)** → `docs/capability-reference.md`
+- **Architecture overview (C4)** → `ARCHITECTURE.md`
+- **Architecture decisions** → `docs/adr-*.md`
+- **Issue lifecycle + state machine** → `docs/issue-workflow.md`
+- **OCI verification** → `docs/oci-artifact-verification.md`
+- **Harness-plugin integration (rules / subagents this base benefits from)** → `docs/harness-plugin-integration.md`
+- **Security disclosure + supply chain** → `SECURITY.md`
+- **Upgrade guide for vendored bases** → `UPGRADING.md`

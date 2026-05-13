@@ -1,0 +1,30 @@
+# CODEOWNERS — review routing for talos-platform-base
+#
+# Order matters: later patterns override earlier ones.
+# Syntax: https://docs.github.com/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+
+# Default: repo owner reviews everything.
+*                                                @nosmoht
+
+# Hard-constraint surfaces — require explicit owner review.
+/AGENTS.md                                       @nosmoht
+/CLAUDE.md                                       @nosmoht
+/SECURITY.md                                     @nosmoht
+/CODEOWNERS                                      @nosmoht
+/MAINTAINERS.md                                  @nosmoht
+
+# ADRs — decision-grade documents.
+/docs/adr-*.md                                   @nosmoht
+
+# PNI subsystem — capability-first contract.
+/kubernetes/base/infrastructure/platform-network-interface/  @nosmoht
+/docs/capability-architecture.md                 @nosmoht
+/docs/capability-reference.md                    @nosmoht
+/docs/pni-cookbook.md                            @nosmoht
+
+# OCI publish surface — supply-chain critical.
+/.github/workflows/oci-publish.yml               @nosmoht
+/docs/oci-artifact-verification.md               @nosmoht
+
+# Talos machine-config patches — boot-loop risk.
+/talos/                                          @nosmoht

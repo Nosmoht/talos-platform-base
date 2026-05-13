@@ -1,0 +1,37 @@
+# markdownlint config — high-signal rules only.
+# Reference: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+default: true
+
+# Line-length is noisy in technical docs with long URLs / tables.
+MD013: false
+
+# Allow inline HTML for callouts and badges.
+MD033: false
+
+# Bare URLs in code blocks are common in our cookbook/tutorial.
+MD034: false
+
+# Tables sometimes need leading/trailing pipes inconsistently.
+MD055:
+  style: leading_and_trailing
+
+# Don't force "first line is h1" — some docs (CHANGELOG) lead with a comment.
+MD041: false
+
+# Multiple top-level headers in CHANGELOG-style docs are normal.
+MD025: false
+
+# Heading-style: ATX-style (#, ##) only.
+MD003:
+  style: atx
+
+# Ordered lists: keep numbering consistent (1, 2, 3 — not all 1.).
+MD029:
+  style: ordered
+
+# Unordered list marker: dash (`-`). Plus (`+`) and asterisk (`*`) are
+# equally valid Markdown but mixing them is what MD004 actually catches.
+# Pin to dash because the repo's prevailing convention is dash.
+MD004:
+  style: dash
