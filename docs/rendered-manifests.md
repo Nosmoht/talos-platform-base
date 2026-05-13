@@ -16,7 +16,7 @@ for ArgoCD repo-server plugins.
 
 ## Three stages
 
-```
+```text
 Stage 1 — helm template          → .render-stage1/<comp>.yaml   (gitignored)
 Stage 2 — kustomize build        → _rendered/{manifests,crds}.yaml  (committed)
 Stage 3 — consumer render        → consumer repo, with cluster-locals (separate)
@@ -124,7 +124,7 @@ pipeline mitigates this with:
 
 ## Layout per component
 
-```
+```text
 kubernetes/base/infrastructure/<comp>/
 ├── chart.lock.yaml             # pin spec
 ├── values.yaml                 # repo-wide defaults (Stage-1 input)

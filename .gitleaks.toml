@@ -28,12 +28,11 @@ paths = [
 
   # Phase B rendered-manifests outputs that include a Helm-rendered
   # `kind: Secret` whose `data.<key>` is *configuration*, not a credential.
-  # gitleaks `detect` walks the full git history (fetch-depth: 0), so
-  # these files surface even on PRs that don't directly modify them
-  # (e.g. PR #24 chore/tool-pinning sees them via the merged-base graph
-  # while PR #26 introduces them).
-  # Real credential Secrets are ESO-provisioned (Phase A) and never
-  # appear in the rendered tree.
+  # These are deterministic chart outputs reproduced byte-identically by
+  # `make verify-rendered`; any actual credential Secret in this repo is
+  # provisioned out-of-band by ESO (Phase A) and is NEVER part of the
+  # rendered tree. Allowlisting these specific files keeps the
+  # kubernetes-secret-yaml rule active for everything else.
   #
   # dex/_rendered/manifests.yaml — Secret `dex` carries `data.config.yaml`
   #   = base64(dex runtime config: oauth2.skipApprovalScreen, storage.type).
