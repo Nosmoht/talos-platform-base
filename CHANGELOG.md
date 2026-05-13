@@ -1,106 +1,48 @@
 # Changelog
 
-## Unreleased — documentation overhaul (capability-first v2)
+This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+> The Unreleased section bundles two concurrent work streams toward the
+> next tag: (a) the capability-first v2 refactor (PRs B / C / D / E),
+> and (b) the documentation overhaul (root-level OSS-hygiene files +
+> Diátaxis-organised `docs/`). Per Keep a Changelog the two are merged
+> here; provenance is preserved in the per-entry context.
 
 ### Added
 
-- `ARCHITECTURE.md` — root-level C4 L1/L2 architecture document with
-  Mermaid diagrams (System Context, Container view, release flow,
-  capability-admission flow).
-- `SECURITY.md` — disclosure channel, supported-versions matrix,
-  supply-chain (cosign + SLSA + immutable tags), threat-model summary,
-  in/out-of-scope table, hardening notes.
-- `CONTRIBUTING.md` — scope, conventional-commits, PR expectations,
-  capability-first design rules, file-placement rules, sensitive-data
-  policy.
-- `MAINTAINERS.md` — active maintainer list + decision authority.
-- `CODEOWNERS` — review routing per path.
-- `UPGRADING.md` — cumulative migration guide for OCI-vendored
-  consumers; per-tag template for future MAJOR/MINOR notes; pending-
-  sunset table (`storage-csi`, `monitoring-scrape-provider`).
-- `docs/README.md` — Diátaxis-organised doc index.
-- `docs/capability-architecture.md` — canonical architecture
-  explanation for the capability-first v2 contract.
-- `docs/pni-cookbook.md` — concrete consumer + producer + CCNP recipes.
-- `docs/tutorial-first-consumer-cluster.md` — Diátaxis tutorial
-  quadrant (vendor + verify + render).
-- `docs/harness-plugin-integration.md` — specification of what the
-  `kube-agent-harness` plugin should provide for the v2 contract;
-  explicit rationale why this base ships no `.claude/`.
-- `.markdownlint.yaml` + `.markdownlintignore` + CI gate in
-  `.github/workflows/docs-lint.yml` (markdownlint + auto-regen freshness
-  check on `docs/capability-reference.md`).
-
-### Changed
-
-- `AGENTS.md` §"Platform Network Interface (PNI) Rules" rewritten to v2:
-  capability-first vocabulary (5-site producer/consumer table), namespace-
-  anchored trust, instanced suffix, reserved-label rule, out-of-scope
-  note (per-instance enforcement is consumer-overlay scope).
-- `AGENTS.md` §"Hard Constraints" gains two v2-specific invariants:
-  capability-selectors only for new CCNPs, namespace-anchored producer
-  trust.
-- `AGENTS.md` §"Key Terms" expanded with capability, instanced
-  capability, producer/consumer symmetry, namespace-anchored trust.
-- `CLAUDE.md` §"Context Architecture" gains a "Knowledge Map" pointing
-  at the new docs.
-- `README.md` adds a capability-first pitch in the lead and a
-  comprehensive doc-map table.
-- `.gitignore` adds `.claude/` (harness runtime dir) and `.work/`
-  (harness scratchpad) — both runtime artefacts, never committed.
-
-### Removed
-
-- `docs/claude-code-guide.md` — described a `.claude/` skill set that
-  does not exist in this base. Inconsistent with `CLAUDE.md` policy
-  ("this base ships no `.claude/` directory").
-- `docs/claude-code-stack-audit.md` — internal audit log of a
-  *different* repository (homelab) that was historically copied here.
-
-## Unreleased — capability-first refactor (PRs B, C, D, E)
-
-### PR E — Static CCNP cleanup
-
-#### Breaking (consumer overlays)
-
-- **`ccnp-pni-cnpg-operator-dataplane-egress.yaml` removed.** The CCNP
-  used hardcoded tool-name selectors (`app.kubernetes.io/name:
-  cloudnative-pg`, `cnpg.io/cluster`) and referenced an operator
-  (cloudnative-pg in the `cnpg-system` namespace) that the base does
-  NOT deploy. Tool-specific operator→broker CCNPs belong with the
-  tool — consumer overlays that deploy CNPG must ship their own copy
-  (cap-selector form recommended for tool-swap resilience).
-- **`ccnp-pni-strimzi-operator-dataplane-egress.yaml` removed.** Same
-  rationale — the `strimzi-cluster-operator` is not base-deployed; the
-  tool-specific operator-dataplane CCNP belongs in the consumer
-  overlay that owns Strimzi.
-
-#### Changed
-
-- **`ccnp-pni-monitoring-scrape-consumer-egress.yaml`** source
-  selector rewritten from `app.kubernetes.io/name: prometheus` (tool-
-  selector) to `platform.io/capability-consumer.monitoring-scrape:
-  "true"` (capability-selector). A Prometheus → Victoria-Metrics
-  swap is now a label move on the consumer pod, not a CCNP edit.
-- **`kube-prometheus-stack`** values.yaml: `prometheus.prometheusSpec.
-  podMetadata.labels` gains `platform.io/capability-consumer.
-  monitoring-scrape: "true"` so the new CCNP source selector matches
-  the Prometheus pod.
-
-#### Kept (deliberate)
-
-- `ccnp-pni-monitoring-dns-visibility.yaml` uses namespace-scoped
-  source and tool-name target (`k8s-app: kube-dns`). kube-dns is a
-  cluster-singleton; this is plumbing, not a capability binding.
-- `ccnp-pni-{redis,rabbitmq}-operator-dataplane-egress.yaml` use
-  capability-selectors, so they are tool-agnostic substrate even
-  though the base does not deploy redis/rabbitmq operators.
-
-### PR D — Instanced-suffix audit policy
-
-#### Added
-
-- `kyverno-clusterpolicy-pni-instanced-suffix-required.yaml` — new
+- **Root-level OSS-hygiene documents.**
+  - `ARCHITECTURE.md` — root-level C4 L1/L2 architecture document with
+    Mermaid diagrams (System Context, Container view, release flow,
+    capability-admission flow).
+  - `SECURITY.md` — disclosure channel, supported-versions matrix,
+    supply-chain (cosign + SLSA + immutable tags), threat-model summary,
+    in/out-of-scope table, hardening notes.
+  - `CONTRIBUTING.md` — scope, conventional-commits, PR expectations,
+    capability-first design rules, file-placement rules, sensitive-data
+    policy.
+  - `MAINTAINERS.md` — active maintainer list + decision authority.
+  - `CODEOWNERS` — review routing per path.
+  - `UPGRADING.md` — cumulative migration guide for OCI-vendored
+    consumers; per-tag template for future MAJOR/MINOR notes; pending-
+    sunset table (`storage-csi`, `monitoring-scrape-provider`).
+- **Diátaxis-organised `docs/` set.**
+  - `docs/README.md` — Diátaxis-organised doc index.
+  - `docs/capability-architecture.md` — canonical architecture
+    explanation for the capability-first v2 contract.
+  - `docs/pni-cookbook.md` — concrete consumer + producer + CCNP recipes.
+  - `docs/tutorial-first-consumer-cluster.md` — Diátaxis tutorial
+    quadrant (vendor + verify + render).
+  - `docs/harness-plugin-integration.md` — specification of what the
+    `kube-agent-harness` plugin should provide for the v2 contract;
+    explicit rationale why this base ships no `.claude/`.
+- **Lint + CI for docs.** `.markdownlint.yaml` + `.markdownlintignore` +
+  CI gate in `.github/workflows/docs-lint.yml` (markdownlint + auto-
+  regen freshness check on `docs/capability-reference.md`).
+- **PNI policy — instanced-suffix audit (PR D).**
+  `kyverno-clusterpolicy-pni-instanced-suffix-required.yaml` — new
   audit-mode ClusterPolicy that emits a PolicyReport advisory when a
   namespace declares bare `platform.io/consume.<cap>` for a capability
   marked `instanced: true` in the PNI registry. Audit-mode by
@@ -109,79 +51,88 @@
   vocabulary smell without blocking platform-internal consumers
   (`cert-manager`, `external-secrets`) whose specific Vault KV mount
   is overlay-configured.
+- **Producer pod labels on operator pods (PR C).**
+  - `vault-operator` (bank-vaults): pod retains
+    `capability-provider.monitoring-scrape`. No `admission-webhook`
+    label — bank-vaults vault-operator does NOT ship a
+    ValidatingAdmissionWebhook (verified by grep of chart templates).
+  - `vault-config-operator` (Red Hat): pod gains
+    `capability-provider.{admission-webhook,monitoring-scrape}` via a
+    kustomize strategic-merge patch. The upstream chart does NOT expose
+    a `podLabels` value (hardcoded selectorLabels helper), so the patch
+    is the right altitude.
+  - `piraeus-operator`: pod gains
+    `capability-provider.{admission-webhook,monitoring-scrape}` via the
+    base `values.yaml`. NOTE: the base ships only `namespace.yaml` for
+    piraeus-operator; the consumer overlay deploys the Helm chart and
+    must merge the base `values.yaml` into the release.
+- **Namespace trust anchors (PR C).**
+  - `vault` namespace (declared by both vault-operator and
+    vault-config-operator): adds `provide.admission-webhook`. The two
+    `namespace.yaml` files are kept identical so whichever ArgoCD app
+    applies last produces a consistent label set.
+  - `piraeus-datastore` namespace: adds
+    `provide.{admission-webhook,monitoring-scrape}`.
+- **Producer-side labels on 4 components (PR B).**
+  - `cert-manager`: webhook pod and Service carry
+    `capability-provider.tls-issuance` + endpoint/protocol annotations;
+    controller pod carries `capability-provider.monitoring-scrape`;
+    `cert-manager` namespace carries `provide.{tls-issuance,monitoring-scrape}`.
+  - `loki` (SimpleScalable write tier): write pods and Service carry
+    `capability-provider.logging-ship` + endpoint/protocol annotations;
+    `monitoring` namespace (declared by loki + kube-prometheus-stack)
+    carries `provide.{logging-ship,monitoring-scrape}`.
+  - `metrics-server` (relocated, see Changed): pod and Service carry
+    `capability-provider.{hpa-metrics,monitoring-scrape}` + endpoint/
+    protocol annotations; `metrics-server` namespace carries
+    `provide.{hpa-metrics,monitoring-scrape}`.
+  - `local-path-provisioner`: pod carries
+    `capability-provider.block-storage-local` (set in base values.yaml);
+    consumer overlay must host the deployment in a dedicated
+    `local-path-storage` namespace carrying
+    `provide.block-storage-local: "true"` (documented in values.yaml).
+- **Existing-producer namespace-label migration (PR B).**
+  - `vault` namespace: `provide.monitoring-scrape`.
+  - `external-secrets` namespace: `provide.monitoring-scrape`.
 
-#### Architectural
+### Changed
 
-- ADR `adr-capability-producer-consumer-symmetry.md` extended with
-  §"Per-instance enforcement is consumer-overlay responsibility".
-  Verification documented: the base ships only operators for
-  instanced capabilities; data-plane instances (CNPG `Cluster`,
-  `RabbitmqCluster`, `RedisFailover`, `Kafka`, `Vault` server,
-  `LinstorCluster`) are consumer-overlay-deployed. Shipping
-  speculative generate/mutate for tools the base does not deploy
-  would violate the right-altitude principle.
-
-#### Scope decisions (verified)
-
-- **NOT shipped in this base**: Kyverno generate/mutate policies for
-  `cnpg-postgres`, `redis-managed`, `rabbitmq-managed`,
-  `kafka-managed`, `s3-object`. These are consumer-overlay scope.
-- **NOT shipped in this base**: per-instance generate/mutate for
-  `vault-secrets`. Vault is platform-core but its instance names
-  (KV mount paths) are per-cluster configuration → overlay-owned.
-- **Shipped**: the vocabulary-discipline advisory above. Consumer
-  overlays see the warning in `kubectl get policyreport -A` and
-  implement the tool-specific binding as part of bringing the tool
-  into their cluster.
-
-### PR C — Producer labels (operator pods)
-
-#### Added (producer labels on existing operator pods)
-
-- `vault-operator` (bank-vaults): pod retains
-  `capability-provider.monitoring-scrape`. No `admission-webhook`
-  label — bank-vaults vault-operator does NOT ship a
-  ValidatingAdmissionWebhook (verified by grep of chart templates).
-- `vault-config-operator` (Red Hat): pod gains
-  `capability-provider.{admission-webhook,monitoring-scrape}` via a
-  kustomize strategic-merge patch. The upstream chart does NOT expose
-  a `podLabels` value (hardcoded selectorLabels helper), so the patch
-  is the right altitude.
-- `piraeus-operator`: pod gains
-  `capability-provider.{admission-webhook,monitoring-scrape}` via the
-  base `values.yaml`. NOTE: the base ships only `namespace.yaml` for
-  piraeus-operator; the consumer overlay deploys the Helm chart and
-  must merge the base `values.yaml` into the release.
-
-#### Added (namespace trust anchors)
-
-- `vault` namespace (declared by both vault-operator and
-  vault-config-operator): adds `provide.admission-webhook`. The two
-  `namespace.yaml` files are kept identical so whichever ArgoCD app
-  applies last produces a consistent label set.
-- `piraeus-datastore` namespace: adds
-  `provide.{admission-webhook,monitoring-scrape}`.
-
-#### Not in this PR (deferred to PR D)
-
-- LINSTOR controller / satellite pods (created dynamically by
-  piraeus-operator from a `LinstorCluster` CR) — Kyverno mutate-policy
-  needed to label operator-managed pods at admission. PR D scope.
-- Per-instance scoping for `vault-secrets` KV mounts. PR D scope.
-
-## PR B — Namespace-anchored producer trust (merged)
-
-### Breaking
-
-- **`metrics-server` relocated from `kube-system` to dedicated
-  `metrics-server` namespace.** Consumer overlays that referenced
-  `kube-system/metrics-server` directly (ServiceMonitor targets,
-  manual kubectl wiring) must update to `metrics-server/metrics-server`.
-  The `v1beta1.metrics.k8s.io` APIService is re-pointed automatically;
-  HPA and `kubectl top` survive the change after one ArgoCD reconcile
+- **AGENTS.md / CLAUDE.md / README.md / .gitignore — capability-first v2 docs.**
+  - `AGENTS.md` §"Platform Network Interface (PNI) Rules" rewritten to v2:
+    capability-first vocabulary (5-site producer/consumer table),
+    namespace-anchored trust, instanced suffix, reserved-label rule,
+    out-of-scope note (per-instance enforcement is consumer-overlay
+    scope).
+  - `AGENTS.md` §"Hard Constraints" gains two v2-specific invariants:
+    capability-selectors only for new CCNPs, namespace-anchored producer
+    trust.
+  - `AGENTS.md` §"Key Terms" expanded with capability, instanced
+    capability, producer/consumer symmetry, namespace-anchored trust.
+  - `CLAUDE.md` §"Context Architecture" gains a "Knowledge Map" pointing
+    at the new docs.
+  - `README.md` adds a capability-first pitch in the lead and a
+    comprehensive doc-map table.
+  - `.gitignore` adds `.claude/` (harness runtime dir) and `.work/`
+    (harness scratchpad) — both runtime artefacts, never committed.
+- **CCNP selector switched from tool-name to capability (PR E).**
+  - `ccnp-pni-monitoring-scrape-consumer-egress.yaml` source selector
+    rewritten from `app.kubernetes.io/name: prometheus` (tool-selector)
+    to `platform.io/capability-consumer.monitoring-scrape: "true"`
+    (capability-selector). A Prometheus → Victoria-Metrics swap is now
+    a label move on the consumer pod, not a CCNP edit.
+  - `kube-prometheus-stack` values.yaml:
+    `prometheus.prometheusSpec.podMetadata.labels` gains
+    `platform.io/capability-consumer.monitoring-scrape: "true"` so the
+    new CCNP source selector matches the Prometheus pod.
+- **BREAKING — `metrics-server` relocated from `kube-system` to dedicated
+  `metrics-server` namespace (PR B).** Consumer overlays that referenced
+  `kube-system/metrics-server` directly (ServiceMonitor targets, manual
+  kubectl wiring) must update to `metrics-server/metrics-server`. The
+  `v1beta1.metrics.k8s.io` APIService is re-pointed automatically; HPA
+  and `kubectl top` survive the change after one ArgoCD reconcile
   (~10–30s gap during the prune-and-replace window).
-- **`pni-reserved-labels-audit` ClusterPolicy refactored:** the
-  hardcoded `app.kubernetes.io/component: rabbitmq` and
+- **BREAKING — `pni-reserved-labels-audit` ClusterPolicy refactored (PR B).**
+  The hardcoded `app.kubernetes.io/component: rabbitmq` and
   `redis_setup_type` trust signatures are removed. Trust now derives
   from a single namespace-anchored rule that requires
   `platform.io/provide.<cap>[.<inst>]: "true"` on the workload's
@@ -191,40 +142,61 @@
   hosting namespace carries the matching `provide.<cap>.<instance>`
   label. Without that label, broker pods will be denied at admission
   after upgrade. The Kyverno generate-policies that automate this for
-  CRD-managed instances ship in PR D; for the PR B → PR D gap,
-  consumer overlays must add the namespace labels by hand.
+  CRD-managed instances ship in PR D; for the PR B → PR D gap, consumer
+  overlays must add the namespace labels by hand.
+- **ADR extensions (decision-grade record).**
+  - ADR `adr-capability-producer-consumer-symmetry.md` extended with
+    §"Per-instance enforcement is consumer-overlay responsibility"
+    (PR D). Verification documented: the base ships only operators for
+    instanced capabilities; data-plane instances (CNPG `Cluster`,
+    `RabbitmqCluster`, `RedisFailover`, `Kafka`, `Vault` server,
+    `LinstorCluster`) are consumer-overlay-deployed. Shipping
+    speculative generate/mutate for tools the base does not deploy
+    would violate the right-altitude principle.
+  - ADR `adr-capability-producer-consumer-symmetry.md` extended with
+    §"Namespace-anchored producer trust" (PR B) — locks the invariant
+    that trust derives from namespace labels and that kube-system
+    residents must be relocated, not exempted.
 
-### Added (producer-side labels — 4 components)
+### Removed
 
-- `cert-manager`: webhook pod and Service carry
-  `capability-provider.tls-issuance` + endpoint/protocol annotations;
-  controller pod carries `capability-provider.monitoring-scrape`;
-  `cert-manager` namespace carries `provide.{tls-issuance,monitoring-scrape}`.
-- `loki` (SimpleScalable write tier): write pods and Service carry
-  `capability-provider.logging-ship` + endpoint/protocol annotations;
-  `monitoring` namespace (declared by loki + kube-prometheus-stack)
-  carries `provide.{logging-ship,monitoring-scrape}`.
-- `metrics-server` (relocated): pod and Service carry
-  `capability-provider.{hpa-metrics,monitoring-scrape}` + endpoint/
-  protocol annotations; `metrics-server` namespace carries
-  `provide.{hpa-metrics,monitoring-scrape}`.
-- `local-path-provisioner`: pod carries
-  `capability-provider.block-storage-local` (set in base values.yaml);
-  consumer overlay must host the deployment in a dedicated
-  `local-path-storage` namespace carrying
-  `provide.block-storage-local: "true"` (documented in values.yaml).
+- **BREAKING — Tool-name CCNPs for non-base-deployed operators (PR E).**
+  - `ccnp-pni-cnpg-operator-dataplane-egress.yaml`. The CCNP used
+    hardcoded tool-name selectors (`app.kubernetes.io/name:
+    cloudnative-pg`, `cnpg.io/cluster`) and referenced an operator
+    (cloudnative-pg in the `cnpg-system` namespace) that the base does
+    NOT deploy. Tool-specific operator→broker CCNPs belong with the
+    tool — consumer overlays that deploy CNPG must ship their own copy
+    (cap-selector form recommended for tool-swap resilience).
+  - `ccnp-pni-strimzi-operator-dataplane-egress.yaml`. Same rationale —
+    the `strimzi-cluster-operator` is not base-deployed; the
+    tool-specific operator-dataplane CCNP belongs in the consumer
+    overlay that owns Strimzi.
+- **Docs cleanup.**
+  - `docs/claude-code-guide.md` — described a `.claude/` skill set that
+    does not exist in this base. Inconsistent with `CLAUDE.md` policy
+    ("this base ships no `.claude/` directory").
+  - `docs/claude-code-stack-audit.md` — internal audit log of a
+    *different* repository (homelab) that was historically copied here.
 
-### Added (existing producers — namespace-label migration)
+### Notes (out-of-scope deliberate decisions; for context, not Changelog history)
 
-- `vault` namespace: `provide.monitoring-scrape`.
-- `external-secrets` namespace: `provide.monitoring-scrape`.
-
-### Architectural
-
-- ADR `adr-capability-producer-consumer-symmetry.md` extended with
-  §"Namespace-anchored producer trust" — locks the invariant that
-  trust derives from namespace labels and that kube-system residents
-  must be relocated, not exempted.
+- **PR E — deliberately kept.**
+  `ccnp-pni-monitoring-dns-visibility.yaml` uses namespace-scoped source
+  and tool-name target (`k8s-app: kube-dns`). kube-dns is a
+  cluster-singleton; this is plumbing, not a capability binding.
+  `ccnp-pni-{redis,rabbitmq}-operator-dataplane-egress.yaml` use
+  capability-selectors, so they are tool-agnostic substrate even though
+  the base does not deploy redis/rabbitmq operators.
+- **PR D — verified scope.** Kyverno generate/mutate policies for
+  `cnpg-postgres`, `redis-managed`, `rabbitmq-managed`, `kafka-managed`,
+  `s3-object`, and per-instance generate/mutate for `vault-secrets`
+  remain consumer-overlay scope.
+- **PR C — deferred to PR D.** LINSTOR controller / satellite pods
+  (created dynamically by piraeus-operator from a `LinstorCluster` CR)
+  require a Kyverno mutate-policy to label operator-managed pods at
+  admission. Per-instance scoping for `vault-secrets` KV mounts is
+  likewise PR D scope.
 
 ## v0.1.0 — 2026-05-01
 
