@@ -1,0 +1,11 @@
+# Pin file for the node-feature-discovery Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://kubernetes-sigs.github.io/node-feature-discovery/charts
+  name: node-feature-discovery
+  version: 0.17.4
+  tgz_sha256: 5ed8736e1760a3e81890eb2d363164eb5e4950244de5e6e67d577d7c1e28a40f
+release:
+  name: node-feature-discovery
+  namespace: node-feature-discovery
+  includeCRDs: true
+values: values.yaml

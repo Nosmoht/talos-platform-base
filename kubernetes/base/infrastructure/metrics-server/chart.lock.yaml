@@ -1,0 +1,11 @@
+# Pin file for the metrics-server Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://kubernetes-sigs.github.io/metrics-server
+  name: metrics-server
+  version: 3.12.2
+  tgz_sha256: e904ffa2fe33c429e12cac8aa013ba38f42d944e315d060e94230a53b98985cf
+release:
+  name: metrics-server
+  namespace: metrics-server
+  includeCRDs: true
+values: values.yaml

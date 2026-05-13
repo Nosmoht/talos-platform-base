@@ -1,0 +1,7 @@
+# Stage-2 input. See docs/rendered-manifests.md.
+# .render-stage1/ is gitignored; populated by scripts/render-component.sh.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../.render-stage1/nvidia-dcgm-exporter.yaml

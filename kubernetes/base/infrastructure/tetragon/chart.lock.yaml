@@ -1,0 +1,11 @@
+# Pin file for the tetragon Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://helm.cilium.io/
+  name: tetragon
+  version: 1.6.1
+  tgz_sha256: dbce8a050d50bdc5b96291e3bfe7aaad2e1bc59a397c3963925e34763119f2c3
+release:
+  name: tetragon
+  namespace: tetragon
+  includeCRDs: true
+values: values.yaml

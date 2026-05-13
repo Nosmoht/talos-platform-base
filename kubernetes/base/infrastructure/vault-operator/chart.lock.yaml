@@ -1,0 +1,11 @@
+# Pin file for the vault-operator Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: oci://ghcr.io/bank-vaults/helm-charts
+  name: vault-operator
+  version: 1.23.4
+  tgz_sha256: 6f9fef498ea8694ac068d2c091ce9bb01954e429d829305ae37303e4ebc7c617
+release:
+  name: vault-operator
+  namespace: vault
+  includeCRDs: true
+values: values.yaml

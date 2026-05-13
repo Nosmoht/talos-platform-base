@@ -134,14 +134,26 @@ kustomize build --load-restrictor=LoadRestrictionsNone "${OVERLAY_DIR}" > "${sta
 
 # Split CRDs from non-CRDs. yq splits multi-doc YAML by document index.
 echo "==> [${COMP}] Splitting CRDs from manifests"
-yq 'select(.kind == "CustomResourceDefinition")' "${stage2_out}" > "${RENDERED_DIR}/crds.yaml"
 yq 'select(.kind != "CustomResourceDefinition")' "${stage2_out}" > "${RENDERED_DIR}/manifests.yaml"
+crds_tmp="$(mktemp)"
+yq 'select(.kind == "CustomResourceDefinition")' "${stage2_out}" > "${crds_tmp}"
+# Only write crds.yaml if the chart actually shipped any. Empty crds.yaml
+# files would clutter the tree and confuse reviewers ("why is this empty?").
+if [ -s "${crds_tmp}" ]; then
+  mv "${crds_tmp}" "${RENDERED_DIR}/crds.yaml"
+else
+  rm -f "${crds_tmp}" "${RENDERED_DIR}/crds.yaml"
+fi
 
 # Normalize trailing newlines (single).
 for f in "${RENDERED_DIR}/manifests.yaml" "${RENDERED_DIR}/crds.yaml"; do
-  perl -0pi -e 's/\n*\z/\n/' "${f}"
+  [ -f "${f}" ] && perl -0pi -e 's/\n*\z/\n/' "${f}"
 done
 
 manifest_lines="$(wc -l < "${RENDERED_DIR}/manifests.yaml" | tr -d ' ')"
-crd_lines="$(wc -l < "${RENDERED_DIR}/crds.yaml" | tr -d ' ')"
-echo "==> [${COMP}] Done. manifests.yaml=${manifest_lines}L, crds.yaml=${crd_lines}L"
+if [ -f "${RENDERED_DIR}/crds.yaml" ]; then
+  crd_lines="$(wc -l < "${RENDERED_DIR}/crds.yaml" | tr -d ' ')"
+  echo "==> [${COMP}] Done. manifests.yaml=${manifest_lines}L, crds.yaml=${crd_lines}L"
+else
+  echo "==> [${COMP}] Done. manifests.yaml=${manifest_lines}L, no CRDs"
+fi

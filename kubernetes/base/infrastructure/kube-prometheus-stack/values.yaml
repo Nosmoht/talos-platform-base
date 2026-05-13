@@ -26,6 +26,17 @@ prometheus:
         memory: 512Mi
 
 grafana:
+  # Admin credentials must come from a pre-existing Secret rather than a
+  # chart-generated random password. Reason: helm template's randAlphaNum
+  # is non-deterministic, so a chart-generated grafana-admin Secret
+  # produces a different value on every render → break of the
+  # rendered-manifests verify-rendered drift gate.
+  # Phase A's ExternalSecret provisions this Secret from Vault at deploy
+  # time. Same name in every consumer cluster — see Phase A.3 inventory.
+  admin:
+    existingSecret: grafana-admin-credentials
+    userKey: admin-user
+    passwordKey: admin-password
   defaultDashboardsEnabled: true
   sidecar:
     dashboards:

@@ -1,0 +1,11 @@
+# Pin file for the kube-prometheus-stack Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://prometheus-community.github.io/helm-charts
+  name: kube-prometheus-stack
+  version: 81.6.1
+  tgz_sha256: fd4f1a7f0d858546b9a38ca20a4e1bb4e8845476651161571704baf9c1fe9829
+release:
+  name: kube-prometheus-stack
+  namespace: monitoring
+  includeCRDs: true
+values: values.yaml
