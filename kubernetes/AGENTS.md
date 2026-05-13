@@ -1,5 +1,6 @@
 # Kubernetes Scope — Codex CLI Context
-# Root scope: @../AGENTS.md (inherits §Hard Constraints, §MCP servers)
+
+> Root scope: `@../AGENTS.md` (inherits §Hard Constraints, §MCP servers).
 
 This file is loaded by Codex CLI when editing files under `kubernetes/`. It
 provides path-scoped context approximating Claude Code's `paths:`

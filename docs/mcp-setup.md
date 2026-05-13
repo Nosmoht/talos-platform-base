@@ -65,7 +65,7 @@ The `talos` MCP server supports these environment variables (set in `.mcp.json` 
 
 This variable restricts **which paths on the Talos nodes** the AI can read — it has no relation to the local workstation filesystem. The repo sets an explicit restrictive allowlist (defense-in-depth):
 
-```
+```text
 /proc,/sys,/var/log,/run,/usr/local/etc,/etc/os-release
 ```
 
