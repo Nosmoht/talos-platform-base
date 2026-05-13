@@ -3,12 +3,5 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-
-helmCharts:
-  - name: kyverno
-    repo: https://kyverno.github.io/kyverno
-    version: 3.7.1
-    releaseName: kyverno
-    namespace: kyverno
-    valuesFile: values.yaml
-    includeCRDs: true
+  - _rendered/manifests.yaml
+  - _rendered/crds.yaml

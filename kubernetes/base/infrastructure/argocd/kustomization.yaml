@@ -3,12 +3,5 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-
-helmCharts:
-  - name: argo-cd
-    repo: https://argoproj.github.io/argo-helm
-    version: 9.4.5
-    releaseName: argocd
-    namespace: argocd
-    valuesFile: values.yaml
-    includeCRDs: true
+  - _rendered/manifests.yaml
+  - _rendered/crds.yaml

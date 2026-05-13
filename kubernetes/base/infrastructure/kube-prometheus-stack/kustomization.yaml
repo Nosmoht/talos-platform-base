@@ -3,12 +3,5 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-
-helmCharts:
-  - name: kube-prometheus-stack
-    repo: https://prometheus-community.github.io/helm-charts
-    version: 81.6.1
-    releaseName: kube-prometheus-stack
-    namespace: monitoring
-    valuesFile: values.yaml
-    includeCRDs: true
+  - _rendered/manifests.yaml
+  - _rendered/crds.yaml

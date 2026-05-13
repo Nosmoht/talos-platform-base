@@ -1,0 +1,20 @@
+# Stage-2 input: Kustomize-applied platform-base patches on top of the
+# Stage-1 helm template output. See docs/rendered-manifests.md.
+#
+# The .render-stage1/ path is gitignored — populated by
+# scripts/render-component.sh before kustomize build runs.
+#
+# Repo-wide defaults that apply to *every* helm-rendered component
+# already live in values.yaml (security context, resource limits, PNI
+# capability labels). Patches here are only for things that values.yaml
+# cannot express (e.g., a strategic-merge patch on a generated resource,
+# annotations that the chart does not surface, label additions).
+#
+# For cert-manager, no patches are needed yet — values.yaml covers
+# everything. This kustomization.yaml exists to keep the per-component
+# layout uniform; future patches go under patches/.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../.render-stage1/cert-manager.yaml

@@ -1,5 +1,19 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Base-side validation entry point. Includes:
+#   - namespace.yaml      — PNI/PSA labels for the cert-manager namespace
+#   - _rendered/*.yaml    — Stage-2 helm+kustomize output (regenerate with
+#                           `make render-component COMPONENT=cert-manager`)
+#
+# `make validate-gitops` runs `kubectl kustomize` over this; conftest and
+# kubeconform then check the result. The same _rendered/ tree is what
+# consumer cluster repos vendor via the OCI artifact.
+#
+# Consumer-side (talos-homelab-cluster) splits manifests.yaml and crds.yaml
+# into two ArgoCD Applications (CRDs at sync-wave -5, controller at wave 0)
+# to deploy them with the right ordering and ServerSideApply semantics.
 resources:
   - namespace.yaml
+  - _rendered/manifests.yaml
+  - _rendered/crds.yaml

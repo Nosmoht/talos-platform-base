@@ -1,0 +1,11 @@
+# Pin file for the external-secrets Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://charts.external-secrets.io
+  name: external-secrets
+  version: 2.0.1
+  tgz_sha256: 74fb945ad87037a2f48dd00a469903b4379d1b20d4c54949af092f50dc0bb2b5
+release:
+  name: external-secrets
+  namespace: external-secrets
+  includeCRDs: true
+values: values.yaml

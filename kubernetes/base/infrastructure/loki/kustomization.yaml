@@ -3,12 +3,4 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-
-helmCharts:
-  - name: loki
-    repo: https://grafana.github.io/helm-charts
-    version: 6.53.0
-    releaseName: loki
-    namespace: monitoring
-    valuesFile: values.yaml
-    includeCRDs: true
+  - _rendered/manifests.yaml
