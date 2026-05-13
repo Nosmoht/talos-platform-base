@@ -1,4 +1,4 @@
-.PHONY: argocd-install argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml .argocd-bootstrap-render
+.PHONY: argocd-install argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml verify-tools .argocd-bootstrap-render
 
 ENV ?= cluster.yaml
 
@@ -57,6 +57,9 @@ argocd-bootstrap: argocd-install .argocd-bootstrap-render
 
 argocd-password:
 	@kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+
+verify-tools: ## Confirm installed binaries match .tool-versions pins
+	@./scripts/verify-tools.sh
 
 # grafana-dashboards-check is consumer-side: it scans the consumer overlay path
 # kubernetes/overlays/<cluster>/infrastructure/*/resources/dashboards/*.json. Override
