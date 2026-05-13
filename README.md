@@ -48,9 +48,13 @@ Consumer cluster repos (e.g. `talos-homelab-cluster`, future
 `talos-office-lab-cluster`) pin a specific tag of this base via:
 
 1. A one-line `.base-version` file (e.g. `v0.1.0`)
-2. A `scripts/bootstrap-base.sh` that runs `oras pull
-   ghcr.io/nosmoht/talos-platform-base:<v>` into a gitignored
-   `vendor/base/` directory
+2. A consumer-owned bootstrap step that runs
+   `oras pull ghcr.io/nosmoht/talos-platform-base:<v>` into a gitignored
+   `vendor/base/` directory — typically a small shell script in the
+   consumer repo's `scripts/`, since each consumer owns its own pin and
+   vendor-path conventions. See
+   [`docs/tutorial-first-consumer-cluster.md`](./docs/tutorial-first-consumer-cluster.md)
+   for a worked example.
 3. ArgoCD Multi-Source Application manifests with `spec.sources[]`
    listing both the cluster repo and this base repo
 
