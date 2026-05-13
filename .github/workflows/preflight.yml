@@ -22,6 +22,11 @@ on:
 permissions:
   contents: read
   packages: read
+  # The default GITHUB_TOKEN has no `administration: read` scope — that
+  # is a GitHub-App-only permission, not exposable via workflow
+  # `permissions`. The script handles the resulting 403 by emitting a
+  # WARNING and skipping Check 1 in CI; full verification happens when
+  # a repo admin runs the script locally with their own gh-CLI auth.
 
 jobs:
   preflight:
