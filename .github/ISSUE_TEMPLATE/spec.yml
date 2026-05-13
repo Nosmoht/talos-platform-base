@@ -1,0 +1,116 @@
+name: Spec — work item ready for implementation
+description: A scoped, testable spec following the 7-section format documented in docs/issue-workflow.md. Use this for new features, refactors, or non-trivial fixes that an agent or human can pick up.
+title: "<type>(<scope>): <imperative summary>"
+labels:
+  - "status: triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template implements the 7-section spec format from
+        [`docs/issue-workflow.md`](../blob/main/docs/issue-workflow.md).
+        An issue is **ready to implement** only when all 7 sections are populated
+        and the issue carries `status: ready` (set during triage). Issues with
+        empty or vague Acceptance Criteria will be returned to the author.
+
+  - type: textarea
+    id: intent
+    attributes:
+      label: 1. Intent
+      description: One-sentence goal. What outcome does this work produce?
+      placeholder: e.g. "Migrate cert-approver from kustomize-from-git source to a vendored kustomization."
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 2. Context
+      description: Why now? What surfaced this? Link prior issues, PRs, runbook hits, or external references.
+      placeholder: |
+        - Previous attempt in #N failed because …
+        - Surfaces from validation drift in CI run …
+        - References: <links>
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: 3. Acceptance Criteria
+      description: |
+        Machine-checkable predicates. Each line MUST be a finite, mechanical assertion
+        (e.g. "file X exists", "command Y exits 0", "endpoint returns HTTP 200 with shape S",
+        "regex Z matches in file F"). Free-form prose ("should consider", "improve")
+        will be returned.
+      placeholder: |
+        - `kubectl kustomize --enable-helm kubernetes/base/infrastructure/cert-approver/` exits 0.
+        - File `kubernetes/base/infrastructure/cert-approver/chart.lock.yaml` exists and contains key `tgz_sha256`.
+        - `make validate-gitops` exits 0.
+    validations:
+      required: true
+
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: 4. Non-Goals
+      description: Explicit out-of-scope items to prevent scope drift.
+      placeholder: |
+        - Not migrating local-path-provisioner (separate issue).
+        - Not changing the upstream chart version.
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: 5. Boundaries
+      description: |
+        Three-tier system:
+        - ✅ **Always do** — pre-authorized actions inside this scope.
+        - ⚠️ **Ask first** — actions that require confirmation before proceeding.
+        - 🚫 **Never** — actions explicitly forbidden in this scope.
+      placeholder: |
+        ✅ Always: edit `kubernetes/base/infrastructure/cert-approver/`, regenerate `_rendered/`, update CHANGELOG.
+        ⚠️ Ask first: bump the upstream chart version, modify policies/.
+        🚫 Never: edit the OCI publish workflow, change AGENTS.md §Hard Constraints, bypass pre-commit hooks.
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: 6. Verification
+      description: Concrete commands that, when run, prove the Acceptance Criteria. The Evaluator subagent runs these.
+      placeholder: |
+        ```bash
+        make validate-gitops
+        kubectl kustomize --enable-helm kubernetes/base/infrastructure/cert-approver/ > /tmp/out.yaml
+        test -s /tmp/out.yaml
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 7. Dependencies
+      description: Cross-issue links — what this issue blocks on or references.
+      placeholder: |
+        blocks-on: #
+        references: #
+    validations:
+      required: false
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk classification (set during triage)
+      description: See docs/issue-workflow.md §"Risk classification".
+      options:
+        - "risk: low — reversible, narrow scope, portable refactor"
+        - "risk: medium — touches multiple subsystems OR has rollback cost"
+        - "risk: high — infra-mutating, secret-touching, production-impacting"
+      default: 0
+    validations:
+      required: true

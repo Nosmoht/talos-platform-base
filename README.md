@@ -13,12 +13,14 @@ and [pni-cookbook.md](docs/pni-cookbook.md) for concrete recipes.
 
 - Talos machine-config patches (control-plane without `extraManifests`, common, drbd, worker-{gpu,gvisor,kubevirt,pi})
 - Talos `Makefile` with `cluster.yaml`-driven multi-cluster config generation
-- 22 standalone-renderable infrastructure components under `kubernetes/base/infrastructure/` (12 Helm-based + 10 resources-only):
-  alloy, argocd, cert-approver, cert-manager, dex, external-secrets,
-  kube-prometheus-stack, kubevirt, kubevirt-cdi, kyverno, local-path-provisioner,
-  loki, metrics-server, multus-cni, node-feature-discovery, nvidia-dcgm-exporter,
-  nvidia-device-plugin, piraeus-operator, platform-network-interface, tetragon,
-  vault-config-operator, vault-operator
+- 22 standalone-renderable infrastructure components under `kubernetes/base/infrastructure/`:
+  - **18 Helm-based** (chart pinned via `chart.lock.yaml` or rendered via `values.yaml`):
+    alloy, argocd, cert-approver, cert-manager, dex, external-secrets,
+    kube-prometheus-stack, kyverno, local-path-provisioner, loki, metrics-server,
+    node-feature-discovery, nvidia-dcgm-exporter, nvidia-device-plugin,
+    piraeus-operator, tetragon, vault-config-operator, vault-operator
+  - **4 resources-only** (plain Kubernetes manifests, no Helm):
+    kubevirt, kubevirt-cdi, multus-cni, platform-network-interface
 - Cilium Helm values + `extras.yaml` under `kubernetes/bootstrap/cilium/` (the
   consumer-side cluster repo renders `cilium.yaml` via `make cilium-bootstrap`)
 - Parameterized ArgoCD bootstrap (`root-application.yaml.tmpl`, `root-project.yaml.tmpl`)
@@ -46,9 +48,13 @@ Consumer cluster repos (e.g. `talos-homelab-cluster`, future
 `talos-office-lab-cluster`) pin a specific tag of this base via:
 
 1. A one-line `.base-version` file (e.g. `v0.1.0`)
-2. A `scripts/bootstrap-base.sh` that runs `oras pull
-   ghcr.io/nosmoht/talos-platform-base:<v>` into a gitignored
-   `vendor/base/` directory
+2. A consumer-owned bootstrap step that runs
+   `oras pull ghcr.io/nosmoht/talos-platform-base:<v>` into a gitignored
+   `vendor/base/` directory — typically a small shell script in the
+   consumer repo's `scripts/`, since each consumer owns its own pin and
+   vendor-path conventions. See
+   [`docs/tutorial-first-consumer-cluster.md`](./docs/tutorial-first-consumer-cluster.md)
+   for a worked example.
 3. ArgoCD Multi-Source Application manifests with `spec.sources[]`
    listing both the cluster repo and this base repo
 
@@ -99,20 +105,23 @@ Live cluster validation runs in consumer cluster repos.
 
 ## Documentation
 
+**Start here** (in reading order):
+
 | Doc | Audience | Purpose |
 |---|---|---|
-| [`docs/capability-architecture.md`](docs/capability-architecture.md) | consumer authors, operators | Architecture explanation — capabilities, namespace-anchored trust, instance scoping |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | new contributors | C4 L1/L2 view + key flows |
+| [`AGENTS.md`](AGENTS.md) | agentic tools, hard-constraint reviewers | Tool-agnostic SOT — hard constraints, validation, PNI |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | anyone opening a PR | scope, conventional commits, PR checks |
+| [`docs/capability-architecture.md`](docs/capability-architecture.md) | consumer authors, operators | Why capability-first — namespace-anchored trust, instance scoping |
 | [`docs/pni-cookbook.md`](docs/pni-cookbook.md) | manifest authors | Concrete recipes for consuming + producing capabilities |
-| [`docs/capability-reference.md`](docs/capability-reference.md) | everyone | Per-capability catalogue (auto-generated from registry) |
-| [`docs/adr-capability-producer-consumer-symmetry.md`](docs/adr-capability-producer-consumer-symmetry.md) | reviewers, future contributors | Decision record — alternatives, consequences |
-| [`docs/adr-multi-repo-platform-split.md`](docs/adr-multi-repo-platform-split.md) | platform operators | Why base+consumer is a two-repo split |
-| [`docs/primitive-contract.md`](docs/primitive-contract.md) | harness-plugin authors | Output schema for Diagnostics primitives |
-| [`docs/issue-workflow.md`](docs/issue-workflow.md) | issue triagers, builders | GitHub issue lifecycle + state machine |
-| [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) | consumer-cluster operators | cosign / SLSA verification before `vendor/base/` pull |
-| [`docs/mcp-setup.md`](docs/mcp-setup.md) | new contributors | MCP server install + verification |
-| [`docs/harness-plugin-integration.md`](docs/harness-plugin-integration.md) | harness-plugin authors | Claude Code primitives wiring for v2 (path-scoped rules, subagents) |
-| [`AGENTS.md`](AGENTS.md) | agentic tools | Tool-agnostic SOT — hard constraints, validation, PNI |
-| [`CLAUDE.md`](CLAUDE.md) | Claude Code only | Imports AGENTS.md; minimal Claude-Code-specific addenda |
+| [`docs/tutorial-first-consumer-cluster.md`](docs/tutorial-first-consumer-cluster.md) | new contributors | 30-min walk-through: vendor + verify + render |
+
+**Full index:** [`docs/README.md`](docs/README.md) is the single source of truth
+for the Diátaxis-organised documentation set (tutorial / how-to / reference /
+explanation). All other documentation files (ADRs, capability reference, render
+pipeline, OCI verification, MCP setup, glossary, issue workflow, harness-plugin
+integration, …) are listed there. Refer to it for everything not in the table
+above.
 
 ## License
 

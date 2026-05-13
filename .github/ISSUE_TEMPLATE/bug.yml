@@ -1,0 +1,58 @@
+name: Bug — something behaves incorrectly
+description: Use this when a documented behavior is broken or a validation gate produces a wrong result. For feature work or refactors, use the Spec template.
+title: "fix(<scope>): <imperative summary>"
+labels:
+  - "status: triage"
+  - "type: bug"
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What did you see? Include the exact command run and the exact output.
+      placeholder: |
+        ```bash
+        $ make validate-gitops
+        … error trace …
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect? Cite the doc or AC that says so if applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Step-by-step. A clean checkout from main + the listed commands must reproduce the failure on a colleague's machine.
+      placeholder: |
+        1. `git clone … && cd talos-platform-base`
+        2. `cp cluster.yaml.example cluster.yaml`
+        3. `make validate-gitops`
+        4. observe error
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Repository state
+      description: Tag or commit SHA where you reproduced this.
+      placeholder: v0.1.0 / commit abc1234
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, tool versions (yq, kustomize, kubeconform, conftest, kyverno-cli).
+      placeholder: macOS 14.5 / kustomize v5.4.2 / conftest 0.50.0 …
+    validations:
+      required: false

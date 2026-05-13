@@ -1,0 +1,802 @@
+# Platform Capability Index (Layer A — Tool-Capability-Index)
+# =========================================================
+# Static catalog of every functional capability this base provides.
+# Not consumed at runtime by any in-cluster component; read at build
+# time by render and lint scripts, at PR time by validation, at design
+# time by humans and agentic tools.
+#
+# See:
+#   - docs/adr-two-layer-capability-architecture.md  (rationale, schema spec)
+#   - docs/capability-architecture.md                (PNI / Layer B companion)
+#
+# Schema (header fields):
+#   - schema_version  bumped on breaking schema changes
+#   - base_version    stamped by release script per OCI tag
+#   - default_owner   fallback owner when an entry omits its own
+#
+# Per-entry schema is documented in the ADR. Required fields per
+# stability level are enforced by scripts/lint-capability-index.sh.
+schema_version: "1"
+base_version: "0.X"
+default_owner: platform-maintainers
+
+capabilities:
+
+# ═══════════════════════════════════════════════════════════════════
+# OBSERVABILITY — METRICS
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: metrics-scrape
+    name: Prometheus-format metrics scrape
+    description: |
+      Producer pod exposes a /metrics endpoint speaking Prometheus
+      scrape protocol v1. A scraper pulls that endpoint over HTTP.
+    domain: { layer: observability, category: Metrics }
+    stability: ga
+    deployment_topology: host-and-tenant
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      HTTP GET on a named port (typical: http-metrics).
+      Response is Prometheus text-format exposition. No protocol-level auth.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: kube-prometheus-stack, status: active, composition: [kube-prometheus-stack], swap_class: drop-in }
+      - { name: victoria-metrics-agent, status: considered, swap_class: drop-in, source: { external: true } }
+      - { name: grafana-alloy, status: considered, swap_class: drop-in, source: { external: true } }
+    pni_capability_id: monitoring-scrape
+    references: ["https://prometheus.io/docs/instrumenting/exposition_formats/"]
+
+  - id: metrics-storage
+    name: Time-series storage for metrics
+    description: |
+      Long-term retention store for Prometheus-format metrics,
+      ingested via remote_write or OTLP-metrics.
+    domain: { layer: observability, category: Metrics }
+    stability: beta
+    deployment_topology: host-and-tenant
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      HTTP POST /api/v1/write (Prometheus remote_write v1) OR
+      gRPC OTLP-metrics. Ingestion authenticates via mTLS in mesh.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: kube-prometheus-stack, status: active, composition: [kube-prometheus-stack], swap_class: data-migration }
+      - { name: victoria-metrics, status: considered, swap_class: data-migration, source: { external: true } }
+      - { name: thanos, status: considered, swap_class: data-migration, source: { external: true } }
+      - { name: mimir, status: considered, swap_class: data-migration, source: { external: true } }
+    pni_capability_id: null
+    references: ["https://prometheus.io/docs/specs/remote_write_spec/"]
+
+  - id: metrics-query
+    name: PromQL/MetricsQL query endpoint
+    description: |
+      HTTP endpoint speaking PromQL or MetricsQL, consumed by
+      dashboards, recording rules, and alert-rule-evaluators.
+    domain: { layer: observability, category: Metrics }
+    stability: beta
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      HTTP GET /api/v1/query and /api/v1/query_range (PromQL).
+      MetricsQL is a superset; same wire shape.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: kube-prometheus-stack, status: active, composition: [kube-prometheus-stack], swap_class: drop-in }
+      - { name: thanos-query, status: considered, swap_class: drop-in, source: { external: true } }
+      - { name: victoria-metrics-select, status: considered, swap_class: drop-in, source: { external: true } }
+    pni_capability_id: null
+    references: ["https://prometheus.io/docs/prometheus/latest/querying/api/"]
+
+  - id: hpa-metrics
+    name: Resource metrics API (HPA + kubectl top)
+    description: |
+      Aggregated short-window CPU/memory metrics via metrics.k8s.io,
+      consumed by HorizontalPodAutoscaler and kubectl top.
+    domain: { layer: observability, category: Metrics }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      Kubernetes Resource Metrics API (metrics.k8s.io/v1beta1).
+      Stable, K8s-native, served by an APIService.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: metrics-server, status: active, composition: [metrics-server], swap_class: drop-in }
+      - { name: keda-metrics-adapter, status: considered, swap_class: drop-in, source: { external: true } }
+    pni_capability_id: hpa-metrics
+    references: ["https://github.com/kubernetes-sigs/metrics-server"]
+
+# ═══════════════════════════════════════════════════════════════════
+# OBSERVABILITY — LOGS
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: logs-collect
+    name: Log collection agent (push side)
+    description: |
+      Per-node or per-pod agent that reads stdout/stderr and ships
+      logs to a downstream store via Loki-push or OTLP-logs.
+    domain: { layer: observability, category: Logs }
+    stability: beta
+    deployment_topology: tenant-instance
+    contract: |
+      No inbound surface; outbound HTTP/gRPC to logs-storage.
+      Per-tenant deployment, configured at tenant boot.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: alloy, status: active, composition: [alloy], swap_class: label-move }
+      - { name: fluent-bit, status: considered, swap_class: label-move, source: { external: true } }
+      - { name: vector, status: considered, swap_class: label-move, source: { external: true } }
+      - { name: otelcol, status: considered, swap_class: label-move, source: { external: true } }
+    pni_capability_id: logging-ship
+    references: ["https://grafana.com/oss/alloy-opentelemetry-collector/"]
+
+  - id: logs-storage
+    name: Log storage (ingest side)
+    description: |
+      Backend that accepts Loki-push or OTLP-logs and stores them
+      for retention + querying.
+    domain: { layer: observability, category: Logs }
+    stability: beta
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      HTTP POST /loki/api/v1/push (Loki push v1).
+      OTLP-logs also accepted by recent versions.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: loki, status: active, composition: [loki], swap_class: data-migration }
+      - { name: victoria-logs, status: considered, swap_class: data-migration, source: { external: true } }
+      - { name: opensearch, status: considered, swap_class: rewrite-required, source: { external: true } }
+    pni_capability_id: logging-ship
+    references: ["https://grafana.com/docs/loki/latest/reference/api/"]
+
+  - id: logs-query
+    name: LogQL query endpoint
+    description: |
+      Read-side HTTP endpoint for log queries (LogQL or equivalent).
+    domain: { layer: observability, category: Logs }
+    stability: beta
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      HTTP GET /loki/api/v1/query and /query_range (LogQL).
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: loki, status: active, composition: [loki], swap_class: drop-in }
+      - { name: victoria-logs, status: considered, swap_class: drop-in, source: { external: true } }
+    pni_capability_id: null
+    references: ["https://grafana.com/docs/loki/latest/query/"]
+
+# ═══════════════════════════════════════════════════════════════════
+# OBSERVABILITY — TRACES  (all alpha: no backend deployed yet)
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: traces-collect
+    name: Distributed trace collection agent
+    description: |
+      Agent that receives spans from instrumented apps via OTLP
+      and forwards to a traces-storage backend.
+    domain: { layer: observability, category: Tracing }
+    stability: alpha
+    deployment_topology: tenant-instance
+    contract: |
+      OTLP-traces over gRPC (port 4317) or HTTP (port 4318).
+      Standard OpenTelemetry protocol.
+    independence_test:
+      alt_impls_exist: true
+      contract_stable: true
+      independent_lifecycle: true
+      notes: |
+        No traces backend deployed in base today; design exists
+        but no consumer cluster has materialized it. alpha until
+        first deployment.
+    implementations:
+      - { name: alloy, status: candidate, composition: [alloy], swap_class: label-move }
+      - { name: otelcol, status: considered, swap_class: label-move, source: { external: true } }
+    pni_capability_id: null
+    references: ["https://opentelemetry.io/docs/specs/otel/trace/"]
+
+  - id: traces-storage
+    name: Distributed trace storage
+    description: |
+      Backend that ingests OTLP-traces and retains them for query.
+    domain: { layer: observability, category: Tracing }
+    stability: alpha
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      OTLP-traces ingest (gRPC) or Jaeger-proto.
+    independence_test:
+      alt_impls_exist: true
+      contract_stable: true
+      independent_lifecycle: true
+      notes: "No backend deployed; alpha pending first impl."
+    implementations:
+      - { name: tempo, status: considered, swap_class: data-migration, source: { external: true } }
+      - { name: jaeger, status: considered, swap_class: data-migration, source: { external: true } }
+    pni_capability_id: null
+    references: ["https://grafana.com/oss/tempo/"]
+
+  - id: traces-query
+    name: Trace query endpoint
+    description: |
+      Read-side HTTP API for trace search and trace-by-id lookups.
+    domain: { layer: observability, category: Tracing }
+    stability: alpha
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      Tempo HTTP API or Jaeger HTTP API.
+    independence_test:
+      alt_impls_exist: true
+      contract_stable: true
+      independent_lifecycle: true
+      notes: "No backend deployed; alpha pending first impl."
+    implementations:
+      - { name: tempo, status: considered, swap_class: drop-in, source: { external: true } }
+      - { name: jaeger, status: considered, swap_class: drop-in, source: { external: true } }
+    pni_capability_id: null
+
+# ═══════════════════════════════════════════════════════════════════
+# OBSERVABILITY — ALERTS & DASHBOARDS
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: alert-routing
+    name: Alert routing and delivery
+    description: |
+      Receives Prometheus-format alerts and dispatches via email,
+      webhooks, paging integrations.
+    domain: { layer: observability, category: Alerts }
+    stability: beta
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      HTTP POST /api/v2/alerts (Alertmanager v2 API).
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: alertmanager-via-kps, status: active, composition: [kube-prometheus-stack], swap_class: drop-in }
+      - { name: grafana-oncall, status: considered, swap_class: drop-in, source: { external: true } }
+      - { name: ntfy-webhook, status: considered, swap_class: drop-in, source: { external: true } }
+    pni_capability_id: null
+    references: ["https://prometheus.io/docs/alerting/latest/alertmanager/"]
+
+  - id: dashboards
+    name: Dashboard / visualization UI
+    description: |
+      Human-facing UI that queries metrics-query, logs-query,
+      traces-query via HTTP datasource plugins.
+    domain: { layer: observability, category: Visualization }
+    stability: beta
+    deployment_topology: host-singleton
+    contract: |
+      HTTP UI; datasource plugins speak Prom API, Loki API,
+      Tempo API. Consumer is humans via browser, not pods.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: grafana-via-kps, status: active, composition: [kube-prometheus-stack], swap_class: label-move }
+      - { name: perses, status: considered, swap_class: label-move, source: { external: true } }
+    pni_capability_id: null
+    references: ["https://grafana.com/docs/grafana/latest/datasources/prometheus/"]
+
+# ═══════════════════════════════════════════════════════════════════
+# SECURITY & KEY MANAGEMENT
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: tls-issuance
+    name: X.509 certificate issuance
+    description: |
+      Tenant emits a Certificate CR; controller issues a cert
+      from a configured CA (ACME, Vault-PKI, internal CA).
+    domain: { layer: provisioning, category: "Security & Compliance" }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      Tenant interaction via cert-manager Issuer/ClusterIssuer/
+      Certificate CRDs. Egress to ACME providers if used.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: cert-manager, status: active, composition: [cert-manager, cert-approver], swap_class: label-move }
+      - { name: vault-pki, status: considered, swap_class: rewrite-required, source: { external: true } }
+    pni_capability_id: tls-issuance
+    references: ["https://cert-manager.io/docs/"]
+
+  - id: vault-secrets
+    name: KV-style secret access
+    description: |
+      Tenant authenticates and reads/writes secrets in a per-tenant
+      KV mount path.
+    domain: { layer: provisioning, category: "Key Management" }
+    stability: ga
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      HTTPS REST API (Vault KV v2). Authentication via Kubernetes
+      auth method (K8s SA token validated against tenant cluster's
+      JWKS endpoint).
+    instanced: true
+    instance_source: kv-mount
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: vault-operator, status: active, composition: [vault-operator, vault-config-operator], swap_class: data-migration }
+      - { name: openbao, status: considered, swap_class: drop-in, source: { external: true } }
+      - { name: infisical, status: considered, swap_class: rewrite-required, source: { external: true } }
+    pni_capability_id: vault-secrets
+    references: ["https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v2"]
+
+  - id: identity-oidc
+    name: OIDC identity provider
+    description: |
+      OIDC provider issuing ID tokens for workloads and humans.
+      Tenants federate against it.
+    domain: { layer: provisioning, category: "Key Management" }
+    stability: beta
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      OIDC v1 over HTTPS (.well-known/openid-configuration,
+      /auth, /token endpoints).
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: dex, status: active, composition: [dex], swap_class: label-move }
+      - { name: keycloak, status: considered, swap_class: label-move, source: { external: true } }
+      - { name: authelia, status: considered, swap_class: label-move, source: { external: true } }
+    pni_capability_id: null
+    references: ["https://openid.net/specs/openid-connect-core-1_0.html"]
+
+# ═══════════════════════════════════════════════════════════════════
+# STORAGE
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: block-storage-replicated
+    name: Cross-node replicated block storage
+    description: |
+      Block storage replicated across nodes via DRBD; PV survives
+      node loss. Higher latency than local.
+    domain: { layer: runtime, category: "Cloud Native Storage" }
+    stability: beta
+    deployment_topology: tenant-instance
+    contract: |
+      CSI gRPC interface (standard K8s CSI v1).
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: piraeus-operator, status: active, composition: [piraeus-operator], swap_class: data-migration }
+      - { name: rook-ceph, status: considered, swap_class: rewrite-required, source: { external: true } }
+      - { name: longhorn, status: considered, swap_class: rewrite-required, source: { external: true } }
+      - { name: openebs-mayastor, status: considered, swap_class: rewrite-required, source: { external: true } }
+    pni_capability_id: block-storage-replicated
+    references: ["https://piraeus.io/", "https://kubernetes-csi.github.io/docs/"]
+
+  - id: block-storage-local
+    name: Node-local block storage
+    description: |
+      Block storage bound to a single node; lowest latency, lost
+      on node failure. PVs not portable.
+    domain: { layer: runtime, category: "Cloud Native Storage" }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      CSI gRPC interface; topology-aware scheduling required.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: local-path-provisioner, status: active, composition: [local-path-provisioner], swap_class: data-migration }
+      - { name: openebs-localpv, status: considered, swap_class: drop-in, source: { external: true } }
+      - { name: topolvm, status: considered, swap_class: rewrite-required, source: { external: true } }
+    pni_capability_id: block-storage-local
+    references: ["https://github.com/rancher/local-path-provisioner"]
+
+  - id: s3-object
+    name: S3-API object storage
+    description: |
+      S3-compatible object storage; bucket-scoped per tenant.
+    domain: { layer: runtime, category: "Cloud Native Storage" }
+    stability: ga
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      S3 REST API over HTTPS, signature v4. Bucket per tenant.
+    instanced: true
+    instance_source: bucket
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: minio-operator, status: candidate, swap_class: drop-in, source: { external: true } }
+      - { name: external-s3, status: candidate, swap_class: drop-in, source: { external: true } }
+    pni_capability_id: s3-object
+    references: ["https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html"]
+
+# ═══════════════════════════════════════════════════════════════════
+# NETWORK
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: internet-egress
+    name: Public-internet egress
+    description: |
+      Network policy permitting egress to public IP ranges
+      (excluding RFC1918, link-local, loopback).
+    domain: { layer: runtime, category: "Cloud Native Network" }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      Implemented as CIDR-based CCNP; namespace opts in.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: cilium, status: active, composition: [], swap_class: label-move, source: { external: bootstrap } }
+    pni_capability_id: internet-egress
+    references: ["https://docs.cilium.io/en/stable/security/policy/"]
+
+  - id: controlplane-egress
+    name: kube-apiserver egress
+    description: |
+      Egress to in-cluster kube-apiserver; required for any
+      workload using a ServiceAccount token.
+    domain: { layer: runtime, category: "Cloud Native Network" }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      L4 egress to apiserver service port.
+    independence_test:
+      alt_impls_exist: false
+      contract_stable: true
+      independent_lifecycle: true
+      notes: "Single impl by definition."
+    implementations:
+      - { name: kube-apiserver, status: active, composition: [], swap_class: drop-in, source: { external: kubernetes } }
+    pni_capability_id: controlplane-egress
+
+  - id: gateway-backend
+    name: Gateway-API HTTPRoute backend
+    description: |
+      Workload exposed as HTTPRoute backend behind a platform Gateway.
+    domain: { layer: orchestration, category: "API Gateway" }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      Gateway-API v1 HTTPRoute; consumer is the in-cluster Gateway
+      controller (Envoy/Cilium).
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: cilium-gateway-api, status: active, composition: [], swap_class: label-move, source: { external: bootstrap } }
+      - { name: envoy-gateway, status: considered, swap_class: label-move, source: { external: true } }
+      - { name: contour, status: considered, swap_class: label-move, source: { external: true } }
+    pni_capability_id: gateway-backend
+    references: ["https://gateway-api.sigs.k8s.io/"]
+
+  - id: external-gateway-routes
+    name: External-HTTPS Gateway-route attachment
+    description: |
+      Permission to attach HTTPRoutes to the cluster's external-https
+      Gateway listener. Selection only, no separate dataplane.
+    domain: { layer: orchestration, category: "API Gateway" }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      Gateway-API allowedRoutes selector.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: gateway-api, status: active, composition: [], swap_class: drop-in, source: { external: bootstrap } }
+    pni_capability_id: external-gateway-routes
+
+  - id: secondary-network-attachment
+    name: Pod secondary network interfaces
+    description: |
+      Pod opts into one or more additional network interfaces
+      beyond the default pod network.
+    domain: { layer: runtime, category: "Cloud Native Network" }
+    stability: alpha
+    deployment_topology: tenant-instance
+    contract: |
+      Pod annotation k8s.v1.cni.cncf.io/networks plus a
+      NetworkAttachmentDefinition CRD.
+    independence_test:
+      alt_impls_exist: false
+      contract_stable: true
+      independent_lifecycle: true
+      notes: "Multus is de-facto solo impl; alpha-stability acknowledged."
+    implementations:
+      - { name: multus-cni, status: active, composition: [multus-cni], swap_class: rewrite-required }
+    pni_capability_id: null
+    references: ["https://github.com/k8snetworkplumbingwg/multus-cni"]
+
+# ═══════════════════════════════════════════════════════════════════
+# APP DEFINITION — DATA SERVICES (all instanced)
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: cnpg-postgres
+    name: PostgreSQL (managed)
+    description: |
+      PostgreSQL via the CloudNative-PG operator; one instance
+      per CNPG Cluster CR.
+    domain: { layer: app-def, category: Database }
+    stability: ga
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      pgwire v3 (Postgres native protocol) over TCP 5432.
+    instanced: true
+    instance_source: { apiVersion: "postgresql.cnpg.io/v1", kind: Cluster }
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: cloudnative-pg, status: candidate, swap_class: data-migration, source: { external: true } }
+      - { name: stackgres, status: considered, swap_class: data-migration, source: { external: true } }
+      - { name: zalando-pg, status: considered, swap_class: data-migration, source: { external: true } }
+    pni_capability_id: cnpg-postgres
+
+  - id: redis-managed
+    name: Redis (managed)
+    description: |
+      Redis via OT-Container-Kit operator; one instance per
+      RedisReplication/Cluster/Standalone CR.
+    domain: { layer: app-def, category: Database }
+    stability: beta
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      RESP3 protocol over TCP 6379.
+    instanced: true
+    instance_source: { apiVersion: "redis.redis.opstreelabs.in/v1beta2", kind: RedisReplication }
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: redis-operator, status: candidate, swap_class: data-migration, source: { external: true } }
+    pni_capability_id: redis-managed
+
+  - id: rabbitmq-managed
+    name: RabbitMQ (managed)
+    description: |
+      RabbitMQ via the official cluster-operator; one instance
+      per RabbitmqCluster CR.
+    domain: { layer: app-def, category: "Streaming & Messaging" }
+    stability: beta
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      AMQP 0-9-1 over TCP 5672.
+    instanced: true
+    instance_source: { apiVersion: "rabbitmq.com/v1beta1", kind: RabbitmqCluster }
+    independence_test:
+      alt_impls_exist: false
+      contract_stable: true
+      independent_lifecycle: true
+      notes: "rabbitmq-cluster-operator is the only mature K8s-native RabbitMQ operator."
+    implementations:
+      - { name: rabbitmq-cluster-operator, status: candidate, swap_class: data-migration, source: { external: true } }
+    pni_capability_id: rabbitmq-managed
+
+  - id: kafka-managed
+    name: Apache Kafka (managed)
+    description: |
+      Kafka via the Strimzi operator; one instance per Kafka CR.
+    domain: { layer: app-def, category: "Streaming & Messaging" }
+    stability: alpha
+    deployment_topology: host-singleton
+    cross_cluster_protocol: cilium-clustermesh
+    contract: |
+      Kafka wire protocol over TCP.
+    instanced: true
+    instance_source: { apiVersion: "kafka.strimzi.io/v1beta2", kind: Kafka }
+    independence_test:
+      alt_impls_exist: true
+      contract_stable: true
+      independent_lifecycle: true
+      notes: "Not deployed in any consumer cluster yet; alpha until first use."
+    implementations:
+      - { name: strimzi, status: considered, swap_class: data-migration, source: { external: true } }
+      - { name: redpanda-operator, status: considered, swap_class: data-migration, source: { external: true } }
+    pni_capability_id: kafka-managed
+
+# ═══════════════════════════════════════════════════════════════════
+# APP DEFINITION — COMPUTE
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: gpu-runtime
+    name: NVIDIA GPU scheduling and telemetry
+    description: |
+      GPU device-plugin + DCGM telemetry + node-feature labels;
+      ships as a unit, no per-component swap.
+    domain: { layer: runtime, category: "Container Runtime" }
+    stability: beta
+    deployment_topology: tenant-instance
+    contract: |
+      Node-local device-plugin socket + DCGM metrics exporter
+      on host-network.
+    independence_test:
+      alt_impls_exist: false
+      contract_stable: true
+      independent_lifecycle: false
+      notes: "Bundle of three NVIDIA tools; AMD ROCm/Intel Gaudi are theoretical alternatives but not in scope."
+    implementations:
+      - name: nvidia-stack
+        status: active
+        composition: [nvidia-device-plugin, nvidia-dcgm-exporter, node-feature-discovery]
+        swap_class: rewrite-required
+    pni_capability_id: gpu-runtime
+    references: ["https://github.com/NVIDIA/k8s-device-plugin"]
+
+  - id: vm-runtime
+    name: VM workload runtime
+    description: |
+      Run VMs as first-class Kubernetes workloads via KubeVirt
+      CRDs (VirtualMachine, VirtualMachineInstance).
+    domain: { layer: app-def, category: "Application Definition & Image Build" }
+    stability: beta
+    deployment_topology: host-only
+    contract: |
+      KubeVirt CRDs + Containerized Data Importer for image
+      ingestion. Tenant-cluster VMs run on host's KubeVirt.
+    independence_test:
+      alt_impls_exist: false
+      contract_stable: true
+      independent_lifecycle: false
+      notes: "KubeVirt is the only mature CNCF VM-on-K8s; bundled with CDI for image flow."
+    implementations:
+      - name: kubevirt
+        status: active
+        composition: [kubevirt, kubevirt-cdi]
+        swap_class: rewrite-required
+    pni_capability_id: null
+    references: ["https://kubevirt.io/"]
+    tags: [cluster-factory-dependency]
+
+# ═══════════════════════════════════════════════════════════════════
+# CONTROL-PLANE-ONLY  (host-only; Layer A only, not in PNI registry)
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: gitops-engine
+    name: GitOps reconciliation engine
+    description: |
+      Watches Git, reconciles desired state into the cluster.
+      Tenant interaction is via Git pushes, not pod-to-pod traffic.
+    domain: { layer: app-def, category: "Continuous Integration & Delivery" }
+    stability: ga
+    deployment_topology: host-only
+    contract: |
+      Pull-based reconciliation from Git refs; sync wave + health
+      assessment per resource.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: argocd, status: active, composition: [argocd], swap_class: rewrite-required }
+      - { name: fluxcd, status: considered, swap_class: rewrite-required, source: { external: true } }
+
+  - id: admission-policy
+    name: Admission policy engine
+    description: |
+      Validating/mutating admission control; policies authored
+      per-engine.
+    domain: { layer: provisioning, category: "Security & Compliance" }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      K8s admission-webhook protocol. Policy authoring is
+      tool-specific (Kyverno CEL/DSL; Gatekeeper Rego;
+      native VAP CEL).
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: kyverno, status: active, composition: [kyverno], swap_class: rewrite-required }
+      - { name: opa-gatekeeper, status: considered, swap_class: rewrite-required, source: { external: true } }
+      - { name: native-vap, status: considered, swap_class: consumer-change, source: { external: kubernetes }, version_min: { kubernetes: "1.30" } }
+    tags: [policy]
+    references: ["https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/"]
+
+  - id: runtime-security
+    name: Runtime security observability
+    description: |
+      eBPF-based observation of kernel events for security
+      monitoring; emits to log/SIEM.
+    domain: { layer: provisioning, category: "Security & Compliance" }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      DaemonSet per node; output is event log (security-events
+      go to logs-collect pipeline).
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: tetragon, status: active, composition: [tetragon], swap_class: rewrite-required }
+      - { name: falco, status: considered, swap_class: rewrite-required, source: { external: true } }
+
+  - id: secret-sync
+    name: External secret synchronization
+    description: |
+      Reconciles ExternalSecret CRD into native K8s Secret by
+      pulling from upstream secret-storage (vault-secrets etc.).
+    domain: { layer: provisioning, category: "Key Management" }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      ExternalSecret CRD; controller polls upstream and emits
+      Secret objects.
+    independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
+    implementations:
+      - { name: external-secrets, status: active, composition: [external-secrets], swap_class: rewrite-required }
+      - { name: sealed-secrets, status: considered, swap_class: rewrite-required, source: { external: true } }
+      - { name: reloader, status: considered, swap_class: rewrite-required, source: { external: true } }
+
+  - id: csr-approval
+    name: CertificateSigningRequest approval automation
+    description: |
+      Auto-approves K8s CSRs matching policy (typical: node
+      kubelet-serving certs).
+    domain: { layer: provisioning, category: "Security & Compliance" }
+    stability: ga
+    deployment_topology: tenant-instance
+    contract: |
+      Watches CSR API resource; applies approval decision.
+    independence_test:
+      alt_impls_exist: false
+      contract_stable: true
+      independent_lifecycle: true
+      notes: "Single mature impl in OSS landscape."
+    implementations:
+      - { name: cert-approver, status: active, composition: [cert-approver], swap_class: rewrite-required }
+
+  - id: secret-config-declarative
+    name: Vault declarative configuration
+    description: |
+      Reconciles Vault-config CRDs into Vault state (policies,
+      auth-backends, secrets).
+    domain: { layer: provisioning, category: "Key Management" }
+    stability: ga
+    deployment_topology: host-only
+    contract: |
+      Vault-config-operator CRDs; reconciles via Vault REST API.
+    independence_test:
+      alt_impls_exist: false
+      contract_stable: true
+      independent_lifecycle: true
+      notes: "Tightly coupled to vault-operator; no real alternative."
+    implementations:
+      - { name: vault-config-operator, status: active, composition: [vault-config-operator], swap_class: rewrite-required }
+
+# ═══════════════════════════════════════════════════════════════════
+# CLUSTER FACTORY  (meta-capability — v2.X path)
+# ═══════════════════════════════════════════════════════════════════
+
+  - id: cluster-provisioning
+    name: Self-service tenant Kubernetes cluster provisioning
+    description: |
+      Customer requests a fully-isolated K8s cluster via portal.
+      Orchestrator materializes a Cluster-API workload cluster
+      whose nodes are KubeVirt VMs on the host. Customer has root
+      inside the resulting cluster.
+    domain: { layer: orchestration, category: "Scheduling & Orchestration" }
+    stability: alpha
+    deployment_topology: host-only
+    contract: |
+      Customer submits XKubernetesCluster XR (or Backstage
+      scaffolder request that produces one). Crossplane Composition
+      materializes CAPI Cluster + KubeadmControlPlane +
+      KubevirtMachineTemplate. Output: kubeconfig Secret.
+    composed_of: [vm-runtime]
+    independence_test:
+      alt_impls_exist: true
+      contract_stable: false
+      independent_lifecycle: true
+      notes: |
+        CAPK is upstream v1alpha1 (pre-GA); Red Hat MCE is the
+        productized variant. Alternatives are vCluster (non-CNCF,
+        soft-multi-tenancy — does not meet our isolation
+        requirement) and Kamaji (CNCF Sandbox, different topology).
+        No published end-to-end reference architecture combining
+        Backstage + Crossplane + CAPK + KubeVirt; we pioneer.
+    implementations:
+      - name: capi-kubevirt-via-crossplane
+        status: candidate
+        composition: [kubevirt, kubevirt-cdi]
+        swap_class: rewrite-required
+        version_min:
+          cluster-api-provider-kubevirt: "v0.11.x"
+          crossplane: "v2.x"
+          kubevirt: "v1.x"
+        source:
+          external: true
+          repo: https://github.com/kubernetes-sigs/cluster-api-provider-kubevirt
+      - name: capi-kubevirt-via-red-hat-mce
+        status: considered
+        swap_class: rewrite-required
+        source: { external: true, vendor: redhat }
+      - name: kamaji
+        status: considered
+        swap_class: rewrite-required
+        source: { external: true, repo: https://github.com/clastix/kamaji }
+    tags: [cluster-factory, pioneering, v2.x]
+    references:
+      - https://github.com/kubernetes-sigs/cluster-api-provider-kubevirt
+      - https://www.cncf.io/projects/kubevirt/
+      - https://docs.crossplane.io/
+      - https://terasky-oss.github.io/backstage-plugins/

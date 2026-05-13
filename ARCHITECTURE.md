@@ -162,8 +162,6 @@ Those concerns live in:
 
 ## See also
 
-- [README](README.md) — orientation + doc map
-- [AGENTS.md](AGENTS.md) — tool-agnostic SOT (canonical for agents)
-- [`docs/adr-multi-repo-platform-split.md`](docs/adr-multi-repo-platform-split.md) — why a two-repo split
-- [`docs/adr-capability-producer-consumer-symmetry.md`](docs/adr-capability-producer-consumer-symmetry.md) — capability-first decision record
+- [`docs/README.md`](docs/README.md) — full documentation index (Diátaxis-organised)
 - [`docs/capability-architecture.md`](docs/capability-architecture.md) — L3 detail on PNI capabilities
+- [`AGENTS.md`](AGENTS.md) — tool-agnostic SOT (canonical for agents)
