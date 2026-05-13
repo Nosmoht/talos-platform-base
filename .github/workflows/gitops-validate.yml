@@ -106,23 +106,34 @@ jobs:
       - name: Validate Kyverno policies from source manifests
         run: |
           set -eu
-          tmp_policies="$(mktemp)"
+          # Use a directory of per-file policy copies instead of a
+          # single concatenated multi-doc file. kyverno-cli v1.17.x
+          # (pinned) fails to parse the multi-doc form and reports
+          # "Applying 0 policy rule(s)" — the silent-skip class that
+          # the post-apply assertion below catches. A directory of
+          # one-document-per-file works reliably across CLI versions.
+          tmp_policy_dir="$(mktemp -d)"
           tmp_resources="$(mktemp)"
           tmp_manifest_list="$(mktemp)"
 
           git ls-files 'kubernetes/**/*.yaml' 'kubernetes/**/*.yml' > "$tmp_manifest_list"
+          policy_count=0
           while IFS= read -r f; do
             [ -n "$f" ] || continue
-            matches="$(yq 'select(.apiVersion == "kyverno.io/v1" and (.kind == "ClusterPolicy" or .kind == "Policy"))' "$f")"
-            if [ -n "$matches" ]; then
-              printf "%s\n---\n" "$matches" >> "$tmp_policies"
+            if yq -e '.apiVersion == "kyverno.io/v1" and (.kind == "ClusterPolicy" or .kind == "Policy")' "$f" >/dev/null 2>&1; then
+              # Encode path into filename to keep them unique under the
+              # flat policy dir layout.
+              dest="$(printf '%s' "$f" | tr '/' '_')"
+              cp "$f" "$tmp_policy_dir/$dest"
+              policy_count=$((policy_count + 1))
             fi
           done < "$tmp_manifest_list"
 
-          if [ ! -s "$tmp_policies" ]; then
+          if [ "$policy_count" -eq 0 ]; then
             echo "notice: no Kyverno policies found in source manifests"
             exit 0
           fi
+          echo "kyverno policies discovered: $policy_count"
 
           # Smoke fixture: one minimal resource per kind matched by any
           # base PNI ClusterPolicy. Each resource is shaped to PASS the
@@ -313,7 +324,7 @@ jobs:
 
           kyverno version
           tmp_log="$(mktemp)"
-          if ! kyverno apply "$tmp_policies" --resource "$tmp_resources" --warn-no-pass=false 2>&1 | tee "$tmp_log"; then
+          if ! kyverno apply "$tmp_policy_dir" --resource "$tmp_resources" --warn-no-pass=false 2>&1 | tee "$tmp_log"; then
             echo "error: kyverno apply failed against smoke fixture"
             exit 1
           fi
