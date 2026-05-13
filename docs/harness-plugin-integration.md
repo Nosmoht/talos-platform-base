@@ -4,9 +4,16 @@
 plugin and contributors who want to know what this base expects from
 the Claude Code primitives layer.
 
-**Status:** specification — this base ships **no `.claude/`** by
-design; the harness plugin is the runtime executor for Claude-Code
-primitives. This file states the contract from the base's side.
+**Status:** **specification** for a plugin repository that does not yet
+exist publicly. Everything in this file describes a *contract* the plugin
+should satisfy; subagents and rules listed as "shipped" describe the
+maintainer's local workflow, not a public artefact. See
+[`vision.md`](vision.md) §"Harness plugin (separate repo)" for the honest
+read on what is in flight today.
+
+This base ships **no `.claude/`** by design; the harness plugin is the
+runtime executor for Claude-Code primitives. This file states the contract
+from the base's side.
 
 ## Why this exists
 

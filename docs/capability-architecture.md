@@ -16,9 +16,12 @@ shapes are what they are.
 
 ## TL;DR
 
-Capabilities are stable; tools are swappable. Trust is namespace-anchored.
-Multi-tenant data services are instance-scoped. There is no central tool
-whitelist.
+Capabilities are stable; tools are swappable in the design — see the
+"Tool-swap mechanics" section below for the contract, and
+[issue #34](https://github.com/Nosmoht/talos-platform-base/issues/34) for
+the status of the first end-to-end verified swap. Trust is namespace-anchored.
+The design supports instance-scoped multi-tenant data services; the current
+operating reality is single-tenant. There is no central tool whitelist.
 
 ## Core invariant — capabilities are the stable interface
 
@@ -95,7 +98,12 @@ namespace, each declaring its capabilities).
 
 ## Per-instance scoping
 
-Capabilities with multi-tenant data planes carry an instance suffix:
+Capabilities whose data plane could be partitioned per tenant carry an
+instance suffix. In v0.x this is a contract the base enforces (via the
+audit-mode policy `pni-instanced-suffix-required-audit`) — the single
+existing operator runs a single tenant. The mechanism is in place for
+multi-tenant use cases that may emerge; see [`vision.md`](vision.md) for
+where multi-tenant operation fits in possible future tag streams.
 
 ```yaml
 # Consumer namespace
