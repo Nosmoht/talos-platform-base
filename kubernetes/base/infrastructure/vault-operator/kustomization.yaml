@@ -3,12 +3,3 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-
-helmCharts:
-  - name: vault-operator
-    repo: oci://ghcr.io/bank-vaults/helm-charts
-    version: 1.23.4
-    releaseName: vault-operator
-    namespace: vault
-    valuesFile: values.yaml
-    includeCRDs: true

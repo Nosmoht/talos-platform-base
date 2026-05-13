@@ -16,12 +16,3 @@ kind: Kustomization
 # the OCI tag CHANGELOG.
 resources:
   - namespace.yaml
-
-helmCharts:
-  - name: metrics-server
-    repo: https://kubernetes-sigs.github.io/metrics-server
-    version: 3.12.2
-    releaseName: metrics-server
-    namespace: metrics-server
-    valuesFile: values.yaml
-    includeCRDs: true
