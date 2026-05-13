@@ -145,3 +145,18 @@ Issues #100, #102, #105, #107 require ephemeral-pod orchestration. Before they c
 - ADR documenting the privileged-profile usage rationale for internal diagnostics tooling
 
 These sections will be appended to this document when Phase 1b is planned.
+
+## External HTTPRoute hostname enforcement
+
+The base `external-httproute-hostnames-enforce` ClusterPolicy denies any HTTPRoute attached to the `sectionName=external-https` listener whose hostname does not match the cluster's `external_hostname_pattern` regex.
+
+Consumer overlay contract:
+
+- Ship a ConfigMap named `cluster-config` in the `kyverno` namespace with `external_hostname_pattern` set to a valid Go regex (typically a `^.*\.<cluster-domain>$`-shaped anchor).
+- Without this ConfigMap, **all external HTTPRoutes are denied** — the policy carries a `require-cluster-config-pattern` rule that fail-closes when the pattern is missing or empty. This is intentional: the previous design template-resolved an empty pattern into `regex_match` and silently admitted any hostname.
+- Consumer cluster bootstrap order:
+  1. AppProject + Kyverno operator install (sync-wave -1 to 0).
+  2. Consumer-side `cluster-config` ConfigMap (sync-wave 0 or earlier).
+  3. Base PNI ClusterPolicies (sync-wave 1+).
+
+Test fixtures live at `kubernetes/base/infrastructure/platform-network-interface/resources/tests/external-httproute-hostnames-enforce/` and are exercised by `kyverno test` in CI.

@@ -1,0 +1,26 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: pni-vault-ca-distribution
+policies:
+  - ../../kyverno-clusterpolicy-vault-ca-distribution.yaml
+resources:
+  - resources.yaml
+# Note on coverage: kyverno-cli `test` only produces a result entry for
+# resources that pass the rule's match selector AND are not silently
+# excluded. The four label-based-exclude / match-miss namespaces in
+# resources.yaml (argocd-shaped, cert-manager-shaped,
+# external-secrets-shaped, monitoring-shaped) are EXCLUDED by the
+# policy and therefore produce NO result entry — kyverno test cannot
+# express a `skip` expectation for them. Their non-evaluation is
+# verified indirectly by the policy-report assertion in
+# `scripts/test/vault-ca-distribution-smoke.sh` (sibling test driver).
+results:
+  # Case 1: tenant namespace, consume.vault-secrets=true, no opt-out
+  # → generate fires.
+  - policy: pni-vault-ca-distribution
+    rule: distribute-vault-ca-to-vault-secrets-consumers
+    resources:
+      - tenant-consumer
+    kind: Namespace
+    result: pass
