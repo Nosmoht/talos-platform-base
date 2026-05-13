@@ -3,6 +3,12 @@ replicaCount: 1
 enableMonitoring: true
 enableCertManager: true
 
+# Producer-side PNI labels for vault-config-operator are applied via a
+# kustomize strategic-merge patch in kustomization.yaml (the upstream
+# Helm chart does NOT expose a `podLabels` value; its Deployment
+# template hardcodes pod labels via the
+# `vault-config-operator.selectorLabels` helper).
+
 resources:
   requests:
     cpu: 100m

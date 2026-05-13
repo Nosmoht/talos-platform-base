@@ -7,3 +7,12 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: managed
+    # vault-operator + vault-config-operator co-own the vault namespace.
+    # Operator pods carry capability-provider.monitoring-scrape (/metrics)
+    # and capability-provider.admission-webhook (ValidatingAdmissionWebhooks
+    # for their CRDs). Trust anchor — see ADR
+    # adr-capability-producer-consumer-symmetry.md §Namespace-anchored
+    # producer trust. Kept identical to vault-operator/namespace.yaml so
+    # whichever ArgoCD app applies last produces a consistent label set.
+    platform.io/provide.monitoring-scrape: "true"
+    platform.io/provide.admission-webhook: "true"

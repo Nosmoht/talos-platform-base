@@ -8,6 +8,15 @@ metadata:
     platform.io/network-interface-version: v1
     platform.io/network-profile: privileged
     platform.io/consume.controlplane-egress: "true"
+    # piraeus-operator pod carries capability-provider.{admission-webhook,
+    # monitoring-scrape}. Producer labels for the LINSTOR controller +
+    # satellites (created dynamically from a LinstorCluster CR by the
+    # operator) require PR D's Kyverno mutate-policy that watches
+    # LinstorCluster CRs — out of PR-C scope. Trust anchor — see ADR
+    # adr-capability-producer-consumer-symmetry.md §Namespace-anchored
+    # producer trust.
+    platform.io/provide.admission-webhook: "true"
+    platform.io/provide.monitoring-scrape: "true"
     pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
