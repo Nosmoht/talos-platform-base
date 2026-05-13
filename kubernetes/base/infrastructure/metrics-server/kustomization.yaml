@@ -1,13 +1,27 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# kube-system is a system namespace; do NOT declare it here.
+# Relocated from kube-system to a dedicated `metrics-server` namespace as
+# of PR B (capability-first refactor). The dedicated namespace carries
+# `platform.io/provide.hpa-metrics: "true"` which is the trust anchor for
+# the namespace-anchored Kyverno policy that validates
+# `capability-provider.hpa-metrics` on the metrics-server pod.
+#
+# kube-system was a historical convention rooted in the
+# Heapster→metrics-server migration; APIService.spec.service.namespace
+# accepts any namespace, so the relocation has no functional impact.
+# Consumer overlays that previously referenced
+# `kube-system/metrics-server` (ServiceMonitor targets, manual kubectl
+# wiring) must update to `metrics-server/metrics-server` — flagged in
+# the OCI tag CHANGELOG.
+resources:
+  - namespace.yaml
 
 helmCharts:
   - name: metrics-server
     repo: https://kubernetes-sigs.github.io/metrics-server
     version: 3.12.2
     releaseName: metrics-server
-    namespace: kube-system
+    namespace: metrics-server
     valuesFile: values.yaml
     includeCRDs: true

@@ -1,5 +1,62 @@
 # Changelog
 
+## Unreleased — PR B (capability-first refactor, producer-labels phase)
+
+### Breaking
+
+- **`metrics-server` relocated from `kube-system` to dedicated
+  `metrics-server` namespace.** Consumer overlays that referenced
+  `kube-system/metrics-server` directly (ServiceMonitor targets,
+  manual kubectl wiring) must update to `metrics-server/metrics-server`.
+  The `v1beta1.metrics.k8s.io` APIService is re-pointed automatically;
+  HPA and `kubectl top` survive the change after one ArgoCD reconcile
+  (~10–30s gap during the prune-and-replace window).
+- **`pni-reserved-labels-audit` ClusterPolicy refactored:** the
+  hardcoded `app.kubernetes.io/component: rabbitmq` and
+  `redis_setup_type` trust signatures are removed. Trust now derives
+  from a single namespace-anchored rule that requires
+  `platform.io/provide.<cap>[.<inst>]: "true"` on the workload's
+  namespace. Consumer overlays that currently deploy broker pods
+  (RabbitmqCluster, RedisFailover, CnpgCluster instances) carrying
+  `platform.io/capability-provider.<cap>.<instance>` MUST ensure the
+  hosting namespace carries the matching `provide.<cap>.<instance>`
+  label. Without that label, broker pods will be denied at admission
+  after upgrade. The Kyverno generate-policies that automate this for
+  CRD-managed instances ship in PR D; for the PR B → PR D gap,
+  consumer overlays must add the namespace labels by hand.
+
+### Added (producer-side labels — 4 components)
+
+- `cert-manager`: webhook pod and Service carry
+  `capability-provider.tls-issuance` + endpoint/protocol annotations;
+  controller pod carries `capability-provider.monitoring-scrape`;
+  `cert-manager` namespace carries `provide.{tls-issuance,monitoring-scrape}`.
+- `loki` (SimpleScalable write tier): write pods and Service carry
+  `capability-provider.logging-ship` + endpoint/protocol annotations;
+  `monitoring` namespace (declared by loki + kube-prometheus-stack)
+  carries `provide.{logging-ship,monitoring-scrape}`.
+- `metrics-server` (relocated): pod and Service carry
+  `capability-provider.{hpa-metrics,monitoring-scrape}` + endpoint/
+  protocol annotations; `metrics-server` namespace carries
+  `provide.{hpa-metrics,monitoring-scrape}`.
+- `local-path-provisioner`: pod carries
+  `capability-provider.block-storage-local` (set in base values.yaml);
+  consumer overlay must host the deployment in a dedicated
+  `local-path-storage` namespace carrying
+  `provide.block-storage-local: "true"` (documented in values.yaml).
+
+### Added (existing producers — namespace-label migration)
+
+- `vault` namespace: `provide.monitoring-scrape`.
+- `external-secrets` namespace: `provide.monitoring-scrape`.
+
+### Architectural
+
+- ADR `adr-capability-producer-consumer-symmetry.md` extended with
+  §"Namespace-anchored producer trust" — locks the invariant that
+  trust derives from namespace labels and that kube-system residents
+  must be relocated, not exempted.
+
 ## v0.1.0 — 2026-05-01
 
 Initial release of `talos-platform-base`. Cluster-agnostic snapshot of

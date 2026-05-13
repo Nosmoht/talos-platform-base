@@ -13,6 +13,11 @@ metadata:
     # pni-vault-ca-distribution generate policy so the policy does not
     # try to clone the Secret into its own source namespace.
     platform.io/vault-ca-distribution: skip
+    # cert-manager-webhook pod carries capability-provider.tls-issuance.
+    # cert-manager-controller pod carries capability-provider.monitoring-scrape.
+    # Trust anchors — see ADR §Namespace-anchored producer trust.
+    platform.io/provide.tls-issuance: "true"
+    platform.io/provide.monitoring-scrape: "true"
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
