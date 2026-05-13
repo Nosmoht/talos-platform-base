@@ -27,12 +27,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # All three checks below skip documentation files (*.md). The
+       # constraints apply to live config (YAML manifests, Talos patches,
+       # kernel cmdline) — documentation that *names* a forbidden value to
+       # explain why it is forbidden is not a violation and must not trigger.
       - name: Check forbidden Kubernetes kinds (Ingress, Endpoints)
         shell: bash
         run: |
           set -euo pipefail
           FAIL=0
-          CHANGED_K8S=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' 2>/dev/null || true)
+          CHANGED_K8S=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' ':(exclude)kubernetes/**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_K8S" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do
@@ -55,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           FAIL=0
-          CHANGED_TALOS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'talos/**' 2>/dev/null || true)
+          CHANGED_TALOS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'talos/**' ':(exclude)talos/**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_TALOS" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do
@@ -78,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           FAIL=0
-          CHANGED_ALL=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' 'talos/**' 2>/dev/null || true)
+          CHANGED_ALL=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' 'talos/**' ':(exclude)**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_ALL" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do
