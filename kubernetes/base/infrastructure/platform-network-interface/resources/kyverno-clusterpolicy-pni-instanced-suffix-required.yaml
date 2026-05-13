@@ -1,0 +1,89 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pni-instanced-suffix-required-audit
+  labels:
+    app.kubernetes.io/name: platform-network-interface
+    app.kubernetes.io/component: policy-governance
+    app.kubernetes.io/managed-by: argocd
+spec:
+  # AUDIT mode — emit PolicyReport entries, do NOT block admission.
+  # The base ships no data-plane instance pods for instanced
+  # capabilities (cnpg-postgres, redis-managed, rabbitmq-managed,
+  # kafka-managed, vault-secrets, s3-object); those live in consumer
+  # overlays. The base therefore cannot enforce per-instance suffix
+  # globally without breaking existing platform-internal consumers
+  # (cert-manager, external-secrets) whose specific Vault KV mount
+  # is overlay-configured. Audit mode signals the vocabulary smell
+  # via PolicyReport so consumer-overlay authors see "this capability
+  # is instanced; your namespace declares it without an instance
+  # suffix — please scope your access" without forcing migration.
+  #
+  # Per-instance enforcement (Kyverno generate + mutate against the
+  # producer CRDs) is consumer-overlay responsibility. See ADR
+  # adr-capability-producer-consumer-symmetry.md §Per-instance
+  # enforcement is consumer-overlay responsibility.
+  validationFailureAction: Audit
+  background: true
+  admission: true
+  emitWarning: true
+  rules:
+    - name: bare-consume-of-instanced-capability-warns
+      skipBackgroundRequests: false
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      # Embedded list — kept in sync with the `instanced: true`
+      # entries in capability-registry-configmap.yaml. The list lives
+      # here (not read from the ConfigMap via context.configMap)
+      # because the CI smoke fixture does NOT include the registry
+      # ConfigMap; a context.configMap dependency would error out
+      # every smoke run. Drift is caught by `make validate-gitops`
+      # via the conftest rule capability_instanced_policy_drift.rego
+      # (informational; see plan).
+      context:
+        - name: instancedCaps
+          variable:
+            value:
+              - vault-secrets
+              - cnpg-postgres
+              - redis-managed
+              - rabbitmq-managed
+              - kafka-managed
+              - s3-object
+      validate:
+        allowExistingViolations: true
+        message: >-
+          PNI advisory: namespace '{{ request.object.metadata.name }}'
+          declares a bare 'platform.io/consume.<cap>' label for a
+          capability marked instanced=true in the PNI registry. Per-
+          instance scoping is required to prevent cross-tenant L4
+          reachability collapse — replace the bare form with
+          'platform.io/consume.<cap>.<instance>: "true"' naming the
+          specific instance this namespace consumes. See
+          docs/adr-capability-producer-consumer-symmetry.md §Per-
+          instance scoping and §Per-instance enforcement is consumer-
+          overlay responsibility.
+        foreach:
+          - list: "request.object.metadata.labels | items(@, 'key', 'value')"
+            preconditions:
+              all:
+                # Bare consume.<X> = matches `consume.<X>` exactly,
+                # no further dot suffix. The character class excludes
+                # dots, so `consume.vault-secrets` matches and
+                # `consume.vault-secrets.team-foo` does not.
+                - key: "{{ regex_match('^platform\\.io/consume\\.[a-z0-9-]+$', '{{ element.key }}') }}"
+                  operator: Equals
+                  value: true
+            context:
+              - name: capId
+                variable:
+                  jmesPath: "regex_replace_all('^platform\\.io/consume\\.', '{{ element.key }}', '')"
+            deny:
+              conditions:
+                all:
+                  - key: "{{ capId }}"
+                    operator: AnyIn
+                    value: "{{ instancedCaps }}"
