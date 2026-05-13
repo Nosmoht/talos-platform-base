@@ -15,14 +15,14 @@ Both concerns are real and both need a single source of truth, but their shape, 
 
 The CNCF TAG App Delivery *Platforms White Paper* (2023) defines a platform's *capabilities* as the stable, tool-agnostic offerings, and notes capabilities may comprise several features. Backstage (CNCF Incubating) entity model and Crossplane (CNCF Graduated) Composite Resource Definitions both support this two-level shape (capability ↔ implementations) but neither directly addresses the network-trust concern.
 
-A future v2.X path is planned where customers will, via a Backstage portal, request their own fully-isolated tenant Kubernetes cluster materialized by Crossplane + Cluster-API + KubeVirt; tenant clusters consume host-cluster platform services across cluster boundaries via Cilium ClusterMesh. The platform-capability vocabulary must support this without colliding with the in-cluster Kyverno trust model.
+The schema must also reserve room for a v1.X / v2.X design direction — Backstage adapter, Crossplane composition mapping, multi-cluster tenant-provisioning — without committing this base to any of it. The full forward-looking statements are collected in [`vision.md`](vision.md); this ADR addresses only the v0.x decision.
 
 ## Decision Drivers
 
 - **D1.** Capability vocabulary must align with the CNCF Platforms White Paper definition (capability = stable, tool-agnostic; comprised of features).
 - **D2.** Existing PNI v2 registry, Kyverno policies, and CCNPs must keep working without rewrite.
-- **D3.** Schema must be ingestable by Backstage entity catalog (Component/API/Resource kinds) without remapping.
-- **D4.** Schema must support a v2.X migration toward Crossplane XRD/Composition (note: Crossplane v2 removed Claims; XRs are the namespaced consumer-facing handle).
+- **D3.** Schema must be ingestable by Backstage entity catalog (Component/API/Resource kinds) without remapping. (Forward-looking — see [`vision.md`](vision.md) §"Backstage Software Catalog adapter"; the adapter itself is not built in v0.x.)
+- **D4.** Schema must accommodate a future Crossplane XRD/Composition migration (note: Crossplane v2 removed Claims; XRs are the namespaced consumer-facing handle). (Forward-looking — see [`vision.md`](vision.md) §"Multi-tenant cluster provisioning"; not in flight.)
 - **D5.** Capability lifecycle vocabulary must match the Kubernetes host-stack convention (alpha/beta/GA/deprecated, per K8s feature-gate and API-deprecation policies).
 - **D6.** Tool-swap reasoning must be explicit: implementations carry an explicit swap-class so an ADR proposing a swap can cite an enum value rather than improvise.
 - **D7.** Control-plane-only tools (ArgoCD, Kyverno, Tetragon, external-secrets, cert-approver, vault-config-operator) must be inventoried for provenance but must NOT receive PNI capability labels.
@@ -66,8 +66,8 @@ Full schema lives in the YAML file header. Key fields and their sourcing:
 | `implementations[].{name, status, composition, swap_class}` | analogue of Crossplane XRD ↔ Composition pattern |
 | `swap_class ∈ {drop-in, label-move, data-migration, consumer-change, rewrite-required}` | bespoke five-value enum; `rewrite-required` added to honestly reflect Kyverno↔Gatekeeper-class swaps |
 | `instanced` + `instance_source` | unchanged from PNI v2 |
-| `deployment_topology ∈ {host-singleton, host-only, tenant-instance, host-and-tenant}` | bespoke; introduced to support the v2.X tenant-cluster model |
-| `cross_cluster_protocol` | bespoke; documents the cross-cluster bridge for `host-singleton` / `host-and-tenant` capabilities. Default: `cilium-clustermesh` |
+| `deployment_topology ∈ {host-singleton, host-only, tenant-instance, host-and-tenant}` | bespoke; reserved for a possible multi-cluster tenant-provisioning model (see [`vision.md`](vision.md); not implemented in v0.x) |
+| `cross_cluster_protocol` | bespoke; documents the cross-cluster bridge for `host-singleton` / `host-and-tenant` capabilities. Default: `cilium-clustermesh`. Field is declarative only in v0.x — no cross-cluster reachability is implemented. |
 | `pni_capability_id` | optional cross-reference to Layer B |
 | `deprecated`, `replaced_by`, `split_into`, `sunset.{date,tag}` | Kubernetes API-deprecation policy (9 months / 3 releases grace) |
 
@@ -88,10 +88,15 @@ Three scripts, one CI job (`capability-index-check` in `gitops-validate.yml`):
 
 ### Out of scope for v0.X
 
-- Crossplane v2 XRD/Composition generation (v2.X).
-- Backstage Software Catalog adapter (v1.X).
-- Behavioral-equivalence test fixtures per implementation (v1.X for selected capabilities; no CNCF precedent exists, this is pioneering).
-- Customer parametric capability selection — deferred to v2.X cluster-provisioning path where customer-choice happens at Composition layer, not in the base.
+The following are deliberately left for a hypothetical future tag stream and
+are described in [`vision.md`](vision.md) (which is explicit that none of
+these is roadmap or commitment):
+
+- Crossplane v2 XRD/Composition generation.
+- Backstage Software Catalog adapter.
+- Behavioral-equivalence test fixtures per implementation (no CNCF precedent).
+- Customer parametric capability selection (would happen at the Composition
+  layer one level above this base, not in the base).
 
 ## Consequences
 
@@ -100,20 +105,20 @@ Three scripts, one CI job (`capability-index-check` in `gitops-validate.yml`):
 - **C+1.** Single answer for "what does this base provide?" — one YAML file, schema-validated, machine-readable, human-readable via generated MD.
 - **C+2.** Tool-swap ADRs cite stable capability IDs and explicit `swap_class` enum values.
 - **C+3.** Layer B PNI registry stays focused, retains existing Kyverno integration, no rewrite required.
-- **C+4.** Capability vocabulary survives the planned v2.X transition to Backstage + Crossplane + CAPI+KubeVirt; schema fields anticipated that change.
+- **C+4.** Capability vocabulary leaves room for a possible future Backstage + Crossplane + CAPI+KubeVirt direction without forcing it. Whether that direction is taken is a separate decision (see [`vision.md`](vision.md)).
 - **C+5.** Control-plane-only tools have provenance without being smuggled into the network-trust model.
 
 ### Negative
 
 - **C–1.** Two artifacts must stay in sync where IDs overlap. Mitigated by the validation script and by IDs being the only required link.
-- **C–2.** The behavioral-equivalence pattern referenced in `verification:` is pioneering — no CNCF precedent. Risk: maintenance overhead exceeds value; mitigation: optional in v0.X, mandatory only at `ga` from v1.X with explicit per-capability ADR review.
-- **C–3.** Cross-cluster identity is unresolved. The Layer A index documents the protocol bridge (`cilium-clustermesh`) but cross-cluster identity (SPIFFE? Vault auth? OIDC federation?) is a v2.X-blocking open question.
+- **C–2.** The behavioral-equivalence pattern referenced in `verification:` is pioneering — no CNCF precedent. Risk: maintenance overhead exceeds value. Optional in v0.x; whether to make it mandatory at any future stability level is open (see [`vision.md`](vision.md) §"Behavioral-equivalence test fixtures").
+- **C–3.** Cross-cluster identity (SPIFFE? Vault auth? OIDC federation?) is unresolved. The Layer A index documents the protocol bridge (`cilium-clustermesh`) but identity is left open and would block any multi-cluster direction; see [`vision.md`](vision.md) §"Cross-cluster identity".
 
 ### Neutral
 
 - **C±1.** TOSCA influences `derived_from` semantics but is not adopted as a file format. TOSCA 2.0 is an OASIS standard with an ISO/IEC liaison; it is not itself an ISO standard.
-- **C±2.** Backstage `lifecycle` field exists for the Component and API entity kinds, not for Resource (open issue #25111). When a Backstage adapter is built in v1.X, mapping per Backstage kind will not be uniform.
-- **C±3.** "CNCF-conformant" is not a recognized program for platform-base repos. This ADR claims vocabulary-alignment with the CNCF Platforms White Paper, compatibility with the Backstage entity model (CNCF Incubating), and design-compatibility with Crossplane v2 (CNCF Graduated). It does not claim CNCF conformance.
+- **C±2.** Backstage `lifecycle` field exists for the Component and API entity kinds, not for Resource (Backstage open issue #25111). If a Backstage adapter is ever built, per-kind mapping will not be uniform. (Not in flight; see [`vision.md`](vision.md).)
+- **C±3.** "CNCF-conformant" is not a recognized programme for platform-base repos. This ADR claims vocabulary-alignment with the CNCF Platforms White Paper, compatibility with the Backstage entity model (CNCF Incubating), and design-compatibility with Crossplane v2 (CNCF Graduated). It does not claim CNCF conformance. (Made explicit in [`vision.md`](vision.md) §"CNCF-conformance is not a claim".)
 
 ## References
 
