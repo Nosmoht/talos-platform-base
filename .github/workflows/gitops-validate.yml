@@ -124,7 +124,22 @@ jobs:
             exit 0
           fi
 
+          # Smoke fixture: one minimal resource per kind matched by any
+          # base PNI ClusterPolicy. Each resource is shaped to PASS the
+          # policy so the smoke test verifies the policy evaluates and
+          # catches the silent-skip regression class (match.kinds
+          # narrowed to a kind absent from the fixture).
+          #
+          # Kinds covered:
+          #   Namespace   pni-contract, pni-capability-validation,
+          #               pni-reserved-labels-namespace, vault-ca-distribution
+          #   HTTPRoute   external-httproute-hostnames-enforce
+          #   Service     pni-reserved-annotations-enforce
+          #   Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob
+          #               pni-reserved-labels-workload + capability-provider-workload
+          #   ConfigMap   no policy matches today — future-proofing slot
           cat > "$tmp_resources" <<'EOF'
+          ---
           apiVersion: v1
           kind: Namespace
           metadata:
@@ -132,6 +147,58 @@ jobs:
             labels:
               platform.io/network-interface-version: "v1"
               platform.io/network-profile: "managed"
+              platform.io/consume.monitoring-scrape: "true"
+          ---
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: HTTPRoute
+          metadata:
+            name: kyverno-ci-smoke-internal
+            namespace: kyverno-ci-smoke
+            labels:
+              app.kubernetes.io/name: kyverno-ci-smoke
+          spec:
+            parentRefs:
+              - name: cluster-gateway
+                namespace: gateway
+                sectionName: https
+            hostnames:
+              - internal.smoke.example
+            rules:
+              - backendRefs:
+                  - name: kyverno-ci-smoke
+                    port: 80
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: kyverno-ci-smoke
+            namespace: kyverno-ci-smoke
+            labels:
+              app.kubernetes.io/name: kyverno-ci-smoke
+            # annotations map MUST be present (even with a fixture-only
+            # entry) so the reserved-annotations policy's items(@,…)
+            # JMESPath does not error on nil traversal.
+            annotations:
+              fixture.kyverno-ci-smoke/note: "fixture-only annotation, not reserved"
+          spec:
+            selector:
+              app.kubernetes.io/name: kyverno-ci-smoke
+            ports:
+              - name: http
+                port: 80
+                targetPort: 8080
+          ---
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: kyverno-ci-smoke-pod
+            namespace: kyverno-ci-smoke
+            labels:
+              app.kubernetes.io/name: kyverno-ci-smoke
+          spec:
+            containers:
+              - name: pause
+                image: registry.k8s.io/pause:3.10
           ---
           apiVersion: apps/v1
           kind: Deployment
@@ -153,10 +220,132 @@ jobs:
                 containers:
                   - name: pause
                     image: registry.k8s.io/pause:3.10
+          ---
+          apiVersion: apps/v1
+          kind: StatefulSet
+          metadata:
+            name: kyverno-ci-smoke-sts
+            namespace: kyverno-ci-smoke
+            labels:
+              app.kubernetes.io/name: kyverno-ci-smoke
+          spec:
+            serviceName: kyverno-ci-smoke
+            replicas: 1
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: kyverno-ci-smoke-sts
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: kyverno-ci-smoke-sts
+              spec:
+                containers:
+                  - name: pause
+                    image: registry.k8s.io/pause:3.10
+          ---
+          apiVersion: apps/v1
+          kind: DaemonSet
+          metadata:
+            name: kyverno-ci-smoke-ds
+            namespace: kyverno-ci-smoke
+            labels:
+              app.kubernetes.io/name: kyverno-ci-smoke
+          spec:
+            selector:
+              matchLabels:
+                app.kubernetes.io/name: kyverno-ci-smoke-ds
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: kyverno-ci-smoke-ds
+              spec:
+                containers:
+                  - name: pause
+                    image: registry.k8s.io/pause:3.10
+          ---
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: kyverno-ci-smoke-job
+            namespace: kyverno-ci-smoke
+            labels:
+              app.kubernetes.io/name: kyverno-ci-smoke
+          spec:
+            template:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: kyverno-ci-smoke-job
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: pause
+                    image: registry.k8s.io/pause:3.10
+          ---
+          apiVersion: batch/v1
+          kind: CronJob
+          metadata:
+            name: kyverno-ci-smoke-cron
+            namespace: kyverno-ci-smoke
+            labels:
+              app.kubernetes.io/name: kyverno-ci-smoke
+          spec:
+            schedule: "*/5 * * * *"
+            jobTemplate:
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      app.kubernetes.io/name: kyverno-ci-smoke-cron
+                  spec:
+                    restartPolicy: Never
+                    containers:
+                      - name: pause
+                        image: registry.k8s.io/pause:3.10
+          ---
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: kyverno-ci-smoke-cm
+            namespace: kyverno-ci-smoke
+          data:
+            unused: "fixture for kind-coverage; no policy matches ConfigMap today"
           EOF
 
           kyverno version
-          kyverno apply "$tmp_policies" --resource "$tmp_resources" --warn-no-pass=false
+          tmp_log="$(mktemp)"
+          if ! kyverno apply "$tmp_policies" --resource "$tmp_resources" --warn-no-pass=false 2>&1 | tee "$tmp_log"; then
+            echo "error: kyverno apply failed against smoke fixture"
+            exit 1
+          fi
+          # Parse the kyverno summary line:
+          #   pass: N, fail: N, warn: N, error: N, skip: N
+          # Workload rules carry skipBackgroundRequests: true, so
+          # kyverno-cli (background-scan mode) silently skips them.
+          # The realistic admission-mode pass-count baseline is the
+          # Namespace and Service rule passes. Asserting pass>0 catches
+          # the silent-skip regression class without overfitting to
+          # current rule counts.
+          summary="$(grep -E '^pass:' "$tmp_log" | tail -1)"
+          if [ -z "$summary" ]; then
+            echo "error: no kyverno summary line found"
+            exit 1
+          fi
+          pass_count="$(echo "$summary"  | sed -nE 's/.*pass:[[:space:]]*([0-9]+).*/\1/p')"
+          fail_count="$(echo "$summary"  | sed -nE 's/.*fail:[[:space:]]*([0-9]+).*/\1/p')"
+          error_count="$(echo "$summary" | sed -nE 's/.*error:[[:space:]]*([0-9]+).*/\1/p')"
+          if [ "$pass_count" -lt 1 ]; then
+            echo "error: kyverno smoke produced zero passes — every rule was silently skipped"
+            exit 1
+          fi
+          if [ "$fail_count" -ne 0 ]; then
+            echo "error: smoke fixture produced $fail_count policy failures"
+            exit 1
+          fi
+          if [ "$error_count" -ne 0 ]; then
+            echo "error: smoke fixture produced $error_count policy errors (JMESPath/context resolution failure)"
+            exit 1
+          fi
+          echo "ok: kyverno smoke fixture — pass=$pass_count fail=$fail_count error=$error_count"
 
       - name: Lint Kyverno JMESPath anti-patterns
         run: |
@@ -225,4 +414,6 @@ jobs:
           "$HOME/.local/bin/gitleaks" version
 
       - name: Run gitleaks (full history)
-        run: gitleaks detect --source . --redact --verbose --exit-code 1 --no-banner
+        # --config: pin shared .gitleaks.toml so this scan and the
+        # pre-commit hook cannot drift across the project lifecycle.
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose --exit-code 1 --no-banner
