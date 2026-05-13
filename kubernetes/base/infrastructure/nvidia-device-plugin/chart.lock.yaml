@@ -1,0 +1,11 @@
+# Pin file for the nvidia-device-plugin Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://nvidia.github.io/k8s-device-plugin
+  name: nvidia-device-plugin
+  version: 0.17.4
+  tgz_sha256: 4e597ff31e52ce2196c21b04fe1ca671a1f81664f15ed74c87d691b74e0a9762
+release:
+  name: nvidia-device-plugin
+  namespace: kube-system
+  includeCRDs: true
+values: values.yaml

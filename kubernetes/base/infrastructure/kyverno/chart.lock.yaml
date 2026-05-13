@@ -1,0 +1,11 @@
+# Pin file for the kyverno Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://kyverno.github.io/kyverno
+  name: kyverno
+  version: 3.7.1
+  tgz_sha256: b0d74512ea707e7612a36886a8ac1369d3ed5df71bc8cd64ba2b1abe98865325
+release:
+  name: kyverno
+  namespace: kyverno
+  includeCRDs: true
+values: values.yaml

@@ -1,0 +1,11 @@
+# Pin file for the dcgm-exporter Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://nvidia.github.io/dcgm-exporter/helm-charts
+  name: dcgm-exporter
+  version: 4.8.1
+  tgz_sha256: 7945cc4e2d0a0514cd72ab00f999bc6f2803580203ee104b2ef636d0ba04f839
+release:
+  name: nvidia-dcgm-exporter
+  namespace: nvidia-dcgm-exporter
+  includeCRDs: true
+values: values.yaml

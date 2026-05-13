@@ -1,0 +1,11 @@
+# Pin file for the alloy Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://grafana.github.io/helm-charts
+  name: alloy
+  version: 1.6.0
+  tgz_sha256: 5418aadf6cffed162c5aeaea04cb0ede8068fb571105af853e9b1b39b36053c4
+release:
+  name: alloy
+  namespace: monitoring
+  includeCRDs: true
+values: values.yaml

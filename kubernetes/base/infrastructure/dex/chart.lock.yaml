@@ -1,0 +1,11 @@
+# Pin file for the dex Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://charts.dexidp.io
+  name: dex
+  version: 0.24.0
+  tgz_sha256: 24d486ac2182b919483a9840339997443793ce637e3f10d37ab3284eaa229d33
+release:
+  name: dex
+  namespace: dex
+  includeCRDs: true
+values: values.yaml

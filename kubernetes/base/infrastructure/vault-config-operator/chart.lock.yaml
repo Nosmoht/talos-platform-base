@@ -1,0 +1,11 @@
+# Pin file for the vault-config-operator Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://redhat-cop.github.io/vault-config-operator
+  name: vault-config-operator
+  version: v0.8.38
+  tgz_sha256: fec8842524725a5bcceefa8fcf194275e678e40eeae23e0b8843cb7dd00d2070
+release:
+  name: vault-config-operator
+  namespace: vault
+  includeCRDs: true
+values: values.yaml

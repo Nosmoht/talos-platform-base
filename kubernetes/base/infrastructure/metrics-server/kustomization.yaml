@@ -16,3 +16,4 @@ kind: Kustomization
 # the OCI tag CHANGELOG.
 resources:
   - namespace.yaml
+  - _rendered/manifests.yaml
