@@ -21,6 +21,13 @@ Plans/
 # Kustomize-extracted Helm charts (rendered at build time, not stored in repo)
 kubernetes/base/infrastructure/*/charts/
 
+# Rendered Manifests Pipeline (Phase B):
+# .render-stage1/ holds Stage-1 (helm template) output; intermediate, never committed.
+# .helm-cache/ holds pulled chart tarballs; deterministic by chart.lock.yaml.tgz_sha256.
+# _rendered/ IS committed (Stage-2 output, OCI-payload).
+kubernetes/base/infrastructure/*/.render-stage1/
+.helm-cache/
+
 # Auto Claude data directory
 .auto-claude/
 
