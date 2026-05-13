@@ -35,17 +35,15 @@ This base ships none.
   here only if the lesson is universal across clusters; environment-specific
   postmortems stay in the consumer repo.
 
-### Knowledge Map
+### Documentation entry-points
 
-For deep dives, read these in addition to AGENTS.md:
+For the full Diátaxis-organised index, read [`docs/README.md`](docs/README.md).
+The root-level orientation files ([`README.md`](README.md),
+[`ARCHITECTURE.md`](ARCHITECTURE.md), [`AGENTS.md`](AGENTS.md),
+[`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md),
+[`UPGRADING.md`](UPGRADING.md), [`MAINTAINERS.md`](MAINTAINERS.md)) cover
+governance and scope; everything else lives under `docs/` and is indexed there.
 
-- **Capability-first architecture** → `docs/capability-architecture.md`
-- **PNI cookbook (manifest recipes)** → `docs/pni-cookbook.md`
-- **Per-capability catalogue (auto-generated)** → `docs/capability-reference.md`
-- **Architecture overview (C4)** → `ARCHITECTURE.md`
-- **Architecture decisions** → `docs/adr-*.md`
-- **Issue lifecycle + state machine** → `docs/issue-workflow.md`
-- **OCI verification** → `docs/oci-artifact-verification.md`
-- **Harness-plugin integration (rules / subagents this base benefits from)** → `docs/harness-plugin-integration.md`
-- **Security disclosure + supply chain** → `SECURITY.md`
-- **Upgrade guide for vendored bases** → `UPGRADING.md`
+Claude-Code-specific: read this file plus AGENTS.md before editing; the
+harness plugin (when installed in a consumer repo) supplies the rest of the
+runtime context (path-scoped rules, hooks, subagents).

@@ -105,20 +105,23 @@ Live cluster validation runs in consumer cluster repos.
 
 ## Documentation
 
+**Start here** (in reading order):
+
 | Doc | Audience | Purpose |
 |---|---|---|
-| [`docs/capability-architecture.md`](docs/capability-architecture.md) | consumer authors, operators | Architecture explanation — capabilities, namespace-anchored trust, instance scoping |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | new contributors | C4 L1/L2 view + key flows |
+| [`AGENTS.md`](AGENTS.md) | agentic tools, hard-constraint reviewers | Tool-agnostic SOT — hard constraints, validation, PNI |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | anyone opening a PR | scope, conventional commits, PR checks |
+| [`docs/capability-architecture.md`](docs/capability-architecture.md) | consumer authors, operators | Why capability-first — namespace-anchored trust, instance scoping |
 | [`docs/pni-cookbook.md`](docs/pni-cookbook.md) | manifest authors | Concrete recipes for consuming + producing capabilities |
-| [`docs/capability-reference.md`](docs/capability-reference.md) | everyone | Per-capability catalogue (auto-generated from registry) |
-| [`docs/adr-capability-producer-consumer-symmetry.md`](docs/adr-capability-producer-consumer-symmetry.md) | reviewers, future contributors | Decision record — alternatives, consequences |
-| [`docs/adr-multi-repo-platform-split.md`](docs/adr-multi-repo-platform-split.md) | platform operators | Why base+consumer is a two-repo split |
-| [`docs/primitive-contract.md`](docs/primitive-contract.md) | harness-plugin authors | Output schema for Diagnostics primitives |
-| [`docs/issue-workflow.md`](docs/issue-workflow.md) | issue triagers, builders | GitHub issue lifecycle + state machine |
-| [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) | consumer-cluster operators | cosign / SLSA verification before `vendor/base/` pull |
-| [`docs/mcp-setup.md`](docs/mcp-setup.md) | new contributors | MCP server install + verification |
-| [`docs/harness-plugin-integration.md`](docs/harness-plugin-integration.md) | harness-plugin authors | Claude Code primitives wiring for v2 (path-scoped rules, subagents) |
-| [`AGENTS.md`](AGENTS.md) | agentic tools | Tool-agnostic SOT — hard constraints, validation, PNI |
-| [`CLAUDE.md`](CLAUDE.md) | Claude Code only | Imports AGENTS.md; minimal Claude-Code-specific addenda |
+| [`docs/tutorial-first-consumer-cluster.md`](docs/tutorial-first-consumer-cluster.md) | new contributors | 30-min walk-through: vendor + verify + render |
+
+**Full index:** [`docs/README.md`](docs/README.md) is the single source of truth
+for the Diátaxis-organised documentation set (tutorial / how-to / reference /
+explanation). All other documentation files (ADRs, capability reference, render
+pipeline, OCI verification, MCP setup, glossary, issue workflow, harness-plugin
+integration, …) are listed there. Refer to it for everything not in the table
+above.
 
 ## License
 
