@@ -1,3 +1,15 @@
+# Producer-side PNI labeling for local-path-provisioner.
+# Consumer overlays MUST deploy local-path-provisioner into a dedicated
+# `local-path-storage` namespace (NOT kube-system) and ensure that
+# namespace carries `platform.io/provide.block-storage-local: "true"` —
+# this is the trust anchor for the capability-provider label below
+# under the namespace-anchored Kyverno policy. The base ships no
+# resources for this component (helm chart pulled from git, not from
+# a registry), so the namespace and provide.* label are a consumer-
+# overlay responsibility. See docs/migration/v0-v1-capability-rename.md.
+podLabels:
+  platform.io/capability-provider.block-storage-local: "true"
+
 helperImage:
   repository: busybox
   tag: 1.36.1

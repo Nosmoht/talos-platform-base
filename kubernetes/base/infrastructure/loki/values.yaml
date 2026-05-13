@@ -88,6 +88,12 @@ write:
   podLabels:
     platform.io/capability-consumer.s3-object: "true"
     platform.io/capability-consumer.storage-csi: "true"
+    # Producer-side: write pods accept the log push API.
+    platform.io/capability-provider.logging-ship: "true"
+  service:
+    annotations:
+      platform.io/capability-endpoint.logging-ship: "http-metrics"
+      platform.io/capability-protocol.logging-ship: "loki-push-v1"
   persistence:
     storageClass: linstor-csi
     size: 20Gi

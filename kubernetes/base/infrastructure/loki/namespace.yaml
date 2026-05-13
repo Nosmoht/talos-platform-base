@@ -7,3 +7,9 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: managed
+    # loki write/read/backend pods carry capability-provider.logging-ship
+    # (write side is the ingest entrypoint; the monitoring namespace also
+    # hosts kube-prometheus-stack which provides monitoring-scrape).
+    # Trust anchors — see ADR §Namespace-anchored producer trust.
+    platform.io/provide.logging-ship: "true"
+    platform.io/provide.monitoring-scrape: "true"

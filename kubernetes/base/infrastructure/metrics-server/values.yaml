@@ -1,1 +1,12 @@
-{}
+# Producer-side PNI labeling for metrics-server.
+# The pod implements the v1beta1.metrics.k8s.io APIService consumed by
+# HPA and `kubectl top` (capability hpa-metrics) and also exposes its
+# own /metrics endpoint (monitoring-scrape).
+podLabels:
+  platform.io/capability-provider.hpa-metrics: "true"
+  platform.io/capability-provider.monitoring-scrape: "true"
+
+service:
+  annotations:
+    platform.io/capability-endpoint.hpa-metrics: "https"
+    platform.io/capability-protocol.hpa-metrics: "k8s-metrics-api-v1beta1"

@@ -15,6 +15,10 @@ metadata:
     # — the cloned vault-ca Secret would duplicate state already managed
     # by the operator.
     platform.io/vault-ca-distribution: skip
+    # external-secrets pods carry capability-provider.monitoring-scrape
+    # (controller, cert-controller, webhook all expose /metrics). Trust
+    # anchor — see ADR §Namespace-anchored producer trust.
+    platform.io/provide.monitoring-scrape: "true"
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
