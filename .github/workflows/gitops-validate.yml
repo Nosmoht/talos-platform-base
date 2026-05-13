@@ -27,6 +27,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install ripgrep
+        # scripts/render_kustomize_safe.sh uses `rg` for ksops/sops-generator
+        # detection. Not preinstalled on ubuntu-latest GitHub runners as of
+        # 2026-05; explicit install keeps the workflow self-contained.
+        run: |
+          set -eu
+          if ! command -v rg >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends ripgrep
+          fi
+          rg --version | head -1
+
       - name: Setup kustomize
         uses: kustomize-everything/action-kustomize@v2.1.0
         with:
@@ -334,6 +346,35 @@ jobs:
             exit 1
           fi
           echo "ok: kyverno smoke fixture — pass=$pass_count fail=$fail_count error=$error_count"
+
+      - name: Run kyverno-cli unit tests
+        run: |
+          set -eu
+          # Each test directory carries its own kyverno-test.yaml,
+          # resources, and values. Run every test discovered under
+          # kubernetes/base/**/tests/**/kyverno-test.yaml.
+          found=0
+          failed=0
+          while IFS= read -r test_yaml; do
+            [ -n "$test_yaml" ] || continue
+            test_dir="$(dirname "$test_yaml")"
+            found=$((found + 1))
+            echo "kyverno test: $test_dir"
+            if ! kyverno test "$test_dir"; then
+              failed=$((failed + 1))
+            fi
+          done <<EOF
+          $(find kubernetes/base -type f -name 'kyverno-test.yaml' | sort)
+          EOF
+          if [ "$found" -eq 0 ]; then
+            echo "notice: no kyverno-cli unit tests found"
+            exit 0
+          fi
+          if [ "$failed" -ne 0 ]; then
+            echo "error: $failed of $found kyverno test directories failed"
+            exit 1
+          fi
+          echo "ok: $found kyverno test directories passed"
 
       - name: Lint Kyverno JMESPath anti-patterns
         run: |

@@ -1,0 +1,15 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Values
+metadata:
+  name: external-httproute-hostnames-enforce-values
+policies:
+  - name: external-httproute-hostnames-enforce
+    rules:
+      - name: external-https-hostnames-must-match-cluster-domain
+        values:
+          # Pattern matches host strings under <anything>.cluster.example.com.
+          # Kept narrow for fixture clarity.
+          clusterConfig.data.external_hostname_pattern: "^[A-Za-z0-9-]+\\.cluster\\.example\\.com$"
+      - name: require-cluster-config-pattern
+        values:
+          clusterConfig.data.external_hostname_pattern: "^[A-Za-z0-9-]+\\.cluster\\.example\\.com$"

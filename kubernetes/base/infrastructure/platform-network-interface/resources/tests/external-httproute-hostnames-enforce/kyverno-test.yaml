@@ -1,0 +1,51 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: external-httproute-hostnames-enforce
+policies:
+  - ../../kyverno-clusterpolicy-external-httproute-hostnames-enforce.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  # Case 1: ConfigMap populated, hostname matches → pass.
+  - policy: external-httproute-hostnames-enforce
+    rule: external-https-hostnames-must-match-cluster-domain
+    resources:
+      - case-1-external-allowed
+    kind: HTTPRoute
+    result: pass
+  - policy: external-httproute-hostnames-enforce
+    rule: require-cluster-config-pattern
+    resources:
+      - case-1-external-allowed
+    kind: HTTPRoute
+    result: pass
+
+  # Case 2: ConfigMap populated, hostname does NOT match → fail (deny).
+  - policy: external-httproute-hostnames-enforce
+    rule: external-https-hostnames-must-match-cluster-domain
+    resources:
+      - case-2-external-denied
+    kind: HTTPRoute
+    result: fail
+  - policy: external-httproute-hostnames-enforce
+    rule: require-cluster-config-pattern
+    resources:
+      - case-2-external-denied
+    kind: HTTPRoute
+    result: pass
+
+  # Case 3: internal listener (sectionName=https) — both rules SKIP via preconditions.
+  - policy: external-httproute-hostnames-enforce
+    rule: external-https-hostnames-must-match-cluster-domain
+    resources:
+      - case-3-internal-route
+    kind: HTTPRoute
+    result: skip
+  - policy: external-httproute-hostnames-enforce
+    rule: require-cluster-config-pattern
+    resources:
+      - case-3-internal-route
+    kind: HTTPRoute
+    result: skip
