@@ -29,3 +29,9 @@ MD003:
 # Ordered lists: keep numbering consistent (1, 2, 3 — not all 1.).
 MD029:
   style: ordered
+
+# Unordered list marker: dash (`-`). Plus (`+`) and asterisk (`*`) are
+# equally valid Markdown but mixing them is what MD004 actually catches.
+# Pin to dash because the repo's prevailing convention is dash.
+MD004:
+  style: dash
