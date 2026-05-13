@@ -164,6 +164,12 @@ without repo-maintainer approval.
 
 ## Key Terms
 
+Curated subset for agent-context loading. Full definitions and the long
+tail (Reserved label, PolicyReport, Capability-selector, Rendered Manifests
+Pattern, Right altitude, Two-layer capability vocabulary, …) live in
+[`docs/glossary.md`](docs/glossary.md); cite that file for terms not in
+this list.
+
 - **PNI** — Platform Network Interface: Kyverno+Cilium contract for capability-mediated access. v2 = capability-first, namespace-anchored, instance-aware (see ADR).
 - **Capability** — stable, tool-agnostic identifier for a platform service (`monitoring-scrape`, `tls-issuance`, `cnpg-postgres`, …). Registry: `capability-registry-configmap.yaml`.
 - **Instanced capability** — capability whose data plane is partitioned per tenant (`cnpg-postgres.<cluster>`, `vault-secrets.<mount>`); requires the `<inst>` label suffix.
