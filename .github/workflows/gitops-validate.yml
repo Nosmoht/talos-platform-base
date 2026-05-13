@@ -108,17 +108,23 @@ jobs:
       - name: Verify helm install
         run: helm version --short
 
-      - name: Install yq
+      - name: Install yq (pinned version)
         # render-component.sh + verify-rendered.sh use yq for chart.lock.yaml
         # parsing and CRD/manifest splitting. yq is not preinstalled on
-        # ubuntu-latest GitHub runners.
+        # ubuntu-latest GitHub runners. Pinned to .tool-versions because
+        # multi-line block scalar serialization (`|` vs `|2`) differs
+        # across yq versions and would produce verify-rendered drift.
+        # Always download — ubuntu-latest sometimes ships a different yq.
         run: |
           set -eu
-          if ! command -v yq >/dev/null 2>&1; then
-            sudo wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
-            sudo chmod +x /usr/local/bin/yq
+          sudo wget -q "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          installed="$(yq --version | awk '{print $NF}' | sed -E 's/^v//')"
+          if [ "$installed" != "$YQ_VERSION" ]; then
+            echo "::error::yq install version mismatch: installed=$installed expected=$YQ_VERSION"
+            exit 1
           fi
-          yq --version
+          echo "OK: yq v$installed"
 
       - name: Verify rendered manifests are reproducible (drift gate)
         # Phase B re-render gate: re-runs scripts/render-component.sh for
