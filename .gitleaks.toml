@@ -19,4 +19,10 @@ useDefault = true
 [allowlist]
 paths = [
   '''^scripts/test/codex-leak\.toml$''',   # placeholder values only — see scripts/check-codex-config-placeholders.sh tests
+  # Kyverno-cli unit-test fixtures may include Kubernetes Secret manifests
+  # with base64-encoded PLACEHOLDER values (e.g. `fake-for-test-only`).
+  # Gitleaks's `kubernetes-secret-yaml` rule flags the literal Secret kind;
+  # the placeholder data does NOT contain real-shaped tokens and is
+  # documented inline.
+  '''^kubernetes/base/infrastructure/platform-network-interface/resources/tests/[^/]+/resources\.yaml$''',
 ]
