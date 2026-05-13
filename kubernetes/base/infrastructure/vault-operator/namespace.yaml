@@ -7,3 +7,8 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: managed
+    # vault-operator pods carry capability-provider.monitoring-scrape
+    # (Prometheus scrape endpoint). Trust anchor — see ADR
+    # adr-capability-producer-consumer-symmetry.md §Namespace-anchored
+    # producer trust.
+    platform.io/provide.monitoring-scrape: "true"

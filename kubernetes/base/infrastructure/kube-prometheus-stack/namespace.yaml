@@ -7,3 +7,8 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: managed
+    # kube-prometheus-stack and loki co-own the monitoring namespace.
+    # Both produce capabilities here; the namespace is the trust anchor.
+    # See ADR §Namespace-anchored producer trust.
+    platform.io/provide.logging-ship: "true"
+    platform.io/provide.monitoring-scrape: "true"

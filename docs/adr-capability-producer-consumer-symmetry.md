@@ -125,6 +125,54 @@ build on `now > sunset`. PR F (alias removal) ships automatically once a
 sunset date passes — there is no "user go-ahead" gate; consumers receive
 the deprecation signal mechanically.
 
+### Namespace-anchored producer trust
+
+The `capability-provider.<cap>[.<inst>]` label on a workload is **valid
+iff** the workload's namespace carries the matching
+`platform.io/provide.<cap>[.<inst>]: "true"` label. Trust derives from
+the namespace, which is platform-controlled, not from tool-identifying
+signatures on the pod.
+
+This invariant rules out two anti-patterns that were considered and
+explicitly rejected:
+
+1. **Hardcoded tool-signature whitelists.** A central Kyverno policy
+   that whitelists `app.kubernetes.io/component: rabbitmq`,
+   `redis_setup_type: <X>`, `app.kubernetes.io/managed-by: <tool>`
+   grows linearly with every producer integration, contradicts the
+   "tools are swappable" core invariant of the capability-first
+   architecture, and creates a central coupling point that every new
+   capability or tool swap must edit. PR B explicitly deletes such
+   signatures from `kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml`
+   and replaces them with the namespace-anchored rule.
+
+2. **Kube-system exemptions.** A producer component that lives in
+   `kube-system` (or any other shared system namespace) cannot
+   self-attach the `provide.<cap>` trust anchor because the platform
+   base does not control system namespaces. The architectural fix is
+   **relocation to a dedicated, base-controlled namespace**, not a
+   policy exemption. Symptom-fixing exemptions accumulate; relocation
+   reverses the root cause. PR B relocates `metrics-server` from
+   `kube-system` to a dedicated `metrics-server` namespace for this
+   reason. `local-path-provisioner` (a consumer-overlay-deployed
+   component) is documented in its `values.yaml` as requiring a
+   dedicated `local-path-storage` namespace from the consumer side.
+
+Every capability-provider component MUST therefore:
+
+- ship its own `namespace.yaml` in this base (one per provider, even if
+  it duplicates a shared namespace declaration like `monitoring`);
+- declare in that `namespace.yaml` every `provide.<cap>` it provides;
+- carry the matching `capability-provider.<cap>` on its pod template
+  via Helm values (`podLabels`) or operator CRD wiring;
+- expose endpoint discovery via Service annotations
+  (`capability-endpoint.<cap>`, `capability-protocol.<cap>`).
+
+The trust assertion (`provide.<cap>` on namespace) is itself a reserved
+label — its setter is gated by RBAC (only platform-base manifests
+applied via ArgoCD set it); a future Kyverno rule may add defence-in-
+depth admission validation, but RBAC is the load-bearing control.
+
 ### Reserved-annotation enforcement
 
 `platform.io/capability-endpoint.*` and `platform.io/capability-protocol.*`

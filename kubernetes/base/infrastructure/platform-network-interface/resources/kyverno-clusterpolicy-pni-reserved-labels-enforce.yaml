@@ -11,42 +11,31 @@ spec:
   background: true
   admission: true
   emitWarning: false
-  # Trust model for rules 2 + 3 below:
-  # Both rules reject consumer-set PNI reserved labels UNLESS the pod
-  # carries a recognised operator-managed label signature. Rather than
-  # hardcoding a per-namespace exempt list (which leaked tenant NS
-  # names like `plane` into this base-layer manifest), trust is
-  # decided per pod from labels that upstream operators set on
-  # managed pod templates.
+  # Trust model:
+  # PNI v2 uses **namespace-anchored** producer trust. Rule 3
+  # (capability-provider-requires-namespace-provide) denies a pod from
+  # carrying `platform.io/capability-provider.<X>[.<inst>]` unless the
+  # pod's namespace carries the matching `platform.io/provide.<X>[.<inst>]:
+  # "true"` label. Trust derives from the namespace — which is
+  # platform-controlled — not from tool-identifying labels on the pod.
   #
-  # Signatures currently allowed:
-  #   - RabbitMQ cluster-operator:
-  #       app.kubernetes.io/component: rabbitmq
-  #     (tamper-resistant — operator drops user-supplied
-  #      app.kubernetes.io/* keys during label merge; source:
-  #      rabbitmq/cluster-operator v2.20.0 internal/metadata/label.go)
-  #   - OT-Container-Kit redis-operator:
-  #       redis_setup_type: standalone|replication|sentinel|cluster
-  #     (tamper-visible — operator applies stable labels first, then
-  #      merges CR metadata.labels on top, so a CR can in principle
-  #      override. Mitigated downstream by
-  #      ccnp-pni-redis-operator-dataplane-egress additional
-  #      discriminator `app.kubernetes.io/managed-by: redis-operator`.)
+  # Rules 1 and 2 retain the legacy ban on the three v1 reserved keys
+  # (`platform.io/{provider,managed-by,capability}` without a dot
+  # suffix), kept for backwards compatibility with any consumer
+  # manifest that still references the v1 vocabulary. New work uses
+  # the v2 keys (`provide.*`, `capability-provider.*`).
   #
-  # Deferred signatures (add when a real need ships):
-  #   - CNPG (cloudnative-pg): app.kubernetes.io/managed-by=cloudnative-pg.
-  #     Hardcoded upstream constant, tamper-resistant. No CNPG-managed
-  #     pod currently carries any reserved label, so adding now is
-  #     speculative. When a capability-provider.cnpg-postgres CCNP is
-  #     introduced, add `app.kubernetes.io/managed-by NotEquals
-  #     cloudnative-pg` as an extra allow-condition to the deny-all
-  #     chain in both rules 2 + 3.
+  # The capability-first invariant explicitly forbids hardcoded
+  # tool-name signature lists here: every Loki / Vault / cert-manager
+  # / Piraeus swap would otherwise force an edit of this policy. See
+  # ADR `adr-capability-producer-consumer-symmetry.md` §Namespace-
+  # anchored producer trust.
   #
-  # `skipBackgroundRequests: true` on both rules is LOAD-BEARING:
-  # it prevents Kyverno's periodic background scans from re-evaluating
+  # `skipBackgroundRequests: true` on all rules is LOAD-BEARING: it
+  # prevents Kyverno's periodic background scans from re-evaluating
   # already-admitted pods and flagging transient inconsistencies.
   # Together with `allowExistingViolations: true`, this makes policy
-  # transitions safe for running workloads — only new pod admission
+  # transitions safe for running workloads — only new admission
   # events evaluate the current rules.
   rules:
     - name: reserved-pni-labels-namespace
@@ -72,6 +61,11 @@ spec:
                 operator: NotEquals
                 value: ""
     - name: reserved-pni-labels-workload
+      # Legacy v1 reserved-key set on pods/controllers. Bare keys
+      # (no dot suffix) are unconditionally denied — they were a
+      # transitional vocabulary and no legitimate caller sets them.
+      # The v2 capability-* keys are checked in the namespace-
+      # anchored rule below.
       skipBackgroundRequests: true
       match:
         any:
@@ -83,39 +77,45 @@ spec:
                 - DaemonSet
                 - Job
                 - CronJob
-      # No per-namespace exclude list — trust is determined per pod by
-      # the operator-identifying label signatures checked in the deny
-      # block below (see policy-level comment for the trust model).
       validate:
         allowExistingViolations: true
         message: >-
-          platform.io/{provider,managed-by,capability} labels are reserved
-          for pods managed by a trusted platform operator. The pod does
-          not carry any recognised operator-managed label signature.
-          See docs/platform-network-interface.md §Reserved Labels.
-        foreach:
-          - list: "request.object.metadata.labels | items(@, 'key', 'value')"
-            preconditions:
-              all:
-                - key: "{{ element.key }}"
-                  operator: AnyIn
-                  value:
-                    - platform.io/provider
-                    - platform.io/managed-by
-                    - platform.io/capability
-            deny:
-              conditions:
-                all:
-                  # Deny UNLESS at least one trust signature matches.
-                  # Each condition checks for the ABSENCE of a signature;
-                  # deny fires only when all signatures are absent.
-                  - key: "{{ request.object.metadata.labels.\"app.kubernetes.io/component\" || '' }}"
-                    operator: NotEquals
-                    value: rabbitmq
-                  - key: "{{ request.object.metadata.labels.\"redis_setup_type\" || '' }}"
-                    operator: Equals
-                    value: ""
-    - name: reserved-pni-capability-provider-labels-workload
+          PNI violation: legacy reserved labels
+          platform.io/{provider,managed-by,capability} are not permitted
+          on workloads. Migrate to v2 vocabulary
+          (platform.io/capability-provider.<cap>) and ensure the
+          enclosing namespace carries platform.io/provide.<cap>: "true".
+          See docs/adr-capability-producer-consumer-symmetry.md.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.labels.\"platform.io/provider\" || '' }}"
+                operator: NotEquals
+                value: ""
+              - key: "{{ request.object.metadata.labels.\"platform.io/managed-by\" || '' }}"
+                operator: NotEquals
+                value: ""
+              - key: "{{ request.object.metadata.labels.\"platform.io/capability\" || '' }}"
+                operator: NotEquals
+                value: ""
+    - name: capability-provider-requires-namespace-provide
+      # Namespace-anchored trust for v2 capability-provider.* labels.
+      #
+      # For every label on the workload whose key matches
+      # `platform.io/capability-provider.<X>[.<inst>]`, require the
+      # enclosing namespace to carry the matching
+      # `platform.io/provide.<X>[.<inst>]: "true"` label. Trust
+      # derives from the namespace — set by platform-base manifests
+      # — not from operator-identifying signatures on the pod.
+      #
+      # Mechanism:
+      #   1. Rule-level context.apiCall fetches namespace labels once.
+      #   2. Foreach iterates labels on the workload.
+      #   3. regex_match precondition narrows to capability-provider.* keys.
+      #   4. Per-iteration variables derive the expected provide key.
+      #   5. Kyverno's `lookup()` JMESPath extension reads the dynamic
+      #      key from nsLabels.
+      #   6. Deny fires when the looked-up value is not "true".
       skipBackgroundRequests: true
       match:
         any:
@@ -127,34 +127,46 @@ spec:
                 - DaemonSet
                 - Job
                 - CronJob
-      # No per-namespace exclude list — trust is determined per pod by
-      # operator-managed label signatures (see deny block).
+      context:
+        - name: nsLabels
+          apiCall:
+            urlPath: "/api/v1/namespaces/{{ request.namespace }}"
+            jmesPath: "metadata.labels || `{}`"
       validate:
         allowExistingViolations: true
         message: >-
-          platform.io/capability-provider.* labels are reserved for pods
-          managed by a trusted platform operator. The pod does not carry
-          any recognised operator-managed label signature. A rogue
-          capability-provider label silently enables cross-namespace
-          ingress on the capability's data ports.
-          See docs/platform-network-interface.md §Reserved Labels.
+          PNI violation: {{ request.object.kind }}
+          '{{ request.object.metadata.name }}' in namespace
+          '{{ request.namespace }}' declares capability-provider label
+          '{{ element.key }}' but the namespace does not carry the
+          matching 'platform.io/provide.<capability>[.<instance>]:
+          "true"' opt-in. Capability-provider trust is namespace-
+          anchored: only namespaces the platform-base controls can
+          authorise a pod to act as a producer. Add provide.<cap> to
+          the namespace.yaml shipped with the producer component, or
+          relocate the pod to a namespace that already carries the
+          opt-in. See docs/adr-capability-producer-consumer-symmetry.md
+          §Namespace-anchored producer trust.
         foreach:
           - list: "request.object.metadata.labels | items(@, 'key', 'value')"
             preconditions:
               all:
-                # Fire only on reserved capability-provider.* label keys.
-                - key: "{{ element.key }}"
+                - key: "{{ regex_match('^platform\\.io/capability-provider\\..+$', '{{ element.key }}') }}"
                   operator: Equals
-                  value: "platform.io/capability-provider.*"
+                  value: true
+            context:
+              - name: capSuffix
+                variable:
+                  jmesPath: "regex_replace_all('^platform\\.io/capability-provider\\.', '{{ element.key }}', '')"
+              - name: expectedNsKey
+                variable:
+                  jmesPath: "join('', ['platform.io/provide.', '{{ capSuffix }}'])"
+              - name: nsProvideValue
+                variable:
+                  jmesPath: "lookup(nsLabels, '{{ expectedNsKey }}') || ''"
             deny:
               conditions:
-                all:
-                  # Deny UNLESS at least one operator signature matches.
-                  # See policy-level comment for signature rationale
-                  # and tamper-resistance profile per operator.
-                  - key: "{{ request.object.metadata.labels.\"app.kubernetes.io/component\" || '' }}"
+                any:
+                  - key: "{{ nsProvideValue }}"
                     operator: NotEquals
-                    value: rabbitmq
-                  - key: "{{ request.object.metadata.labels.\"redis_setup_type\" || '' }}"
-                    operator: Equals
-                    value: ""
+                    value: "true"

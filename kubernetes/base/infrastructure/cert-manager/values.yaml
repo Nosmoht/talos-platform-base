@@ -2,6 +2,13 @@ crds:
   enabled: true
   keep: true
 
+# Producer-side PNI labeling — cert-manager controller exposes /metrics
+# → monitoring-scrape provider. Webhook block below carries
+# capability-provider.tls-issuance and its Service carries the
+# endpoint/protocol annotations.
+podLabels:
+  platform.io/capability-provider.monitoring-scrape: "true"
+
 resources:
   requests:
     cpu: 100m
@@ -23,6 +30,16 @@ containerSecurityContext:
   readOnlyRootFilesystem: true
 
 webhook:
+  # Producer-side PNI labeling for the cert-manager webhook.
+  # The webhook serves cert-manager Certificate admission requests,
+  # consumed by any workload that owns a Certificate resource.
+  podLabels:
+    platform.io/capability-provider.tls-issuance: "true"
+    # The webhook also exposes /metrics for Prometheus.
+    platform.io/capability-provider.monitoring-scrape: "true"
+  serviceAnnotations:
+    platform.io/capability-endpoint.tls-issuance: "https"
+    platform.io/capability-protocol.tls-issuance: "cert-manager-webhook-v1"
   resources:
     requests:
       cpu: 50m
