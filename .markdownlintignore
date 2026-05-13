@@ -1,0 +1,6 @@
+vendor/
+charts/
+node_modules/
+.work/
+**/CHANGELOG.md
+docs/capability-reference.md

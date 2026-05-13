@@ -5,6 +5,11 @@ talos/.versions.stamp
 /cluster.yaml
 /talos/_out/
 /kubernetes/bootstrap/argocd/_out/
+# Claude Code harness runtime dir — agent scratch state; this base ships
+# no .claude/ tree by policy (see CLAUDE.md).
+.claude/
+# Harness scratchpad (validation cache, conftest output, plan workspaces).
+.work/
 # Transitional: keep ignored until all developer workstations have run `make migrate-cluster-yaml`.
 .claude/environment.yaml
 Plans/

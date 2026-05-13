@@ -1,5 +1,62 @@
 # Changelog
 
+## Unreleased — documentation overhaul (capability-first v2)
+
+### Added
+
+- `ARCHITECTURE.md` — root-level C4 L1/L2 architecture document with
+  Mermaid diagrams (System Context, Container view, release flow,
+  capability-admission flow).
+- `SECURITY.md` — disclosure channel, supported-versions matrix,
+  supply-chain (cosign + SLSA + immutable tags), threat-model summary,
+  in/out-of-scope table, hardening notes.
+- `CONTRIBUTING.md` — scope, conventional-commits, PR expectations,
+  capability-first design rules, file-placement rules, sensitive-data
+  policy.
+- `MAINTAINERS.md` — active maintainer list + decision authority.
+- `CODEOWNERS` — review routing per path.
+- `UPGRADING.md` — cumulative migration guide for OCI-vendored
+  consumers; per-tag template for future MAJOR/MINOR notes; pending-
+  sunset table (`storage-csi`, `monitoring-scrape-provider`).
+- `docs/README.md` — Diátaxis-organised doc index.
+- `docs/capability-architecture.md` — canonical architecture
+  explanation for the capability-first v2 contract.
+- `docs/pni-cookbook.md` — concrete consumer + producer + CCNP recipes.
+- `docs/tutorial-first-consumer-cluster.md` — Diátaxis tutorial
+  quadrant (vendor + verify + render).
+- `docs/harness-plugin-integration.md` — specification of what the
+  `kube-agent-harness` plugin should provide for the v2 contract;
+  explicit rationale why this base ships no `.claude/`.
+- `.markdownlint.yaml` + `.markdownlintignore` + CI gate in
+  `.github/workflows/docs-lint.yml` (markdownlint + auto-regen freshness
+  check on `docs/capability-reference.md`).
+
+### Changed
+
+- `AGENTS.md` §"Platform Network Interface (PNI) Rules" rewritten to v2:
+  capability-first vocabulary (5-site producer/consumer table), namespace-
+  anchored trust, instanced suffix, reserved-label rule, out-of-scope
+  note (per-instance enforcement is consumer-overlay scope).
+- `AGENTS.md` §"Hard Constraints" gains two v2-specific invariants:
+  capability-selectors only for new CCNPs, namespace-anchored producer
+  trust.
+- `AGENTS.md` §"Key Terms" expanded with capability, instanced
+  capability, producer/consumer symmetry, namespace-anchored trust.
+- `CLAUDE.md` §"Context Architecture" gains a "Knowledge Map" pointing
+  at the new docs.
+- `README.md` adds a capability-first pitch in the lead and a
+  comprehensive doc-map table.
+- `.gitignore` adds `.claude/` (harness runtime dir) and `.work/`
+  (harness scratchpad) — both runtime artefacts, never committed.
+
+### Removed
+
+- `docs/claude-code-guide.md` — described a `.claude/` skill set that
+  does not exist in this base. Inconsistent with `CLAUDE.md` policy
+  ("this base ships no `.claude/` directory").
+- `docs/claude-code-stack-audit.md` — internal audit log of a
+  *different* repository (homelab) that was historically copied here.
+
 ## Unreleased — capability-first refactor (PRs B, C, D, E)
 
 ### PR E — Static CCNP cleanup
@@ -257,7 +314,7 @@ listed components fails the gate.
 - `kubernetes/bootstrap/argocd/namespace.yaml`: `instance: homelab` → `instance: argocd`, `part-of: homelab` → `part-of: gitops`.
 - `Makefile`: dropped `argocd-oidc` and `migrate-cluster-yaml`; added `init-cluster-yaml`; `grafana-dashboards-check` now uses `OVERLAY_PATH` resolved from `cluster.yaml`; `validate-gitops` no longer references the dropped `run_trivy.sh` and `discover_argocd_apps.sh` scripts.
 - `AGENTS.md`, `CLAUDE.md`, `README.md`, `kubernetes/AGENTS.md`: rewritten for platform-base perspective.
-- `docs/claude-code-guide.md:107`: `node-04 to node-05` → `<source-node> to <target-node>`.
+- `docs/claude-code-guide.md:107`: `node-04 to node-05` → `<source-node> to <target-node>`. *(File removed in the docs-cleanup PR — see Unreleased section.)*
 - `LICENSE`: prepended `Copyright 2026 Thomas Krahn` above the Apache-2.0 standard text.
 
 ### Added (post-cleanup)

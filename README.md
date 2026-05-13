@@ -2,6 +2,13 @@
 
 Cluster-agnostic GitOps platform base for Talos-on-Kubernetes deployments.
 
+This base ships a **capability-first Platform Network Interface (PNI)**: every
+cross-namespace path is mediated by a capability identifier (`monitoring-scrape`,
+`tls-issuance`, `cnpg-postgres.<inst>`, …). Tools are swappable implementations
+of capabilities; trust is namespace-anchored. See
+[capability-architecture.md](docs/capability-architecture.md) for the overview
+and [pni-cookbook.md](docs/pni-cookbook.md) for concrete recipes.
+
 ## What this provides
 
 - Talos machine-config patches (control-plane without `extraManifests`, common, drbd, worker-{gpu,gvisor,kubevirt,pi})
@@ -49,7 +56,7 @@ See: [ADR — Multi-Repo Platform Split](./docs/adr-multi-repo-platform-split.md
 
 ## Repository structure
 
-```
+```text
 .
 ├── Makefile                              # base-side validation + MCP install
 ├── kubernetes/
@@ -89,6 +96,23 @@ make validate-kyverno-policies
 ```
 
 Live cluster validation runs in consumer cluster repos.
+
+## Documentation
+
+| Doc | Audience | Purpose |
+|---|---|---|
+| [`docs/capability-architecture.md`](docs/capability-architecture.md) | consumer authors, operators | Architecture explanation — capabilities, namespace-anchored trust, instance scoping |
+| [`docs/pni-cookbook.md`](docs/pni-cookbook.md) | manifest authors | Concrete recipes for consuming + producing capabilities |
+| [`docs/capability-reference.md`](docs/capability-reference.md) | everyone | Per-capability catalogue (auto-generated from registry) |
+| [`docs/adr-capability-producer-consumer-symmetry.md`](docs/adr-capability-producer-consumer-symmetry.md) | reviewers, future contributors | Decision record — alternatives, consequences |
+| [`docs/adr-multi-repo-platform-split.md`](docs/adr-multi-repo-platform-split.md) | platform operators | Why base+consumer is a two-repo split |
+| [`docs/primitive-contract.md`](docs/primitive-contract.md) | harness-plugin authors | Output schema for Diagnostics primitives |
+| [`docs/issue-workflow.md`](docs/issue-workflow.md) | issue triagers, builders | GitHub issue lifecycle + state machine |
+| [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) | consumer-cluster operators | cosign / SLSA verification before `vendor/base/` pull |
+| [`docs/mcp-setup.md`](docs/mcp-setup.md) | new contributors | MCP server install + verification |
+| [`docs/harness-plugin-integration.md`](docs/harness-plugin-integration.md) | harness-plugin authors | Claude Code primitives wiring for v2 (path-scoped rules, subagents) |
+| [`AGENTS.md`](AGENTS.md) | agentic tools | Tool-agnostic SOT — hard constraints, validation, PNI |
+| [`CLAUDE.md`](CLAUDE.md) | Claude Code only | Imports AGENTS.md; minimal Claude-Code-specific addenda |
 
 ## License
 
