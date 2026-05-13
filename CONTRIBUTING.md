@@ -136,9 +136,9 @@ CCNPs, hard constraints), update **at minimum**:
 
 ## Code of conduct
 
-Be excellent to each other. Disagree with ideas, not people. The
-maintainers reserve the right to lock issues or PRs and remove comments
-that violate this norm.
+This project follows the [Contributor Covenant Code of Conduct, v2.1](CODE_OF_CONDUCT.md).
+By participating, you are expected to uphold its terms. Reports go to
+`thomas.krahn.tk@gmail.com`.
 
 ## License
 
