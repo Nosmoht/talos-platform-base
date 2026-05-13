@@ -22,6 +22,12 @@ on:
 permissions:
   contents: read
   packages: read
+  # Required for `gh api repos/<repo>/branches/<branch>/protection` —
+  # without `administration: read` the API returns 403 and Check 1 reports
+  # "branch protection not configured or insufficient API permissions"
+  # even when the protection is correctly set up. Default GITHUB_TOKEN
+  # does not include this scope.
+  administration: read
 
 jobs:
   preflight:
