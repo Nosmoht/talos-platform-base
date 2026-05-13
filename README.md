@@ -13,12 +13,14 @@ and [pni-cookbook.md](docs/pni-cookbook.md) for concrete recipes.
 
 - Talos machine-config patches (control-plane without `extraManifests`, common, drbd, worker-{gpu,gvisor,kubevirt,pi})
 - Talos `Makefile` with `cluster.yaml`-driven multi-cluster config generation
-- 22 standalone-renderable infrastructure components under `kubernetes/base/infrastructure/` (12 Helm-based + 10 resources-only):
-  alloy, argocd, cert-approver, cert-manager, dex, external-secrets,
-  kube-prometheus-stack, kubevirt, kubevirt-cdi, kyverno, local-path-provisioner,
-  loki, metrics-server, multus-cni, node-feature-discovery, nvidia-dcgm-exporter,
-  nvidia-device-plugin, piraeus-operator, platform-network-interface, tetragon,
-  vault-config-operator, vault-operator
+- 22 standalone-renderable infrastructure components under `kubernetes/base/infrastructure/`:
+  - **18 Helm-based** (chart pinned via `chart.lock.yaml` or rendered via `values.yaml`):
+    alloy, argocd, cert-approver, cert-manager, dex, external-secrets,
+    kube-prometheus-stack, kyverno, local-path-provisioner, loki, metrics-server,
+    node-feature-discovery, nvidia-dcgm-exporter, nvidia-device-plugin,
+    piraeus-operator, tetragon, vault-config-operator, vault-operator
+  - **4 resources-only** (plain Kubernetes manifests, no Helm):
+    kubevirt, kubevirt-cdi, multus-cni, platform-network-interface
 - Cilium Helm values + `extras.yaml` under `kubernetes/bootstrap/cilium/` (the
   consumer-side cluster repo renders `cilium.yaml` via `make cilium-bootstrap`)
 - Parameterized ArgoCD bootstrap (`root-application.yaml.tmpl`, `root-project.yaml.tmpl`)
