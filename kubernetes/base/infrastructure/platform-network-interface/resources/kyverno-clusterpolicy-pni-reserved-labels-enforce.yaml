@@ -127,6 +127,19 @@ spec:
                 - DaemonSet
                 - Job
                 - CronJob
+      preconditions:
+        all:
+          # Short-circuit: rule fires only when the workload carries at
+          # least one platform.io/capability-provider.* label. Avoids the
+          # apiCall round-trip for the common case (workloads with no
+          # producer-labels at all) and also keeps offline kyverno-cli
+          # validation green for fixtures that don't include such labels.
+          - key: >-
+              {{ request.object.metadata.labels | items(@, 'key', 'value')
+                 | [?starts_with(key, 'platform.io/capability-provider.')]
+                 | length(@) }}
+            operator: GreaterThan
+            value: 0
       context:
         - name: nsLabels
           apiCall:
@@ -134,16 +147,23 @@ spec:
             jmesPath: "metadata.labels || `{}`"
       validate:
         allowExistingViolations: true
+        # Rule-level message — cannot reference foreach `element.*` vars
+        # (Kyverno validation error: "variable 'element.key' present
+        # outside of foreach"). The per-label diagnostic which key
+        # triggered the deny is exposed via Kyverno's verbose log
+        # output (`kubectl get policyreport -A`), not the message
+        # template — keep this string label-agnostic.
         message: >-
           PNI violation: {{ request.object.kind }}
           '{{ request.object.metadata.name }}' in namespace
-          '{{ request.namespace }}' declares capability-provider label
-          '{{ element.key }}' but the namespace does not carry the
-          matching 'platform.io/provide.<capability>[.<instance>]:
-          "true"' opt-in. Capability-provider trust is namespace-
-          anchored: only namespaces the platform-base controls can
-          authorise a pod to act as a producer. Add provide.<cap> to
-          the namespace.yaml shipped with the producer component, or
+          '{{ request.namespace }}' declares a
+          platform.io/capability-provider.<cap> label but the
+          namespace does not carry the matching
+          platform.io/provide.<cap>[.<inst>]: "true" opt-in.
+          Capability-provider trust is namespace-anchored: only
+          namespaces the platform-base controls can authorise a pod
+          to act as a producer. Add provide.<cap> to the
+          namespace.yaml shipped with the producer component, or
           relocate the pod to a namespace that already carries the
           opt-in. See docs/adr-capability-producer-consumer-symmetry.md
           §Namespace-anchored producer trust.
