@@ -74,9 +74,13 @@ printf '\n=== Check 1: branch protection required-checks ===\n'
 PROTECTION_JSON="$(gh_api_or_empty "repos/${REPO}/branches/main/protection")"
 
 if [ -z "$PROTECTION_JSON" ]; then
-  err "branch protection not configured on main, or insufficient API permissions"
-  yellow "  Hint: enable branch protection at https://github.com/${REPO}/settings/branches"
-  FAIL=1
+  # Empty response can mean (a) branch protection not configured, or
+  # (b) caller lacks admin scope (default GITHUB_TOKEN in CI does NOT
+  # include administration:read — that is a GitHub-App-only permission
+  # not exposable via workflow `permissions`). Treat as WARN in CI; a
+  # repo admin running the script locally will get a definitive
+  # answer.
+  warn_annot "Check 1 SKIP — could not read branch protection on ${REPO}/main. Token may lack admin scope (default in CI) OR branch protection is not configured. Run locally with admin gh auth for a definitive answer; configure at https://github.com/${REPO}/settings/branches"
 else
   CONTEXTS="$(printf '%s' "$PROTECTION_JSON" | jq -r '.required_status_checks.contexts[]? // empty')"
   # POSIX-sh: a while-pipe runs in a subshell and cannot mutate FAIL in
