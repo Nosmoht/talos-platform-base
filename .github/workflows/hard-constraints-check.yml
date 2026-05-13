@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           FAIL=0
-          CHANGED_K8S=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' ':(exclude)kubernetes/**/*.md' 2>/dev/null || true)
+          CHANGED_K8S=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' ':(exclude,glob)kubernetes/**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_K8S" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do
@@ -59,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           FAIL=0
-          CHANGED_TALOS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'talos/**' ':(exclude)talos/**/*.md' 2>/dev/null || true)
+          CHANGED_TALOS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'talos/**' ':(exclude,glob)talos/**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_TALOS" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do
@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           FAIL=0
-          CHANGED_ALL=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' 'talos/**' ':(exclude)**/*.md' 2>/dev/null || true)
+          CHANGED_ALL=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' 'talos/**' ':(exclude,glob)**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_ALL" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do
