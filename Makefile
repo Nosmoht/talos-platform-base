@@ -1,4 +1,4 @@
-.PHONY: argocd-install argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml verify-tools .argocd-bootstrap-render
+.PHONY: argocd-install argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml verify-tools render-component render-all verify-rendered chart-pull .argocd-bootstrap-render
 
 ENV ?= cluster.yaml
 
@@ -60,6 +60,43 @@ argocd-password:
 
 verify-tools: ## Confirm installed binaries match .tool-versions pins
 	@./scripts/verify-tools.sh
+
+# Rendered Manifests Pipeline (Phase B of OCI base migration).
+# See docs/rendered-manifests.md for the 3-stage architecture.
+
+render-component: ## Stage-1+2 render of one component. Usage: make render-component COMPONENT=<name>
+	@if [ -z "$(COMPONENT)" ]; then echo "usage: make render-component COMPONENT=<name>"; exit 1; fi
+	@./scripts/render-component.sh "$(COMPONENT)"
+
+render-all: ## Render every component that has a chart.lock.yaml
+	@components="$$(find kubernetes/base/infrastructure -mindepth 2 -maxdepth 2 -name chart.lock.yaml -exec dirname {} \; | xargs -n1 basename | sort)"; \
+	if [ -z "$$components" ]; then echo "no chart.lock.yaml files yet — nothing to render"; exit 0; fi; \
+	for c in $$components; do ./scripts/render-component.sh "$$c"; done
+
+verify-rendered: ## Re-render all components and fail if committed _rendered/ drifts
+	@./scripts/verify-rendered.sh
+
+chart-pull: ## Pull a chart and print its sha256 (helper for new chart.lock.yaml). Usage: make chart-pull REPO=<url> NAME=<chart> VERSION=<v>
+	@if [ -z "$(REPO)" ] || [ -z "$(NAME)" ] || [ -z "$(VERSION)" ]; then \
+	  echo "usage: make chart-pull REPO=<url> NAME=<chart> VERSION=<v>"; exit 1; \
+	fi
+	@mkdir -p .helm-cache
+	@case "$(REPO)" in \
+	  oci://*) helm pull "$(REPO)/$(NAME)" --version "$(VERSION)" --destination .helm-cache ;; \
+	  *)       helm pull "$(NAME)" --repo "$(REPO)" --version "$(VERSION)" --destination .helm-cache ;; \
+	esac
+	@tgz="$$(ls -t .helm-cache/$(NAME)-*.tgz | head -n1)"; \
+	 sha="$$(shasum -a 256 "$$tgz" | awk '{print $$1}')"; \
+	 echo ""; \
+	 echo "tarball: $$tgz"; \
+	 echo "sha256:  $$sha"; \
+	 echo ""; \
+	 echo "Add to chart.lock.yaml:"; \
+	 echo "  chart:"; \
+	 echo "    repo: $(REPO)"; \
+	 echo "    name: $(NAME)"; \
+	 echo "    version: $(VERSION)"; \
+	 echo "    tgz_sha256: $$sha"
 
 # grafana-dashboards-check is consumer-side: it scans the consumer overlay path
 # kubernetes/overlays/<cluster>/infrastructure/*/resources/dashboards/*.json. Override
