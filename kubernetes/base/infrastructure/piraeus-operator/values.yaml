@@ -1,5 +1,17 @@
+# NOTE: This base ships only `namespace.yaml` for piraeus-operator
+# (kustomization has no `helmCharts:` block). The consumer overlay
+# deploys the Helm chart; the values below are the recommended starting
+# values to merge into the consumer's release.
+#
+# The operator runs ValidatingAdmissionWebhooks for the LinstorCluster
+# and LinstorSatellite CRDs (admission-webhook) and exposes /metrics
+# (monitoring-scrape). Producer labels for the LINSTOR controller and
+# satellite pods (created dynamically by the operator from a
+# LinstorCluster CR) require PR D's mutate-policy.
 podLabels:
   platform.io/capability-consumer.controlplane-egress: "true"
+  platform.io/capability-provider.admission-webhook: "true"
+  platform.io/capability-provider.monitoring-scrape: "true"
 
 imageConfigOverride:
   - base: quay.io/piraeusdatastore

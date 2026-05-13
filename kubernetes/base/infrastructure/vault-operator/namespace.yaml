@@ -7,8 +7,14 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: managed
-    # vault-operator pods carry capability-provider.monitoring-scrape
-    # (Prometheus scrape endpoint). Trust anchor — see ADR
+    # vault-operator + vault-config-operator co-own the vault namespace.
+    # vault-operator pod carries capability-provider.monitoring-scrape
+    # (/metrics). vault-config-operator additionally carries
+    # capability-provider.admission-webhook (it ships a
+    # ValidatingAdmissionWebhook for its CRDs; the bank-vaults
+    # vault-operator does not). Trust anchors — see ADR
     # adr-capability-producer-consumer-symmetry.md §Namespace-anchored
-    # producer trust.
+    # producer trust. Both namespace.yaml copies stay identical so
+    # whichever ArgoCD app applies last produces a consistent label set.
     platform.io/provide.monitoring-scrape: "true"
+    platform.io/provide.admission-webhook: "true"

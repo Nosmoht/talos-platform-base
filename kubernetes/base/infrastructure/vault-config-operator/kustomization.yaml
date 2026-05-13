@@ -12,3 +12,27 @@ helmCharts:
     namespace: vault
     valuesFile: values.yaml
     includeCRDs: true
+
+# The upstream vault-config-operator Helm chart does NOT expose a
+# `podLabels` value; the Deployment template hardcodes pod labels via
+# the `vault-config-operator.selectorLabels` helper. To attach the PNI
+# producer labels without forking the chart, patch the Deployment
+# post-render. The patch is strategic-merge: kustomize merges the
+# labels map with the chart-default labels.
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: vault-config-operator
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: vault-config-operator
+      spec:
+        template:
+          metadata:
+            labels:
+              platform.io/capability-provider.monitoring-scrape: "true"
+              platform.io/capability-provider.admission-webhook: "true"

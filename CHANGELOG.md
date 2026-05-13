@@ -1,6 +1,43 @@
 # Changelog
 
-## Unreleased — PR B (capability-first refactor, producer-labels phase)
+## Unreleased — capability-first refactor (PRs B, C, …)
+
+### PR C — Producer labels (operator pods)
+
+#### Added (producer labels on existing operator pods)
+
+- `vault-operator` (bank-vaults): pod retains
+  `capability-provider.monitoring-scrape`. No `admission-webhook`
+  label — bank-vaults vault-operator does NOT ship a
+  ValidatingAdmissionWebhook (verified by grep of chart templates).
+- `vault-config-operator` (Red Hat): pod gains
+  `capability-provider.{admission-webhook,monitoring-scrape}` via a
+  kustomize strategic-merge patch. The upstream chart does NOT expose
+  a `podLabels` value (hardcoded selectorLabels helper), so the patch
+  is the right altitude.
+- `piraeus-operator`: pod gains
+  `capability-provider.{admission-webhook,monitoring-scrape}` via the
+  base `values.yaml`. NOTE: the base ships only `namespace.yaml` for
+  piraeus-operator; the consumer overlay deploys the Helm chart and
+  must merge the base `values.yaml` into the release.
+
+#### Added (namespace trust anchors)
+
+- `vault` namespace (declared by both vault-operator and
+  vault-config-operator): adds `provide.admission-webhook`. The two
+  `namespace.yaml` files are kept identical so whichever ArgoCD app
+  applies last produces a consistent label set.
+- `piraeus-datastore` namespace: adds
+  `provide.{admission-webhook,monitoring-scrape}`.
+
+#### Not in this PR (deferred to PR D)
+
+- LINSTOR controller / satellite pods (created dynamically by
+  piraeus-operator from a `LinstorCluster` CR) — Kyverno mutate-policy
+  needed to label operator-managed pods at admission. PR D scope.
+- Per-instance scoping for `vault-secrets` KV mounts. PR D scope.
+
+## PR B — Namespace-anchored producer trust (merged)
 
 ### Breaking
 

@@ -3,6 +3,9 @@ watchNamespace: vault
 podLabels:
   platform.io/capability-consumer.controlplane-egress: "true"
   platform.io/capability-provider.monitoring-scrape: "true"
+  # bank-vaults vault-operator does NOT ship a
+  # ValidatingAdmissionWebhook (the co-located vault-config-operator
+  # does). No capability-provider.admission-webhook label here.
 
 resources:
   requests:
