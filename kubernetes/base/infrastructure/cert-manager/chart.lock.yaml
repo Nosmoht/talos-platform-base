@@ -1,0 +1,13 @@
+# Pin file for the cert-manager Helm chart.
+# Single source of truth for what render-component.sh fetches and templates.
+# See docs/rendered-manifests.md for the schema and update workflow.
+chart:
+  repo: https://charts.jetstack.io
+  name: cert-manager
+  version: v1.19.2
+  tgz_sha256: 87e2dafa946bd05c56be897b2fe2e171f2bbfad96c9d48409d4b1188d240af6f
+release:
+  name: cert-manager
+  namespace: cert-manager
+  includeCRDs: true
+values: values.yaml
