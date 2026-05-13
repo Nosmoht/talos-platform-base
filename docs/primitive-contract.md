@@ -23,6 +23,7 @@ SCHEMA_VERSION=$(yq e '.schema_version' "$CONTRACT_PATH" 2>/dev/null) \
 ```
 
 Robustness:
+
 - `git rev-parse 2>/dev/null` + `echo /nonexistent` fallback prevents exit-non-zero under bash strict mode (`set -euo pipefail`)
 - yq read failure (file missing OR malformed YAML) collapses to PRECONDITION_NOT_MET — fail-closed by design
 
@@ -98,6 +99,7 @@ Primitives MAY extend the schema with additional keys when the extension carries
 **Auto-Discovery**: Node list via `resources_list(apiVersion="v1", kind="Node")`. Extract internal IPs from `items[].status.addresses[?type=="InternalIP"].address`; map IP → `items[].metadata.name`. Primitives target ALL nodes including taint-isolated edge nodes — Talos MCP `talos_read_file` does not require pod-schedulability, so cluster-specific reservation taints are irrelevant.
 
 **Portability** (5 don'ts that apply Phase-1a-wide):
+
 1. No hardware-hardcoded values (interface names, NIC vendor strings) — discover via probe
 2. No `talosctl` CLI calls inside the SKILL — Talos MCP only (per `.claude/rules/talos-mcp-first.md`)
 3. No LINSTOR/DRBD/Piraeus assumptions
@@ -129,6 +131,7 @@ awk '/^---$/{n++; next} n==1' .claude/skills/<name>/SKILL.md \
 Layer-1 (frontmatter parses) and Layer-2 (`schema_version` match against this file) validation runs in CI via `.github/workflows/skill-frontmatter-check.yml`. Layer-3 (live dispatch smoke against an idle worker) stays manual — interactive Skill dispatch is not headless.
 
 Smoke-Pass criterion per skill: dispatch against ≥ 1 idle worker yields valid JSON that satisfies all of:
+
 - `jq -e '.primitive,.version,.verdict' >/dev/null`
 - `jq -e '.shape == "per_node"' >/dev/null`
 - `jq -e '.results | type == "array" and length > 0' >/dev/null`
@@ -137,6 +140,7 @@ Smoke-Pass criterion per skill: dispatch against ≥ 1 idle worker yields valid 
 ## Phase 1b Prerequisites (out of scope here, listed for context)
 
 Issues #100, #102, #105, #107 require ephemeral-pod orchestration. Before they can be implemented:
+
 - New namespace `claude-harness-jobs` with ArgoCD-managed lifecycle
 - New PNI capability `host-net-diagnostic`: Kyverno-allowlist update at `kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-capability-validation-enforce.yaml` + Cilium-CCNP under PNI provider side
 - ServiceAccount `claude-harness-runner` + RoleBinding scoped to namespace (verbs: pods.create/get/list/delete, pods/exec, pods/log)

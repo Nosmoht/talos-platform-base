@@ -1,5 +1,6 @@
 # Talos Scope — Codex CLI Context
-# Root scope: @../AGENTS.md (inherits §Hard Constraints, §Session Ritual, §MCP servers)
+
+> Root scope: `@../AGENTS.md` (inherits §Hard Constraints, §Session Ritual, §MCP servers).
 
 This file is loaded by Codex CLI when editing files under `talos/`. It provides
 path-scoped context approximating Claude Code's `paths:` auto-loading. Read the
@@ -34,6 +35,7 @@ Patches apply in this order: `common` → `controlplane|worker` → `<node-name>
 ## Pre-Drain Safety Checklist (inline — full gate in `.claude/hooks/pre-drain-check.sh`)
 
 Before `talosctl` drain or `kubectl drain` on any node:
+
 1. Confirm DRBD primary for all volumes is NOT on the node being drained
 2. `kubectl get pdb -A` — verify no PodDisruptionBudget blocks eviction
 3. `kubectl get pods -A --field-selector=status.phase!=Running` — no stuck pods
@@ -50,7 +52,7 @@ Before `talosctl` drain or `kubectl drain` on any node:
 
 ## Makefile Targets
 
-```
+```text
 make -C talos gen-configs       # Regenerate all node configs
 make -C talos apply-<node>      # Apply config to a single node
 make -C talos dry-run-all       # Validate config without applying

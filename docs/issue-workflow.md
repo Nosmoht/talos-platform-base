@@ -9,7 +9,7 @@ agentic state-machine and the scripts/subagents that enforce transitions.
 
 ## Lifecycle states
 
-```
+```text
                                                        ┌────────────┐
                                                        │   closed   │
                                                        └─────▲──────┘
@@ -93,7 +93,7 @@ acceptance criteria are not machine-checkable predicates.
 backend agnostic at the interface (uses `gh` CLI today; swap to Plane/Linear
 by re-implementing subcommand internals only).
 
-```
+```text
 scripts/issue-state.sh claim    <N>
 scripts/issue-state.sh handoff  <N>
 scripts/issue-state.sh release  <N>
@@ -216,6 +216,7 @@ cross-session audit, GitHub issue comments are authoritative.
 | AGENTS.md as canonical context | ✅ | ✅ (cross-tool standard) |
 
 **Codex fallback path** for issue work:
+
 1. Codex user reads issue manually + drafts plan
 2. Codex user runs `bash scripts/issue-state.sh claim <N>` directly
 3. Codex implements inline (single-context, no Builder/Evaluator separation —
