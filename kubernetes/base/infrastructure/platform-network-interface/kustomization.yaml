@@ -14,9 +14,15 @@ resources:
   - resources/ccnp-pni-admission-webhook-provider-ingress.yaml
   - resources/ccnp-pni-monitoring-scrape-provider-ingress.yaml
   - resources/ccnp-pni-controlplane-egress-consumer-egress.yaml
-  - resources/ccnp-pni-cnpg-operator-dataplane-egress.yaml
+  # NOTE: ccnp-pni-{cnpg,strimzi}-operator-dataplane-egress.yaml were
+  # removed in PR E — they used hardcoded tool-name selectors AND
+  # referenced operators (cloudnative-pg, strimzi-cluster-operator)
+  # that the base does NOT deploy. Tool-specific operator→broker
+  # CCNPs belong with the tool, i.e. in consumer overlays that
+  # actually deploy CNPG / Strimzi. See ADR
+  # adr-capability-producer-consumer-symmetry.md §Per-instance
+  # enforcement is consumer-overlay responsibility.
   - resources/ccnp-pni-redis-operator-dataplane-egress.yaml
-  - resources/ccnp-pni-strimzi-operator-dataplane-egress.yaml
   - resources/ccnp-pni-rabbitmq-operator-dataplane-egress.yaml
   - resources/ccnp-pni-s3-object-consumer-egress.yaml
   - resources/ccnp-pni-cnpg-postgres-consumer-egress.yaml
