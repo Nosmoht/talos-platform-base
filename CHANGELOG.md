@@ -1,6 +1,43 @@
 # Changelog
 
-## Unreleased — capability-first refactor (PRs B, C, D, …)
+## Unreleased — capability-first refactor (PRs B, C, D, E)
+
+### PR E — Static CCNP cleanup
+
+#### Breaking (consumer overlays)
+
+- **`ccnp-pni-cnpg-operator-dataplane-egress.yaml` removed.** The CCNP
+  used hardcoded tool-name selectors (`app.kubernetes.io/name:
+  cloudnative-pg`, `cnpg.io/cluster`) and referenced an operator
+  (cloudnative-pg in the `cnpg-system` namespace) that the base does
+  NOT deploy. Tool-specific operator→broker CCNPs belong with the
+  tool — consumer overlays that deploy CNPG must ship their own copy
+  (cap-selector form recommended for tool-swap resilience).
+- **`ccnp-pni-strimzi-operator-dataplane-egress.yaml` removed.** Same
+  rationale — the `strimzi-cluster-operator` is not base-deployed; the
+  tool-specific operator-dataplane CCNP belongs in the consumer
+  overlay that owns Strimzi.
+
+#### Changed
+
+- **`ccnp-pni-monitoring-scrape-consumer-egress.yaml`** source
+  selector rewritten from `app.kubernetes.io/name: prometheus` (tool-
+  selector) to `platform.io/capability-consumer.monitoring-scrape:
+  "true"` (capability-selector). A Prometheus → Victoria-Metrics
+  swap is now a label move on the consumer pod, not a CCNP edit.
+- **`kube-prometheus-stack`** values.yaml: `prometheus.prometheusSpec.
+  podMetadata.labels` gains `platform.io/capability-consumer.
+  monitoring-scrape: "true"` so the new CCNP source selector matches
+  the Prometheus pod.
+
+#### Kept (deliberate)
+
+- `ccnp-pni-monitoring-dns-visibility.yaml` uses namespace-scoped
+  source and tool-name target (`k8s-app: kube-dns`). kube-dns is a
+  cluster-singleton; this is plumbing, not a capability binding.
+- `ccnp-pni-{redis,rabbitmq}-operator-dataplane-egress.yaml` use
+  capability-selectors, so they are tool-agnostic substrate even
+  though the base does not deploy redis/rabbitmq operators.
 
 ### PR D — Instanced-suffix audit policy
 

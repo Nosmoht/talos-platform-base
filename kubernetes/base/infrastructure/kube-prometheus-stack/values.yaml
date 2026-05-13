@@ -13,6 +13,13 @@ prometheus:
     ruleSelectorNilUsesHelmValues: false
     ruleSelector: {}
     enableRemoteWriteReceiver: true
+    # Producer-side PNI labeling — Prometheus is the consumer of the
+    # monitoring-scrape capability (it consumes /metrics endpoints
+    # exposed by workloads). Source selector of
+    # ccnp-pni-monitoring-scrape-consumer-egress matches this label.
+    podMetadata:
+      labels:
+        platform.io/capability-consumer.monitoring-scrape: "true"
     resources:
       requests:
         cpu: 200m

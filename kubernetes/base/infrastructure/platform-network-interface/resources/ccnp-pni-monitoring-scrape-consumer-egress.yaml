@@ -7,11 +7,15 @@ metadata:
     app.kubernetes.io/component: network-policy
     app.kubernetes.io/managed-by: argocd
 spec:
-  description: "PNI: Allow Prometheus to scrape namespaces with consume.monitoring-scrape label"
+  description: >-
+    PNI: allow capability-consumer.monitoring-scrape pods (Prometheus
+    today, but tool-agnostic) to reach namespaces declaring
+    consume.monitoring-scrape. Source selector is capability-based —
+    a Prometheus → Victoria-Metrics swap requires only relocating the
+    capability-consumer label, not editing this CCNP.
   endpointSelector:
     matchLabels:
-      k8s:io.kubernetes.pod.namespace: monitoring
-      app.kubernetes.io/name: prometheus
+      platform.io/capability-consumer.monitoring-scrape: "true"
   egress:
     - toEndpoints:
         - matchLabels:
