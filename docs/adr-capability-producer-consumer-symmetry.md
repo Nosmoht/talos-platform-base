@@ -102,8 +102,49 @@ For capabilities without instances (cluster-singletons —
 `monitoring-scrape`, `tls-issuance`, `gateway-backend`, `gpu-runtime`,
 `internet-egress`, `controlplane-egress`, `hpa-metrics`,
 `block-storage-{replicated,local}`), the bare suffix-less form is used.
-The validate policy in PR D rejects the suffix-less form for `instanced:
-true` capabilities, eliminating the multi-tenant collapse.
+The audit-mode validate policy shipped in PR D (`pni-instanced-suffix-
+required-audit`) emits a PolicyReport advisory when a namespace
+declares the bare suffix-less form for an `instanced: true`
+capability, signaling the vocabulary smell without blocking.
+
+### Per-instance enforcement is consumer-overlay responsibility
+
+The base does NOT ship Kyverno `generate` + `mutate` machinery for
+per-instance enforcement. Verification (PR D investigation) showed
+that the base ships only the *operators* for instanced capabilities
+(`vault-operator`, `vault-config-operator`, `piraeus-operator` —
+namespace-only); the data-plane instances (CNPG `Cluster`,
+`RabbitmqCluster`, `RedisFailover`, `Kafka`, `Vault` server,
+`LinstorCluster` etc.) are all consumer-overlay-deployed. No base
+resource fires per-instance enforcement.
+
+Shipping speculative generate/mutate policies for tools (CNPG, Redis,
+RabbitMQ, Kafka) the base does not deploy would violate the right-
+altitude principle — those policies are tool-specific glue that
+belongs with the tool, i.e. in consumer overlays that actually deploy
+the tool.
+
+The base therefore ships only:
+
+1. The **vocabulary contract** — schema and reserved-label enforcement
+   that consumer overlays plug into (this ADR; PR A; PR B's
+   namespace-anchored rule).
+2. The **vocabulary-discipline advisory** — audit-mode policy
+   (`pni-instanced-suffix-required-audit`, PR D) that flags bare
+   `consume.<instanced-cap>` so consumer-overlay authors see the
+   smell in `kubectl get policyreport -A` before they deploy a CR.
+
+Consumer-overlay authors implement the per-tool generate+mutate as
+part of bringing the tool into their cluster. The base provides the
+vocabulary they target; the overlay provides the tool-specific
+binding.
+
+Platform-internal base consumers (`cert-manager`, `external-secrets`)
+that declare bare `consume.vault-secrets` today are flagged by the
+audit policy but not blocked. Their migration to a suffixed form is
+overlay-side: the specific Vault KV mount path is a per-cluster
+configuration value, so the suffixed `consume.vault-secrets.<mount>`
+label is patched in by the consumer overlay, not the base.
 
 ### Backwards compatibility — alias mechanism
 

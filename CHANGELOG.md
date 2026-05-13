@@ -1,6 +1,44 @@
 # Changelog
 
-## Unreleased — capability-first refactor (PRs B, C, …)
+## Unreleased — capability-first refactor (PRs B, C, D, …)
+
+### PR D — Instanced-suffix audit policy
+
+#### Added
+
+- `kyverno-clusterpolicy-pni-instanced-suffix-required.yaml` — new
+  audit-mode ClusterPolicy that emits a PolicyReport advisory when a
+  namespace declares bare `platform.io/consume.<cap>` for a capability
+  marked `instanced: true` in the PNI registry. Audit-mode by
+  intentional design: per-instance enforcement (generate+mutate) is
+  consumer-overlay responsibility, not base. The advisory signals the
+  vocabulary smell without blocking platform-internal consumers
+  (`cert-manager`, `external-secrets`) whose specific Vault KV mount
+  is overlay-configured.
+
+#### Architectural
+
+- ADR `adr-capability-producer-consumer-symmetry.md` extended with
+  §"Per-instance enforcement is consumer-overlay responsibility".
+  Verification documented: the base ships only operators for
+  instanced capabilities; data-plane instances (CNPG `Cluster`,
+  `RabbitmqCluster`, `RedisFailover`, `Kafka`, `Vault` server,
+  `LinstorCluster`) are consumer-overlay-deployed. Shipping
+  speculative generate/mutate for tools the base does not deploy
+  would violate the right-altitude principle.
+
+#### Scope decisions (verified)
+
+- **NOT shipped in this base**: Kyverno generate/mutate policies for
+  `cnpg-postgres`, `redis-managed`, `rabbitmq-managed`,
+  `kafka-managed`, `s3-object`. These are consumer-overlay scope.
+- **NOT shipped in this base**: per-instance generate/mutate for
+  `vault-secrets`. Vault is platform-core but its instance names
+  (KV mount paths) are per-cluster configuration → overlay-owned.
+- **Shipped**: the vocabulary-discipline advisory above. Consumer
+  overlays see the warning in `kubectl get policyreport -A` and
+  implement the tool-specific binding as part of bringing the tool
+  into their cluster.
 
 ### PR C — Producer labels (operator pods)
 
