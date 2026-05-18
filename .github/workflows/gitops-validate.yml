@@ -499,6 +499,40 @@ jobs:
           path: |
             .work/
 
+  capability-index-check:
+    name: Layer-A capability-index validation
+    runs-on: ubuntu-latest
+    env:
+      YQ_VERSION: 4.53.2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yq (pinned)
+        run: |
+          set -eu
+          sudo wget -q "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Lint capability index schema
+        run: scripts/lint-capability-index.sh
+
+      - name: Lint must reject broken fixture (negative test)
+        run: |
+          set -eu
+          if scripts/lint-capability-index.sh scripts/test/capability-index-broken-fixture.yaml >/dev/null 2>&1; then
+            echo "::error::lint script returned 0 on the broken fixture; rules are too loose"
+            exit 1
+          fi
+          echo "ok: lint rejected the broken fixture"
+
+      - name: Check cross-references
+        run: scripts/check-capability-index-refs.sh
+
+      - name: Verify rendered Markdown is up-to-date
+        run: scripts/render-capability-index.sh --check
+
   secret-scan:
     name: Secret Scan (gitleaks)
     runs-on: ubuntu-latest

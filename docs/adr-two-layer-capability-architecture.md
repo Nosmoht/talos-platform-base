@@ -1,8 +1,17 @@
 # ADR: Two-Layer Capability Architecture — Tool-Capability-Index (Layer A) Separate from PNI Network-Trust Registry (Layer B)
 
-**Status:** proposed
-**Date:** 2026-05-13
-**Companion docs:** [Platform Capability Index](./platform-capability-index.yaml) · [PNI Capability Architecture](./capability-architecture.md) · [Capability Producer/Consumer Symmetry ADR](./adr-capability-producer-consumer-symmetry.md)
+**Status:** accepted
+**Date:** 2026-05-13 (proposed), accepted 2026-05-18 (validation tooling landed, see issue #33)
+**Companion docs:** [Platform Capability Index](./platform-capability-index.yaml) · [Generated index reference](./platform-capability-index.md) · [PNI Capability Architecture](./capability-architecture.md) · [Capability Producer/Consumer Symmetry ADR](./adr-capability-producer-consumer-symmetry.md)
+
+> **Implementation status (2026-05-18):** the three validation scripts and the
+> `capability-index-check` CI job listed in §"Validation (CI required checks)"
+> are implemented and active. Promotion from `proposed` to `accepted` is gated
+> on this tooling because the ADR's two-artifact invariant (Layer A id-set
+> ⊇ Layer B id-set; cross-references resolve; generated MD matches YAML)
+> needs mechanical enforcement to remain true across PRs. See
+> [issue #33](https://github.com/Nosmoht/talos-platform-base/issues/33) for
+> the implementation trail.
 
 ## Context and Problem Statement
 
