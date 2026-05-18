@@ -62,12 +62,23 @@ one in v0.1.0 (see below).
 
 ---
 
-## `v0.4.0` (forthcoming) — PNI policy rename
+## `v0.5.0` — 2026-05-18 — PNI policy rename + cluster-agnostic refactor + Layer-A validation + per-component READMEs
 
 **Type:** MINOR (consumer-visible breaking name change in a Kubernetes
 resource name; spec semantics unchanged)
-**Breaking?** yes, for any artifact that references the policy by its
-`metadata.name`
+**Breaking?** yes, for any artifact that references the renamed
+`pni-contract-audit` ClusterPolicy by its `metadata.name`. No other
+consumer-side action is required for the rest of the v0.5.0 surface
+(documentation, validation scripts, READMEs — all internal to the
+base; the OCI artifact remains the same shape).
+
+### Note on prior git tags
+
+Git tags `v0.2.0`, `v0.3.0`, `v0.4.0` exist in the repository and
+have corresponding OCI artifacts on `ghcr.io`, but were not published
+as GitHub Releases. They are usable as pinning targets but are
+considered pre-release internal markers; v0.5.0 is the first GitHub
+Release after v0.1.0.
 
 ### Breaking changes (consumer action required)
 
@@ -94,7 +105,7 @@ new PolicyReport for the new resource UID). Brief gap in
 PolicyReport continuity during the cutover — expected.
 
 ```bash
-# Before merging the v0.4.0 bump:
+# Before merging the v0.5.0 bump:
 kubectl get clusterpolicy pni-contract-audit -o yaml > /tmp/pre-rename.yaml
 
 # After merging + ArgoCD reconcile:
@@ -111,6 +122,21 @@ class-of-error incidents during consumer onboarding (operators
 assuming "audit" meant non-blocking, then surprised when admission
 denied namespace creation). The rename aligns name, filename, and
 behaviour. No spec change.
+
+### New non-breaking surface
+
+- **Layer-A capability-index validation in CI.** The base now ships
+  three scripts (`scripts/lint-capability-index.sh`,
+  `check-capability-index-refs.sh`, `render-capability-index.sh`) and
+  a `capability-index-check` CI job that enforce the Two-Layer
+  Capability Architecture invariant. Consumer repos that re-render
+  the base inside their own CI will see the new job; no consumer
+  manifests are affected.
+- **Per-component READMEs.** Each `kubernetes/base/infrastructure/<comp>/`
+  directory now ships a README with Purpose / Chart / PNI capabilities /
+  Helm-value overrides / Upgrade gotchas. Recommended reading before
+  deciding which base components to deploy and which Helm-value
+  defaults to override in your consumer overlay.
 
 ### Validation steps after upgrade
 
