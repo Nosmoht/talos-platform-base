@@ -126,10 +126,12 @@ Migration choreography:
 
 1. (kubectl op) Temporarily disable automated pruning on root for the
    duration of the migration:
-   ```
+
+   ```bash
    kubectl patch application root -n argocd --type=merge \
      -p '{"spec":{"syncPolicy":{"automated":{"prune":false}}}}'
    ```
+
    This is **mandatory** — see "Race window" below.
 2. (kubectl op) For each platform namespace: rewrite
    `argocd.argoproj.io/tracking-id` annotation from
@@ -142,14 +144,18 @@ Migration choreography:
    "extra resource: Namespace/<ns>" — the namespace exists in the
    cluster but no longer in root's source. With `prune: false` from
    step 1, root does NOT delete it. Verify before continuing:
-   ```
+
+   ```bash
    argocd app get root  # expect: Health=Healthy, Sync=OutOfSync
    ```
+
 5. (kubectl op) Restore root prune behaviour:
-   ```
+
+   ```bash
    kubectl patch application root -n argocd --type=merge \
      -p '{"spec":{"syncPolicy":{"automated":{"prune":true}}}}'
    ```
+
    At this point the foreign tracking-id rule applies — root sees
    the namespace, sees the tracking-id is foreign (`<comp-app>:...`,
    not `root:...`), and treats it as out-of-scope. No-op.
