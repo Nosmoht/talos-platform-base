@@ -7,22 +7,18 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: managed
-    # vault-operator + vault-config-operator co-own the vault namespace.
-    # vault-operator pod carries capability-provider.monitoring-scrape
-    # (/metrics). vault-config-operator additionally carries
-    # capability-provider.admission-webhook (it ships a
-    # ValidatingAdmissionWebhook for its CRDs; the bank-vaults
-    # vault-operator does not). Trust anchors — see ADR
-    # adr-capability-producer-consumer-symmetry.md §Namespace-anchored
-    # producer trust. Both namespace.yaml copies stay identical so
-    # whichever ArgoCD app applies last produces a consistent label set.
+    # vault-operator is the SOLE owner of the vault namespace.
+    # Reason: vault-operator runs the vault server (the namespace's
+    # primary tenant) and ships both monitoring-scrape (/metrics) and
+    # admission-webhook capabilities here — the namespace is the trust
+    # anchor for both. vault-config-operator deploys INTO this namespace
+    # as a secondary tenant; it does not ship namespace.yaml. See ADR
+    # adr-namespace-ownership-rendered-manifests.md §"A single
+    # Application owns each namespace".
     platform.io/provide.monitoring-scrape: "true"
     platform.io/provide.admission-webhook: "true"
-    # vault namespace is co-owned by vault-operator + vault-config-operator.
     # bank-vaults vault-operator pod runs under baseline PSA (vault server
-    # needs IPC_LOCK capability for mlock). Both co-owner copies stay
-    # identical so whichever ArgoCD app applies last produces a
-    # consistent label set.
+    # needs IPC_LOCK capability for mlock).
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted

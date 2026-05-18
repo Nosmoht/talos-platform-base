@@ -2,5 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - namespace.yaml
+  # No namespace.yaml — loki is a secondary tenant of the monitoring
+  # namespace, which is owned by kube-prometheus-stack. See ADR
+  # docs/adr-namespace-ownership-rendered-manifests.md.
   - _rendered/manifests.yaml
