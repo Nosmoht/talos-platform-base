@@ -18,3 +18,14 @@ metadata:
     # whichever ArgoCD app applies last produces a consistent label set.
     platform.io/provide.monitoring-scrape: "true"
     platform.io/provide.admission-webhook: "true"
+    # vault namespace is co-owned by vault-operator + vault-config-operator.
+    # bank-vaults vault-operator pod runs under baseline PSA (vault server
+    # needs IPC_LOCK capability for mlock). Both co-owner copies stay
+    # identical so whichever ArgoCD app applies last produces a
+    # consistent label set.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest

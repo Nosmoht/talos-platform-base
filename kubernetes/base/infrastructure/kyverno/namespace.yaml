@@ -7,3 +7,11 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: privileged
+    # Kyverno controllers (admission, background, cleanup, reports) run
+    # under restricted PSA — they need no host access.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
