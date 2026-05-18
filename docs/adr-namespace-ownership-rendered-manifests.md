@@ -1,8 +1,18 @@
 # ADR: Namespace Ownership in the Rendered Manifests Pattern
 
-**Status**: Accepted
+**Status**: Accepted; choreography amended 2026-05-18 after second incident
 **Date**: 2026-05-18
 **Related**: [Capability Producer/Consumer Symmetry](adr-capability-producer-consumer-symmetry.md), [Multi-Repo Platform Split](adr-multi-repo-platform-split.md)
+
+## Revision history
+
+- 2026-05-18 initial: Architecture C accepted; original migration
+  choreography (steps 1–4).
+- 2026-05-18 amended: cascade-deletion recurred during argocd
+  self-cutover at 15:30 CEST. Root cause: race window between
+  tracking-id annotation rewrite and root reconciliation. Choreography
+  extended to wrap the live-resource transfer in a temporary
+  `automated.prune: false` window on root. See "Race window" section.
 
 ## Context
 
@@ -114,17 +124,86 @@ not knowing that another Application has taken over).
 
 Migration choreography:
 
-1. (kubectl op) For each platform namespace: rewrite
+1. (kubectl op) Temporarily disable automated pruning on root for the
+   duration of the migration:
+
+   ```bash
+   kubectl patch application root -n argocd --type=merge \
+     -p '{"spec":{"syncPolicy":{"automated":{"prune":false}}}}'
+   ```
+
+   This is **mandatory** — see "Race window" below.
+2. (kubectl op) For each platform namespace: rewrite
    `argocd.argoproj.io/tracking-id` annotation from
    `root:/Namespace:argocd/<ns>` to `<comp-app>:/Namespace:argocd/<ns>`.
-2. (git op) Remove platform namespaces from `namespaces-psa.yaml`.
-3. Push, allow root to reconcile. Root sees namespace not in source,
-   tracking-id is foreign → no-op (correct behaviour).
-4. Per-component Application's next sync sees namespace with matching
+   Also remove any `argocd.argoproj.io/sync-options: Prune=false`
+   annotation (it provides no protection at this stage — see Race window).
+3. (git op) Remove platform namespaces from `namespaces-psa.yaml`.
+   Push, merge.
+4. Wait for `root` to reconcile. Expected status: `OutOfSync` with
+   "extra resource: Namespace/<ns>" — the namespace exists in the
+   cluster but no longer in root's source. With `prune: false` from
+   step 1, root does NOT delete it. Verify before continuing:
+
+   ```bash
+   argocd app get root  # expect: Health=Healthy, Sync=OutOfSync
+   ```
+
+5. (kubectl op) Restore root prune behaviour:
+
+   ```bash
+   kubectl patch application root -n argocd --type=merge \
+     -p '{"spec":{"syncPolicy":{"automated":{"prune":true}}}}'
+   ```
+
+   At this point the foreign tracking-id rule applies — root sees
+   the namespace, sees the tracking-id is foreign (`<comp-app>:...`,
+   not `root:...`), and treats it as out-of-scope. No-op.
+6. Per-component Application's next sync sees namespace with matching
    tracking-id → continues to manage normally.
 
-The reverse order (git op first, then kubectl op) reproduces the
-2026-05-18 cascade-deletion bug. Migration order is not optional.
+### Race window — why steps 1 and 5 exist
+
+The reverse-order bug (git op before kubectl op) is documented as the
+2026-05-18 cascade-deletion bug class. There is a **second** race
+that the original choreography (without steps 1 and 5) does NOT
+prevent:
+
+- Step 2 writes the new tracking-id annotation directly to the live
+  resource (not to the source manifest).
+- If `root` reconciles between step 2 and step 3 (typical interval:
+  3 minutes), it observes the namespace **still listed in its source
+  manifest with the original `root:/Namespace:...` tracking**, and
+  SSA-applies the namespace, **overwriting** the freshly-written
+  annotation. The cluster is now back in the pre-step-2 state.
+- When step 3 lands and root reconciles, the namespace is gone from
+  source AND its annotation still says `root:/...`. Root's
+  `automated.prune: true` then deletes it (second cascade event,
+  observed 2026-05-18 15:30 CEST).
+
+`argocd.argoproj.io/sync-options: Prune=false` on the resource itself
+does NOT close this race: sync-options are interpreted only while
+the resource is in the source manifest. The moment the resource is
+removed from the source, the sync-option annotation is no longer
+consulted; the App-level `automated.prune` setting controls deletion.
+
+Disabling `automated.prune` on `root` for the duration of the
+migration is the only deterministic protection against this race
+window for the resource being transferred.
+
+### Structurally safer alternative
+
+Set `automated.prune: false` as the **default** for the root
+Application template (`root-application.yaml.tmpl` in
+`kubernetes/bootstrap/argocd/`). Intentional prunes then require
+explicit `argocd app sync root --prune` invocations. Removes the
+class of "source-edit-as-prune-intent" bugs at root level — the
+prune is always operator-acknowledged, never automatic. Trade-off:
+intentional removals require an additional manual step.
+
+Either approach is acceptable; per-cluster choice. Document the
+choice in the cluster repo's `AGENTS.md` or `CLAUDE.md` so future
+operators understand the policy.
 
 ## Consequences
 
@@ -166,10 +245,14 @@ Consumers already on the Rendered Manifests Pattern who previously
 declared platform namespaces in a `namespaces-psa.yaml` should:
 
 1. Apply the tracking-id transfer to the live cluster (see migration
-   choreography section above).
+   choreography section above — **including the temporary
+   `prune: false` window on root**, omitting it reproduces the
+   2026-05-18 15:30 cascade-deletion).
 2. Remove platform namespace entries from `namespaces-psa.yaml`.
 3. Remove any `argocd.argoproj.io/sync-options: Prune=false`
-   annotation that was added as a workaround — no longer needed.
+   annotation that was added as a workaround — it provides no
+   protection at the cutover moment and is no longer needed at
+   steady state.
 
 Consumers onboarding from scratch start in the Architecture C state
 by construction; no migration applies.
