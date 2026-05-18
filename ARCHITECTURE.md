@@ -27,7 +27,7 @@ flowchart TB
     SBX[Sigstore / Cosign<br/>+ SLSA attestor]
     ArgoCD[ArgoCD<br/>in target cluster]
     Talos[Talos Linux nodes<br/>in target cluster]
-    Cons[Consumer cluster repo<br/>e.g. talos-homelab-cluster]
+    Cons[Consumer cluster repo]
   end
 
   Base[[talos-platform-base<br/>this repository]]

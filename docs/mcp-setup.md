@@ -18,7 +18,7 @@ wrapper symlink must be registered in your `PATH`. All of this is automated by `
 
 ```bash
 # 1. Clone the repo and enter it
-git clone <repo-url> && cd Talos-Homelab
+git clone <repo-url> && cd <repo-name>
 
 # 2. Install binaries and wrapper symlink
 make mcp-install
