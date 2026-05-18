@@ -1,0 +1,57 @@
+# Broken fixture for lint-capability-index.sh negative test.
+# Each capability deliberately violates at least one lint rule.
+# Used by tests asserting lint exits != 0 on broken input.
+schema_version: "1"
+base_version: "0.X"
+default_owner: platform-maintainers
+
+capabilities:
+  - id: not_kebab_case
+    name: Missing description and contract
+    domain: { layer: observability, category: Metrics }
+    stability: ga
+    independence_test:
+      alt_impls_exist: true
+      contract_stable: true
+      independent_lifecycle: true
+    implementations:
+      - { name: foo, status: active, swap_class: drop-in }
+
+  - id: missing-stability-enum
+    name: Bad stability value
+    description: x
+    domain: { layer: observability, category: Metrics }
+    stability: experimental
+    contract: x
+    independence_test:
+      alt_impls_exist: true
+      contract_stable: true
+      independent_lifecycle: true
+    implementations:
+      - { name: foo, status: active, swap_class: drop-in }
+
+  - id: deprecated-without-sunset
+    name: Deprecated entry without sunset
+    description: x
+    domain: { layer: observability, category: Metrics }
+    stability: deprecated
+    contract: x
+    independence_test:
+      alt_impls_exist: true
+      contract_stable: true
+      independent_lifecycle: true
+    implementations:
+      - { name: foo, status: active, swap_class: drop-in }
+
+  - id: bad-swap-class
+    name: Implementation with invalid swap class
+    description: x
+    domain: { layer: observability, category: Metrics }
+    stability: ga
+    contract: x
+    independence_test:
+      alt_impls_exist: true
+      contract_stable: true
+      independent_lifecycle: true
+    implementations:
+      - { name: foo, status: active, swap_class: hot-swap }
