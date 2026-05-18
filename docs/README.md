@@ -32,6 +32,7 @@ tutorial / how-to / reference / explanation.
 - [`adr-multi-repo-platform-split.md`](adr-multi-repo-platform-split.md) — why base + consumer is a two-repo split.
 - [`adr-capability-producer-consumer-symmetry.md`](adr-capability-producer-consumer-symmetry.md) — why capability-first, namespace-anchored trust, instance scoping.
 - [`adr-two-layer-capability-architecture.md`](adr-two-layer-capability-architecture.md) — separating Tool-Capability-Index (Layer A) from PNI network-trust registry (Layer B). **Status: proposed.**
+- [`adr-namespace-ownership-rendered-manifests.md`](adr-namespace-ownership-rendered-manifests.md) — namespace stub + `Prune=false` + PNI-min-labels pattern that consumers must use when adopting the Rendered Manifests / OCI vendoring model. Documents the 2026-05-18 cascade-deletion class.
 - [`harness-plugin-integration.md`](harness-plugin-integration.md) — what the `kube-agent-harness` Claude Code plugin should provide for this base.
 - [`vision.md`](vision.md) — forward-looking statements (v1.X / v2.X). Aspiration, **not roadmap and not commitments**. Cite this file when extracting hypothetical-future statements from operative docs.
 
