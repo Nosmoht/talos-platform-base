@@ -7,3 +7,12 @@ metadata:
     app.kubernetes.io/managed-by: argocd
     platform.io/network-interface-version: v1
     platform.io/network-profile: privileged
+    # NFD-worker daemonset requires hostPath access to read node features
+    # (/sys, /etc/kubernetes/node-feature-discovery). Privileged enforce
+    # required; audit/warn at restricted for drift visibility.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
