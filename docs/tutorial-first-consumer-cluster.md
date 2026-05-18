@@ -118,7 +118,21 @@ doc][arch].
 
 ## Step 5 — Write a tiny consumer manifest
 
-A consumer namespace that wants Prometheus scraping:
+A note on namespaces, before you write any: **platform namespaces are
+owned by the platform**. A consumer never authors a Namespace resource
+for `argocd`, `cert-manager`, `kyverno`, `monitoring`, `vault`, or any
+other component this base ships under
+`vendor/base/kubernetes/base/infrastructure/<component>/`. Each
+per-component Application takes the vendor `namespace.yaml` from its
+`_rendered/manifests.yaml` and becomes the sole ArgoCD tracking-id
+owner of that namespace. Consumer overlays that declare a duplicate
+in a top-level file create a double-tracking conflict that ArgoCD
+cannot resolve safely — see
+[`adr-namespace-ownership-rendered-manifests.md`](adr-namespace-ownership-rendered-manifests.md)
+for the architectural rationale.
+
+What you DO author: namespaces for your own tenant workloads. Below,
+a consumer namespace that wants Prometheus scraping:
 
 ```yaml
 # kubernetes/cluster/my-app-namespace.yaml
