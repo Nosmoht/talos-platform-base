@@ -62,6 +62,67 @@ one in v0.1.0 (see below).
 
 ---
 
+## `v0.4.0` (forthcoming) — PNI policy rename
+
+**Type:** MINOR (consumer-visible breaking name change in a Kubernetes
+resource name; spec semantics unchanged)
+**Breaking?** yes, for any artifact that references the policy by its
+`metadata.name`
+
+### Breaking changes (consumer action required)
+
+- `ClusterPolicy/pni-contract-audit` is renamed to
+  `ClusterPolicy/pni-contract-enforce`. The new name matches both the
+  filename (`kyverno-clusterpolicy-pni-contract-enforce.yaml`) and the
+  policy's behaviour (`spec.validationFailureAction: Enforce`). Rule
+  names (`require-interface-version`, `require-network-profile`) and
+  validation messages are unchanged.
+- Consumers must update any of the following that reference the old
+  name:
+  - PolicyReport queries / alerts (e.g. Grafana dashboards filtering
+    on `policy="pni-contract-audit"`)
+  - `metadata.labels` or `metadata.annotations` that name the policy
+  - `argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource` or
+    similar resource selectors keyed by the old name
+  - Documentation links / cookbook snippets
+
+### Migration on a live cluster
+
+PolicyReports keyed on the old `policy="pni-contract-audit"` will be
+GC'd by Kyverno when the renamed policy is applied (Kyverno emits a
+new PolicyReport for the new resource UID). Brief gap in
+PolicyReport continuity during the cutover — expected.
+
+```bash
+# Before merging the v0.4.0 bump:
+kubectl get clusterpolicy pni-contract-audit -o yaml > /tmp/pre-rename.yaml
+
+# After merging + ArgoCD reconcile:
+kubectl get clusterpolicy pni-contract-enforce -o yaml | diff /tmp/pre-rename.yaml -
+# Expected diff: metadata.name only, plus new UID / resourceVersion
+```
+
+### Why the rename
+
+The policy was authored as fail-closed enforcement
+(`validationFailureAction: Enforce`) but its `metadata.name` carried
+an `-audit` suffix from a prior refactor. The mismatch caused two
+class-of-error incidents during consumer onboarding (operators
+assuming "audit" meant non-blocking, then surprised when admission
+denied namespace creation). The rename aligns name, filename, and
+behaviour. No spec change.
+
+### Validation steps after upgrade
+
+1. `make validate-gitops` in consumer repo passes.
+2. `kubectl get clusterpolicy pni-contract-enforce` returns one
+   resource with `ADMISSION=true BACKGROUND=true READY=True`.
+3. `kubectl get clusterpolicy pni-contract-audit` returns NotFound.
+4. `kubectl get policyreport -A -l policy.kyverno.io/policy-name=pni-contract-enforce`
+   returns reports keyed on the new name.
+
+---
+
 ## Pending sunsets
 
 These deprecations are scheduled to remove via PR F (alias removal),
