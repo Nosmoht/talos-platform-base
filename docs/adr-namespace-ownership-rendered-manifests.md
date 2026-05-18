@@ -1,0 +1,186 @@
+# ADR: Namespace Ownership in the Rendered Manifests Pattern
+
+**Status**: Accepted
+**Date**: 2026-05-18
+**Related**: [Capability Producer/Consumer Symmetry](adr-capability-producer-consumer-symmetry.md), [Multi-Repo Platform Split](adr-multi-repo-platform-split.md)
+
+## Context
+
+The Rendered Manifests Pattern (this base ships `_rendered/manifests.yaml`
+per component, consumers vendor the artifact via OCI) introduces a
+namespace-ownership question that did not exist in the prior
+single-source-tree model: which Application is the **sole lifecycle
+owner** of each platform namespace?
+
+Two paths for a consumer to declare a namespace exist:
+
+1. **Vendor `namespace.yaml`** shipped by this base under
+   `kubernetes/base/infrastructure/<component>/namespace.yaml`,
+   consumed by the per-component Application via its
+   `_rendered-overlay/kustomization.yaml`, ending up in the
+   per-component `_rendered/manifests.yaml`.
+
+2. **Consumer-side namespace declaration**, typically in a
+   top-level `namespaces-psa.yaml` tracked by an app-of-apps `root`
+   Application.
+
+If both declare the same namespace, both Applications claim
+ownership. ArgoCD does not have a concept of "shared lifecycle"
+across Applications. Each Application decides independently whether
+to apply or prune a resource by comparing its current source against
+the live cluster. If one Application sees the resource removed from
+its source while another still tracks it, the first Application
+prunes — **even though the resource is still managed elsewhere**.
+
+This is not a theoretical concern. On 2026-05-18 a consumer cluster
+experienced cascade-deletion of its `argocd` namespace caused by
+removing namespace entries from a root-tracked file under the
+assumption that the producer's vendor `namespace.yaml` would take
+over ownership. The assumption was wrong: vendor `namespace.yaml`
+contributes field values via Server-Side Apply (SSA) from the
+per-component Application, but does NOT transfer prune eligibility
+that the root Application holds via tracking-id annotation. Each
+Application makes prune decisions against its own source tree in
+isolation.
+
+Approaches considered and rejected:
+
+- **Annotate every namespace `argocd.argoproj.io/sync-options: Prune=false`**
+  to prevent root from pruning. This is a symptom-fix: it hides the
+  intent-mismatch but leaves double-tracking in place. The file's
+  presence stops being a meaningful lifecycle signal (resource
+  present in source but unable to be removed by source removal).
+  Real deletions become two-step manual operations. The bug class
+  "lifecycle conflict from double-tracking" stays latent.
+
+- **Add a "transfer" semantic to ArgoCD.** Not available upstream;
+  outside this base's scope to invent.
+
+## Decision
+
+**A single Application owns each namespace. The owner is the
+component itself.**
+
+For every platform namespace (one shipped by this base), the
+per-component Application is the sole lifecycle owner. The vendor
+`namespace.yaml` lives in `kubernetes/base/infrastructure/<component>/`
+and is consumed by the consumer's per-component overlay's
+`_rendered-overlay/kustomization.yaml`. From that point the
+per-component Application carries the only ArgoCD tracking-id on
+the namespace resource.
+
+A consumer's top-level `root` Application MUST NOT track any
+platform namespace. The consumer's `namespaces-psa.yaml` (or
+equivalent) carries only **tenant namespaces** — namespaces this
+base does not ship a vendor `namespace.yaml` for.
+
+| Namespace category | Owner | Source of truth | Tracked by `root`? |
+|---|---|---|---|
+| Platform (vendor-shipped) | per-component Application | vendor `namespace.yaml` in `_rendered/manifests.yaml` | NO |
+| Tenant (consumer-only) | consumer root Application | consumer `namespaces-psa.yaml` | yes |
+| `argocd` itself (special) | bootstrap (initial) → argocd Application (steady-state) | `make argocd-install` then vendor namespace.yaml SSA-merge | NO |
+
+The `argocd` namespace is the only chicken-and-egg case. It is
+created by direct `kubectl apply` during `make argocd-install`
+(before any Application exists). Once ArgoCD is up, the `argocd`
+Application syncs its `_rendered/manifests.yaml`, which includes
+vendor `namespace.yaml`. SSA-merge of labels onto the live namespace
+transfers steady-state ownership to the `argocd` Application.
+
+## Implications for consumer onboarding (new cluster)
+
+A consumer adopting this base from scratch — the multi-cluster reuse
+case this ADR is written for — does **not** need to author any
+namespace stubs for platform namespaces. Specifically:
+
+- Consumer's `namespaces-psa.yaml` contains only tenant namespaces
+  (those whose names are not also a directory under
+  `kubernetes/base/infrastructure/` in vendored base).
+- Each per-component overlay's `_rendered-overlay/kustomization.yaml`
+  references vendor `namespace.yaml` as the first resource (kustomize
+  default ordering makes it the first item applied per sync wave).
+- No `argocd.argoproj.io/sync-options: Prune=false` annotation is
+  needed anywhere. The bug class is structurally impossible because
+  there is only one tracking-id per namespace.
+
+## Implications for existing-cluster migration
+
+A consumer cluster that already has platform namespaces under
+`root`'s tracking-id must transfer the tracking-id to the
+per-component Application **before** removing the namespace from
+`root`'s source. Otherwise the source-removal-as-deletion-intent bug
+fires (root prunes the namespace it no longer sees in its source,
+not knowing that another Application has taken over).
+
+Migration choreography:
+
+1. (kubectl op) For each platform namespace: rewrite
+   `argocd.argoproj.io/tracking-id` annotation from
+   `root:/Namespace:argocd/<ns>` to `<comp-app>:/Namespace:argocd/<ns>`.
+2. (git op) Remove platform namespaces from `namespaces-psa.yaml`.
+3. Push, allow root to reconcile. Root sees namespace not in source,
+   tracking-id is foreign → no-op (correct behaviour).
+4. Per-component Application's next sync sees namespace with matching
+   tracking-id → continues to manage normally.
+
+The reverse order (git op first, then kubectl op) reproduces the
+2026-05-18 cascade-deletion bug. Migration order is not optional.
+
+## Consequences
+
+### Positive
+
+- Cascade-deletion of a platform namespace from a source-tree edit
+  in `root` is structurally impossible. The base does not ship a
+  resource that two Applications co-track.
+- Consumer onboarding does NOT require manual authoring of namespace
+  labels for platform namespaces. PSA labels, PNI labels, capability
+  `provide.*` labels all come from vendor `namespace.yaml` shipped
+  by this base. Consumer's role: vendor the OCI artifact and run
+  `make argocd-bootstrap`.
+- Decommissioning a platform component is a single act: removing
+  the per-component Application also cascade-deletes its namespace
+  (correct semantics — the component is gone, no reason for its
+  namespace to persist).
+- Multi-cluster reuse: any consumer of any tag ≥ v0.3.0 inherits a
+  vendor `namespace.yaml` for every base component with full labels.
+  No per-cluster customization for platform namespaces.
+
+### Negative
+
+- Existing-cluster migrations require a one-time kubectl operation
+  (tracking-id transfer) before the git change. New clusters do not.
+- The `argocd` namespace special case (bootstrap-created, then
+  Application-owned) is the one exception to "component is sole owner
+  from day 1". The bootstrap pre-creates the namespace, and the
+  argocd Application takes over via SSA-merge. Documented as a
+  transitional special case.
+- Removing a platform component from a consumer overlay does delete
+  its namespace (correct intent), which cascade-deletes any workloads
+  inside. Consumers must understand this when adding their own
+  resources to a platform namespace (anti-pattern: don't).
+
+### Migration impact for existing consumers
+
+Consumers already on the Rendered Manifests Pattern who previously
+declared platform namespaces in a `namespaces-psa.yaml` should:
+
+1. Apply the tracking-id transfer to the live cluster (see migration
+   choreography section above).
+2. Remove platform namespace entries from `namespaces-psa.yaml`.
+3. Remove any `argocd.argoproj.io/sync-options: Prune=false`
+   annotation that was added as a workaround — no longer needed.
+
+Consumers onboarding from scratch start in the Architecture C state
+by construction; no migration applies.
+
+## References
+
+- ArgoCD tracking-id annotation:
+  https://argo-cd.readthedocs.io/en/stable/user-guide/resource_tracking/
+- Kubernetes Server-Side Apply (SSA):
+  https://kubernetes.io/docs/reference/using-api/server-side-apply/
+- PNI contract ClusterPolicy:
+  `kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-contract-enforce.yaml`
+- 2026-05-18 incident timeline: ArgoCD application-controller log,
+  syncId `12807-QfBNf`.
