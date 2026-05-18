@@ -5,13 +5,139 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-> The Unreleased section bundles two concurrent work streams toward the
-> next tag: (a) the capability-first v2 refactor (PRs B / C / D / E),
-> and (b) the documentation overhaul (root-level OSS-hygiene files +
-> Diátaxis-organised `docs/`). Per Keep a Changelog the two are merged
-> here; provenance is preserved in the per-entry context.
+_(empty — file a Changed/Added entry here when the next change lands.)_
+
+## v0.5.0 — 2026-05-18
+
+> This release bundles four concurrent work streams: (a) the
+> capability-first v2 refactor (PRs B / C / D / E), (b) the documentation
+> overhaul (root-level OSS-hygiene files + Diátaxis-organised `docs/`),
+> (c) the late-cycle PNI policy rename (#40), and (d) the
+> production-readiness wave that makes the base consumable by a second
+> cluster (#31 cluster-agnostic refactor, #33 Layer-A validation tooling,
+> #35 per-component READMEs).
 
 ### Added
+
+- **PNI policy rename (#40).** `ClusterPolicy/pni-contract-audit` is now
+  named `pni-contract-enforce`, matching its filename and its
+  `validationFailureAction: Enforce` semantics. Rule names and validation
+  messages are unchanged. See [`UPGRADING.md` §v0.5.0](UPGRADING.md) for
+  the consumer-side migration steps.
+- **Layer-A capability-index validation tooling (#33).**
+  - `scripts/lint-capability-index.sh` — schema lint (required fields,
+    kebab-case ids, ISO-8601 dates, enum validity for stability /
+    deployment_topology / swap_class / implementation status). Uses
+    `yq has()` instead of `// "missing"` to distinguish a missing field
+    from an explicit `false` boolean.
+  - `scripts/check-capability-index-refs.sh` — cross-reference check:
+    `composition[]` resolves to a `kubernetes/base/infrastructure/<comp>/`
+    directory or is marked external; `replaced_by` / `split_into` /
+    `composed_of` resolve to Layer A ids; `pni_capability_id` is null or
+    resolves to a Layer B id.
+  - `scripts/render-capability-index.sh` — deterministic, idempotent
+    YAML → Markdown renderer. `--check` mode for CI drift detection.
+  - `scripts/test/capability-index-broken-fixture.yaml` — negative-test
+    fixture (lint must exit non-zero on it).
+  - `docs/platform-capability-index.md` — committed render of the
+    802-line YAML source.
+  - `.github/workflows/gitops-validate.yml` — new `capability-index-check`
+    CI job runs all four checks (positive, negative-test, refs, render
+    drift).
+  - `docs/adr-two-layer-capability-architecture.md` — status promoted
+    from `proposed` to `accepted` now that the two-artifact invariant
+    (Layer A id-set ⊇ Layer B id-set; cross-references resolve;
+    generated MD matches YAML) is mechanically enforced across PRs.
+- **Per-component READMEs (#35).** All 22 directories under
+  `kubernetes/base/infrastructure/<comp>/` now ship a README answering:
+  what the component is for (one sentence), upstream chart + pinned
+  version, declared PNI capabilities (provider + consumer), repo-specific
+  Helm-value overrides, and known upgrade gotchas.
+  `scripts/render-component-readmes.sh` is the deterministic generator
+  with hand-curated Purpose + Gotchas maps and auto-extracted chart /
+  namespace / PNI / values fields. bash 3.2 compatible (uses case-
+  statement functions, not associative arrays).
+- **Root-level OSS-hygiene documents.**
+  - `ARCHITECTURE.md` — root-level C4 L1/L2 architecture document with
+    Mermaid diagrams (System Context, Container view, release flow,
+    capability-admission flow).
+  - `SECURITY.md` — disclosure channel, supported-versions matrix,
+    supply-chain (cosign + SLSA + immutable tags), threat-model summary,
+    in/out-of-scope table, hardening notes.
+  - `CONTRIBUTING.md` — scope, conventional-commits, PR expectations,
+    capability-first design rules, file-placement rules, sensitive-data
+    policy.
+  - `MAINTAINERS.md` — active maintainer list + decision authority.
+  - `CODEOWNERS` — review routing per path.
+  - `UPGRADING.md` — cumulative migration guide for OCI-vendored
+    consumers; per-tag template for future MAJOR/MINOR notes; pending-
+    sunset table (`storage-csi`, `monitoring-scrape-provider`).
+- **Diátaxis-organised `docs/` set.**
+  - `docs/README.md` — Diátaxis-organised doc index.
+  - `docs/capability-architecture.md` — canonical architecture
+    explanation for the capability-first v2 contract.
+  - `docs/pni-cookbook.md` — concrete consumer + producer + CCNP recipes.
+  - `docs/tutorial-first-consumer-cluster.md` — Diátaxis tutorial
+    quadrant (vendor + verify + render).
+  - `docs/harness-plugin-integration.md` — specification of what the
+    `kube-agent-harness` plugin should provide for the v2 contract;
+    explicit rationale why this base ships no `.claude/`.
+- **Lint + CI for docs.** `.markdownlint.yaml` + `.markdownlintignore` +
+  CI gate in `.github/workflows/docs-lint.yml` (markdownlint + auto-
+  regen freshness check on `docs/capability-reference.md`).
+- **PNI policy — instanced-suffix audit (PR D).**
+  `kyverno-clusterpolicy-pni-instanced-suffix-required.yaml` — new
+  audit-mode ClusterPolicy that emits a PolicyReport advisory when a
+  namespace declares bare `platform.io/consume.<cap>` for a capability
+  marked `instanced: true` in the PNI registry. Audit-mode by
+  intentional design: per-instance enforcement (generate+mutate) is
+  consumer-overlay responsibility, not base. The advisory signals the
+  vocabulary smell without blocking platform-internal consumers
+  (`cert-manager`, `external-secrets`) whose specific Vault KV mount
+  is overlay-configured.
+- **Producer pod labels on operator pods (PR C).**
+  - `vault-operator` (bank-vaults): pod retains
+    `capability-provider.monitoring-scrape`. No `admission-webhook`
+    label — bank-vaults vault-operator does NOT ship a
+    ValidatingAdmissionWebhook (verified by grep of chart templates).
+  - `vault-config-operator` (Red Hat): pod gains
+    `capability-provider.{admission-webhook,monitoring-scrape}` via a
+    kustomize strategic-merge patch. The upstream chart does NOT expose
+    a `podLabels` value (hardcoded selectorLabels helper), so the patch
+    is the right altitude.
+  - `piraeus-operator`: pod gains
+    `capability-provider.{admission-webhook,monitoring-scrape}` via the
+    base `values.yaml`. NOTE: the base ships only `namespace.yaml` for
+    piraeus-operator; the consumer overlay deploys the Helm chart and
+    must merge the base `values.yaml` into the release.
+- **Namespace trust anchors (PR C).**
+  - `vault` namespace (declared by both vault-operator and
+    vault-config-operator): adds `provide.admission-webhook`. The two
+    `namespace.yaml` files are kept identical so whichever ArgoCD app
+    applies last produces a consistent label set.
+  - `piraeus-datastore` namespace: adds
+    `provide.{admission-webhook,monitoring-scrape}`.
+- **Producer-side labels on 4 components (PR B).**
+  - `cert-manager`: webhook pod and Service carry
+    `capability-provider.tls-issuance` + endpoint/protocol annotations;
+    controller pod carries `capability-provider.monitoring-scrape`;
+    `cert-manager` namespace carries `provide.{tls-issuance,monitoring-scrape}`.
+  - `loki` (SimpleScalable write tier): write pods and Service carry
+    `capability-provider.logging-ship` + endpoint/protocol annotations;
+    `monitoring` namespace (declared by loki + kube-prometheus-stack)
+    carries `provide.{logging-ship,monitoring-scrape}`.
+  - `metrics-server` (relocated, see Changed): pod and Service carry
+    `capability-provider.{hpa-metrics,monitoring-scrape}` + endpoint/
+    protocol annotations; `metrics-server` namespace carries
+    `provide.{hpa-metrics,monitoring-scrape}`.
+  - `local-path-provisioner`: pod carries
+    `capability-provider.block-storage-local` (set in base values.yaml);
+    consumer overlay must host the deployment in a dedicated
+    `local-path-storage` namespace carrying
+    `provide.block-storage-local: "true"` (documented in values.yaml).
+- **Existing-producer namespace-label migration (PR B).**
+  - `vault` namespace: `provide.monitoring-scrape`.
+  - `external-secrets` namespace: `provide.monitoring-scrape`.
 
 - **Root-level OSS-hygiene documents.**
   - `ARCHITECTURE.md` — root-level C4 L1/L2 architecture document with
@@ -97,6 +223,24 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Cluster-agnostic refactor (#31, PR #44).** Every reference to a
+  specific consumer-cluster repo name (`talos-homelab-cluster`,
+  `talos-office-lab-cluster`, the pre-split `Talos-Homelab` origin) has
+  been removed from the live documentation surface: `README.md` "How
+  consumers use this", `AGENTS.md` "Repository Purpose", the
+  `ARCHITECTURE.md` L1 System-Context diagram, `docs/mcp-setup.md`
+  install hint, and the `cert-manager/kustomization.yaml` comment now
+  speak only about generic "consumer cluster repos". The cluster-
+  agnostic invariant is now visible in the docs, not just in the
+  filesystem. `CHANGELOG.md` deliberately retains the historical
+  references as per-release record; the rewrite scope is current
+  architecture only.
+- **ADR `docs/adr-multi-repo-platform-split.md` rewritten cluster-
+  agnostic.** The ADR now describes the three repo *roles* (platform
+  base, Claude-Code harness, consumer cluster repo) without naming
+  individual repos. The phase-by-phase migration plan (Phases 1, 1.5,
+  2, 3A, 3B) is dropped — every phase is long complete and the
+  per-release history lives in this CHANGELOG. Net: 343 → 174 lines.
 - **AGENTS.md / CLAUDE.md / README.md / .gitignore — capability-first v2 docs.**
   - `AGENTS.md` §"Platform Network Interface (PNI) Rules" rewritten to v2:
     capability-first vocabulary (5-site producer/consumer table),
