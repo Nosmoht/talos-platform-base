@@ -69,7 +69,7 @@ resource name; spec semantics unchanged)
 **Breaking?** yes, for any artifact that references the policy by its
 `metadata.name`
 
-#### Breaking changes (consumer action required)
+### Breaking changes (consumer action required)
 
 - `ClusterPolicy/pni-contract-audit` is renamed to
   `ClusterPolicy/pni-contract-enforce`. The new name matches both the
@@ -86,7 +86,7 @@ resource name; spec semantics unchanged)
     similar resource selectors keyed by the old name
   - Documentation links / cookbook snippets
 
-#### Migration on a live cluster
+### Migration on a live cluster
 
 PolicyReports keyed on the old `policy="pni-contract-audit"` will be
 GC'd by Kyverno when the renamed policy is applied (Kyverno emits a
@@ -102,7 +102,7 @@ kubectl get clusterpolicy pni-contract-enforce -o yaml | diff /tmp/pre-rename.ya
 # Expected diff: metadata.name only, plus new UID / resourceVersion
 ```
 
-#### Why the rename
+### Why the rename
 
 The policy was authored as fail-closed enforcement
 (`validationFailureAction: Enforce`) but its `metadata.name` carried
@@ -112,7 +112,7 @@ assuming "audit" meant non-blocking, then surprised when admission
 denied namespace creation). The rename aligns name, filename, and
 behaviour. No spec change.
 
-#### Validation steps after upgrade
+### Validation steps after upgrade
 
 1. `make validate-gitops` in consumer repo passes.
 2. `kubectl get clusterpolicy pni-contract-enforce` returns one
