@@ -10,7 +10,7 @@ kind: Kustomization
 # kubeconform then check the result. The same _rendered/ tree is what
 # consumer cluster repos vendor via the OCI artifact.
 #
-# Consumer-side (talos-homelab-cluster) splits manifests.yaml and crds.yaml
+# Consumer-side overlays split manifests.yaml and crds.yaml
 # into two ArgoCD Applications (CRDs at sync-wave -5, controller at wave 0)
 # to deploy them with the right ordering and ServerSideApply semantics.
 resources:

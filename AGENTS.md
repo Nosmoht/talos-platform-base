@@ -5,8 +5,7 @@
 This is the cluster-agnostic platform base for the Talos-on-Kubernetes
 deployment family. It provides Helm-base manifests, Talos machine-config
 patches, ArgoCD bootstrap templates, and the validation pipeline that any
-consumer cluster repo (e.g. `talos-homelab-cluster`, future
-`talos-office-lab-cluster`) builds upon via OCI-artifact consumption.
+consumer cluster repo builds upon via OCI-artifact consumption.
 
 It is **NOT a runnable cluster**. It does NOT contain cluster identity, node
 IPs, secrets, or environment-specific overrides. Those live in consumer
