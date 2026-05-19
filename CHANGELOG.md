@@ -7,6 +7,18 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Vale prose linter + Google Developer Documentation Style (#57).**
+  `.vale.ini` configures Vale 3.14.2 with the Google style package,
+  scoped to root-level Markdown files (`README`, `ARCHITECTURE`,
+  `AGENTS`, `CONTRIBUTING`, `SECURITY`, `MAINTAINERS`, `UPGRADING`,
+  `CHANGELOG`). Conservative initial ruleset: opts out of Headings,
+  EmDash, LyHyphens, Spelling, Units, WordList, Will, Acronyms (each
+  with a documented reason); enforces `Latin`, `Periods`, `Quotes`,
+  `Slang`, `We`, plus `Vale.Avoid` and `Vale.Repetition`. New `vale`
+  CI workflow (pinned by SHA per Scorecard convention) blocks on
+  every error.
+  Spec: [vale.sh](https://vale.sh) +
+  [Google Developer Docs Style](https://developers.google.com/style).
 - **arc42 narrative scaffolding in ARCHITECTURE.md (#56).** Adds arc42
   sections 1 (Introduction & Goals), 2 (Architecture Constraints), 4
   (Solution Strategy), 10 (Quality Requirements), 11 (Risks &
@@ -287,10 +299,10 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   specific consumer-cluster repo name (`talos-homelab-cluster`,
   `talos-office-lab-cluster`, the pre-split `Talos-Homelab` origin) has
   been removed from the live documentation surface: `README.md` "How
-  consumers use this", `AGENTS.md` "Repository Purpose", the
+  consumers use this," `AGENTS.md` "Repository Purpose," the
   `ARCHITECTURE.md` L1 System-Context diagram, `docs/mcp-setup.md`
   install hint, and the `cert-manager/kustomization.yaml` comment now
-  speak only about generic "consumer cluster repos". The cluster-
+  speak only about generic "consumer cluster repos." The cluster-
   agnostic invariant is now visible in the docs, not just in the
   filesystem. `CHANGELOG.md` deliberately retains the historical
   references as per-release record; the rewrite scope is current

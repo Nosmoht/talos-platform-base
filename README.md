@@ -49,7 +49,7 @@ Those live in **consumer cluster repos**.
 
 Consumer cluster repos pin a specific tag of this base via:
 
-1. A one-line `.base-version` file (e.g. `v0.1.0`)
+1. A one-line `.base-version` file (for example `v0.1.0`)
 2. A consumer-owned bootstrap step that runs
    `oras pull ghcr.io/nosmoht/talos-platform-base:<v>` into a gitignored
    `vendor/base/` directory — typically a small shell script in the

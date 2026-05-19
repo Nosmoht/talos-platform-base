@@ -119,7 +119,7 @@ Loki → Victoria-Logs swap is a label move on the producer pod template,
 not a CCNP edit.
 
 Exception: cluster-singleton plumbing without a capability fit
-(e.g. `kube-dns` in `monitoring-dns-visibility`) keeps the tool selector
+(for example `kube-dns` in `monitoring-dns-visibility`) keeps the tool selector
 and is explicitly documented as such.
 
 ### Out of scope for the base

@@ -10,7 +10,7 @@ Email: `thomas.krahn.tk@gmail.com` with subject prefix
 Include:
 
 - The repository tag (or commit SHA) affected.
-- The component or path under suspicion (e.g. a specific PNI Kyverno
+- The component or path under suspicion (for example a specific PNI Kyverno
   policy, a Talos patch, a Helm value default).
 - Reproduction steps and expected vs observed behaviour.
 - Whether you are willing to be credited in the eventual fix commit.
@@ -80,7 +80,7 @@ credentials.
 | Threat | Surface |
 |---|---|
 | **Reserved-label forgery** — tenant manifest claims `provide.<cap>` or `capability-provider.<cap>` it should not have | PNI Kyverno policies (`pni-reserved-labels-enforce`, `pni-reserved-annotations-enforce`) |
-| **Cross-tenant L4 reachability** — namespace mis-declares `consume.<cap>` (e.g. without instance suffix on instanced cap) and gains L4 reach across tenants | PNI registry + audit-mode advisory; CCNP `endpointSelector` |
+| **Cross-tenant L4 reachability** — namespace mis-declares `consume.<cap>` (for example without instance suffix on instanced cap) and gains L4 reach across tenants | PNI registry + audit-mode advisory; CCNP `endpointSelector` |
 | **Capability-discovery forgery** — Service-level annotation forged to shadow real producers | `pni-reserved-annotations-enforce` |
 | **Secret leak in committed file** | `.github/workflows/gitops-validate.yml` `secret-scan` job (gitleaks); pre-commit gitleaks hook |
 | **Talos boot-loop trigger** in a patch (`debugfs=off`, `secureboot` installer) | AGENTS.md §Hard Constraints + `hard-constraints-check.yml` |

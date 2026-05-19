@@ -57,7 +57,7 @@ type(scope): short imperative summary
 ```
 
 `type` ∈ {`feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`}.
-`scope` ∈ component or subsystem (e.g. `pni`, `talos`, `cilium`,
+`scope` ∈ component or subsystem (for example `pni`, `talos`, `cilium`,
 `kyverno`, `loki`, …).
 
 Body MUST explain the *why* and stay readable without an issue tracker.

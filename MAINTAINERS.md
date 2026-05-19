@@ -8,7 +8,7 @@ small for a single-owner platform base.
 
 | Name | GitHub | Areas of responsibility |
 |---|---|---|
-| Thomas Krahn | [@nosmoht](https://github.com/nosmoht) | All — repo owner, OCI publisher, ADR steward |
+| Thomas Krahn | [@nosmoht](https://github.com/nosmoht) | All — repo owner, OCI publisher, ADR maintainer |
 
 ## Emeritus maintainers
 
