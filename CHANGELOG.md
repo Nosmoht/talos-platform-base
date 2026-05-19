@@ -7,6 +7,13 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **MADR 3.0 frontmatter on every ADR (#55).** All four ADRs migrated
+  from plain-Markdown `**Status:** …` / `**Date:** …` headers to
+  structured YAML frontmatter (`status`, `date`, `deciders`,
+  `consulted`, `informed`, `supersedes`, `related`). New
+  [`docs/adr-template.md`](docs/adr-template.md) is the source for
+  future ADRs. Spec:
+  [MADR 3.0](https://adr.github.io/madr/) ([adr.github.io](https://adr.github.io)).
 - **OpenSSF Best Practices self-assessment (#54).** New
   [`docs/openssf-best-practices.md`](docs/openssf-best-practices.md)
   maps every Passing-level criterion to a load-bearing artefact in

@@ -1,8 +1,23 @@
-# ADR: Two-Layer Capability Architecture — Tool-Capability-Index (Layer A) Separate from PNI Network-Trust Registry (Layer B)
+---
+status: accepted
+date: 2026-05-18
+date-history:
+  - 2026-05-13 proposed
+  - 2026-05-18 accepted (validation tooling landed, see issue #33)
+deciders:
+  - Thomas Krahn
+consulted:
+  - platform-reliability-reviewer (two-layer split review)
+informed: []
+companion-docs:
+  - "[Platform Capability Index](./platform-capability-index.yaml)"
+  - "[Generated index reference](./platform-capability-index.md)"
+  - "[PNI Capability Architecture](./capability-architecture.md)"
+  - "[Capability Producer/Consumer Symmetry ADR](./adr-capability-producer-consumer-symmetry.md)"
+implementation-tracking-issue: "https://github.com/Nosmoht/talos-platform-base/issues/33"
+---
 
-**Status:** accepted
-**Date:** 2026-05-13 (proposed), accepted 2026-05-18 (validation tooling landed, see issue #33)
-**Companion docs:** [Platform Capability Index](./platform-capability-index.yaml) · [Generated index reference](./platform-capability-index.md) · [PNI Capability Architecture](./capability-architecture.md) · [Capability Producer/Consumer Symmetry ADR](./adr-capability-producer-consumer-symmetry.md)
+# ADR: Two-Layer Capability Architecture — Tool-Capability-Index (Layer A) Separate from PNI Network-Trust Registry (Layer B)
 
 > **Implementation status (2026-05-18):** the three validation scripts and the
 > `capability-index-check` CI job listed in §"Validation (CI required checks)"

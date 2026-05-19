@@ -1,8 +1,17 @@
-# ADR: Capability Producer/Consumer Symmetry
+---
+status: accepted
+date: 2026-05-13
+deciders:
+  - Thomas Krahn
+consulted:
+  - platform-reliability-reviewer (PNI v2 design review)
+  - team-red (adversarial review)
+informed: []
+supersedes:
+  - implicit consumer-only PNI contract as shipped through v0.1.0
+---
 
-**Status**: Accepted
-**Date**: 2026-05-13
-**Supersedes**: implicit consumer-only PNI contract as shipped through v0.1.0
+# ADR: Capability Producer/Consumer Symmetry
 
 ## Context
 
