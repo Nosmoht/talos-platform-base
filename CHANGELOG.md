@@ -7,6 +7,13 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **arc42 narrative scaffolding in ARCHITECTURE.md (#56).** Adds arc42
+  sections 1 (Introduction & Goals), 2 (Architecture Constraints), 4
+  (Solution Strategy), 10 (Quality Requirements), 11 (Risks &
+  Technical Debt), 12 (Glossary) around the existing C4 L1+L2 views.
+  arc42 §5 (Building Block View) and §6 (Runtime View) remain covered
+  by C4 L2 and "Key flows"; §9 (Architecture Decisions) is the ADR
+  set. Spec: [arc42.org](https://arc42.org/).
 - **MADR 3.0 frontmatter on every ADR (#55).** All four ADRs migrated
   from plain-Markdown `**Status:** …` / `**Date:** …` headers to
   structured YAML frontmatter (`status`, `date`, `deciders`,
