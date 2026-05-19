@@ -7,6 +7,13 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **OpenSSF Scorecard CI workflow + README badge (#53).** Weekly
+  scheduled supply-chain risk analysis via
+  `ossf/scorecard-action@v2.4.3` (SHA-pinned). SARIF results uploaded
+  to GitHub code-scanning + published to the public OpenSSF Scorecard
+  API at `api.scorecard.dev`. The README badge reflects the latest
+  scheduled run. Spec:
+  [github.com/ossf/scorecard](https://github.com/ossf/scorecard).
 - **CycloneDX 1.6 SBOM attached to every OCI artifact (#52).** Generated
   by Syft via `anchore/sbom-action@v0.17.9` during the publish workflow
   and attached as a cosign attestation (`--type cyclonedx`) keyed to the
