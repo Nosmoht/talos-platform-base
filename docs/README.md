@@ -38,7 +38,7 @@ tutorial / how-to / reference / explanation.
 
 ## Authoring conventions
 
-- New ADRs: `adr-<short-kebab-id>.md` with MADR-style frontmatter.
+- New ADRs: copy [`adr-template.md`](adr-template.md), rename to `adr-<short-kebab-id>.md`, fill in every [MADR 3.0](https://adr.github.io/madr/) frontmatter field. The frontmatter is canonical; do not duplicate `Status:` / `Date:` lines in the body.
 - New how-to docs: `<topic>-<recipe>.md`, lead with audience + companion-doc table.
 - Auto-generated files carry the comment block `<!-- GENERATED FILE — DO NOT EDIT BY HAND. -->` at the top.
 - Diagrams: Mermaid in fenced ` ```mermaid ` blocks (renders natively in GitHub).

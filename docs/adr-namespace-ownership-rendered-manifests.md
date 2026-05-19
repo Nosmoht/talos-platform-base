@@ -1,8 +1,19 @@
-# ADR: Namespace Ownership in the Rendered Manifests Pattern
+---
+status: accepted
+date: 2026-05-18
+date-note: choreography amended 2026-05-18 after second incident
+deciders:
+  - Thomas Krahn
+consulted:
+  - platform-reliability-reviewer
+  - team-red (post-incident review #2)
+informed: []
+related:
+  - "[Capability Producer/Consumer Symmetry](adr-capability-producer-consumer-symmetry.md)"
+  - "[Multi-Repo Platform Split](adr-multi-repo-platform-split.md)"
+---
 
-**Status**: Accepted; choreography amended 2026-05-18 after second incident
-**Date**: 2026-05-18
-**Related**: [Capability Producer/Consumer Symmetry](adr-capability-producer-consumer-symmetry.md), [Multi-Repo Platform Split](adr-multi-repo-platform-split.md)
+# ADR: Namespace Ownership in the Rendered Manifests Pattern
 
 ## Revision history
 

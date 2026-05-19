@@ -1,8 +1,20 @@
-# ADR: Multi-Repo Platform Split for Multi-Cluster Reuse
+---
+status: accepted
+date: 2026-05-18
+date-history:
+  - 2026-04-27 initial
+  - 2026-04-29 amended (consumption mechanism)
+  - 2026-05-18 amended (de-named consumer repos for cluster-agnostic phrasing)
+deciders:
+  - Thomas Krahn
+consulted:
+  - gitops-operator (consumption-mechanism design)
+informed: []
+supersedes:
+  - implicit single-repo assumption that pre-dated this base
+---
 
-**Status**: Accepted
-**Date**: 2026-04-27 (initial), amended 2026-04-29 (consumption mechanism), 2026-05-18 (de-named consumer repos for cluster-agnostic phrasing)
-**Supersedes**: implicit single-repo assumption that pre-dated this base
+# ADR: Multi-Repo Platform Split for Multi-Cluster Reuse
 
 ## Context
 
