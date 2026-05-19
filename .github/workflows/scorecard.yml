@@ -1,0 +1,65 @@
+# OpenSSF Scorecard supply-chain risk analysis.
+#
+# Score is published to the OpenSSF API and surfaced as a README badge
+# (https://api.securityscorecards.dev/projects/github.com/Nosmoht/talos-platform-base).
+# SARIF results are uploaded to GitHub code-scanning for per-check
+# triage.
+#
+# Spec: https://github.com/ossf/scorecard
+# Recommended workflow template:
+# https://github.com/ossf/scorecard-action#installation
+#
+# Actions are pinned to a full commit SHA per Scorecard's own
+# `Pinned-Dependencies` check; the tag comment is informational only.
+name: Scorecard supply-chain security
+
+on:
+  branch_protection_rule:
+  schedule:
+    # Weekly run, Tuesday 07:20 UTC. Drift-safe — the score is mostly
+    # repo-config-dependent and changes slowly.
+    - cron: "20 7 * * 2"
+  push:
+    branches: [main]
+
+# Default: read-all; per-job permissions widen where Scorecard needs it.
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # SARIF upload to code-scanning
+      security-events: write
+      # OIDC for the publish-to-OpenSSF-API path
+      id-token: write
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Publish to OpenSSF Scorecard public API so the badge
+          # served from api.securityscorecards.dev reflects this run.
+          publish_results: true
+
+      - name: Upload SARIF as workflow artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scorecard-sarif
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload SARIF to GitHub code-scanning
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        with:
+          sarif_file: results.sarif

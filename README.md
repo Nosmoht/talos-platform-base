@@ -1,6 +1,7 @@
 # talos-platform-base
 
 [![REUSE status](https://api.reuse.software/badge/github.com/Nosmoht/talos-platform-base)](https://api.reuse.software/info/github.com/Nosmoht/talos-platform-base)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Nosmoht/talos-platform-base/badge)](https://scorecard.dev/viewer/?uri=github.com/Nosmoht/talos-platform-base)
 
 Cluster-agnostic GitOps platform base for Talos-on-Kubernetes deployments.
 
