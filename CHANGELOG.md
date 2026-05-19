@@ -5,7 +5,19 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-_(empty — file a Changed/Added entry here when the next change lands.)_
+### Changed
+
+- **PNI policy name/behaviour mismatch cleanup (#48).** Two further
+  ClusterPolicies that were missed by the v0.5.0 PR (#40) renamed to
+  match their `validationFailureAction: Enforce` semantics:
+  - `pni-capability-validation-audit` → `pni-capability-validation-enforce`
+  - `pni-reserved-labels-audit` → `pni-reserved-labels-enforce`
+
+  Rule names, validation messages, and behaviour are unchanged. File
+  names already matched the new policy names — only the
+  `metadata.name` field was renamed. See
+  [`UPGRADING.md` §`v0.6.0`](UPGRADING.md) for consumer-side migration
+  steps (identical pattern to the v0.5.0 `pni-contract` rename).
 
 ## v0.5.0 — 2026-05-18
 
