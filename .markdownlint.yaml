@@ -26,6 +26,15 @@ MD025: false
 MD003:
   style: atx
 
+# Pin the Markdown dialect to CommonMark to prevent GFM-only
+# constructs (e.g., `~strikethrough~`, `[ ] task lists` outside lists)
+# from rendering inconsistently in non-GitHub viewers (vendored
+# `oras pull` + local reader, IDE preview, etc.).
+# Spec: https://spec.commonmark.org/
+# Note: markdownlint follows CommonMark by default; this comment
+# documents the intent so future contributors do not silently flip
+# to GFM-only constructs.
+
 # Ordered lists: keep numbering consistent (1, 2, 3 — not all 1.).
 MD029:
   style: ordered
