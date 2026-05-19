@@ -25,6 +25,7 @@ tutorial / how-to / reference / explanation.
 - [`primitive-contract.md`](primitive-contract.md) — Diagnostics primitive output schema (harness-plugin contract).
 - [`rendered-manifests.md`](rendered-manifests.md) — render-pipeline factual description (stages, chart.lock.yaml schema, workflow commands).
 - [`glossary.md`](glossary.md) — cross-domain vocabulary (PNI, capability terms, GitOps, Talos, repo conventions). Cite this when a term first appears in a new doc.
+- [`openssf-best-practices.md`](openssf-best-practices.md) — self-assessment against the [OpenSSF Best Practices](https://www.bestpractices.dev/) Passing-level criteria; source of truth for the external enrolment form.
 
 ## Explanation — discussion-level material
 

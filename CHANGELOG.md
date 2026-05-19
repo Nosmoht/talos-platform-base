@@ -7,6 +7,16 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **OpenSSF Best Practices self-assessment (#54).** New
+  [`docs/openssf-best-practices.md`](docs/openssf-best-practices.md)
+  maps every Passing-level criterion to a load-bearing artefact in
+  this repo (Apache-2.0 + REUSE for licensing, cosign + SLSA + SBOM
+  for secure release, `SECURITY.md` + `security.txt` for vulnerability
+  reporting, conftest + kubeconform for static analysis). External
+  enrolment at <https://www.bestpractices.dev> is a manual maintainer
+  step; the badge appears in README only after the project ID is
+  assigned. Spec:
+  [bestpractices.dev/criteria/0](https://www.bestpractices.dev/criteria/0).
 - **OpenSSF Scorecard CI workflow + README badge (#53).** Weekly
   scheduled supply-chain risk analysis via
   `ossf/scorecard-action@v2.4.3` (SHA-pinned). SARIF results uploaded
