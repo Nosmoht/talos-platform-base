@@ -32,7 +32,9 @@ promptly.
 
 | Tag stream | Status |
 |---|---|
-| `v0.1.x` (current) | supported |
+| `v0.5.x` (current) | supported |
+| `v0.2.x` – `v0.4.x` | unsupported — pre-release internal markers, no GitHub Releases |
+| `v0.1.x` | unsupported — superseded |
 | pre-`v0.1.0` | unsupported — historical only |
 
 ## Supply chain
@@ -102,6 +104,21 @@ If you operate a consumer cluster against this base:
    becomes exploitable.
 4. **Do not relax the namespace-anchored producer rule**. If a producer
    "needs" to live in a system namespace, relocate it.
+
+## Acknowledgements
+
+Researchers who report vulnerabilities responsibly are credited in the
+fix commit and listed here (opt-in). The list is empty so far; first
+public credit on first triaged report.
+
+## Machine-readable contact
+
+A [RFC 9116](https://datatracker.ietf.org/doc/html/rfc9116)
+`security.txt` is published at
+[`.well-known/security.txt`](.well-known/security.txt). It points
+back to this file for the full policy and to the `Acknowledgements`
+section above. `Expires` is bumped annually together with the
+`SUPPORTED.md`-equivalent §`Supported versions` table.
 
 ## References
 
