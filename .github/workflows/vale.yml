@@ -36,7 +36,13 @@ jobs:
           vale --version
 
       - name: Vale sync (fetch Google style package)
-        run: vale sync
+        # mkdir is required: vale sync writes to StylesPath but does not
+        # create the directory itself (Vale 3.14.2 behaviour). Local
+        # developers usually have it already from a prior `vale sync`;
+        # CI starts from a clean checkout.
+        run: |
+          mkdir -p .vale/styles
+          vale sync
 
       - name: Vale lint (root-level docs)
         # Scope matches .vale.ini's section glob — root-level Markdown
