@@ -38,3 +38,9 @@ kubernetes/base/infrastructure/*/.render-stage1/
 .worktrees/
 .security-key
 logs/security/
+
+# Vale prose linter — package directory populated by `vale sync` (CI step + local).
+.vale/styles/Google/
+.vale/styles/Vocab/
+.vale/styles/.vale-config/
+.vale/styles/config/

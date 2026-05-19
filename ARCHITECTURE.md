@@ -248,7 +248,7 @@ backed by a load-bearing mechanism in the repo today.
 | **Supply-chain integrity** | Every release verifiable to commit SHA via OIDC chain | cosign + SLSA + CycloneDX 1.6 SBOM in [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) |
 | **Reproducibility** | `chart.lock.yaml` + `values.yaml` → identical rendered output | `verify-rendered.sh` (CI required); idempotent renderer |
 | **Cluster-agnostic** | A second cluster pins a tag and bootstraps without base edits | `make day0` flow in consumer repo; `.base-version` pin; no IPs/FQDNs in base |
-| **Capability-stable swappability** | Tool swap (e.g. Prometheus → Victoria-Metrics) = label move, not CCNP rewrite | Capability-first CCNP selectors; namespace-anchored trust |
+| **Capability-stable swappability** | Tool swap (for example Prometheus → Victoria-Metrics) = label move, not CCNP rewrite | Capability-first CCNP selectors; namespace-anchored trust |
 | **CI-required gates** | No broken main; no silent regression | conftest (864+954 tests), kubeconform, kyverno-cli, REUSE lint, hard-constraints-check, capability-index validation |
 | **Multi-maintainer-ready** | New contributor can land a non-trivial change in ≤ 4 h human time | `CONTRIBUTING.md`, `MAINTAINERS.md`, per-component READMEs, MADR ADR template |
 | **Operator-facing docs** | Audience is platform operators, not end-users — content is at operator altitude | Diátaxis-organised `docs/`; arc42 §1 explicitly excludes end-user audience |

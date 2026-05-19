@@ -1,0 +1,54 @@
+name: Vale prose linter
+
+on:
+  pull_request:
+    paths:
+      - "*.md"
+      - ".vale.ini"
+      - ".github/workflows/vale.yml"
+  push:
+    branches: [main]
+    paths:
+      - "*.md"
+      - ".vale.ini"
+
+permissions:
+  contents: read
+
+jobs:
+  vale:
+    name: Vale + Google Developer Documentation Style
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Vale (pinned)
+        env:
+          VALE_VERSION: "3.14.2"
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          curl -fsSLo "$tmp/vale.tar.gz" \
+            "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
+          tar -xzf "$tmp/vale.tar.gz" -C "$tmp" vale
+          sudo install -m 0755 "$tmp/vale" /usr/local/bin/vale
+          vale --version
+
+      - name: Vale sync (fetch Google style package)
+        run: vale sync
+
+      - name: Vale lint (root-level docs)
+        # Scope matches .vale.ini's section glob — root-level Markdown
+        # files only for the initial pass. Widening to docs/** is a
+        # follow-up once the existing corpus is consistent.
+        run: |
+          vale --no-wrap --output=line \
+            README.md \
+            ARCHITECTURE.md \
+            AGENTS.md \
+            CONTRIBUTING.md \
+            SECURITY.md \
+            MAINTAINERS.md \
+            UPGRADING.md \
+            CHANGELOG.md

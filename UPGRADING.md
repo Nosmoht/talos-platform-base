@@ -90,7 +90,7 @@ Release after v0.1.0.
   validation messages are unchanged.
 - Consumers must update any of the following that reference the old
   name:
-  - PolicyReport queries / alerts (e.g. Grafana dashboards filtering
+  - PolicyReport queries / alerts (for example Grafana dashboards filtering
     on `policy="pni-contract-audit"`)
   - `metadata.labels` or `metadata.annotations` that name the policy
   - `argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource` or
@@ -273,7 +273,7 @@ When a new release ships, add a section in the format below:
 
 #### Breaking changes (consumer action required)
 
-- <bullet> — e.g. "Helm value `loki.write.s3.endpoint` renamed to
+- <bullet> — for example "Helm value `loki.write.s3.endpoint` renamed to
   `loki.write.objectStorage.endpoint`. Patch your consumer overlay."
 
 #### New capabilities
