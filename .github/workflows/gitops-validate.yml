@@ -533,6 +533,23 @@ jobs:
       - name: Verify rendered Markdown is up-to-date
         run: scripts/render-capability-index.sh --check
 
+  reuse-compliance:
+    name: REUSE 3.3 compliance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: REUSE lint
+        # https://reuse.software/spec/ — every file must carry SPDX
+        # licence + copyright metadata, either inline or via REUSE.toml.
+        # Aggregate annotation at repo root covers all Apache-2.0 files;
+        # _rendered/ output of upstream Helm charts is marked
+        # LicenseRef-UpstreamHelm — see LICENSES/LicenseRef-UpstreamHelm.txt.
+        uses: fsfe/reuse-action@v5
+
   secret-scan:
     name: Secret Scan (gitleaks)
     runs-on: ubuntu-latest
