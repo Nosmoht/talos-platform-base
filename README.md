@@ -1,5 +1,7 @@
 # talos-platform-base
 
+[![REUSE status](https://api.reuse.software/badge/github.com/Nosmoht/talos-platform-base)](https://api.reuse.software/info/github.com/Nosmoht/talos-platform-base)
+
 Cluster-agnostic GitOps platform base for Talos-on-Kubernetes deployments.
 
 This base ships a **capability-first Platform Network Interface (PNI)**: every
