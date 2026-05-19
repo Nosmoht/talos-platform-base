@@ -100,15 +100,32 @@ gh attestation verify \
   "oci://ghcr.io/${OWNER}/talos-platform-base@${DIGEST}" \
   --owner "${OWNER}"
 
-# 3. Pull the artifact
+# 3. Verify the SBOM attestation (CycloneDX 1.6, v0.6.0+)
+cosign verify-attestation \
+  --type cyclonedx \
+  --certificate-identity-regexp \
+    "^https://github.com/${OWNER}/talos-platform-base/\\.github/workflows/oci-publish\\.yml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$" \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  "ghcr.io/${OWNER}/talos-platform-base:${TAG}" \
+  | jq -r '.payload' | base64 -d | jq '.predicate' > sbom.cdx.json
+
+# Optionally inspect what's inside:
+jq '.metadata.component.name, .components | length' sbom.cdx.json
+
+# 4. Pull the artifact
 oras pull "ghcr.io/${OWNER}/talos-platform-base:${TAG}"
 
-# 4. Verify the in-tarball checksums
+# 5. Verify the in-tarball checksums
 sha256sum -c checksums.txt
 ```
 
-All four steps must succeed. If any step fails, the artifact MUST NOT
+All five steps must succeed. If any step fails, the artifact MUST NOT
 be vendored into a consumer cluster's `vendor/base/` directory.
+
+The SBOM attestation (step 3) is present on **v0.6.0 and later**.
+Pre-v0.6.0 artifacts ship cosign signature + SLSA provenance only —
+skip step 3 when verifying older tags. The verification gate in
+consumer-repo CI should match the oldest pinned `.base-version`.
 
 ## Placeholder substitution
 

@@ -5,6 +5,23 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **CycloneDX 1.6 SBOM attached to every OCI artifact (#52).** Generated
+  by Syft via `anchore/sbom-action@v0.17.9` during the publish workflow
+  and attached as a cosign attestation (`--type cyclonedx`) keyed to the
+  OCI artifact digest. Consumers verify via
+  `cosign verify-attestation --type cyclonedx …` (see
+  [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md)
+  step 3). Spec: [CycloneDX 1.6](https://cyclonedx.org/specification/overview/).
+- **REUSE 3.3 licensing compliance (#51).** `REUSE.toml` + `LICENSES/`
+  layout with aggregate Apache-2.0 annotation; `LicenseRef-UpstreamHelm`
+  marks rendered Helm output (project does not own the copyright). New
+  `reuse-compliance` CI job enforces compliance on every PR.
+- **RFC 9116 `.well-known/security.txt` (#50).** Machine-readable
+  security contact metadata complementing `SECURITY.md`. Indexed by
+  OpenSSF Scorecard and security scanners.
+
 ### Changed
 
 - **PNI policy name/behaviour mismatch cleanup (#48).** Two further

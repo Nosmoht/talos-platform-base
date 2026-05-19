@@ -141,6 +141,36 @@ jobs:
           subject-digest: ${{ steps.digest.outputs.digest }}
           push-to-registry: true
 
+      - name: Generate SBOM (CycloneDX 1.6, JSON)
+        # Inventory of every file shipped in the OCI tarball, attached as
+        # an in-toto attestation in the next step. REUSE 3.3 metadata
+        # (LICENSES/, REUSE.toml) drives per-file licence attribution.
+        # CycloneDX 1.6 chosen over SPDX 3.0: broader OCI/cosign tooling
+        # maturity in 2026 (Syft, Trivy, cosign attest --type cyclonedx
+        # all native; SPDX 3.0 still gated behind opt-in flags).
+        # Spec: https://cyclonedx.org/specification/overview/
+        uses: anchore/sbom-action@v0.17.9
+        with:
+          file: _release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz
+          format: cyclonedx-json
+          output-file: _release/talos-platform-base-${{ steps.tag.outputs.tag }}.cdx.json
+          upload-artifact: false
+
+      - name: cosign attest SBOM
+        # Attaches the SBOM as a cosign attestation keyed to the OCI digest.
+        # Consumers verify via:
+        #   cosign verify-attestation --type cyclonedx \
+        #     --certificate-identity-regexp <pattern> \
+        #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+        #     ghcr.io/<owner>/talos-platform-base:<tag>
+        run: |
+          set -euo pipefail
+          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
+          cosign attest --yes \
+            --type cyclonedx \
+            --predicate "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.cdx.json" \
+            "ghcr.io/${OWNER_LC}/talos-platform-base@${{ steps.digest.outputs.digest }}"
+
       - name: Tag :latest
         # Skip on SemVer pre-release tags (`v*-*`). Pre-release artifacts
         # must not become the default that consumers pin to via `:latest`.
