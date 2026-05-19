@@ -5,6 +5,22 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **README.md rewritten around the repo's vision (#58).** Reorganised
+  from a feature-listing into a problem-and-answer narrative: why this
+  base exists (three pain points: per-cluster drift, tool lock-in via
+  network policy, vendor-the-tarball trust), the idea that closes each
+  pain (immutable OCI artifact, capability-first PNI, cosign + SLSA +
+  SBOM), what consumers receive, how to consume it (Day-0 vendor +
+  Day-2 ArgoCD Multi-Source stanza), how to verify it before vendoring,
+  honest status (single maintainer, pre-1.0, first consumer
+  established), and a routing table to the rest of the docs. Body now
+  matches the Talos / Crossplane / FluxCD pattern for operator-audience
+  base repos; component listings, validation-command reference, and
+  full structure tree moved to `ARCHITECTURE.md` / `CONTRIBUTING.md` /
+  `docs/` where they belong.
+
 ### Added
 
 - **Vale prose linter + Google Developer Documentation Style (#57).**
