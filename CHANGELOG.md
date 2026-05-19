@@ -23,6 +23,22 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Human-maintained component dependency graph
+  (`docs/component-dependencies.md`).** Mermaid graph of cross-component
+  edges in `kubernetes/base/infrastructure/`. Hard edges sourced from
+  `values.yaml` service-DNS references, `ClusterIssuer` names, and
+  CRD producer / consumer relationships; soft edges sourced from
+  ADR-documented namespace co-tenancy and App-of-Apps deploy
+  provenance. PNI `provide.<cap>` / `consume.<cap>` labels are
+  deliberately **not** the source — they are an admission contract,
+  not a dependency declaration. `CONTRIBUTING.md` mandates an update
+  on component add / remove / rename or service-DNS / Issuer
+  cross-reference changes. A render-script-based approach was
+  evaluated via multi-perspective review and an empirical research
+  pass and rejected as overengineering at the current scale
+  (22 components, 3 documented cross-references) per CNCF Platforms
+  White Paper TVP guidance; re-evaluate when cross-reference count
+  exceeds ~50.
 - **Vale prose linter + Google Developer Documentation Style (#57).**
   `.vale.ini` configures Vale 3.14.2 with the Google style package,
   scoped to root-level Markdown files (`README`, `ARCHITECTURE`,

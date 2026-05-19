@@ -117,6 +117,13 @@ CCNPs, hard constraints), update **at minimum**:
 - Either an ADR (decision-grade) or the matching `docs/*.md` reference.
 - Auto-generated docs that drift (`scripts/render-capability-reference.sh --check` must pass in CI).
 
+If your change adds, removes, or renames a component in
+`kubernetes/base/infrastructure/`, or changes a service-DNS or
+`ClusterIssuer` cross-reference between components, also update
+[`docs/component-dependencies.md`](docs/component-dependencies.md).
+The graph is human-maintained — no render script enforces it; PR
+reviewers flag stale graphs.
+
 ## File placement rules
 
 - Component directory name MUST equal the ArgoCD Application name.
