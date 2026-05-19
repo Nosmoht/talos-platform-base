@@ -149,6 +149,89 @@ behaviour. No spec change.
 
 ---
 
+## `v0.6.0` (forthcoming) — PNI policy name/behaviour mismatch cleanup
+
+**Type:** MINOR (consumer-visible breaking name change in two Kubernetes
+resource names; spec semantics unchanged)
+**Breaking?** yes, for any artifact that references the renamed
+`pni-capability-validation-audit` or `pni-reserved-labels-audit`
+ClusterPolicies by their `metadata.name`. No other consumer-side action
+is required — rule names, validation messages, and behaviour are
+unchanged.
+
+### Why the rename
+
+`v0.5.0` (#40) fixed the name/behaviour mismatch on
+`ClusterPolicy/pni-contract-audit` (named `-audit`, actually
+`validationFailureAction: Enforce`) but left two further policies with
+the same defect:
+
+| Old `metadata.name` | `spec.validationFailureAction` | New `metadata.name` |
+|---|---|---|
+| `pni-capability-validation-audit` | `Enforce` | `pni-capability-validation-enforce` |
+| `pni-reserved-labels-audit` | `Enforce` | `pni-reserved-labels-enforce` |
+
+The file names (`kyverno-clusterpolicy-pni-*-enforce.yaml`) already
+matched the behaviour; only the `metadata.name` field was renamed. Rule
+names (`validate-consume-capability-labels`,
+`block-reserved-labels-on-tenant-namespaces`, …), validation messages,
+and `validationFailureAction: Enforce` semantics are unchanged.
+
+### Breaking changes (consumer action required)
+
+Consumers must update any of the following that reference the old
+names:
+
+- PolicyReport queries / alerts (Grafana dashboards filtering on
+  `policy="pni-capability-validation-audit"` or
+  `policy="pni-reserved-labels-audit"`)
+- `metadata.labels` or `metadata.annotations` that name either policy
+- `argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource` or
+  similar resource selectors keyed by the old names
+- Documentation links / cookbook snippets
+
+### Migration on a live cluster
+
+Identical mechanism to the v0.5.0 `pni-contract` rename: Kyverno GCs
+the old PolicyReports keyed on the renamed resource UID and emits
+fresh ones for the new name. Brief gap in PolicyReport continuity
+during cutover — expected.
+
+```bash
+# Before merging the v0.6.0 bump:
+kubectl get clusterpolicy pni-capability-validation-audit -o yaml > /tmp/pre-cap-rename.yaml
+kubectl get clusterpolicy pni-reserved-labels-audit -o yaml > /tmp/pre-rlbl-rename.yaml
+
+# After merging + ArgoCD reconcile:
+kubectl get clusterpolicy pni-capability-validation-enforce -o yaml \
+  | diff /tmp/pre-cap-rename.yaml -
+kubectl get clusterpolicy pni-reserved-labels-enforce -o yaml \
+  | diff /tmp/pre-rlbl-rename.yaml -
+# Expected diff: metadata.name only, plus new UID / resourceVersion
+```
+
+### Validation steps after upgrade
+
+1. `make validate-gitops` in consumer repo passes.
+2. `kubectl get clusterpolicy pni-capability-validation-enforce` and
+   `kubectl get clusterpolicy pni-reserved-labels-enforce` each return
+   one resource with `ADMISSION=true BACKGROUND=true READY=True`.
+3. `kubectl get clusterpolicy pni-capability-validation-audit`
+   and `kubectl get clusterpolicy pni-reserved-labels-audit` both
+   return NotFound.
+4. `kubectl get policyreport -A -l policy.kyverno.io/policy-name=pni-capability-validation-enforce`
+   and the equivalent for `pni-reserved-labels-enforce` return reports
+   keyed on the new names.
+
+### Why this was not folded into v0.5.0
+
+The two policies were missed during the v0.5.0 PR (#40) review.
+Discovered during the consumer-side audit of the v0.5.0 rename
+(`talos-homelab-cluster#48`). Tracked as #48; this section corresponds
+to that issue's resolution.
+
+---
+
 ## Pending sunsets
 
 These deprecations are scheduled to remove via PR F (alias removal),

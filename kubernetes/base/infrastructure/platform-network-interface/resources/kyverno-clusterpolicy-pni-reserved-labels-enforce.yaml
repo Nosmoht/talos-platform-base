@@ -1,7 +1,7 @@
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: pni-reserved-labels-audit
+  name: pni-reserved-labels-enforce
   labels:
     app.kubernetes.io/name: platform-network-interface
     app.kubernetes.io/component: policy-governance
