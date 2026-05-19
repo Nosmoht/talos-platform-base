@@ -35,3 +35,11 @@ MD029:
 # Pin to dash because the repo's prevailing convention is dash.
 MD004:
   style: dash
+
+# Duplicate-heading: only flag duplicates within the same parent
+# section. UPGRADING.md and CHANGELOG.md repeat sub-headings like
+# "Why the rename" / "Breaking changes" / "Migration on a live cluster"
+# under each version section by design — that's the per-release
+# structure, not accidental duplication.
+MD024:
+  siblings_only: true
