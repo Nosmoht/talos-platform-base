@@ -7,6 +7,13 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **README.md surfaces the Day-Zero invariant in the lead section.**
+  One paragraph between "Why this exists" and "The idea" names the
+  load-bearing rule ("the base ships Talos plus the minimum needed for
+  ArgoCD to take over; everything else is GitOps-reconciled") and
+  links to `docs/day-zero-pattern.md`. Prevents the reader from having
+  to reconstruct the pattern from `ARCHITECTURE.md`, `AGENTS.md`, and
+  the root `Makefile`.
 - **README.md rewritten around the repo's vision (#58).** Reorganised
   from a feature-listing into a problem-and-answer narrative: why this
   base exists (three pain points: per-cluster drift, tool lock-in via

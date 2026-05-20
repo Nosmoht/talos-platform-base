@@ -23,6 +23,11 @@ Three problems recur in homelab-to-fleet Kubernetes operation:
 
 This base is the answer to those three problems, in order.
 
+The base ships **Talos plus the minimum** needed for ArgoCD to take
+over; everything else is GitOps-reconciled. See
+[`docs/day-zero-pattern.md`](docs/day-zero-pattern.md) for the three
+layers and the documented bootstrap exceptions.
+
 ## The idea
 
 | Pain | Answer | Mechanism |
