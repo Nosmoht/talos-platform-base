@@ -23,6 +23,18 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Day-Zero pattern explanation (`docs/day-zero-pattern.md`).** Single
+  canonical write-up of the three-layer bootstrap path: Talos (OS +
+  bundled Kubernetes + Cilium CNI via `extraManifests`) → ArgoCD
+  self-bootstrap (the five `kubectl apply` / `helm` invocations
+  contained behind `make argocd-bootstrap`, each with a stated
+  reason) → ArgoCD-reconciled day-two (the 22 components under
+  `kubernetes/base/infrastructure/`, sync-wave -2 / -1 / 0 / 1
+  ordering preserved). Includes the canonical end-to-end command
+  sequence a consumer-cluster operator runs, plus the explicit
+  statement that nothing outside the documented bootstrap exceptions
+  may be `kubectl apply`-ed. Linked from `docs/README.md §Explanation`
+  and from the tutorial's *Where to go next* table.
 - **Human-maintained component dependency graph
   (`docs/component-dependencies.md`).** Mermaid graph of cross-component
   edges in `kubernetes/base/infrastructure/`. Hard edges sourced from

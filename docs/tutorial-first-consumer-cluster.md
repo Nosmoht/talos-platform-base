@@ -197,6 +197,7 @@ capability-first contract.
 | The full label vocabulary | [`pni-cookbook.md`](./pni-cookbook.md) |
 | What each capability is for | [`capability-reference.md`](./capability-reference.md) |
 | Why the architecture looks this way | [`capability-architecture.md`](./capability-architecture.md) |
+| Take the cluster from rendered manifests to a live ArgoCD-reconciled environment | [`day-zero-pattern.md`](./day-zero-pattern.md) |
 | How the registry, policies, and CCNPs interact | [`adr-capability-producer-consumer-symmetry.md`](./adr-capability-producer-consumer-symmetry.md) |
 | Issue lifecycle when you find a bug | [`issue-workflow.md`](./issue-workflow.md) |
 | Verify the supply chain in depth | [`oci-artifact-verification.md`](./oci-artifact-verification.md) |

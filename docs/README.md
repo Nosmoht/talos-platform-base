@@ -30,6 +30,7 @@ tutorial / how-to / reference / explanation.
 ## Explanation — discussion-level material
 
 - [`capability-architecture.md`](capability-architecture.md) — canonical explanation of the capability-first contract (why namespace-anchored trust, why instance scoping, why no central tool-signature whitelist).
+- [`day-zero-pattern.md`](day-zero-pattern.md) — the three layers (Talos + bundled K8s + CNI / ArgoCD self-bootstrap / ArgoCD-reconciled day-two), the five documented `kubectl apply` exceptions, and the end-to-end command sequence.
 - [`adr-multi-repo-platform-split.md`](adr-multi-repo-platform-split.md) — why base + consumer is a two-repo split.
 - [`adr-capability-producer-consumer-symmetry.md`](adr-capability-producer-consumer-symmetry.md) — why capability-first, namespace-anchored trust, instance scoping.
 - [`adr-two-layer-capability-architecture.md`](adr-two-layer-capability-architecture.md) — separating Tool-Capability-Index (Layer A) from PNI network-trust registry (Layer B). **Status: proposed.**
