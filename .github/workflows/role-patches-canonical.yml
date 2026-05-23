@@ -18,7 +18,7 @@ jobs:
         run: |
           set -euo pipefail
           YQ_VERSION=v4.45.4
-          YQ_SHA256=654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
+          YQ_SHA256=b96de04645707e14a12f52c37e6266832e03c29e95b9b139cddcae7314466e69
           curl -fsSL -o /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
           echo "${YQ_SHA256}  /tmp/yq" | sha256sum -c -
           sudo install -m 0755 /tmp/yq /usr/local/bin/yq

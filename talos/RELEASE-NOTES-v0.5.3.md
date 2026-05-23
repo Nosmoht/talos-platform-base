@@ -28,7 +28,7 @@ yq -r '.roles[] | keys[]' cluster.yaml | sort -u
 
 Expected output:
 
-```
+```text
 default_extensions
 description
 patches
