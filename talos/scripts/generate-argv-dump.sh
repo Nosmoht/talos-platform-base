@@ -54,27 +54,31 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-NODES=$(make -n -C "$HOMELAB_DIR/talos" gen-configs 2>/dev/null \
-    | grep -oP '(?<=talosctl gen config )[^ ]+' \
-    | sort -u || true)
+TMPD=$(mktemp -d)
+trap 'rm -rf "$TMPD"' EXIT
 
-if [[ -z "$NODES" ]]; then
+NODES_FILE="$TMPD/nodes.txt"
+
+# Derive node list from dry-run Makefile output (POSIX grep, no -P).
+make -n -C "$HOMELAB_DIR/talos" gen-configs 2>/dev/null \
+    | grep 'talosctl gen config ' \
+    | sed 's/.*talosctl gen config \([^ ]*\).*/\1/' \
+    | sort -u > "$NODES_FILE" || true
+
+if [[ ! -s "$NODES_FILE" ]]; then
     # Fallback: read node list from cluster.yaml if present
     CLUSTER_YAML="$HOMELAB_DIR/cluster.yaml"
     if [[ -f "$CLUSTER_YAML" ]]; then
-        NODES=$(yq -r '.nodes[].name' "$CLUSTER_YAML" 2>/dev/null || true)
+        yq -r '.nodes[].name' "$CLUSTER_YAML" 2>/dev/null > "$NODES_FILE" || true
     fi
 fi
 
-if [[ -z "$NODES" ]]; then
+if [[ ! -s "$NODES_FILE" ]]; then
     echo "ERROR: could not derive node list. Pass the homelab-cluster-dir and ensure cluster.yaml or a Makefile gen-configs target is present." >&2
     exit 1
 fi
 
-TMPD=$(mktemp -d)
-trap 'rm -rf "$TMPD"' EXIT
-
-for node in $NODES; do
+while IFS= read -r node; do
     DUMP_FILE="$OUTPUT_DIR/$node.argv"
     echo "Capturing argv for $node -> $DUMP_FILE"
 
@@ -96,7 +100,7 @@ for node in $NODES; do
         "$TMPD/$node.raw" > "$DUMP_FILE"
 
     echo "OK: $DUMP_FILE"
-done
+done < "$NODES_FILE"
 
 echo ""
 echo "Done. Dump files written to $OUTPUT_DIR"

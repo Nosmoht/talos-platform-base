@@ -27,6 +27,9 @@ BASE_DIR="${3:-$(dirname "$(cd "$(dirname "$0")" && pwd)")}"
 SCHEMATIC_CACHE="${4:-$BASE_DIR/.schematic-cache.yaml}"
 VERSIONS_MK="${BASE_DIR}/versions.mk"
 
+TMPDIR_LOCAL=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_LOCAL"' EXIT
+
 # ---------------------------------------------------------------------------
 # Load versions
 # ---------------------------------------------------------------------------
@@ -72,7 +75,8 @@ OVERLAY=$(yq -r '.cluster.overlay // .cluster.name' "$CLUSTER_YAML")
 # ---------------------------------------------------------------------------
 # Patch list: roles[role].patches (ordered list; this IS the full patch list)
 # ---------------------------------------------------------------------------
-ROLE_PATCHES=$(yq -r ".roles[\"$NODE_ROLE\"].patches // [] | .[]" "$CLUSTER_YAML" 2>/dev/null || true)
+ROLE_PATCHES_FILE="$TMPDIR_LOCAL/role_patches.txt"
+yq -r ".roles[\"$NODE_ROLE\"].patches // [] | .[]" "$CLUSTER_YAML" 2>/dev/null > "$ROLE_PATCHES_FILE" || true
 
 # ---------------------------------------------------------------------------
 # Install-image URI
@@ -119,10 +123,10 @@ echo "$ENDPOINT"
 echo "--with-secrets"
 echo ".secrets.dec.yaml"
 
-for patch in $ROLE_PATCHES; do
+while IFS= read -r patch; do
     echo "--config-patch"
     echo "@$patch"
-done
+done < "$ROLE_PATCHES_FILE"
 
 echo "--config-patch"
 echo "@nodes/$NODE_NAME.yaml"

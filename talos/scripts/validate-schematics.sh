@@ -60,6 +60,11 @@ CAP_KEYS_FILE="$TMPDIR_LOCAL/cap_keys.txt"
 yq -r '.["hardware-capabilities"] | keys | .[]' "$CLUSTER_YAML" 2>/dev/null > "$CAP_KEYS_FILE" || true
 
 while IFS= read -r cap; do
+    # Validate key charset before interpolating into yq expressions (injection guard).
+    if ! [[ "$cap" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        fail "[hardware-capabilities]: key '$cap' contains illegal characters; expected ^[A-Za-z0-9._-]+\$"
+        continue
+    fi
     FEATURES_FILE="$TMPDIR_LOCAL/cap_features_$$.txt"
     yq -r "(.\"hardware-capabilities\".\"$cap\".requires_features // []) | .[]" "$CLUSTER_YAML" 2>/dev/null > "$FEATURES_FILE" || true
     while IFS= read -r feat; do
@@ -77,6 +82,8 @@ CAP_POINTER_FILE="$TMPDIR_LOCAL/cap_pointers.txt"
 : > "$CAP_POINTER_FILE"
 
 while IFS= read -r cap; do
+    # Charset guard (same as above — skip caps already rejected in requires_features loop)
+    [[ "$cap" =~ ^[A-Za-z0-9._-]+$ ]] || continue
     # Only collect pointer-form patches (file-form patches have no pointer field)
     PATCH_POINTERS_FILE="$TMPDIR_LOCAL/patch_ptrs_$$.txt"
     yq -r "(.\"hardware-capabilities\".\"$cap\".patches // []) | .[] | select(has(\"pointer\")) | .pointer" "$CLUSTER_YAML" 2>/dev/null > "$PATCH_POINTERS_FILE" || true
@@ -154,6 +161,12 @@ while [[ $NODE_IDX -lt $NODE_COUNT ]]; do
     NODE_CAPS_FILE="$TMPDIR_LOCAL/node_caps_${NODE_IDX}.txt"
     yq -r ".nodes[$NODE_IDX].hardware_capabilities | .[]" "$CLUSTER_YAML" 2>/dev/null > "$NODE_CAPS_FILE" || true
     while IFS= read -r cap; do
+        # Charset guard before interpolating into yq expressions
+        if ! [[ "$cap" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            fail "[n.$NODE_NAME]: hardware_capabilities entry '$cap' contains illegal characters; expected ^[A-Za-z0-9._-]+\$"
+            NODE_FAIL=1
+            continue
+        fi
         CAP_EXISTS=$(yq -r ".\"hardware-capabilities\" | has(\"$cap\")" "$CLUSTER_YAML" 2>/dev/null || echo "false")
         if [[ "$CAP_EXISTS" != "true" ]]; then
             fail "[n.$NODE_NAME]: capability '$cap' in hardware_capabilities not defined in cluster.yaml hardware-capabilities"
