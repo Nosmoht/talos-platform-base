@@ -227,6 +227,7 @@ spec:
           - resources:
               kinds:
                 - Pod
+                - PodTemplate
                 - Deployment
                 - StatefulSet
                 - DaemonSet
@@ -244,41 +245,46 @@ spec:
           reserved Layer-C namespace platform.io/hardware-feature.* or
           platform.io/hardware-capability.* — on the resource itself
           OR on a workload-template (spec.template.metadata.labels /
-          spec.jobTemplate.spec.template.metadata.labels). These
-          namespaces are owned by the platform's hardware-attestation
-          path (Talos machine.nodeLabels) and must not be set on
-          tenant-owned resources. See
-          docs/adr-three-layer-capability-architecture.md
+          spec.jobTemplate.spec.template.metadata.labels /
+          template.metadata.labels on PodTemplate). These namespaces are
+          owned by the platform's hardware-attestation path (Talos
+          machine.nodeLabels) and must not be set on tenant-owned
+          resources. See docs/adr-three-layer-capability-architecture.md
           §"Reserved label namespaces".
         deny:
           conditions:
             any:
               # Direct metadata.labels — applies to all matched kinds.
+              # Parenthesised to make the JMESPath precedence explicit
+              # (Kyverno engine consistency across version bumps; R2
+              # review LOW finding 2026-05-23 .work/reviews/r2/).
               - key: >-
-                  {{ request.object.metadata.labels | items(@, 'key', 'value')
-                     | [?starts_with(key, 'platform.io/hardware-feature.')]
-                     | length(@) }}
-                operator: GreaterThan
-                value: 0
-              - key: >-
-                  {{ request.object.metadata.labels | items(@, 'key', 'value')
-                     | [?starts_with(key, 'platform.io/hardware-capability.')]
-                     | length(@) }}
-                operator: GreaterThan
-                value: 0
-              # Workload-template path — applies to Deployment, StatefulSet,
-              # DaemonSet, ReplicaSet, ReplicationController, Job. For kinds
-              # without spec.template (Pod, Service, Namespace, CronJob),
-              # the JMESPath defaults to `{}` and length(@) returns 0.
-              - key: >-
-                  {{ request.object.spec.template.metadata.labels || `{}`
+                  {{ (request.object.metadata.labels || `{}`)
                      | items(@, 'key', 'value')
                      | [?starts_with(key, 'platform.io/hardware-feature.')]
                      | length(@) }}
                 operator: GreaterThan
                 value: 0
               - key: >-
-                  {{ request.object.spec.template.metadata.labels || `{}`
+                  {{ (request.object.metadata.labels || `{}`)
+                     | items(@, 'key', 'value')
+                     | [?starts_with(key, 'platform.io/hardware-capability.')]
+                     | length(@) }}
+                operator: GreaterThan
+                value: 0
+              # Workload-template path — applies to Deployment, StatefulSet,
+              # DaemonSet, ReplicaSet, ReplicationController, Job. For kinds
+              # without spec.template (Pod, PodTemplate, Service, Namespace,
+              # CronJob), the JMESPath defaults to `{}` and length(@) = 0.
+              - key: >-
+                  {{ (request.object.spec.template.metadata.labels || `{}`)
+                     | items(@, 'key', 'value')
+                     | [?starts_with(key, 'platform.io/hardware-feature.')]
+                     | length(@) }}
+                operator: GreaterThan
+                value: 0
+              - key: >-
+                  {{ (request.object.spec.template.metadata.labels || `{}`)
                      | items(@, 'key', 'value')
                      | [?starts_with(key, 'platform.io/hardware-capability.')]
                      | length(@) }}
@@ -287,14 +293,31 @@ spec:
               # CronJob jobTemplate path — applies only to CronJob; defaults
               # to `{}` on other kinds.
               - key: >-
-                  {{ request.object.spec.jobTemplate.spec.template.metadata.labels || `{}`
+                  {{ (request.object.spec.jobTemplate.spec.template.metadata.labels || `{}`)
                      | items(@, 'key', 'value')
                      | [?starts_with(key, 'platform.io/hardware-feature.')]
                      | length(@) }}
                 operator: GreaterThan
                 value: 0
               - key: >-
-                  {{ request.object.spec.jobTemplate.spec.template.metadata.labels || `{}`
+                  {{ (request.object.spec.jobTemplate.spec.template.metadata.labels || `{}`)
+                     | items(@, 'key', 'value')
+                     | [?starts_with(key, 'platform.io/hardware-capability.')]
+                     | length(@) }}
+                operator: GreaterThan
+                value: 0
+              # PodTemplate path — applies only to `kind: PodTemplate` v1
+              # (no `spec` wrapper; the template lives at top-level
+              # `template.metadata.labels`). Defaults to `{}` on other kinds.
+              - key: >-
+                  {{ (request.object.template.metadata.labels || `{}`)
+                     | items(@, 'key', 'value')
+                     | [?starts_with(key, 'platform.io/hardware-feature.')]
+                     | length(@) }}
+                operator: GreaterThan
+                value: 0
+              - key: >-
+                  {{ (request.object.template.metadata.labels || `{}`)
                      | items(@, 'key', 'value')
                      | [?starts_with(key, 'platform.io/hardware-capability.')]
                      | length(@) }}

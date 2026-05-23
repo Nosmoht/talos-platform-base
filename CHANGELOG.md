@@ -20,8 +20,12 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `cluster-provisioning`) gain `requires_hardware_features[]` referencing
   Layer-C ids. `node-feature-discovery` removed from
   `gpu-runtime.composition[]` (Layer-C producer-tooling, not Layer-A);
-  `gpu-runtime.independence_test.alt_impls_exist` re-evaluated to `true`
-  post-NFD-removal.
+  `gpu-runtime.independence_test.alt_impls_exist` stays `false` (entry
+  is NVIDIA-pinned by name + contract + `requires_hardware_features`;
+  AMD ROCm / Intel Gaudi are sibling Layer-A capabilities, not
+  alt-impls of this entry); `independent_lifecycle` re-evaluated to
+  `true` post-NFD-removal (device-plugin and DCGM-exporter have
+  separate version trains).
 - **Composite Capability Convention.** ADR §"Composite capability
   convention" documents the CNCF-Platforms-White-Paper two-tier model:
   Layer C holds atomic features; composite capabilities (e.g.
