@@ -1,0 +1,10 @@
+# nodes/worker-test.yaml — per-node fixture for cluster.yaml.example test.
+# Provides the network.bridge.nic binding required by the kubevirt-networking
+# capability's placeholder_bindings declaration.
+machine:
+  install:
+    disk: /dev/sda
+  network:
+    hostname: worker-test
+    bridge:
+      nic: eth0

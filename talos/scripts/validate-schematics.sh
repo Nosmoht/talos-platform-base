@@ -154,6 +154,30 @@ while [[ $NODE_IDX -lt $NODE_COUNT ]]; do
         if [[ "$CAP_EXISTS" != "true" ]]; then
             fail "[n.$NODE_NAME]: capability '$cap' in hardware_capabilities not defined in cluster.yaml hardware-capabilities"
             NODE_FAIL=1
+        else
+            # Check 6: binding-missing — capability declares placeholder_bindings
+            # that must be present in nodes/<name>.yaml for this node.
+            # placeholder_bindings is a map: PLACEHOLDER_NAME -> nodes/<name>.yaml field path
+            BINDINGS=$(yq -r ".\"hardware-capabilities\".\"$cap\".placeholder_bindings // {} | to_entries | .[] | .key + \"=\" + .value" "$CLUSTER_YAML" 2>/dev/null || true)
+            for binding in $BINDINGS; do
+                PLACEHOLDER="${binding%%=*}"
+                FIELD_PATH="${binding#*=}"
+                # Look for nodes/<name>.yaml relative to the cluster.yaml location
+                CLUSTER_DIR="$(dirname "$CLUSTER_YAML")"
+                NODE_YAML="$CLUSTER_DIR/nodes/$NODE_NAME.yaml"
+                if [[ ! -f "$NODE_YAML" ]]; then
+                    fail "[n.$NODE_NAME]: binding-missing — capability '$cap' references placeholder '\${$PLACEHOLDER}' but nodes/$NODE_NAME.yaml not found (expected at path '$FIELD_PATH')"
+                    NODE_FAIL=1
+                else
+                    # Convert dot-path to yq expression (e.g. network.bridge.nic -> .network.bridge.nic)
+                    YQ_PATH=".$(echo "$FIELD_PATH" | sed 's/\./\./g')"
+                    FIELD_VAL=$(yq -r "$YQ_PATH // \"\"" "$NODE_YAML" 2>/dev/null || true)
+                    if [[ -z "$FIELD_VAL" || "$FIELD_VAL" == "null" ]]; then
+                        fail "[n.$NODE_NAME]: binding-missing — capability '$cap' references placeholder '\${$PLACEHOLDER}' but nodes/$NODE_NAME.yaml is missing the binding (expected at path '$FIELD_PATH')"
+                        NODE_FAIL=1
+                    fi
+                fi
+            done
         fi
     done
 

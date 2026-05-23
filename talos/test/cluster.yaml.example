@@ -16,6 +16,9 @@
 roles:
   controlplane:
     description: "Kubernetes control-plane node running etcd + API server"
+    patches:
+      - patches/common.yaml
+      - patches/controlplane.yaml
     default_patches:
       - patches/controlplane.yaml
       - patches/system-clock.yaml
@@ -25,6 +28,9 @@ roles:
 
   worker:
     description: "Standard Kubernetes worker node"
+    patches:
+      - patches/common.yaml
+      - patches/worker.yaml
     default_patches:
       - patches/worker.yaml
       - patches/system-clock.yaml
@@ -122,6 +128,13 @@ hardware-capabilities:
     extensions:
       - https://example.invalid/extensions/rpi-firmware
 
+  kubevirt-networking:
+    description: "KubeVirt VM networking via VLAN + Linux bridge (requires NIC binding)"
+    placeholder_bindings:
+      NIC_NAME: network.bridge.nic
+    patches:
+      - file: patches/worker-kubevirt.yaml
+
 # Nodes — flat array; worker-01 and worker-02 share the same extension set
 # (both are role=worker, infra=metal, hw=intel-generic, caps=[base-server])
 # so bySet count (3 unique sets) < byNode count (5 nodes).
@@ -176,3 +189,25 @@ nodes:
       - arm-sbc
     ip: 10.0.0.41
     nic: eth0
+
+  - name: worker-test
+    role: worker
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - base-server
+      - kubevirt-networking
+    ip: 10.0.0.23
+    nic: eth0
+
+# Cluster identity for Makefile.lib integration tests
+cluster:
+  name: test-cluster
+  overlay: test-cluster
+  api_vip: 10.0.0.100
+  gateway_vip: 10.0.0.200
+  network: 10.0.0.0/24
+  gateway: 10.0.0.1
+  ntp_server: 10.0.0.1
+  target_revision: main

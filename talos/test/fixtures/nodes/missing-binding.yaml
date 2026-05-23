@@ -1,0 +1,12 @@
+# nodes/missing-binding.yaml — per-node fixture for invalid-binding-missing.yaml test.
+# Intentionally omits network.bridge.nic to trigger the binding-missing diagnostic
+# from validate-schematics when the kubevirt-networking capability is used.
+machine:
+  install:
+    disk: /dev/sda
+  network:
+    hostname: missing-binding
+    # network.bridge.nic is intentionally absent — this triggers:
+    # FAIL [n.missing-binding]: binding-missing — capability 'kubevirt-networking'
+    #   references placeholder '${NIC_NAME}' but nodes/missing-binding.yaml is
+    #   missing the binding (expected at path 'network.bridge.nic')

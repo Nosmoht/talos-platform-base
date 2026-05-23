@@ -49,16 +49,33 @@ validate-schematics:
 	@bash "$(BASE_DIR)/scripts/validate-schematics.sh" "$(CLUSTER_YAML)" "$(BASE_DIR)"
 
 # ---------------------------------------------------------------------------
-# argv-print — stub per-node argv (bit-identity verification in Phase 1C)
+# argv-print — Phase 1C: emit exact talosctl gen config argv for NODE=<name>
 # ---------------------------------------------------------------------------
-CLUSTER_NAME_LIB := $(shell yq -r '.cluster.name // "unknown"' $(CLUSTER_YAML) 2>/dev/null)
-ENDPOINT_LIB     := $(shell yq -r '(.cluster.api_vip // "ENDPOINT") | "https://" + . + ":6443"' $(CLUSTER_YAML) 2>/dev/null)
+# Usage: make argv-print NODE=<name>
+# Reads cluster.yaml via argv-print.sh; emits one argv element per line.
+# SCHEMATIC_CACHE defaults to <BASE_DIR>/.schematic-cache.yaml.
+# ---------------------------------------------------------------------------
+NODE ?=
+SCHEMATIC_CACHE ?= $(BASE_DIR)/.schematic-cache.yaml
+
+.PHONY: argv-print test-bit-identity
 
 argv-print:
-	@for n in $(NODES); do \
-	    echo "talosctl gen config $(CLUSTER_NAME_LIB) $(ENDPOINT_LIB) --config-patch @patches/<stub> [Phase 1C]  # node=$$n"; \
-	done
+	@if [ -z "$(NODE)" ]; then \
+	    echo "Usage: make argv-print NODE=<name>" >&2; exit 1; \
+	fi
+	@bash "$(BASE_DIR)/scripts/argv-print.sh" "$(CLUSTER_YAML)" "$(NODE)" "$(BASE_DIR)" "$(SCHEMATIC_CACHE)"
 
+# ---------------------------------------------------------------------------
+# test-bit-identity — Phase 1C: diff argv-print output against legacy argv-dump
+# ---------------------------------------------------------------------------
+# Usage: make test-bit-identity
+# Requires: ARGV_DUMP_DIR pointing to .work/p2-talos-oci/argv-dump/
+REPO_ROOT ?= $(shell git -C "$(BASE_DIR)" rev-parse --show-toplevel 2>/dev/null || echo "$(BASE_DIR)/..")
+ARGV_DUMP_DIR ?= $(REPO_ROOT)/.work/p2-talos-oci/argv-dump
+
+test-bit-identity:
+	@bash "$(BASE_DIR)/scripts/test-bit-identity.sh" 	    "$(CLUSTER_YAML)" "$(BASE_DIR)" "$(SCHEMATIC_CACHE)" "$(ARGV_DUMP_DIR)"
 # ---------------------------------------------------------------------------
 # Per-node rules (one explicit rule per node, no pattern matching)
 # ---------------------------------------------------------------------------
