@@ -65,12 +65,15 @@ jobs:
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             [ -f "$f" ] || continue
-            if grep -l 'metal-installer-secureboot' "$f" >/dev/null 2>&1; then
+            # R3 MED-2: also catch the bare `metal-secureboot` form, which
+            # the v0.5.1 schema permits as installer-profile enum value and
+            # which can render into install-image-template references.
+            if grep -lE 'metal-(installer-)?secureboot' "$f" >/dev/null 2>&1; then
               MATCHES="${MATCHES}${f}"$'\n'
             fi
           done <<<"$CHANGED_TALOS"
           if [ -n "$MATCHES" ]; then
-            echo "::error::Forbidden SecureBoot installer image (metal-installer-secureboot) detected in:"
+            echo "::error::Forbidden SecureBoot installer image (metal-installer-secureboot / metal-secureboot) detected in:"
             printf '%s' "$MATCHES"
             echo "Fix: Use metal-installer (SecureBoot causes boot loops on this cluster)."
             FAIL=1

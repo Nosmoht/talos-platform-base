@@ -145,15 +145,25 @@ while IFS= read -r set_key; do
 
     if [[ -n "$RESPONSE" ]]; then
         SID=$(echo "$RESPONSE" | jq -r '.id // empty' 2>/dev/null || true)
-        if [[ -n "$SID" ]]; then
+        # R3 MED-1: validate SID is 64-char lowercase hex at write site.
+        # Without this guard, a MITM-controlled factory response can persist
+        # attacker-shaped content in the cache file; argv-print's hex guard
+        # only fires when argv-print runs (not on the legacy gen-configs
+        # production path documented in RELEASE-NOTES-v0.5.1.md).
+        if [[ -n "$SID" && "$SID" =~ ^[0-9a-f]{64}$ ]]; then
             echo "$set_key	$SID" >> "$CACHED_IDS_FILE"
             echo "[cached] set_key=${set_key:0:12}... -> $SID"
+        elif [[ -n "$SID" ]]; then
+            # Do not echo $RESPONSE — body is attacker-controlled; could carry
+            # terminal escapes that execute when the log is later cat'd.
+            echo "[WARN] factory returned non-hex schematic_id for set_key=${set_key:0:12} (rejected; length=${#SID})" >&2
+            echo "$set_key	PENDING" >> "$CACHED_IDS_FILE"
         else
-            echo "[WARN] factory returned unexpected response for set_key=${set_key:0:12}: $RESPONSE" >&2
+            echo "[WARN] factory returned unexpected response for set_key=${set_key:0:12} (jq parse failed)" >&2
             echo "$set_key	PENDING" >> "$CACHED_IDS_FILE"
         fi
     else
-        echo "[WARN] factory POST failed for set_key=${set_key:0:12} (offline?)" >&2
+        echo "[WARN] factory POST failed for set_key=${set_key:0:12} (offline or HTTP error)" >&2
         echo "$set_key	PENDING" >> "$CACHED_IDS_FILE"
     fi
 done < "$SET_KEYS_FILE"

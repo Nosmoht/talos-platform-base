@@ -34,12 +34,16 @@ ARGV_DUMP_DIR="${4:?argv-dump-dir required}"
 TMPD=$(mktemp -d)
 trap 'rm -rf "$TMPD"' EXIT
 
-NODES=$(yq -r '.nodes[].name' "$CLUSTER_YAML")
+# Materialize node list into a file and iterate with `while IFS= read -r`
+# (R3 HIGH-A fix — same word-splitting defect class as R2-HIGH-1 / R2-MED-1).
+NODES_FILE="$TMPD/nodes.txt"
+yq -r '.nodes[].name' "$CLUSTER_YAML" 2>/dev/null > "$NODES_FILE" || true
+NODE_COUNT=$(wc -l < "$NODES_FILE" | tr -d ' ')
 FAIL=0
 PASS=0
 SKIP=0
 
-for n in $NODES; do
+while IFS= read -r n; do
     LEGACY="$ARGV_DUMP_DIR/$n.argv"
     if [[ ! -f "$LEGACY" ]]; then
         echo "SKIP $n: no legacy argv-dump at $LEGACY"
@@ -62,10 +66,10 @@ for n in $NODES; do
         echo "---"
         FAIL=$(( FAIL + 1 ))
     fi
-done
+done < "$NODES_FILE"
 
 echo ""
-echo "Results: $PASS PASS, $FAIL FAIL, $SKIP SKIP (of $( echo "$NODES" | wc -w | tr -d ' ') nodes)"
+echo "Results: $PASS PASS, $FAIL FAIL, $SKIP SKIP (of $NODE_COUNT nodes)"
 
 if [[ $FAIL -gt 0 ]]; then
     echo "Bit-identity FAILED: $FAIL node(s) differ"

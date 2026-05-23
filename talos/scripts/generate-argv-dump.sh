@@ -41,8 +41,32 @@
 #   argv-dump was captured (tagged in .work/p2-talos-oci/phase-0-summary.md).
 #   The schematic cache must be pre-seeded (factory.talos.dev not needed for
 #   reproduction if .schematic-cache.yaml is committed in the consumer repo).
+#
+# SECURITY TRUST ASSUMPTION (R3 HIGH-B):
+#   This script invokes `make -n -C "$HOMELAB_DIR/talos" gen-configs`.
+#   `make -n` suppresses RECIPE execution, but GNU Make still evaluates
+#   $(shell …), $(eval …), define/endef bodies, and include $(shell …) at
+#   parse time on every invocation regardless of -n. A consumer Makefile
+#   containing `FOO := $(shell <arbitrary command>)` therefore executes that
+#   command when this script runs.
+#
+#   Implication: only run this script against a $HOMELAB_DIR you author or
+#   audit yourself (your own consumer cluster repo). Do NOT run it against
+#   third-party forks, untrusted PR checkouts, or any directory whose
+#   Makefile content you have not reviewed. There is no sandboxing in this
+#   script — it inherits the caller's full credentials, network access, and
+#   $HOME.
+#
+#   This is a maintainer-side reproducibility helper, not a CI gate. It is
+#   never run in the platform-base CI pipeline.
 
 set -euo pipefail
+
+# Emit the trust reminder at runtime so it's visible in shell history /
+# CI logs even if a future caller skips the header docs.
+echo "[security] generate-argv-dump.sh runs 'make -n' against \$HOMELAB_DIR." >&2
+echo "[security] GNU Make parse-time \$(shell ...) executes regardless of -n." >&2
+echo "[security] Only point this at a consumer repo you authored or audited." >&2
 
 HOMELAB_DIR="${1:?Usage: $0 <homelab-cluster-dir> [output-dir]}"
 OUTPUT_DIR="${2:-.work/p2-talos-oci/argv-dump}"

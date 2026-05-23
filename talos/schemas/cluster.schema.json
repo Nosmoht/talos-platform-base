@@ -247,8 +247,8 @@
         },
         "hardware_capabilities": {
           "type": "array",
-          "items": {"type": "string"},
-          "description": "List of composite capability ids from the top-level hardware-capabilities map."
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "description": "List of composite capability ids from the top-level hardware-capabilities map. Items must match the same charset as hardware-capabilities propertyNames."
         },
         "ip": {
           "type": "string",
