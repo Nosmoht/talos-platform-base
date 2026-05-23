@@ -113,6 +113,7 @@ until Phase 3 cut-over is complete.** Two blockers:
    from the 5-axis cluster.yaml.
 
 **Phase 3 is a HARD prerequisite for new-path gen-configs.** Until then:
+
 - `make argv-print` — safe for inspection / bit-identity diff
 - `make validate-schematics` — safe for cluster.yaml validation
 - `make schematics` — safe for schematic cache refresh

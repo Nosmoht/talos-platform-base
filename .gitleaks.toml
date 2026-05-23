@@ -41,4 +41,13 @@ paths = [
   #   `data.alertmanager.yaml` = base64(alertmanager routing config).
   '''^kubernetes/base/infrastructure/dex/_rendered/manifests\.yaml$''',
   '''^kubernetes/base/infrastructure/kube-prometheus-stack/_rendered/manifests\.yaml$''',
+
+  # talos/test/fixtures/schematic-cache.yaml — pre-populated test fixture
+  # for the schematic-cache hash-dedup tests. The `set_key` values (64-char
+  # lowercase hex) are SHA-256 hashes of public extension URL lists; they
+  # are content-derived identifiers (per Talos Image Factory's spec), NOT
+  # credentials. The `schematic_id` values are explicit sentinels
+  # (0000...0001, 0000...0002, 0000...0003) per file comments. Generic
+  # api-key rule false-positives on set_key hash entropy.
+  '''^talos/test/fixtures/schematic-cache\.yaml$''',
 ]

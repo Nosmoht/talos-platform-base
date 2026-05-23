@@ -2,6 +2,7 @@
 ./docs/schemas/hardware-features.schema.json
 ./talos/AGENTS.md
 ./talos/Makefile.lib
+./talos/RELEASE-NOTES-v0.5.1.md
 ./talos/patches/common.yaml
 ./talos/patches/controlplane.yaml
 ./talos/patches/drbd.yaml
@@ -9,7 +10,6 @@
 ./talos/patches/worker-gvisor.yaml
 ./talos/patches/worker-kubevirt.yaml
 ./talos/patches/worker-pi.yaml
-./talos/RELEASE-NOTES-v0.5.1.md
 ./talos/schemas/cluster.schema.json
 ./talos/scripts/argv-print.sh
 ./talos/scripts/build-schematic-cache.sh

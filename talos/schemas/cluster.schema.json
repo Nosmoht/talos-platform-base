@@ -153,8 +153,8 @@
       "properties": {
         "installer-profile": {
           "type": "string",
-          "description": "Talos installer image profile (e.g. metal, aws, vmware, hetzner, nocloud).",
-          "enum": ["metal", "aws", "vmware", "hetzner", "nocloud", "metal-secureboot"]
+          "description": "Talos installer image profile. SecureBoot variants are forbidden by AGENTS.md Hard Constraints (cause boot loops on this platform) and enforced via .github/workflows/hard-constraints-check.yml.",
+          "enum": ["metal", "aws", "vmware", "hetzner", "nocloud"]
         },
         "extensions": {
           "type": "array",

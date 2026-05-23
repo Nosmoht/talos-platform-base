@@ -129,7 +129,7 @@ oci-allowlist-check: ## Build talos OCI tarball locally and diff against .ci-oci
 	@[ -f .ci-oci-tarball-expected.txt ] || { echo "ERROR: .ci-oci-tarball-expected.txt not found"; exit 1; }
 	@mkdir -p .work
 	@tar -czf .work/oci-check.tar.gz --files-from=.ci-oci-tarball-include.txt
-	@tar -tzf .work/oci-check.tar.gz | sed 's|^\./||' | sort | sed 's|^|./|' > .work/oci-check-contents.txt
+	@tar -tzf .work/oci-check.tar.gz | sed 's|^\./||' | LC_ALL=C sort | sed 's|^|./|' > .work/oci-check-contents.txt
 	@if diff -u .ci-oci-tarball-expected.txt .work/oci-check-contents.txt; then \
 		echo "OK: tarball contents match .ci-oci-tarball-expected.txt"; \
 	else \
