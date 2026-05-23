@@ -103,6 +103,15 @@ if [[ ! -s "$NODES_FILE" ]]; then
 fi
 
 while IFS= read -r node; do
+    # R4 LOW-B: charset guard mirrors the schema constraint on node names
+    # (cluster.schema.json: nodes[].name pattern ^[A-Za-z0-9._-]+$).
+    # The fallback path above reads from an arbitrary cluster.yaml that may
+    # not have been schema-validated; protect against $node interpolating
+    # shell-metachars into make targets and filesystem paths below.
+    if ! [[ "$node" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        echo "[WARN] skipping node '$node' — name violates ^[A-Za-z0-9._-]+\$" >&2
+        continue
+    fi
     DUMP_FILE="$OUTPUT_DIR/$node.argv"
     echo "Capturing argv for $node -> $DUMP_FILE"
 

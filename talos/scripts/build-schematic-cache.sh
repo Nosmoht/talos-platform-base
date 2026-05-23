@@ -57,8 +57,25 @@ mkdir -p "$EXTENSIONS_DIR"
 # ---------------------------------------------------------------------------
 if [[ -f "$CACHE_FILE" ]]; then
     # Extract bySet entries: set_key TAB schematic_id
+    # R4 MED-A: symmetric guard with the write-site at line 153 below.
+    # Without this, an attacker who corrupted the committed cache file
+    # (PR-poisoning, on-disk tamper, or stale MITM artifact) would have
+    # the malicious schematic_id read back into $CACHED_IDS_FILE on every
+    # subsequent run. The legacy gen-configs production path does NOT
+    # route through argv-print.sh, so the argv-print hex guard does not
+    # protect this code path.
     while IFS=$'\t' read -r set_key sid; do
         [[ -z "$set_key" || -z "$sid" ]] && continue
+        if [[ "$sid" == "PENDING" ]]; then
+            # PENDING entries are intentional cache-miss markers; preserve.
+            echo "$set_key	$sid" >> "$CACHED_IDS_FILE"
+            continue
+        fi
+        if ! [[ "$sid" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "[WARN] cache file '$CACHE_FILE' contains non-hex schematic_id for set_key=${set_key:0:12}... (rejected; length=${#sid})" >&2
+            echo "$set_key	PENDING" >> "$CACHED_IDS_FILE"
+            continue
+        fi
         echo "$set_key	$sid" >> "$CACHED_IDS_FILE"
     done < <(yq -r '.bySet | to_entries | .[] | [.key, .value.schematic_id] | join("\t")' "$CACHE_FILE" 2>/dev/null || true)
 fi
