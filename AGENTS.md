@@ -110,7 +110,7 @@ Reserved keys MUST NOT appear on tenant-owned resources. Concretely:
 - `platform.io/capability-provider.*` — settable on a workload only if its namespace carries the matching `provide.*` (namespace-anchored rule in `kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml`).
 - `platform.io/capability-endpoint.*` / `capability-protocol.*` on a Service — settable only by producer charts (admission policy `pni-reserved-annotations-enforce`).
 - `platform.io/hardware-feature.*` (Layer-C atomic) — settable only by Talos `machine.nodeLabels` or a Layer-C discovery relay. Tenant forgery on Pods / Namespaces / Services denied by the `reserved-layer-c-hardware-labels` rule in `kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml`. Catalogue: `docs/platform-hardware-features.yaml`.
-- `platform.io/hardware-capability.*` (Layer-C composite, downstream-defined) — settable only by Talos `machine.nodeLabels`. Composite capability ids are NOT base-shipped; consumer cluster repos declare them per the composite-capability convention in `docs/adr-three-layer-capability-architecture.md` §"Composite capability convention". Same enforcement rule as above.
+- `platform.io/hardware-capability.*` (Layer-C composite, downstream-defined) — settable only by Talos `machine.nodeLabels`. Composite capability ids are NOT base-shipped; consumer cluster repos declare them per the composite-capability convention in `docs/adr-three-layer-capability-architecture.md` §Composite capability convention. Same enforcement rule as above.
 - Legacy keys still forbidden everywhere: `platform.io/provider`, `platform.io/managed-by`, `platform.io/capability`.
 
 Upstream-owned label namespaces are governed by **convention, not by base policy**:

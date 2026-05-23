@@ -26,9 +26,9 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   alt-impls of this entry); `independent_lifecycle` re-evaluated to
   `true` post-NFD-removal (device-plugin and DCGM-exporter have
   separate version trains).
-- **Composite Capability Convention.** ADR §"Composite capability
-  convention" documents the CNCF-Platforms-White-Paper two-tier model:
-  Layer C holds atomic features; composite capabilities (e.g.
+- **Composite Capability Convention.** ADR §Composite capability
+  convention documents the CNCF-Platforms-White-Paper two-tier model:
+  Layer C holds atomic features; composite capabilities (for example,
   `compute-virt`, `compute-gpu-nvidia`) are downstream-defined in
   consumer `cluster.yaml` `hardware-capabilities:` blocks via
   `requires_features[]`. Composite labels emit
@@ -49,7 +49,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **CI job `capability-index-check`** reordered: Layer-C schema lint
   runs before Layer-A refs-check (ordering matters — Layer-A
   cross-references depend on Layer-C ids resolving). Job renamed to
-  "Capability-index validation (Layer A + Layer C)".
+  `Capability-index validation (Layer A + Layer C)`.
 - **Kyverno ClusterPolicy `pni-reserved-labels-enforce`** extended with
   new rule `reserved-layer-c-hardware-labels`: denies tenant-set
   `platform.io/hardware-feature.*` and `platform.io/hardware-capability.*`
@@ -60,9 +60,9 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `spec.jobTemplate.spec.template.metadata.labels`). Closes the
   controller-mediated propagation attack surface identified in Round-1
   team-red review (`.work/reviews/r1/team-red.md` CRITICAL). Per-CRD
-  enforcement (KubeVirt `VirtualMachine`, CNPG `Cluster`, etc.) is
-  out-of-scope and tracked as a follow-up issue per ADR §"Enforcement
-  scope (intentional limits)".
+  enforcement (KubeVirt `VirtualMachine`, CNPG `Cluster`, and other
+  consumer-installed CRDs) is out-of-scope and tracked as a follow-up
+  issue per ADR §Enforcement scope (intentional limits).
 
 ### Changed
 

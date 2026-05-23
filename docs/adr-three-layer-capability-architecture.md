@@ -45,8 +45,8 @@ artifact of the candidate set, not a derived consequence of the problem
 space.
 
 The two-round layer-audit (`.work/issues/layer-audit/findings.md` Round 1
-+ `.work/issues/layer-audit/cleanup-scope.md` Round 2) established three
-load-bearing facts that motivate this supersession:
+plus `.work/issues/layer-audit/cleanup-scope.md` Round 2) established
+three load-bearing facts that motivate this supersession:
 
 1. **A de-facto hardware layer already exists across ≥7 artifacts** —
    `kubernetes/base/infrastructure/cluster.yaml.example` lines 46–67
