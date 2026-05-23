@@ -2,6 +2,8 @@ talos/talosconfig
 talos/generated/
 talos/.secrets.dec.yaml
 talos/.versions.stamp
+talos/.schematic-ids.mk
+talos/.schematics.stamp
 /cluster.yaml
 /talos/_out/
 /kubernetes/bootstrap/argocd/_out/

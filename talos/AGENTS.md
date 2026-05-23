@@ -59,6 +59,29 @@ Before `talosctl` drain or `kubectl drain` on any node:
 - **Always use explicit endpoint flags**: `talosctl -n <node-ip> -e <node-ip>` (never implicit)
 - **Apply configs BEFORE `upgrade-k8s`**: `upgrade-k8s` reads extraManifests URLs from the LIVE node config
 
+## Schematic IDs are per-cluster state
+
+The Image Factory schematic IDs (`SCHEMATIC_ID`, `GPU_SCHEMATIC_ID`,
+`PI_SCHEMATIC_ID`) are content-hashes of a cluster-specific extension set.
+They depend on which extensions a given cluster pins in `versions.mk` plus
+local schematic patches and therefore differ between consumer clusters —
+they MUST NOT be committed in this cluster-agnostic base.
+
+Both the generated `talos/.schematic-ids.mk` (the IDs themselves) and the
+`talos/.schematics.stamp` (a Make stamp tracking last regeneration) are
+`.gitignore`d. Each consumer cluster regenerates them locally by running
+`make schematics` inside `talos/` (or `make -C talos schematics` from the
+repo root):
+
+```text
+make schematics                 # POSTs to factory.talos.dev/schematics
+                                # writes IDs into .schematic-ids.mk
+                                # touches .schematics.stamp
+```
+
+The generation rule itself (`talos/Makefile` ~line 291) remains intact and
+unchanged; only the cached output is no longer tracked.
+
 ## Makefile Targets
 
 ```text
