@@ -159,7 +159,7 @@ loop.
 
 This is the **only** "kubectl apply boundary" in the repo:
 
-```
+```text
 Layer 1 (Talos):         talosctl apply-config
                          ─────────────────────────
 Layer 2 (one-time seed): kubectl apply / helm install (5 invocations)
