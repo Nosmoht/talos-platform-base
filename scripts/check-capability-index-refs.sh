@@ -93,11 +93,20 @@ for i in $(seq 0 $((count - 1))); do
   id="$(yq -r ".capabilities[$i].id" "$INDEX_FILE")"
   prefix=".capabilities[$i] (id=$id)"
 
+  # Per #62: when an entry is `kind: network-primitive`, it's a CIDR-based
+  # CCNP / Gateway-API selector permission / cluster-singleton plumbing
+  # with no tool composition — the rule itself IS the dataplane. Skip the
+  # empty-composition check for these entries.
+  entry_kind="$(yq -r ".capabilities[$i].kind // \"tool-capability\"" "$INDEX_FILE")"
+
   # composition[] entries on each implementation.
   impl_len="$(yq -r ".capabilities[$i].implementations // [] | length" "$INDEX_FILE")"
   for j in $(seq 0 $((impl_len - 1))); do
     impl_name="$(yq -r ".capabilities[$i].implementations[$j].name" "$INDEX_FILE")"
     is_external="$(yq -r ".capabilities[$i].implementations[$j].source.external // false" "$INDEX_FILE")"
+    # Per-impl external_network_attachment flag (#62 hybrid for s3-object's
+    # external-s3 impl): treat as external (no composition expected).
+    is_ena="$(yq -r ".capabilities[$i].implementations[$j].external_network_attachment // false" "$INDEX_FILE")"
 
     # source.external can be a boolean true OR a non-empty string ("kubernetes"
     # for kube-apiserver, "talos" for the OS, …). Treat any non-false / non-null
@@ -105,15 +114,20 @@ for i in $(seq 0 $((count - 1))); do
     if [ "$is_external" != "false" ] && [ "$is_external" != "null" ] && [ -n "$is_external" ]; then
       continue
     fi
+    # External-network-attachment impls (#62) are also treated as external.
+    if [ "$is_ena" = "true" ]; then
+      continue
+    fi
 
     comp_len="$(yq -r ".capabilities[$i].implementations[$j].composition // [] | length" "$INDEX_FILE")"
-    # Empty composition is only a violation for non-external active impls.
-    # Considered / candidate impls represent design alternatives — they need
-    # not point at a deployed component.
+    # Empty composition is only a violation for non-external active impls in
+    # tool-capability entries. Considered/candidate impls represent design
+    # alternatives. Network-primitive entries (#62) legitimately have empty
+    # composition — the network-policy rule itself IS the dataplane.
     impl_status="$(yq -r ".capabilities[$i].implementations[$j].status" "$INDEX_FILE")"
     if [ "$comp_len" -eq 0 ]; then
-      if [ "$impl_status" = "active" ]; then
-        violate "$prefix .implementations[$j] ($impl_name): non-external active impl but composition is empty"
+      if [ "$impl_status" = "active" ] && [ "$entry_kind" != "network-primitive" ]; then
+        violate "$prefix .implementations[$j] ($impl_name): non-external active impl but composition is empty (kind=$entry_kind)"
       fi
       continue
     fi

@@ -26,44 +26,44 @@ hardware-features registry (Layer C, referenced via
 
 ## Summary
 
-| ID | Stability | Domain | Topology | Layer B id |
-|---|---|---|---|---|
-| [`metrics-scrape`](#metrics-scrape) | ga | observability / Metrics | host-and-tenant | monitoring-scrape |
-| [`metrics-storage`](#metrics-storage) | beta | observability / Metrics | host-and-tenant | — |
-| [`metrics-query`](#metrics-query) | beta | observability / Metrics | host-singleton | — |
-| [`hpa-metrics`](#hpa-metrics) | ga | observability / Metrics | tenant-instance | hpa-metrics |
-| [`logs-collect`](#logs-collect) | beta | observability / Logs | tenant-instance | logging-ship |
-| [`logs-storage`](#logs-storage) | beta | observability / Logs | host-singleton | logging-ship |
-| [`logs-query`](#logs-query) | beta | observability / Logs | host-singleton | — |
-| [`traces-collect`](#traces-collect) | alpha | observability / Tracing | tenant-instance | — |
-| [`traces-storage`](#traces-storage) | alpha | observability / Tracing | host-singleton | — |
-| [`traces-query`](#traces-query) | alpha | observability / Tracing | host-singleton | — |
-| [`alert-routing`](#alert-routing) | beta | observability / Alerts | host-singleton | — |
-| [`dashboards`](#dashboards) | beta | observability / Visualization | host-singleton | — |
-| [`tls-issuance`](#tls-issuance) | ga | provisioning / Security & Compliance | tenant-instance | tls-issuance |
-| [`vault-secrets`](#vault-secrets) | ga | provisioning / Key Management | host-singleton | vault-secrets |
-| [`identity-oidc`](#identity-oidc) | beta | provisioning / Key Management | host-singleton | — |
-| [`block-storage-replicated`](#block-storage-replicated) | beta | runtime / Cloud Native Storage | tenant-instance | block-storage-replicated |
-| [`block-storage-local`](#block-storage-local) | ga | runtime / Cloud Native Storage | tenant-instance | block-storage-local |
-| [`s3-object`](#s3-object) | ga | runtime / Cloud Native Storage | host-singleton | s3-object |
-| [`internet-egress`](#internet-egress) | ga | runtime / Cloud Native Network | tenant-instance | internet-egress |
-| [`controlplane-egress`](#controlplane-egress) | ga | runtime / Cloud Native Network | tenant-instance | controlplane-egress |
-| [`gateway-backend`](#gateway-backend) | ga | orchestration / API Gateway | tenant-instance | gateway-backend |
-| [`external-gateway-routes`](#external-gateway-routes) | ga | orchestration / API Gateway | tenant-instance | external-gateway-routes |
-| [`secondary-network-attachment`](#secondary-network-attachment) | alpha | runtime / Cloud Native Network | tenant-instance | — |
-| [`cnpg-postgres`](#cnpg-postgres) | ga | app-def / Database | host-singleton | cnpg-postgres |
-| [`redis-managed`](#redis-managed) | beta | app-def / Database | host-singleton | redis-managed |
-| [`rabbitmq-managed`](#rabbitmq-managed) | beta | app-def / Streaming & Messaging | host-singleton | rabbitmq-managed |
-| [`kafka-managed`](#kafka-managed) | alpha | app-def / Streaming & Messaging | host-singleton | kafka-managed |
-| [`gpu-runtime`](#gpu-runtime) | beta | runtime / Container Runtime | tenant-instance | gpu-runtime |
-| [`vm-runtime`](#vm-runtime) | beta | app-def / Application Definition & Image Build | host-only | — |
-| [`gitops-engine`](#gitops-engine) | ga | app-def / Continuous Integration & Delivery | host-only | — |
-| [`admission-policy`](#admission-policy) | ga | provisioning / Security & Compliance | tenant-instance | — |
-| [`runtime-security`](#runtime-security) | ga | provisioning / Security & Compliance | tenant-instance | — |
-| [`secret-sync`](#secret-sync) | ga | provisioning / Key Management | tenant-instance | — |
-| [`csr-approval`](#csr-approval) | ga | provisioning / Security & Compliance | tenant-instance | — |
-| [`secret-config-declarative`](#secret-config-declarative) | ga | provisioning / Key Management | host-only | — |
-| [`cluster-provisioning`](#cluster-provisioning) | alpha | orchestration / Scheduling & Orchestration | host-only | — |
+| ID | Kind | Stability | Domain | Topology | Layer B id |
+|---|---|---|---|---|---|
+| [`metrics-scrape`](#metrics-scrape) | `tool-capability` | ga | observability / Metrics | host-and-tenant | monitoring-scrape |
+| [`metrics-storage`](#metrics-storage) | `tool-capability` | beta | observability / Metrics | host-and-tenant | — |
+| [`metrics-query`](#metrics-query) | `tool-capability` | beta | observability / Metrics | host-singleton | — |
+| [`hpa-metrics`](#hpa-metrics) | `tool-capability` | ga | observability / Metrics | tenant-instance | hpa-metrics |
+| [`logs-collect`](#logs-collect) | `tool-capability` | beta | observability / Logs | tenant-instance | logging-ship |
+| [`logs-storage`](#logs-storage) | `tool-capability` | beta | observability / Logs | host-singleton | logging-ship |
+| [`logs-query`](#logs-query) | `tool-capability` | beta | observability / Logs | host-singleton | — |
+| [`traces-collect`](#traces-collect) | `tool-capability` | alpha | observability / Tracing | tenant-instance | — |
+| [`traces-storage`](#traces-storage) | `tool-capability` | alpha | observability / Tracing | host-singleton | — |
+| [`traces-query`](#traces-query) | `tool-capability` | alpha | observability / Tracing | host-singleton | — |
+| [`alert-routing`](#alert-routing) | `tool-capability` | beta | observability / Alerts | host-singleton | — |
+| [`dashboards`](#dashboards) | `tool-capability` | beta | observability / Visualization | host-singleton | — |
+| [`tls-issuance`](#tls-issuance) | `tool-capability` | ga | provisioning / Security & Compliance | tenant-instance | tls-issuance |
+| [`vault-secrets`](#vault-secrets) | `tool-capability` | ga | provisioning / Key Management | host-singleton | vault-secrets |
+| [`identity-oidc`](#identity-oidc) | `tool-capability` | beta | provisioning / Key Management | host-singleton | — |
+| [`block-storage-replicated`](#block-storage-replicated) | `tool-capability` | beta | runtime / Cloud Native Storage | tenant-instance | block-storage-replicated |
+| [`block-storage-local`](#block-storage-local) | `tool-capability` | ga | runtime / Cloud Native Storage | tenant-instance | block-storage-local |
+| [`s3-object`](#s3-object) | `tool-capability` | ga | runtime / Cloud Native Storage | host-singleton | s3-object |
+| [`internet-egress`](#internet-egress) | `network-primitive` | ga | runtime / Cloud Native Network | tenant-instance | internet-egress |
+| [`controlplane-egress`](#controlplane-egress) | `network-primitive` | ga | runtime / Cloud Native Network | tenant-instance | controlplane-egress |
+| [`gateway-backend`](#gateway-backend) | `network-primitive` | ga | orchestration / API Gateway | tenant-instance | gateway-backend |
+| [`external-gateway-routes`](#external-gateway-routes) | `network-primitive` | ga | orchestration / API Gateway | tenant-instance | external-gateway-routes |
+| [`secondary-network-attachment`](#secondary-network-attachment) | `tool-capability` | alpha | runtime / Cloud Native Network | tenant-instance | — |
+| [`cnpg-postgres`](#cnpg-postgres) | `tool-capability` | ga | app-def / Database | host-singleton | cnpg-postgres |
+| [`redis-managed`](#redis-managed) | `tool-capability` | beta | app-def / Database | host-singleton | redis-managed |
+| [`rabbitmq-managed`](#rabbitmq-managed) | `tool-capability` | beta | app-def / Streaming & Messaging | host-singleton | rabbitmq-managed |
+| [`kafka-managed`](#kafka-managed) | `tool-capability` | alpha | app-def / Streaming & Messaging | host-singleton | kafka-managed |
+| [`gpu-runtime`](#gpu-runtime) | `tool-capability` | beta | runtime / Container Runtime | tenant-instance | gpu-runtime |
+| [`vm-runtime`](#vm-runtime) | `tool-capability` | beta | app-def / Application Definition & Image Build | host-only | — |
+| [`gitops-engine`](#gitops-engine) | `tool-capability` | ga | app-def / Continuous Integration & Delivery | host-only | — |
+| [`admission-policy`](#admission-policy) | `tool-capability` | ga | provisioning / Security & Compliance | tenant-instance | — |
+| [`runtime-security`](#runtime-security) | `tool-capability` | ga | provisioning / Security & Compliance | tenant-instance | — |
+| [`secret-sync`](#secret-sync) | `tool-capability` | ga | provisioning / Key Management | tenant-instance | — |
+| [`csr-approval`](#csr-approval) | `tool-capability` | ga | provisioning / Security & Compliance | tenant-instance | — |
+| [`secret-config-declarative`](#secret-config-declarative) | `tool-capability` | ga | provisioning / Key Management | host-only | — |
+| [`cluster-provisioning`](#cluster-provisioning) | `tool-capability` | alpha | orchestration / Scheduling & Orchestration | host-only | — |
 
 ---
 
@@ -71,7 +71,7 @@ hardware-features registry (Layer C, referenced via
 
 ### `metrics-scrape`
 
-**Prometheus-format metrics scrape** · stability `ga` · domain observability / Metrics · topology `host-and-tenant`
+**Prometheus-format metrics scrape** · kind `tool-capability` · stability `ga` · domain observability / Metrics · topology `host-and-tenant`
 
 Producer pod exposes a /metrics endpoint speaking Prometheus
 scrape protocol v1. A scraper pulls that endpoint over HTTP.
@@ -95,7 +95,7 @@ Response is Prometheus text-format exposition. No protocol-level auth.
 
 ### `metrics-storage`
 
-**Time-series storage for metrics** · stability `beta` · domain observability / Metrics · topology `host-and-tenant`
+**Time-series storage for metrics** · kind `tool-capability` · stability `beta` · domain observability / Metrics · topology `host-and-tenant`
 
 Long-term retention store for Prometheus-format metrics,
 ingested via remote_write or OTLP-metrics.
@@ -118,7 +118,7 @@ gRPC OTLP-metrics. Ingestion authenticates via mTLS in mesh.
 
 ### `metrics-query`
 
-**PromQL/MetricsQL query endpoint** · stability `beta` · domain observability / Metrics · topology `host-singleton`
+**PromQL/MetricsQL query endpoint** · kind `tool-capability` · stability `beta` · domain observability / Metrics · topology `host-singleton`
 
 HTTP endpoint speaking PromQL or MetricsQL, consumed by
 dashboards, recording rules, and alert-rule-evaluators.
@@ -140,7 +140,7 @@ MetricsQL is a superset; same wire shape.
 
 ### `hpa-metrics`
 
-**Resource metrics API (HPA + kubectl top)** · stability `ga` · domain observability / Metrics · topology `tenant-instance`
+**Resource metrics API (HPA + kubectl top)** · kind `tool-capability` · stability `ga` · domain observability / Metrics · topology `tenant-instance`
 
 Aggregated short-window CPU/memory metrics via metrics.k8s.io,
 consumed by HorizontalPodAutoscaler and kubectl top.
@@ -163,7 +163,7 @@ Stable, K8s-native, served by an APIService.
 
 ### `logs-collect`
 
-**Log collection agent (push side)** · stability `beta` · domain observability / Logs · topology `tenant-instance`
+**Log collection agent (push side)** · kind `tool-capability` · stability `beta` · domain observability / Logs · topology `tenant-instance`
 
 Per-node or per-pod agent that reads stdout/stderr and ships
 logs to a downstream store via Loki-push or OTLP-logs.
@@ -188,7 +188,7 @@ Per-tenant deployment, configured at tenant boot.
 
 ### `logs-storage`
 
-**Log storage (ingest side)** · stability `beta` · domain observability / Logs · topology `host-singleton`
+**Log storage (ingest side)** · kind `tool-capability` · stability `beta` · domain observability / Logs · topology `host-singleton`
 
 Backend that accepts Loki-push or OTLP-logs and stores them
 for retention + querying.
@@ -212,7 +212,7 @@ OTLP-logs also accepted by recent versions.
 
 ### `logs-query`
 
-**LogQL query endpoint** · stability `beta` · domain observability / Logs · topology `host-singleton`
+**LogQL query endpoint** · kind `tool-capability` · stability `beta` · domain observability / Logs · topology `host-singleton`
 
 Read-side HTTP endpoint for log queries (LogQL or equivalent).
 
@@ -231,7 +231,7 @@ HTTP GET /loki/api/v1/query and /query_range (LogQL).
 
 ### `traces-collect`
 
-**Distributed trace collection agent** · stability `alpha` · domain observability / Tracing · topology `tenant-instance`
+**Distributed trace collection agent** · kind `tool-capability` · stability `alpha` · domain observability / Tracing · topology `tenant-instance`
 
 Agent that receives spans from instrumented apps via OTLP
 and forwards to a traces-storage backend.
@@ -252,7 +252,7 @@ Standard OpenTelemetry protocol.
 
 ### `traces-storage`
 
-**Distributed trace storage** · stability `alpha` · domain observability / Tracing · topology `host-singleton`
+**Distributed trace storage** · kind `tool-capability` · stability `alpha` · domain observability / Tracing · topology `host-singleton`
 
 Backend that ingests OTLP-traces and retains them for query.
 
@@ -271,7 +271,7 @@ OTLP-traces ingest (gRPC) or Jaeger-proto.
 
 ### `traces-query`
 
-**Trace query endpoint** · stability `alpha` · domain observability / Tracing · topology `host-singleton`
+**Trace query endpoint** · kind `tool-capability` · stability `alpha` · domain observability / Tracing · topology `host-singleton`
 
 Read-side HTTP API for trace search and trace-by-id lookups.
 
@@ -290,7 +290,7 @@ Tempo HTTP API or Jaeger HTTP API.
 
 ### `alert-routing`
 
-**Alert routing and delivery** · stability `beta` · domain observability / Alerts · topology `host-singleton`
+**Alert routing and delivery** · kind `tool-capability` · stability `beta` · domain observability / Alerts · topology `host-singleton`
 
 Receives Prometheus-format alerts and dispatches via email,
 webhooks, paging integrations.
@@ -311,7 +311,7 @@ HTTP POST /api/v2/alerts (Alertmanager v2 API).
 
 ### `dashboards`
 
-**Dashboard / visualization UI** · stability `beta` · domain observability / Visualization · topology `host-singleton`
+**Dashboard / visualization UI** · kind `tool-capability` · stability `beta` · domain observability / Visualization · topology `host-singleton`
 
 Human-facing UI that queries metrics-query, logs-query,
 traces-query via HTTP datasource plugins.
@@ -332,7 +332,7 @@ Tempo API. Consumer is humans via browser, not pods.
 
 ### `tls-issuance`
 
-**X.509 certificate issuance** · stability `ga` · domain provisioning / Security & Compliance · topology `tenant-instance`
+**X.509 certificate issuance** · kind `tool-capability` · stability `ga` · domain provisioning / Security & Compliance · topology `tenant-instance`
 
 Tenant emits a Certificate CR; controller issues a cert
 from a configured CA (ACME, Vault-PKI, internal CA).
@@ -355,7 +355,7 @@ Certificate CRDs. Egress to ACME providers if used.
 
 ### `vault-secrets`
 
-**KV-style secret access** · stability `ga` · domain provisioning / Key Management · topology `host-singleton`
+**KV-style secret access** · kind `tool-capability` · stability `ga` · domain provisioning / Key Management · topology `host-singleton`
 
 Tenant authenticates and reads/writes secrets in a per-tenant
 KV mount path.
@@ -380,7 +380,7 @@ JWKS endpoint).
 
 ### `identity-oidc`
 
-**OIDC identity provider** · stability `beta` · domain provisioning / Key Management · topology `host-singleton`
+**OIDC identity provider** · kind `tool-capability` · stability `beta` · domain provisioning / Key Management · topology `host-singleton`
 
 OIDC provider issuing ID tokens for workloads and humans.
 Tenants federate against it.
@@ -402,7 +402,7 @@ OIDC v1 over HTTPS (.well-known/openid-configuration,
 
 ### `block-storage-replicated`
 
-**Cross-node replicated block storage** · stability `beta` · domain runtime / Cloud Native Storage · topology `tenant-instance`
+**Cross-node replicated block storage** · kind `tool-capability` · stability `beta` · domain runtime / Cloud Native Storage · topology `tenant-instance`
 
 Block storage replicated across nodes via DRBD; PV survives
 node loss. Higher latency than local.
@@ -426,7 +426,7 @@ CSI gRPC interface (standard K8s CSI v1).
 
 ### `block-storage-local`
 
-**Node-local block storage** · stability `ga` · domain runtime / Cloud Native Storage · topology `tenant-instance`
+**Node-local block storage** · kind `tool-capability` · stability `ga` · domain runtime / Cloud Native Storage · topology `tenant-instance`
 
 Block storage bound to a single node; lowest latency, lost
 on node failure. PVs not portable.
@@ -449,7 +449,7 @@ CSI gRPC interface; topology-aware scheduling required.
 
 ### `s3-object`
 
-**S3-API object storage** · stability `ga` · domain runtime / Cloud Native Storage · topology `host-singleton`
+**S3-API object storage** · kind `tool-capability` · stability `ga` · domain runtime / Cloud Native Storage · topology `host-singleton`
 
 S3-compatible object storage; bucket-scoped per tenant.
 
@@ -470,7 +470,7 @@ S3 REST API over HTTPS, signature v4. Bucket per tenant.
 
 ### `internet-egress`
 
-**Public-internet egress** · stability `ga` · domain runtime / Cloud Native Network · topology `tenant-instance`
+**Public-internet egress** · kind `network-primitive` · stability `ga` · domain runtime / Cloud Native Network · topology `tenant-instance`
 
 Network policy permitting egress to public IP ranges
 (excluding RFC1918, link-local, loopback).
@@ -491,7 +491,7 @@ Implemented as CIDR-based CCNP; namespace opts in.
 
 ### `controlplane-egress`
 
-**kube-apiserver egress** · stability `ga` · domain runtime / Cloud Native Network · topology `tenant-instance`
+**kube-apiserver egress** · kind `network-primitive` · stability `ga` · domain runtime / Cloud Native Network · topology `tenant-instance`
 
 Egress to in-cluster kube-apiserver; required for any
 workload using a ServiceAccount token.
@@ -512,7 +512,7 @@ L4 egress to apiserver service port.
 
 ### `gateway-backend`
 
-**Gateway-API HTTPRoute backend** · stability `ga` · domain orchestration / API Gateway · topology `tenant-instance`
+**Gateway-API HTTPRoute backend** · kind `network-primitive` · stability `ga` · domain orchestration / API Gateway · topology `tenant-instance`
 
 Workload exposed as HTTPRoute backend behind a platform Gateway.
 
@@ -535,7 +535,7 @@ controller (Envoy/Cilium).
 
 ### `external-gateway-routes`
 
-**External-HTTPS Gateway-route attachment** · stability `ga` · domain orchestration / API Gateway · topology `tenant-instance`
+**External-HTTPS Gateway-route attachment** · kind `network-primitive` · stability `ga` · domain orchestration / API Gateway · topology `tenant-instance`
 
 Permission to attach HTTPRoutes to the cluster's external-https
 Gateway listener. Selection only, no separate dataplane.
@@ -556,7 +556,7 @@ Gateway-API allowedRoutes selector.
 
 ### `secondary-network-attachment`
 
-**Pod secondary network interfaces** · stability `alpha` · domain runtime / Cloud Native Network · topology `tenant-instance`
+**Pod secondary network interfaces** · kind `tool-capability` · stability `alpha` · domain runtime / Cloud Native Network · topology `tenant-instance`
 
 Pod opts into one or more additional network interfaces
 beyond the default pod network.
@@ -576,7 +576,7 @@ NetworkAttachmentDefinition CRD.
 
 ### `cnpg-postgres`
 
-**PostgreSQL (managed)** · stability `ga` · domain app-def / Database · topology `host-singleton`
+**PostgreSQL (managed)** · kind `tool-capability` · stability `ga` · domain app-def / Database · topology `host-singleton`
 
 PostgreSQL via the CloudNative-PG operator; one instance
 per CNPG Cluster CR.
@@ -599,7 +599,7 @@ pgwire v3 (Postgres native protocol) over TCP 5432.
 
 ### `redis-managed`
 
-**Redis (managed)** · stability `beta` · domain app-def / Database · topology `host-singleton`
+**Redis (managed)** · kind `tool-capability` · stability `beta` · domain app-def / Database · topology `host-singleton`
 
 Redis via OT-Container-Kit operator; one instance per
 RedisReplication/Cluster/Standalone CR.
@@ -620,7 +620,7 @@ RESP3 protocol over TCP 6379.
 
 ### `rabbitmq-managed`
 
-**RabbitMQ (managed)** · stability `beta` · domain app-def / Streaming & Messaging · topology `host-singleton`
+**RabbitMQ (managed)** · kind `tool-capability` · stability `beta` · domain app-def / Streaming & Messaging · topology `host-singleton`
 
 RabbitMQ via the official cluster-operator; one instance
 per RabbitmqCluster CR.
@@ -641,7 +641,7 @@ AMQP 0-9-1 over TCP 5672.
 
 ### `kafka-managed`
 
-**Apache Kafka (managed)** · stability `alpha` · domain app-def / Streaming & Messaging · topology `host-singleton`
+**Apache Kafka (managed)** · kind `tool-capability` · stability `alpha` · domain app-def / Streaming & Messaging · topology `host-singleton`
 
 Kafka via the Strimzi operator; one instance per Kafka CR.
 
@@ -662,7 +662,7 @@ Kafka wire protocol over TCP.
 
 ### `gpu-runtime`
 
-**NVIDIA GPU scheduling and telemetry** · stability `beta` · domain runtime / Container Runtime · topology `tenant-instance`
+**NVIDIA GPU scheduling and telemetry** · kind `tool-capability` · stability `beta` · domain runtime / Container Runtime · topology `tenant-instance`
 
 GPU device-plugin + DCGM telemetry. Schedules GPU resources via
 the NVIDIA device plugin and surfaces per-GPU utilization metrics
@@ -688,7 +688,7 @@ on host-network.
 
 ### `vm-runtime`
 
-**VM workload runtime** · stability `beta` · domain app-def / Application Definition & Image Build · topology `host-only`
+**VM workload runtime** · kind `tool-capability` · stability `beta` · domain app-def / Application Definition & Image Build · topology `host-only`
 
 Run VMs as first-class Kubernetes workloads via KubeVirt
 CRDs (VirtualMachine, VirtualMachineInstance).
@@ -708,7 +708,7 @@ ingestion. Tenant-cluster VMs run on host's KubeVirt.
 
 ### `gitops-engine`
 
-**GitOps reconciliation engine** · stability `ga` · domain app-def / Continuous Integration & Delivery · topology `host-only`
+**GitOps reconciliation engine** · kind `tool-capability` · stability `ga` · domain app-def / Continuous Integration & Delivery · topology `host-only`
 
 Watches Git, reconciles desired state into the cluster.
 Tenant interaction is via Git pushes, not pod-to-pod traffic.
@@ -729,7 +729,7 @@ assessment per resource.
 
 ### `admission-policy`
 
-**Admission policy engine** · stability `ga` · domain provisioning / Security & Compliance · topology `tenant-instance`
+**Admission policy engine** · kind `tool-capability` · stability `ga` · domain provisioning / Security & Compliance · topology `tenant-instance`
 
 Validating/mutating admission control; policies authored
 per-engine.
@@ -752,7 +752,7 @@ native VAP CEL).
 
 ### `runtime-security`
 
-**Runtime security observability** · stability `ga` · domain provisioning / Security & Compliance · topology `tenant-instance`
+**Runtime security observability** · kind `tool-capability` · stability `ga` · domain provisioning / Security & Compliance · topology `tenant-instance`
 
 eBPF-based observation of kernel events for security
 monitoring; emits to log/SIEM.
@@ -773,7 +773,7 @@ go to logs-collect pipeline).
 
 ### `secret-sync`
 
-**External secret synchronization** · stability `ga` · domain provisioning / Key Management · topology `tenant-instance`
+**External secret synchronization** · kind `tool-capability` · stability `ga` · domain provisioning / Key Management · topology `tenant-instance`
 
 Reconciles ExternalSecret CRD into native K8s Secret by
 pulling from upstream secret-storage (vault-secrets etc.).
@@ -795,7 +795,7 @@ Secret objects.
 
 ### `csr-approval`
 
-**CertificateSigningRequest approval automation** · stability `ga` · domain provisioning / Security & Compliance · topology `tenant-instance`
+**CertificateSigningRequest approval automation** · kind `tool-capability` · stability `ga` · domain provisioning / Security & Compliance · topology `tenant-instance`
 
 Auto-approves K8s CSRs matching policy (typical: node
 kubelet-serving certs).
@@ -814,7 +814,7 @@ Watches CSR API resource; applies approval decision.
 
 ### `secret-config-declarative`
 
-**Vault declarative configuration** · stability `ga` · domain provisioning / Key Management · topology `host-only`
+**Vault declarative configuration** · kind `tool-capability` · stability `ga` · domain provisioning / Key Management · topology `host-only`
 
 Reconciles Vault-config CRDs into Vault state (policies,
 auth-backends, secrets).
@@ -833,7 +833,7 @@ Vault-config-operator CRDs; reconciles via Vault REST API.
 
 ### `cluster-provisioning`
 
-**Self-service tenant Kubernetes cluster provisioning** · stability `alpha` · domain orchestration / Scheduling & Orchestration · topology `host-only`
+**Self-service tenant Kubernetes cluster provisioning** · kind `tool-capability` · stability `alpha` · domain orchestration / Scheduling & Orchestration · topology `host-only`
 
 Customer requests a fully-isolated K8s cluster via portal.
 Orchestrator materializes a Cluster-API workload cluster

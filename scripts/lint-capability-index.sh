@@ -53,6 +53,7 @@ VALID_STABILITY="alpha beta ga deprecated"
 VALID_TOPOLOGY="host-singleton host-only tenant-instance host-and-tenant"
 VALID_SWAP_CLASS="drop-in label-move data-migration consumer-change rewrite-required"
 VALID_IMPL_STATUS="active candidate considered deprecated"
+VALID_KIND="tool-capability network-primitive"
 
 is_in_set() {
   local needle="$1"; shift
@@ -94,12 +95,18 @@ for i in $(seq 0 $((count - 1))); do
   fi
 
   # Required scalar fields.
-  for f in name description stability contract; do
+  for f in name description stability contract kind; do
     val="$(yq -r ".capabilities[$i].$f // \"\"" "$INDEX_FILE")"
     if [ -z "$val" ] || [ "$val" = "null" ]; then
       violate "$prefix: missing .$f"
     fi
   done
+
+  # kind enum (per #62).
+  kind_val="$(yq -r ".capabilities[$i].kind // \"\"" "$INDEX_FILE")"
+  if [ -n "$kind_val" ] && ! is_in_set "$kind_val" $VALID_KIND; then
+    violate "$prefix: .kind=$kind_val not in {$VALID_KIND}"
+  fi
 
   # Required nested: domain.layer, domain.category.
   for sub in layer category; do
@@ -213,6 +220,18 @@ for i in $(seq 0 $((count - 1))); do
       violate "$iprefix: missing .swap_class"
     elif ! is_in_set "$impl_swap" $VALID_SWAP_CLASS; then
       violate "$iprefix: .swap_class=$impl_swap not in {$VALID_SWAP_CLASS}"
+    fi
+
+    # Optional external_network_attachment boolean per implementation (#62).
+    # Used for hybrid entries whose implementations include an
+    # external-network attachment alongside real tool variants
+    # (current example: s3-object's external-s3 impl).
+    ena_present="$(yq -r ".capabilities[$i].implementations[$j] | has(\"external_network_attachment\")" "$INDEX_FILE")"
+    if [ "$ena_present" = "true" ]; then
+      ena_val="$(yq -r ".capabilities[$i].implementations[$j].external_network_attachment" "$INDEX_FILE")"
+      if [ "$ena_val" != "true" ] && [ "$ena_val" != "false" ]; then
+        violate "$iprefix: .external_network_attachment must be boolean (got: $ena_val)"
+      fi
     fi
   done
 done

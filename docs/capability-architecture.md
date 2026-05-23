@@ -44,6 +44,37 @@ is governed by the same Kyverno policy file as the Layer-B reservations
 (`kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml`) for
 co-location, but the two rule sets are independently enforced.
 
+## Layer A entries: tool-capability vs network-primitive
+
+Within Layer A itself, the `kind:` discriminator distinguishes two
+structurally different entry types (per issue #62):
+
+- **`tool-capability`** — entries with a real, swappable implementation.
+  Each implementation points at one or more infrastructure components
+  under `kubernetes/base/infrastructure/<x>/` via `composition[]`, and
+  the `swap_class` enum records the cost of moving between alternatives.
+  Examples: `metrics-scrape`, `block-storage-replicated`, `vault-secrets`.
+- **`network-primitive`** — entries whose dataplane IS the Cilium/Kyverno
+  rule itself (CIDR-based CCNP egress, Gateway-API HTTPRoute backend
+  permission, cluster-singleton plumbing). There is no swappable tool
+  implementation; `composition[]` is legitimately empty. Examples:
+  `internet-egress` (CIDR egress to public IPs), `controlplane-egress`
+  (egress to kube-apiserver), `gateway-backend` (Gateway-API selector
+  permission), `external-gateway-routes` (Gateway listener attachment).
+
+Both kinds remain Layer-A entries — they share the schema, the
+identifier discipline, and the cross-reference to Layer B. The
+validation script `scripts/check-capability-index-refs.sh` skips the
+"non-external active impl but composition is empty" rule for
+`kind: network-primitive` entries; the rule stays enforced for
+`kind: tool-capability` entries to keep the swap-class semantics honest.
+
+Hybrid entries — those whose implementations include both a real tool
+AND an external-network attachment (current example: `s3-object` with
+`minio-operator` plus `external-s3`) — keep `kind: tool-capability` at
+the entry level and mark the network-attachment implementation with the
+per-implementation flag `external_network_attachment: true`.
+
 ## TL;DR
 
 Capabilities are stable; tools are swappable in the design — see the

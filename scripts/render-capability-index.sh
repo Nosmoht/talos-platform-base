@@ -89,20 +89,21 @@ hardware-features registry (Layer C, referenced via
 
 ## Summary
 
-| ID | Stability | Domain | Topology | Layer B id |
-|---|---|---|---|---|
+| ID | Kind | Stability | Domain | Topology | Layer B id |
+|---|---|---|---|---|---|
 EOF
 
   for i in $(seq 0 $((count - 1))); do
     id="$(yq -r ".capabilities[$i].id" "$INDEX_FILE")"
+    kind_val="$(yq -r ".capabilities[$i].kind // \"tool-capability\"" "$INDEX_FILE")"
     stab="$(yq -r ".capabilities[$i].stability" "$INDEX_FILE")"
     layer="$(yq -r ".capabilities[$i].domain.layer" "$INDEX_FILE")"
     cat_name="$(yq -r ".capabilities[$i].domain.category" "$INDEX_FILE")"
     topo="$(yq -r ".capabilities[$i].deployment_topology // \"—\"" "$INDEX_FILE")"
     pni="$(yq -r ".capabilities[$i].pni_capability_id // \"—\"" "$INDEX_FILE")"
     [ "$pni" = "null" ] && pni="—"
-    printf "| [\`%s\`](#%s) | %s | %s / %s | %s | %s |\n" \
-      "$id" "$id" "$stab" "$layer" "$cat_name" "$topo" "$pni"
+    printf "| [\`%s\`](#%s) | \`%s\` | %s | %s / %s | %s | %s |\n" \
+      "$id" "$id" "$kind_val" "$stab" "$layer" "$cat_name" "$topo" "$pni"
   done
 
   echo ""
@@ -126,9 +127,10 @@ EOF
     sunset_date="$(yq -r ".capabilities[$i].sunset.date // \"\"" "$INDEX_FILE")"
     sunset_tag="$(yq -r ".capabilities[$i].sunset.tag // \"\"" "$INDEX_FILE")"
 
+    cap_kind="$(yq -r ".capabilities[$i].kind // \"tool-capability\"" "$INDEX_FILE")"
     echo "### \`$id\`"
     echo ""
-    echo "**$name** · stability \`$stab\` · domain $layer / $cat_name${topo:+ · topology \`$topo\`}"
+    echo "**$name** · kind \`$cap_kind\` · stability \`$stab\` · domain $layer / $cat_name${topo:+ · topology \`$topo\`}"
     echo ""
     [ -n "$desc" ] && [ "$desc" != "null" ] && { echo "$desc"; echo ""; }
 
