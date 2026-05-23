@@ -7,6 +7,28 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Layer-A entry classification (issue #62).** New required `kind:`
+  field on every entry in `docs/platform-capability-index.yaml` —
+  enum `tool-capability | network-primitive`. Four entries
+  reclassified as `network-primitive` (`internet-egress`,
+  `controlplane-egress`, `gateway-backend`, `external-gateway-routes`)
+  per the Round-2 layer-audit
+  (`.work/issues/layer-audit/cleanup-scope.md` Q1) — these have
+  legitimately empty `composition[]` because the Cilium/Kyverno rule
+  itself IS the dataplane. The remaining 32 entries are
+  `tool-capability`. Hybrid case: `s3-object` keeps `kind:
+  tool-capability` (has `minio-operator` real tool); its `external-s3`
+  implementation gains a per-impl `external_network_attachment: true`
+  flag. Mechanism decision recorded in
+  `.work/issues/p5-network-primitives-lift/decision.md`.
+  `scripts/lint-capability-index.sh` enforces the kind enum + per-impl
+  flag; `scripts/check-capability-index-refs.sh` skips the
+  empty-composition violation for `kind: network-primitive` entries.
+  `scripts/render-capability-index.sh` surfaces `kind:` in the summary
+  table and per-entry header. `docs/capability-architecture.md` gains
+  a "Layer A entries: tool-capability vs network-primitive"
+  subsection.
+
 - **Three-Layer Capability Architecture (issue #61).** New ADR
   `docs/adr-three-layer-capability-architecture.md` (status: accepted)
   supersedes the Two-Layer ADR. Introduces **Layer C — Hardware Features
