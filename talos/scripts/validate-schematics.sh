@@ -46,7 +46,7 @@ ok()   { echo "OK: $*"; }
 # Load Layer-C feature ids from the registry
 # ---------------------------------------------------------------------------
 LAYER_C_IDS_FILE="$TMPDIR_LOCAL/layer_c_ids.txt"
-grep '^\s*- id:' "$REGISTRY_FILE" | sed 's/.*- id: //' > "$LAYER_C_IDS_FILE"
+yq -r '.features[].id' "$REGISTRY_FILE" > "$LAYER_C_IDS_FILE"
 
 # ---------------------------------------------------------------------------
 # Load strict_capability_merge flag (default: false)
@@ -56,16 +56,18 @@ STRICT_MERGE=$(yq -r '.strict_capability_merge // false' "$CLUSTER_YAML")
 # ---------------------------------------------------------------------------
 # Validate hardware-capabilities[*].requires_features (Layer-C cross-ref)
 # ---------------------------------------------------------------------------
-CAP_KEYS=$(yq -r '.["hardware-capabilities"] | keys | .[]' "$CLUSTER_YAML" 2>/dev/null || true)
+CAP_KEYS_FILE="$TMPDIR_LOCAL/cap_keys.txt"
+yq -r '.["hardware-capabilities"] | keys | .[]' "$CLUSTER_YAML" 2>/dev/null > "$CAP_KEYS_FILE" || true
 
-for cap in $CAP_KEYS; do
-    FEATURES=$(yq -r "(.\"hardware-capabilities\".\"$cap\".requires_features // []) | .[]" "$CLUSTER_YAML" 2>/dev/null || true)
-    for feat in $FEATURES; do
+while IFS= read -r cap; do
+    FEATURES_FILE="$TMPDIR_LOCAL/cap_features_$$.txt"
+    yq -r "(.\"hardware-capabilities\".\"$cap\".requires_features // []) | .[]" "$CLUSTER_YAML" 2>/dev/null > "$FEATURES_FILE" || true
+    while IFS= read -r feat; do
         if ! grep -qxF "$feat" "$LAYER_C_IDS_FILE"; then
             fail "[hardware-capabilities.$cap]: feature '$feat' in requires_features not present in Layer-C registry"
         fi
-    done
-done
+    done < "$FEATURES_FILE"
+done < "$CAP_KEYS_FILE"
 
 # ---------------------------------------------------------------------------
 # Capability merge conflict detection
@@ -74,28 +76,29 @@ done
 CAP_POINTER_FILE="$TMPDIR_LOCAL/cap_pointers.txt"
 : > "$CAP_POINTER_FILE"
 
-for cap in $CAP_KEYS; do
-    PATCH_POINTERS=$(yq -r "(.\"hardware-capabilities\".\"$cap\".patches // []) | .[].pointer" "$CLUSTER_YAML" 2>/dev/null || true)
-    for pointer in $PATCH_POINTERS; do
-        echo "$pointer	$cap" >> "$CAP_POINTER_FILE"
-    done
-done
+while IFS= read -r cap; do
+    # Only collect pointer-form patches (file-form patches have no pointer field)
+    PATCH_POINTERS_FILE="$TMPDIR_LOCAL/patch_ptrs_$$.txt"
+    yq -r "(.\"hardware-capabilities\".\"$cap\".patches // []) | .[] | select(has(\"pointer\")) | .pointer" "$CLUSTER_YAML" 2>/dev/null > "$PATCH_POINTERS_FILE" || true
+    while IFS= read -r pointer; do
+        printf '%s\t%s\n' "$pointer" "$cap" >> "$CAP_POINTER_FILE"
+    done < "$PATCH_POINTERS_FILE"
+done < "$CAP_KEYS_FILE"
 
 if [[ -s "$CAP_POINTER_FILE" ]]; then
     # Find pointers that appear more than once
-    CONFLICT_POINTERS=$(awk '{print $1}' "$CAP_POINTER_FILE" | sort | uniq -d || true)
-    for pointer in $CONFLICT_POINTERS; do
-        # Get all caps that claim this pointer
-        CONFLICT_CAPS=$(grep "^$pointer	" "$CAP_POINTER_FILE" | awk '{print $2}' | tr '\n' ' ')
-        CAP1=$(echo "$CONFLICT_CAPS" | awk '{print $1}')
-        CAP2=$(echo "$CONFLICT_CAPS" | awk '{print $2}')
-        msg="[conflict]: capability '$CAP1' and '$CAP2' patch the same pointer '$pointer'"
+    CONFLICT_POINTERS_FILE="$TMPDIR_LOCAL/conflict_ptrs.txt"
+    awk '{print $1}' "$CAP_POINTER_FILE" | sort | uniq -d > "$CONFLICT_POINTERS_FILE" || true
+    while IFS= read -r pointer; do
+        # Aggregate ALL caps that claim this pointer (HIGH-4 fix: no longer drops 3rd+)
+        ALL_CAPS=$(grep "^${pointer}	" "$CAP_POINTER_FILE" | awk '{print $2}' | paste -sd,)
+        msg="[conflict]: capabilities '$ALL_CAPS' patch the same pointer '$pointer'"
         if [[ "$STRICT_MERGE" == "true" ]]; then
             fail "$msg"
         else
             warn "$msg"
         fi
-    done
+    done < "$CONFLICT_POINTERS_FILE"
 fi
 
 # ---------------------------------------------------------------------------
@@ -148,8 +151,9 @@ while [[ $NODE_IDX -lt $NODE_COUNT ]]; do
     fi
 
     # Check 5: hardware_capabilities entries exist in hardware-capabilities
-    NODE_CAPS=$(yq -r ".nodes[$NODE_IDX].hardware_capabilities | .[]" "$CLUSTER_YAML" 2>/dev/null || true)
-    for cap in $NODE_CAPS; do
+    NODE_CAPS_FILE="$TMPDIR_LOCAL/node_caps_${NODE_IDX}.txt"
+    yq -r ".nodes[$NODE_IDX].hardware_capabilities | .[]" "$CLUSTER_YAML" 2>/dev/null > "$NODE_CAPS_FILE" || true
+    while IFS= read -r cap; do
         CAP_EXISTS=$(yq -r ".\"hardware-capabilities\" | has(\"$cap\")" "$CLUSTER_YAML" 2>/dev/null || echo "false")
         if [[ "$CAP_EXISTS" != "true" ]]; then
             fail "[n.$NODE_NAME]: capability '$cap' in hardware_capabilities not defined in cluster.yaml hardware-capabilities"
@@ -158,8 +162,9 @@ while [[ $NODE_IDX -lt $NODE_COUNT ]]; do
             # Check 6: binding-missing — capability declares placeholder_bindings
             # that must be present in nodes/<name>.yaml for this node.
             # placeholder_bindings is a map: PLACEHOLDER_NAME -> nodes/<name>.yaml field path
-            BINDINGS=$(yq -r ".\"hardware-capabilities\".\"$cap\".placeholder_bindings // {} | to_entries | .[] | .key + \"=\" + .value" "$CLUSTER_YAML" 2>/dev/null || true)
-            for binding in $BINDINGS; do
+            BINDINGS_FILE="$TMPDIR_LOCAL/bindings_${NODE_IDX}_$$.txt"
+            yq -r ".\"hardware-capabilities\".\"$cap\".placeholder_bindings // {} | to_entries | .[] | .key + \"=\" + .value" "$CLUSTER_YAML" 2>/dev/null > "$BINDINGS_FILE" || true
+            while IFS= read -r binding; do
                 PLACEHOLDER="${binding%%=*}"
                 FIELD_PATH="${binding#*=}"
                 # Look for nodes/<name>.yaml relative to the cluster.yaml location
@@ -170,16 +175,17 @@ while [[ $NODE_IDX -lt $NODE_COUNT ]]; do
                     NODE_FAIL=1
                 else
                     # Convert dot-path to yq expression (e.g. network.bridge.nic -> .network.bridge.nic)
-                    YQ_PATH=".$(echo "$FIELD_PATH" | sed 's/\./\./g')"
+                    # Note: field paths are flat dot-separated keys; keys with literal dots are not supported.
+                    YQ_PATH=".$FIELD_PATH"
                     FIELD_VAL=$(yq -r "$YQ_PATH // \"\"" "$NODE_YAML" 2>/dev/null || true)
                     if [[ -z "$FIELD_VAL" || "$FIELD_VAL" == "null" ]]; then
                         fail "[n.$NODE_NAME]: binding-missing — capability '$cap' references placeholder '\${$PLACEHOLDER}' but nodes/$NODE_NAME.yaml is missing the binding (expected at path '$FIELD_PATH')"
                         NODE_FAIL=1
                     fi
                 fi
-            done
+            done < "$BINDINGS_FILE"
         fi
-    done
+    done < "$NODE_CAPS_FILE"
 
     if [[ $NODE_FAIL -eq 0 ]]; then
         NODE_PASS=$(( NODE_PASS + 1 ))

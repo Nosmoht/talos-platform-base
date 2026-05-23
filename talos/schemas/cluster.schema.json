@@ -42,7 +42,11 @@
     },
     "hardware-capabilities": {
       "type": "object",
-      "description": "Composite capability identifiers mapped to capability specifications. Each entry MUST list the atomic Layer-C feature ids it requires.",
+      "description": "Composite capability identifiers mapped to capability specifications. Each entry optionally lists the atomic Layer-C feature ids it requires.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9._-]+$",
+        "description": "Capability keys must consist of alphanumerics, dots, underscores, or hyphens only (no whitespace or shell-special chars)."
+      },
       "additionalProperties": {
         "$ref": "#/$defs/hardware-capability-spec"
       }
@@ -63,19 +67,41 @@
       "description": "Talos system extension URL (e.g. https://github.com/siderolabs/extensions/releases/download/v1.7.0/iscsi-tools-v1.7.0-linux-amd64.tar.gz)."
     },
     "patch-item": {
-      "type": "object",
-      "description": "A single JSON-pointer patch to apply to the Talos machine config.",
-      "required": ["pointer", "value"],
-      "properties": {
-        "pointer": {
-          "type": "string",
-          "description": "RFC 6901 JSON Pointer identifying the target location (e.g. /machine/install/disk)."
+      "description": "A single patch to apply to the Talos machine config. Supports two forms: inline JSON-pointer patch ({pointer, value}) or file-reference ({file: <path>}).",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Inline JSON-pointer patch: sets the value at the given RFC 6901 pointer in the machine config.",
+          "required": ["pointer", "value"],
+          "properties": {
+            "pointer": {
+              "type": "string",
+              "description": "RFC 6901 JSON Pointer identifying the target location (e.g. /machine/install/disk)."
+            },
+            "value": {
+              "description": "Value to set at the JSON-pointer location. May be any JSON type."
+            }
+          },
+          "additionalProperties": false
         },
-        "value": {
-          "description": "Value to set at the JSON-pointer location. May be any JSON type."
+        {
+          "type": "object",
+          "description": "File-reference patch: path to a YAML patch file applied via talosctl --config-patch @<file>.",
+          "required": ["file"],
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Relative path to a YAML patch file (relative to the talos base directory)."
+            },
+            "placeholder_bindings": {
+              "type": "object",
+              "description": "Map of PLACEHOLDER_NAME to the cluster.yaml field path supplying the value. Used by Phase 3 substitution.",
+              "additionalProperties": {"type": "string"}
+            }
+          },
+          "additionalProperties": false
         }
-      },
-      "additionalProperties": false
+      ]
     },
     "role-spec": {
       "type": "object",
@@ -169,8 +195,7 @@
     },
     "hardware-capability-spec": {
       "type": "object",
-      "description": "Composite capability specification. requires_features lists the atomic Layer-C hardware feature ids this capability comprises.",
-      "required": ["requires_features"],
+      "description": "Composite capability specification. requires_features optionally lists the atomic Layer-C hardware feature ids this capability comprises; omitting it means the capability has no Layer-C cross-reference requirement (cross-reference validation is then skipped for this capability in validate-schematics).",
       "properties": {
         "requires_features": {
           "type": "array",

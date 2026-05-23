@@ -16,6 +16,19 @@
 #
 # Network-safe: if cache-file is pre-seeded, known set keys never POST.
 # Requires: bash 3.2+, yq (mikefarah v4+), openssl, curl (optional if all cached)
+#
+# SECURITY TRUST ASSUMPTION (HIGH-2):
+#   This script POSTs extension lists to https://factory.talos.dev/schematics and
+#   trusts the returned schematic_id as a 64-char SHA-256 hex string.
+#   Trust basis: system CA bundle (curl default). No response-signature verification
+#   is performed. A CA mis-issuance or MITM could return an attacker-controlled
+#   schematic_id, which would produce a malicious installer image URL.
+#
+#   Mitigation in place: argv-print.sh validates schematic_id is [0-9a-f]{64};
+#   PENDING or non-hex values abort gen-configs before any talosctl invocation.
+#
+#   Recommended hardening (Phase 3+): --cacert pinning or cosign-signed response
+#   verification against the Sidero Labs signing key.
 
 set -euo pipefail
 
@@ -83,10 +96,11 @@ while [[ $NODE_IDX -lt $NODE_COUNT ]]; do
     yq -r "(.\"hardware-platforms\".\"$NODE_HW\".extensions // []) | .[]" "$CLUSTER_YAML" 2>/dev/null >> "$EXT_LIST" || true
 
     # Hardware-capability extensions
-    NODE_CAPS=$(yq -r ".nodes[$NODE_IDX].hardware_capabilities | .[]" "$CLUSTER_YAML" 2>/dev/null || true)
-    for cap in $NODE_CAPS; do
+    NODE_CAPS_FILE="$TMPDIR_LOCAL/node_caps_${NODE_IDX}.txt"
+    yq -r ".nodes[$NODE_IDX].hardware_capabilities | .[]" "$CLUSTER_YAML" 2>/dev/null > "$NODE_CAPS_FILE" || true
+    while IFS= read -r cap; do
         yq -r "(.\"hardware-capabilities\".\"$cap\".extensions // []) | .[]" "$CLUSTER_YAML" 2>/dev/null >> "$EXT_LIST" || true
-    done
+    done < "$NODE_CAPS_FILE"
 
     # Sort + deduplicate, remove empty lines
     SORTED_EXTS_FILE="$TMPDIR_LOCAL/sorted_exts_$NODE_IDX.txt"

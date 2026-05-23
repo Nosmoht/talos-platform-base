@@ -84,6 +84,12 @@ if [[ -f "$SCHEMATIC_CACHE" ]]; then
     if [[ -n "$SET_KEY" && "$SET_KEY" != "null" ]]; then
         SCHEMATIC_ID=$(yq -r ".bySet[\"$SET_KEY\"].schematic_id // \"\"" "$SCHEMATIC_CACHE" 2>/dev/null || true)
         if [[ -n "$SCHEMATIC_ID" && "$SCHEMATIC_ID" != "null" ]]; then
+            # Guard: reject PENDING or any non-sha256-hex value (HIGH-1 PENDING cache poisoning fix).
+            # A valid schematic_id is a 64-character lowercase hex string.
+            if [[ "$SCHEMATIC_ID" == "PENDING" ]] || ! [[ "$SCHEMATIC_ID" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "ERROR: schematic_id for node '$NODE_NAME' is '$SCHEMATIC_ID' — not a valid SHA-256 hex string. Re-run 'make schematics' to refresh the cache." >&2
+                exit 1
+            fi
             # Get install-image-template from infrastructure-platform
             TEMPLATE=$(yq -r ".\"infrastructure-platforms\".\"$NODE_INFRA\".\"install-image-template\" // \"\"" "$CLUSTER_YAML" 2>/dev/null || true)
             if [[ -n "$TEMPLATE" && "$TEMPLATE" != "null" ]]; then
