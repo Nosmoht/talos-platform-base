@@ -1,0 +1,55 @@
+# valid-all-layer-c-features.yaml — positive fixture exercising ALL seven canonical Layer-C ids
+# Verifies that the registry-membership check passes for every id in
+# docs/platform-hardware-features.yaml when .hardware_features[].id is queried correctly.
+# Must exit 0 with "OK: 1 nodes pass validation"
+roles:
+  controlplane:
+    description: "Control-plane node"
+    default_extensions:
+      - https://example.invalid/extensions/iscsi-tools
+
+architectures:
+  amd64:
+    talos-arch: amd64
+    compatible-infrastructure-platforms:
+      - metal
+
+infrastructure-platforms:
+  metal:
+    installer-profile: metal
+
+hardware-platforms:
+  intel-generic:
+    vendor: Intel
+    model: "Generic x86-64"
+
+hardware-capabilities:
+  gpu-accelerated:
+    description: "GPU workload with IOMMU isolation"
+    requires_features:
+      - nvidia-gpu
+      - iommu-enabled
+  virtualization:
+    description: "Hardware-assisted virtualisation"
+    requires_features:
+      - vt-x-or-amd-v
+      - kvm-kernel-module
+  storage-and-network:
+    description: "Local NVMe, DRBD replication, eBPF dataplane"
+    requires_features:
+      - drbd-kernel-module
+      - local-nvme-block-device
+      - ebpf-capable-kernel
+
+nodes:
+  - name: cp-01
+    role: controlplane
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - gpu-accelerated
+      - virtualization
+      - storage-and-network
+    ip: 192.0.2.11
+    nic: eth0
