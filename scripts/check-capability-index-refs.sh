@@ -21,8 +21,17 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INDEX_FILE="$REPO_ROOT/docs/platform-capability-index.yaml"
+HW_FEATURES_FILE="$REPO_ROOT/docs/platform-hardware-features.yaml"
 PNI_REGISTRY="$REPO_ROOT/kubernetes/base/infrastructure/platform-network-interface/resources/capability-registry-configmap.yaml"
 INFRA_DIR="$REPO_ROOT/kubernetes/base/infrastructure"
+
+# Layer-C producer-tooling components — directories under
+# kubernetes/base/infrastructure/ that exist to discover hardware features
+# (NFD as the primary case). Per adr-three-layer-capability-architecture.md
+# §"NFD placement": NFD is Layer-C producer-tooling, NOT Layer-A composition.
+# It therefore won't appear in any composition[] but is NOT an orphan.
+# Keep this list small; extending it adds tooling that is not in Layer A.
+LAYER_C_PRODUCER_DIRS="node-feature-discovery"
 
 case "${1:-}" in
   --help|-h)
@@ -33,6 +42,7 @@ esac
 
 command -v yq >/dev/null 2>&1 || { echo "ERROR: yq not found in PATH" >&2; exit 2; }
 [ -f "$INDEX_FILE" ] || { echo "ERROR: index not found: $INDEX_FILE" >&2; exit 2; }
+[ -f "$HW_FEATURES_FILE" ] || { echo "ERROR: hardware-features registry not found: $HW_FEATURES_FILE" >&2; exit 2; }
 [ -f "$PNI_REGISTRY" ] || { echo "ERROR: PNI registry not found: $PNI_REGISTRY" >&2; exit 2; }
 [ -d "$INFRA_DIR" ] || { echo "ERROR: infra dir not found: $INFRA_DIR" >&2; exit 2; }
 
@@ -40,13 +50,17 @@ violations=0
 violate() { echo "refs: $*" >&2; violations=$((violations + 1)); }
 
 # Build sets:
-#   layer_a_ids       — capability ids from the index
-#   layer_b_ids       — capability ids from the PNI registry ConfigMap
+#   layer_a_ids       — capability ids from the Layer A index
+#   layer_b_ids       — capability ids from the Layer B PNI registry ConfigMap
+#   layer_c_ids       — hardware-feature ids from the Layer C registry
 #   infra_components  — directory basenames under kubernetes/base/infrastructure/
+#   referenced_dirs   — infra dirs referenced by any Layer-A composition[]
 infra_components_file="$(mktemp)"
 layer_a_ids_file="$(mktemp)"
 layer_b_ids_file="$(mktemp)"
-trap 'rm -f "$infra_components_file" "$layer_a_ids_file" "$layer_b_ids_file"' EXIT
+layer_c_ids_file="$(mktemp)"
+referenced_dirs_file="$(mktemp)"
+trap 'rm -f "$infra_components_file" "$layer_a_ids_file" "$layer_b_ids_file" "$layer_c_ids_file" "$referenced_dirs_file"' EXIT
 
 find "$INFRA_DIR" -mindepth 1 -maxdepth 1 -type d -print0 \
   | xargs -0 -n1 basename | sort -u > "$infra_components_file"
@@ -56,6 +70,9 @@ yq -r '.capabilities[].id' "$INDEX_FILE" | sort -u > "$layer_a_ids_file"
 # PNI registry payload is inline YAML under .data."capabilities.yaml".
 yq -r '.data."capabilities.yaml"' "$PNI_REGISTRY" \
   | yq -r '.capabilities[].id' - | sort -u > "$layer_b_ids_file"
+
+# Layer C — flat list of hardware-feature ids.
+yq -r '.hardware_features[].id' "$HW_FEATURES_FILE" | sort -u > "$layer_c_ids_file"
 
 in_set() {
   grep -qxF "$1" "$2"
@@ -96,6 +113,8 @@ for i in $(seq 0 $((count - 1))); do
         violate "$prefix .implementations[$j] ($impl_name).composition[$k]: empty"
       elif ! in_set "$comp" "$infra_components_file"; then
         violate "$prefix .implementations[$j] ($impl_name).composition[$k]=$comp: no kubernetes/base/infrastructure/$comp/ directory"
+      else
+        echo "$comp" >> "$referenced_dirs_file"
       fi
     done
   done
@@ -137,11 +156,38 @@ for i in $(seq 0 $((count - 1))); do
       fi
     done
   fi
+
+  # requires_hardware_features[] → Layer C ids.
+  rhf_len="$(yq -r ".capabilities[$i].requires_hardware_features // [] | length" "$INDEX_FILE")"
+  if [ "$rhf_len" -gt 0 ]; then
+    for k in $(seq 0 $((rhf_len - 1))); do
+      fid="$(yq -r ".capabilities[$i].requires_hardware_features[$k]" "$INDEX_FILE")"
+      if ! in_set "$fid" "$layer_c_ids_file"; then
+        violate "$prefix .requires_hardware_features[$k]=$fid: not a Layer C (hardware-features) id"
+      fi
+    done
+  fi
 done
+
+# Orphan-infra-dir detection (advisory). A directory under
+# kubernetes/base/infrastructure/ is "orphan" if no Layer-A composition[]
+# references it AND it is not a known Layer-C producer-tooling
+# component (NFD). Emit a WARN line per orphan; do NOT fail.
+# Per Phase 4 AC: advisory in v1.
+sort -u -o "$referenced_dirs_file" "$referenced_dirs_file" 2>/dev/null || true
+while IFS= read -r dir; do
+  in_set "$dir" "$referenced_dirs_file" && continue
+  is_layer_c=false
+  for c_dir in $LAYER_C_PRODUCER_DIRS; do
+    [ "$dir" = "$c_dir" ] && { is_layer_c=true; break; }
+  done
+  $is_layer_c && continue
+  echo "WARN: orphan-infra-dir kubernetes/base/infrastructure/$dir/" >&2
+done < "$infra_components_file"
 
 if [ "$violations" -gt 0 ]; then
   echo "check-capability-index-refs: $violations violation(s)" >&2
   exit 1
 fi
 
-echo "OK: cross-references resolve ($(wc -l < "$layer_a_ids_file" | tr -d ' ') Layer A ids, $(wc -l < "$layer_b_ids_file" | tr -d ' ') Layer B ids, $(wc -l < "$infra_components_file" | tr -d ' ') infra components)"
+echo "OK: cross-references resolve ($(wc -l < "$layer_a_ids_file" | tr -d ' ') Layer A ids, $(wc -l < "$layer_b_ids_file" | tr -d ' ') Layer B ids, $(wc -l < "$layer_c_ids_file" | tr -d ' ') Layer C ids, $(wc -l < "$infra_components_file" | tr -d ' ') infra components)"

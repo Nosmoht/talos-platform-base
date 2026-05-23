@@ -5,7 +5,77 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Three-Layer Capability Architecture (issue #61).** New ADR
+  `docs/adr-three-layer-capability-architecture.md` (status: accepted)
+  supersedes the Two-Layer ADR. Introduces **Layer C — Hardware Features
+  Registry** at `docs/platform-hardware-features.yaml` with 7 atomic
+  feature entries (`nvidia-gpu`, `vt-x-or-amd-v`, `kvm-kernel-module`,
+  `drbd-kernel-module`, `local-nvme-block-device`, `iommu-enabled`,
+  `ebpf-capable-kernel`) plus draft-2020-12 JSON Schema at
+  `docs/schemas/hardware-features.schema.json`. Six Layer-A entries
+  (`gpu-runtime`, `vm-runtime`, `block-storage-replicated`,
+  `block-storage-local`, `secondary-network-attachment`,
+  `cluster-provisioning`) gain `requires_hardware_features[]` referencing
+  Layer-C ids. `node-feature-discovery` removed from
+  `gpu-runtime.composition[]` (Layer-C producer-tooling, not Layer-A);
+  `gpu-runtime.independence_test.alt_impls_exist` re-evaluated to `true`
+  post-NFD-removal.
+- **Composite Capability Convention.** ADR §"Composite capability
+  convention" documents the CNCF-Platforms-White-Paper two-tier model:
+  Layer C holds atomic features; composite capabilities (e.g.
+  `compute-virt`, `compute-gpu-nvidia`) are downstream-defined in
+  consumer `cluster.yaml` `hardware-capabilities:` blocks via
+  `requires_features[]`. Composite labels emit
+  `platform.io/hardware-capability.<cap>=true` via Talos
+  `machine.nodeLabels`. The base ships no composite-capability registry.
+- **`scripts/lint-hardware-features.sh`** — sibling lint script that
+  validates `docs/platform-hardware-features.yaml` against the JSON
+  Schema (uses `check-jsonschema`; falls back to `uvx` for local dev).
+- **`scripts/render-capability-index.sh`** extended to dispatch to
+  Layer A + Layer C rendering. New `--layer {a,c,all}` flag (default
+  `all`); `--check` verifies both rendered MD files.
+- **`scripts/check-capability-index-refs.sh`** extended with Layer-C
+  resolution (`requires_hardware_features[]` ids must resolve to Layer-C
+  registry) and orphan-infra-dir advisory detection (`WARN:
+  orphan-infra-dir <path>` for dirs under
+  `kubernetes/base/infrastructure/` not referenced by any Layer-A
+  composition[] and not in the Layer-C producer-tooling allow-list).
+- **CI job `capability-index-check`** reordered: Layer-C schema lint
+  runs before Layer-A refs-check (ordering matters — Layer-A
+  cross-references depend on Layer-C ids resolving). Job renamed to
+  "Capability-index validation (Layer A + Layer C)".
+- **Kyverno ClusterPolicy `pni-reserved-labels-enforce`** extended with
+  new rule `reserved-layer-c-hardware-labels`: denies tenant-set
+  `platform.io/hardware-feature.*` and `platform.io/hardware-capability.*`
+  labels on tenant-owned resources (Pod, Deployment, StatefulSet,
+  DaemonSet, Job, CronJob, Service, Namespace). Defense-in-depth against
+  tenant forgery of hardware-attestation claims.
+
 ### Changed
+
+- **`AGENTS.md` §"Reserved-label rule"** extended for Layer C: the two
+  new namespaces (`platform.io/hardware-feature.*`,
+  `platform.io/hardware-capability.*`) are documented; upstream-owned
+  namespaces (`feature.node.kubernetes.io/*`, `nvidia.com/*`) are
+  documented as convention-not-policy.
+- **`ARCHITECTURE.md`** updated to reference the three-layer model
+  (replacing the two-layer description) and to link to the new ADR.
+- **`docs/capability-architecture.md`** gains a "Where this document
+  sits in the three-layer model" section explicitly naming Layer C
+  alongside Layer A and Layer B.
+- **`docs/README.md`** index updated: links to
+  `platform-capability-index.md` (Layer A), `platform-hardware-features.md`
+  (Layer C), and the new Three-Layer ADR; the Two-Layer ADR entry is
+  marked superseded.
+- **`docs/adr-two-layer-capability-architecture.md`** frontmatter
+  flipped to `status: superseded` with `superseded_by:
+  adr-three-layer-capability-architecture.md`. Body preserved verbatim
+  for decision history; a top-of-document blockquote calls out the
+  supersession.
+
+### Changed (pre-existing)
 
 - **README.md surfaces the Day-Zero invariant in the lead section.**
   One paragraph between "Why this exists" and "The idea" names the

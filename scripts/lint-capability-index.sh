@@ -163,6 +163,27 @@ for i in $(seq 0 $((count - 1))); do
     violate "$prefix: .deployment_topology=$topo not in {$VALID_TOPOLOGY}"
   fi
 
+  # requires_hardware_features[] (optional) — array of kebab-case strings, no duplicates.
+  # Layer-C cross-reference resolution lives in check-capability-index-refs.sh; this
+  # script only enforces shape.
+  rhf_len="$(yq -r ".capabilities[$i].requires_hardware_features // [] | length" "$INDEX_FILE")"
+  if [ "$rhf_len" -gt 0 ]; then
+    rhf_seen_file="$(mktemp)"
+    for k in $(seq 0 $((rhf_len - 1))); do
+      fid="$(yq -r ".capabilities[$i].requires_hardware_features[$k]" "$INDEX_FILE")"
+      if [ -z "$fid" ] || [ "$fid" = "null" ]; then
+        violate "$prefix .requires_hardware_features[$k]: empty"
+      elif ! is_kebab "$fid"; then
+        violate "$prefix .requires_hardware_features[$k]=$fid: not kebab-case"
+      elif grep -qxF "$fid" "$rhf_seen_file"; then
+        violate "$prefix .requires_hardware_features: duplicate id $fid"
+      else
+        echo "$fid" >> "$rhf_seen_file"
+      fi
+    done
+    rm -f "$rhf_seen_file"
+  fi
+
   # implementations: must be non-empty, each with name, status, swap_class.
   impl_len="$(yq -r ".capabilities[$i].implementations // [] | length" "$INDEX_FILE")"
   if [ "$impl_len" -lt 1 ]; then

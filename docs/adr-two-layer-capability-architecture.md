@@ -1,9 +1,11 @@
 ---
-status: accepted
+status: superseded
+superseded_by: adr-three-layer-capability-architecture.md
 date: 2026-05-18
 date-history:
   - 2026-05-13 proposed
   - 2026-05-18 accepted (validation tooling landed, see issue #33)
+  - 2026-05-23 superseded by adr-three-layer-capability-architecture.md (Layer C — hardware-features — added; see issue #61)
 deciders:
   - Thomas Krahn
 consulted:
@@ -14,19 +16,44 @@ companion-docs:
   - "[Generated index reference](./platform-capability-index.md)"
   - "[PNI Capability Architecture](./capability-architecture.md)"
   - "[Capability Producer/Consumer Symmetry ADR](./adr-capability-producer-consumer-symmetry.md)"
+  - "[Three-Layer ADR (supersedes this document)](./adr-three-layer-capability-architecture.md)"
 implementation-tracking-issue: "https://github.com/Nosmoht/talos-platform-base/issues/33"
 ---
 
 # ADR: Two-Layer Capability Architecture — Tool-Capability-Index (Layer A) Separate from PNI Network-Trust Registry (Layer B)
 
-> **Implementation status (2026-05-18):** the three validation scripts and the
-> `capability-index-check` CI job listed in §"Validation (CI required checks)"
-> are implemented and active. Promotion from `proposed` to `accepted` is gated
-> on this tooling because the ADR's two-artifact invariant (Layer A id-set
-> ⊇ Layer B id-set; cross-references resolve; generated MD matches YAML)
-> needs mechanical enforcement to remain true across PRs. See
-> [issue #33](https://github.com/Nosmoht/talos-platform-base/issues/33) for
-> the implementation trail.
+> **⚠️ Superseded on 2026-05-23 by [adr-three-layer-capability-architecture.md](./adr-three-layer-capability-architecture.md).**
+> The two-round adversarial layer-audit established that this ADR's
+> "two layers" count was a framing artifact of its Considered-Options
+> enumeration: hardware was never considered as a candidate concern, and
+> a de-facto hardware layer existed across ≥7 artifacts unchecked. The
+> Three-Layer ADR adds Layer C (Hardware Features Registry) and corrects
+> the `gpu-runtime` mis-classification (NFD smuggled into `composition[]`).
+> The body of this document is preserved verbatim below for decision
+> history; the architectural decision it records is no longer in force.
+> See [issue #61](https://github.com/Nosmoht/talos-platform-base/issues/61)
+> for the supersession implementation trail.
+
+## Implementation status (superseded)
+
+The three validation scripts and the `capability-index-check` CI job listed
+in §"Validation (CI required checks)" remain implemented and active. The
+Three-Layer ADR extends these scripts to additionally validate Layer C —
+it does not replace them. The two-artifact invariant (Layer A id-set ⊇
+Layer B id-set; cross-references resolve; generated MD matches YAML)
+remains in force; the three-artifact invariant (Layer A
+`requires_hardware_features[]` resolves to Layer C ids) is layered on
+top.
+
+> **Original implementation note (2026-05-18, before supersession):** the
+> three validation scripts and the `capability-index-check` CI job listed
+> in §"Validation (CI required checks)" are implemented and active.
+> Promotion from `proposed` to `accepted` is gated on this tooling because
+> the ADR's two-artifact invariant (Layer A id-set ⊇ Layer B id-set;
+> cross-references resolve; generated MD matches YAML) needs mechanical
+> enforcement to remain true across PRs. See
+> [issue #33](https://github.com/Nosmoht/talos-platform-base/issues/33)
+> for the implementation trail.
 
 ## Context and Problem Statement
 

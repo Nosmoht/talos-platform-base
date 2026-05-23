@@ -190,3 +190,53 @@ spec:
                   - key: "{{ nsProvideValue }}"
                     operator: NotEquals
                     value: "true"
+    - name: reserved-layer-c-hardware-labels
+      # Layer-C Reserved-label rule per
+      # docs/adr-three-layer-capability-architecture.md §"Reserved label
+      # namespaces". Tenant-owned resources MUST NOT carry labels in the
+      # `platform.io/hardware-feature.*` (atomic) or
+      # `platform.io/hardware-capability.*` (composite) namespaces.
+      # These are node-attestation labels set by Talos
+      # machine.nodeLabels (or, optionally, by a Layer-C discovery
+      # relay) and consumed by scheduling/admission. Tenant forgery
+      # would poison scheduling decisions for hardware-coupled
+      # capabilities (KubeVirt VMs, GPU workloads, DRBD storage).
+      skipBackgroundRequests: true
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+                - Service
+                - Namespace
+      validate:
+        allowExistingViolations: true
+        message: >-
+          PNI Layer-C violation: {{ request.object.kind }}
+          '{{ request.object.metadata.name }}' declares a label in the
+          reserved Layer-C namespace platform.io/hardware-feature.* or
+          platform.io/hardware-capability.*. These namespaces are
+          owned by the platform's hardware-attestation path (Talos
+          machine.nodeLabels) and must not be set on tenant-owned
+          resources. See docs/adr-three-layer-capability-architecture.md
+          §"Reserved label namespaces".
+        deny:
+          conditions:
+            any:
+              - key: >-
+                  {{ request.object.metadata.labels | items(@, 'key', 'value')
+                     | [?starts_with(key, 'platform.io/hardware-feature.')]
+                     | length(@) }}
+                operator: GreaterThan
+                value: 0
+              - key: >-
+                  {{ request.object.metadata.labels | items(@, 'key', 'value')
+                     | [?starts_with(key, 'platform.io/hardware-capability.')]
+                     | length(@) }}
+                operator: GreaterThan
+                value: 0

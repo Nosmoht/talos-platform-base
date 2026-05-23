@@ -2,17 +2,47 @@
 
 **Status:** active (v2 contract)
 **Audience:** consumer-cluster authors, platform operators, agentic tools.
-**Companion docs:** [ADR][adr] · [Cookbook][cookbook] · [Capability Reference][ref]
+**Companion docs:** [ADR — Capability Producer/Consumer Symmetry][adr] · [ADR — Three-Layer Capability Architecture][adr-three] · [Cookbook][cookbook] · [Capability Reference][ref] · [Layer-C Hardware Features Registry][hw]
 
 [adr]: ./adr-capability-producer-consumer-symmetry.md
+[adr-three]: ./adr-three-layer-capability-architecture.md
 [cookbook]: ./pni-cookbook.md
 [ref]: ./capability-reference.md
+[hw]: ./platform-hardware-features.yaml
 
 This document is the canonical **explanation** for the platform's
 capability-first network architecture. It does not prescribe individual
 manifests (see the [Cookbook][cookbook] for that) and does not enumerate
 capabilities (see the [Capability Reference][ref]). It explains *why* the
 shapes are what they are.
+
+## Where this document sits in the three-layer model
+
+Per [ADR — Three-Layer Capability Architecture][adr-three], the platform
+governs **three** capability layers:
+
+- **Layer A — Tool-Capability-Index** (`docs/platform-capability-index.yaml`):
+  the static catalogue of every functional capability the base provides,
+  with stable ids, swap classes, and `requires_hardware_features[]`
+  cross-references into Layer C.
+- **Layer B — PNI Network-Trust Registry** (Kyverno-consumed ConfigMap):
+  the **runtime** subset of Layer A that mediates cross-namespace
+  pod-to-pod / pod-to-service L4/L7 traffic. **This document is about
+  Layer B.** Every recipe, contract, and admission rule below operates
+  on Layer-B vocabulary.
+- **Layer C — Hardware Features Registry** (`docs/platform-hardware-features.yaml`):
+  the catalogue of atomic hardware predicates (`nvidia-gpu`,
+  `vt-x-or-amd-v`, `drbd-kernel-module`, …) that Layer A entries declare
+  via `requires_hardware_features[]` and that consumer-side composite
+  capabilities (in `cluster.yaml`) declare via `requires_features[]`.
+
+Layer A and Layer C are static catalogues; Layer B is the runtime
+contract. Layer C is **disjoint** from Layer B — hardware predicates do
+not mediate network trust. The Reserved-label namespace
+`platform.io/hardware-feature.*` / `platform.io/hardware-capability.*`
+is governed by the same Kyverno policy file as the Layer-B reservations
+(`kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml`) for
+co-location, but the two rule sets are independently enforced.
 
 ## TL;DR
 

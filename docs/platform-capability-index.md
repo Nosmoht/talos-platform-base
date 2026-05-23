@@ -659,8 +659,12 @@ Kafka wire protocol over TCP.
 
 **NVIDIA GPU scheduling and telemetry** · stability `beta` · domain runtime / Container Runtime · topology `tenant-instance`
 
-GPU device-plugin + DCGM telemetry + node-feature labels;
-ships as a unit, no per-component swap.
+GPU device-plugin + DCGM telemetry. Schedules GPU resources via
+the NVIDIA device plugin and surfaces per-GPU utilization metrics
+via DCGM exporter. Node-feature discovery (NFD) is Layer-C
+producer-tooling (see adr-three-layer-capability-architecture.md);
+it discovers the hardware predicate but is not part of this
+capability's composition.
 
 **Contract:**
 
@@ -669,11 +673,11 @@ Node-local device-plugin socket + DCGM metrics exporter
 on host-network.
 ```
 
-**Independence test:** alt-impls=— · contract-stable=true · independent-lifecycle=—
+**Independence test:** alt-impls=true · contract-stable=true · independent-lifecycle=true
 
 **Implementations:**
 
-- `nvidia-stack` — status `active`, swap-class `rewrite-required` — composition: nvidia-device-plugin, nvidia-dcgm-exporter, node-feature-discovery
+- `nvidia-stack` — status `active`, swap-class `rewrite-required` — composition: nvidia-device-plugin, nvidia-dcgm-exporter
 
 **Layer B (PNI) counterpart:** `gpu-runtime`
 
