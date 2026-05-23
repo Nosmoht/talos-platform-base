@@ -148,12 +148,15 @@ while IFS= read -r cap; do
         # R2 HIGH (team-red): field_path is consumer-authored cluster.yaml
         # content and gets interpolated into a yq expression below — strict
         # charset blocks yq-expression injection (comma/pipe/coalesce
-        # operators, square-brackets, parentheses) that would otherwise let
-        # a malicious binding RHS exfiltrate sibling fields from
-        # nodes/<n>.yaml into the bindings table (and onward into the
-        # rendered patch + the talosctl argv visible in CI logs / argv-dump).
-        if ! [[ "$field_path" =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]]; then
-            echo "ERROR: placeholder_bindings.$placeholder value '$field_path' violates field-path charset ^[A-Za-z_][A-Za-z0-9_.-]*\$ — refused (potential yq-expression injection)." >&2
+        # operators, square-brackets, parentheses).
+        # R3 HIGH (team-red): also scope the path to the machine.* subtree
+        # so a malicious binding RHS cannot traverse into cluster.* or
+        # other root-level keys that the per-node yaml may carry by
+        # accident (e.g. via a templating copy-paste) — preventing
+        # value-exfiltration into the substituted patch and the talosctl
+        # argv (visible in CI logs / argv-dump).
+        if ! [[ "$field_path" =~ ^machine[.][A-Za-z_][A-Za-z0-9_.-]*$ ]]; then
+            echo "ERROR: placeholder_bindings.$placeholder value '$field_path' violates field-path charset ^machine[.][A-Za-z_][A-Za-z0-9_.-]*\$ — refused (potential yq-expression injection or out-of-scope traversal). Field paths must address fields under nodes/<n>.yaml's 'machine.*' subtree." >&2
             exit 1
         fi
         # Resolve the field from nodes/<NODE>.yaml using the field path AS WRITTEN

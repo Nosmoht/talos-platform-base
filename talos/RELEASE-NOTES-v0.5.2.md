@@ -174,7 +174,84 @@ authoring) is documented in the talos-platform-base
 
 ## Breaking Changes
 
-None. v0.5.2 is non-breaking — same dual-path discipline as v0.5.1.
+### Schema: `placeholder_bindings` removed from patch-item file-form
+
+The v0.5.1 JSON Schema declared `placeholder_bindings` on **two** sites
+simultaneously: the `$defs/patch-item` file-form (where it was inert at
+runtime — neither `argv-print.sh` nor `validate-schematics.sh` ever read
+it from there) and implicitly on the `hardware-capability-spec` (via
+`additionalProperties: true`). v0.5.2 makes the schema match runtime:
+`placeholder_bindings` lives **only** on the capability spec, with
+`additionalProperties: false` on the patch-item file-form.
+
+**Breaking impact:** any consumer cluster.yaml that placed
+`placeholder_bindings` directly on a patch-item file-form (matching the
+v0.5.1 schema-documented but runtime-ignored location) now fails schema
+validation. The binding was silently no-op under v0.5.1; v0.5.2 surfaces
+that as a hard fail.
+
+**Detect:**
+
+```bash
+grep -rA3 'file: ' "$(yq -r '.cluster.name' cluster.yaml)/patches/" \
+    | grep -B1 placeholder_bindings && \
+    echo "MIGRATE: move placeholder_bindings to hardware-capabilities.<cap>.placeholder_bindings"
+```
+
+**Migrate:** move the `placeholder_bindings` block from the patch-item
+to the capability spec that includes that patch:
+
+```yaml
+# v0.5.1 (schema-documented but runtime-ignored — REMOVE):
+hardware-capabilities:
+  kubevirt-networking:
+    patches:
+      - file: patches/worker-kubevirt.yaml
+        placeholder_bindings:       # <-- delete this
+          NIC_NAME: machine.network.bridge.nic
+
+# v0.5.2 (runtime-honored — ADD):
+hardware-capabilities:
+  kubevirt-networking:
+    placeholder_bindings:           # <-- move here
+      NIC_NAME: machine.network.bridge.nic
+    patches:
+      - file: patches/worker-kubevirt.yaml
+```
+
+### Behavior: NTP patch precedence inverts on consumers that set `machine.time.servers` in a role-patch
+
+The legacy `gen-configs` path emitted the NTP-bearing
+`_out/<overlay>/cluster.yaml` patch **after** `patches/common.yaml`, so
+`cluster.ntp_server` overrode any `machine.time.servers` declared in
+`common.yaml`. v0.5.2 emits the NTP patch at **position 1** (before all
+role-patches and the per-node patch), so any role-patch or per-node
+patch that declares `machine.time.servers` now **overrides**
+`cluster.ntp_server`.
+
+For most consumers this is a no-op (NTP is typically declared only via
+`cluster.ntp_server`). The behavior diverges only for consumers whose
+role-patches or per-node yaml explicitly carry `machine.time.servers`.
+
+**Detect:**
+
+```bash
+grep -rEn 'machine\.time\.servers|^[[:space:]]*time:[[:space:]]*$' \
+    patches/ nodes/ | grep -v RELEASE-NOTES
+# Non-empty output => audit precedence intent before v0.5.2 cut-over.
+```
+
+**Decision tree:**
+
+- No match — no behavior change; ship.
+- Match in a role-patch with intent that `cluster.ntp_server` should
+  win — move the `machine.time.servers` declaration out of the role-patch
+  (rely on `cluster.ntp_server` alone) OR keep it and rely on the new
+  v0.5.2 ordering (role-patch wins).
+- Match in a per-node yaml — same options; per-node now wins
+  unconditionally.
+
+Documented at length in §CRIT-4 above.
 
 ## Known Limitations (carried from v0.5.1)
 
