@@ -1,0 +1,5 @@
+target: talos/schemas/cluster.schema.json
+mutation:
+  kind: yq_assign
+  path: ."$defs"."role-spec".additionalProperties
+  value: 'true'

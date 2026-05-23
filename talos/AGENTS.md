@@ -41,6 +41,23 @@ the `kube-agent-harness` Claude Code plugin (or vendored into a consumer repo's
 
 Patches apply in this order: `common` → `controlplane|worker` → `<node-name>`. More-specific patches override less-specific. Never edit files in `talos/generated/` — regenerate them.
 
+## Role-spec patches field
+
+The canonical field name for the per-role patch list at
+`roles[<role>].patches` in `cluster.yaml`. This field is read at runtime
+by `talos/scripts/argv-print.sh:110` and emitted by the legacy
+translator `talos/scripts/translate-legacy-cluster-yaml.sh:170-196`.
+
+The schema (`talos/schemas/cluster.schema.json`) declares
+`patches` (array of strings) on `$defs.role-spec` and enforces
+`additionalProperties: false`. Field-name drift across this surface is
+a CI gate (`talos/scripts/check-role-patches-field.sh`).
+
+History: v0.5.1 and v0.5.2 schemas declared the field as `default_patches`
+while every other artifact in this surface used `patches`. v0.5.3
+reconciles to `patches` as canonical and drops `default_patches`. See
+`talos/RELEASE-NOTES-v0.5.3.md` for migration.
+
 ## Pre-Drain Safety Checklist (inline — full gate in the plugin's `.claude/hooks/pre-drain-check.sh`)
 
 Before `talosctl` drain or `kubectl drain` on any node:
