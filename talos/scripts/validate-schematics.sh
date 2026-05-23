@@ -46,7 +46,7 @@ ok()   { echo "OK: $*"; }
 # Load Layer-C feature ids from the registry
 # ---------------------------------------------------------------------------
 LAYER_C_IDS_FILE="$TMPDIR_LOCAL/layer_c_ids.txt"
-yq -r '.features[].id' "$REGISTRY_FILE" > "$LAYER_C_IDS_FILE"
+yq -r '.hardware_features[].id' "$REGISTRY_FILE" > "$LAYER_C_IDS_FILE"
 
 # ---------------------------------------------------------------------------
 # Load strict_capability_merge flag (default: false)

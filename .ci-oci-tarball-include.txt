@@ -33,6 +33,7 @@ talos/test/fixtures/invalid-hw-not-in-infra.yaml
 talos/test/fixtures/invalid-infra-arch-mismatch.yaml
 talos/test/fixtures/nodes/missing-binding.yaml
 talos/test/fixtures/schematic-cache.yaml
+talos/test/fixtures/valid-all-layer-c-features.yaml
 talos/test/fixtures/valid-minimal.yaml
 talos/test/nodes/worker-test.yaml
 talos/test/regressions/role-patches/m01-schema-renamed-back.yaml

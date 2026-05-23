@@ -58,6 +58,26 @@ validate-schematics:
 	@bash "$(BASE_DIR)/scripts/validate-schematics.sh" "$(CLUSTER_YAML)" "$(BASE_DIR)"
 
 # ---------------------------------------------------------------------------
+# validate-schematics-test — regression coverage for cross-reference diagnostics
+# Usage: make -f Makefile.lib validate-schematics-test CLUSTER_YAML=test/fixtures/valid-minimal.yaml
+# (CLUSTER_YAML must point at an existing file to satisfy the parse-time guard
+#  at line 27; the target body invokes the script against its own fixture set.)
+# ---------------------------------------------------------------------------
+.PHONY: validate-schematics-test
+
+validate-schematics-test:
+	@set -e; \
+	echo "[positive] valid-minimal.yaml expects exit 0"; \
+	bash "$(BASE_DIR)/scripts/validate-schematics.sh" "$(BASE_DIR)/test/fixtures/valid-minimal.yaml" "$(BASE_DIR)"; \
+	echo "[positive] valid-all-layer-c-features.yaml expects exit 0"; \
+	bash "$(BASE_DIR)/scripts/validate-schematics.sh" "$(BASE_DIR)/test/fixtures/valid-all-layer-c-features.yaml" "$(BASE_DIR)"; \
+	echo "[negative] invalid-feature-not-in-registry.yaml expects exit 1"; \
+	if bash "$(BASE_DIR)/scripts/validate-schematics.sh" "$(BASE_DIR)/test/fixtures/invalid-feature-not-in-registry.yaml" "$(BASE_DIR)" > /dev/null 2>&1; then \
+		echo "FAIL: expected exit 1 on invalid-feature fixture"; exit 1; \
+	fi; \
+	echo "validate-schematics-test: PASS"
+
+# ---------------------------------------------------------------------------
 # argv-print — Phase 1C: emit exact talosctl gen config argv for NODE=<name>
 # ---------------------------------------------------------------------------
 # Usage: make argv-print NODE=<name>
