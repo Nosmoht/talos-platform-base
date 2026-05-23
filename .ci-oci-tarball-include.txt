@@ -1,5 +1,8 @@
+docs/platform-hardware-features.yaml
+docs/schemas/hardware-features.schema.json
 talos/AGENTS.md
 talos/Makefile.lib
+talos/RELEASE-NOTES-v0.5.1.md
 talos/patches/common.yaml
 talos/patches/controlplane.yaml
 talos/patches/drbd.yaml
@@ -10,6 +13,7 @@ talos/patches/worker-pi.yaml
 talos/schemas/cluster.schema.json
 talos/scripts/argv-print.sh
 talos/scripts/build-schematic-cache.sh
+talos/scripts/generate-argv-dump.sh
 talos/scripts/test-bit-identity.sh
 talos/scripts/translate-legacy-cluster-yaml.sh
 talos/scripts/validate-schematics.sh
@@ -27,5 +31,3 @@ talos/test/fixtures/nodes/missing-binding.yaml
 talos/test/fixtures/schematic-cache.yaml
 talos/test/fixtures/valid-minimal.yaml
 talos/test/nodes/worker-test.yaml
-docs/platform-hardware-features.yaml
-docs/schemas/hardware-features.schema.json

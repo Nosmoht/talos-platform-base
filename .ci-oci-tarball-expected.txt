@@ -9,9 +9,11 @@
 ./talos/patches/worker-gvisor.yaml
 ./talos/patches/worker-kubevirt.yaml
 ./talos/patches/worker-pi.yaml
+./talos/RELEASE-NOTES-v0.5.1.md
 ./talos/schemas/cluster.schema.json
 ./talos/scripts/argv-print.sh
 ./talos/scripts/build-schematic-cache.sh
+./talos/scripts/generate-argv-dump.sh
 ./talos/scripts/test-bit-identity.sh
 ./talos/scripts/translate-legacy-cluster-yaml.sh
 ./talos/scripts/validate-schematics.sh
