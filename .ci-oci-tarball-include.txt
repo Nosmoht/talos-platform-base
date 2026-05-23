@@ -4,6 +4,7 @@ talos/AGENTS.md
 talos/Makefile.lib
 talos/RELEASE-NOTES-v0.5.1.md
 talos/RELEASE-NOTES-v0.5.2.md
+talos/RELEASE-NOTES-v0.5.3.md
 talos/patches/common.yaml
 talos/patches/controlplane.yaml
 talos/patches/drbd.yaml
@@ -14,6 +15,7 @@ talos/patches/worker-pi.yaml
 talos/schemas/cluster.schema.json
 talos/scripts/argv-print.sh
 talos/scripts/build-schematic-cache.sh
+talos/scripts/check-role-patches-field.sh
 talos/scripts/generate-argv-dump.sh
 talos/scripts/resolve-placeholders.sh
 talos/scripts/test-bit-identity.sh
@@ -33,3 +35,7 @@ talos/test/fixtures/nodes/missing-binding.yaml
 talos/test/fixtures/schematic-cache.yaml
 talos/test/fixtures/valid-minimal.yaml
 talos/test/nodes/worker-test.yaml
+talos/test/regressions/role-patches/m01-schema-renamed-back.yaml
+talos/test/regressions/role-patches/m02-schema-additional-properties-true.yaml
+talos/test/regressions/role-patches/m03-example-default-patches.yaml
+talos/test/regressions/role-patches/m04-agents-md-no-section.yaml

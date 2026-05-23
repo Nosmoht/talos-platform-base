@@ -19,9 +19,6 @@ roles:
     patches:
       - patches/common.yaml
       - patches/controlplane.yaml
-    default_patches:
-      - patches/controlplane.yaml
-      - patches/system-clock.yaml
     default_extensions:
       - https://example.invalid/extensions/iscsi-tools
       - https://example.invalid/extensions/util-linux-tools
@@ -31,18 +28,16 @@ roles:
     patches:
       - patches/common.yaml
       - patches/worker.yaml
-    default_patches:
-      - patches/worker.yaml
-      - patches/system-clock.yaml
     default_extensions:
       - https://example.invalid/extensions/iscsi-tools
       - https://example.invalid/extensions/util-linux-tools
 
   gpu-worker:
     description: "Kubernetes worker node with GPU passthrough"
-    default_patches:
-      - patches/worker.yaml
-      - patches/system-clock.yaml
+    patches:
+      - patches/common.yaml
+      - patches/worker-gvisor.yaml
+      - patches/worker-gpu.yaml
     default_extensions:
       - https://example.invalid/extensions/iscsi-tools
       - https://example.invalid/extensions/util-linux-tools

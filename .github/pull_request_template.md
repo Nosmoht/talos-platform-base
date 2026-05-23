@@ -58,6 +58,22 @@ These run automatically; PR is blocked until all are green.
 - [ ] If a public interface changed (Helm values, registry schema, CCNPs, hard constraints): either an ADR or a `docs/*.md` reference updated
 - [ ] Auto-generated docs re-rendered if their source changed
 
+## Consumer impact
+
+If this PR changes a public interface (schema, Makefile.lib API, CLI argv,
+release notes shape, OCI tarball contents):
+
+- [ ] Each known v0.5.x consumer named below with per-PR impact
+  (cross-checked against `talos-orchestrator/DEPENDENCIES.md`
+  "Consumer Pins" snapshot date):
+  - `talos-homelab-cluster` — <no change required | sed/yq migration |
+    other>
+- [ ] If no other v0.5.x consumer exists at PR merge time, that fact is
+  asserted here with the snapshot date.
+
+Skip this section only if the PR is purely internal (no public-interface
+change).
+
 ## Reviewer checklist
 
 - [ ] Commit messages follow Conventional Commits with scoped types

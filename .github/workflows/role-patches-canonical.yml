@@ -1,0 +1,124 @@
+name: role-patches-canonical
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yq (pinned + verified)
+        run: |
+          set -euo pipefail
+          YQ_VERSION=v4.45.4
+          YQ_SHA256=654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
+          curl -fsSL -o /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  /tmp/yq" | sha256sum -c -
+          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
+          yq --version
+      - name: Run check-role-patches-field.sh on clean tree
+        run: talos/scripts/check-role-patches-field.sh
+      - name: Mutation regression tests
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          # Structured mutation kinds (R2 hardening): the workflow
+          # constructs yq/sed expressions itself from the fixture's
+          # structured fields. Free-form expressions in fixture content
+          # are NOT accepted — this closes the yq env()/load() and
+          # sed 'e' command injection class.
+          # R3 hardening (team-red R2 finding): SAFE_SED_PATTERN_RE drops
+          # `.` (sed regex metacharacter — would match any character) and
+          # `/` (sed address delimiter — would let a fixture escape into a
+          # second sed command). The pattern must be a literal-alphanumeric
+          # heading prefix; brackets and other sed metacharacters are not
+          # admitted. The four shipped fixtures use literal headings only.
+          declare -r SAFE_PATH_RE='^(\."\$defs"\."role-spec"|\.roles\.[A-Za-z][A-Za-z0-9_-]*|\."[A-Za-z][A-Za-z0-9_-]*")(\.[A-Za-z][A-Za-z0-9_-]*|\["[A-Za-z][A-Za-z0-9_-]*"\])*$'
+          declare -r SAFE_VALUE_RE='^(true|false|null|"[A-Za-z0-9 _./:-]*"|\[("[A-Za-z0-9 _./:-]*",?)*\])$'
+          declare -r SAFE_SED_PATTERN_RE='^[A-Za-z][A-Za-z0-9 _-]*$'
+
+          fixtures=(talos/test/regressions/role-patches/*.yaml)
+          if [ "${#fixtures[@]}" -eq 0 ]; then
+            echo "::error::no mutation fixtures found"
+            exit 1
+          fi
+
+          run_fixture() {
+            local fixture="$1"
+            local name target kind tmp target_path
+            name=$(basename "$fixture")
+            echo "::group::Mutation ${name}"
+            target=$(yq -r '.target' "$fixture")
+            kind=$(yq -r '.mutation.kind' "$fixture")
+
+            # Path-traversal guard: target must be a plain, repo-relative
+            # path under talos/ with no '..' segments and no leading '/'.
+            case "$target" in
+              ''|/*) echo "::error::fixture ${name}: invalid target '${target}'"; return 1 ;;
+              */..*|*/../*|../*|*/..) echo "::error::fixture ${name}: '..' segment in target '${target}'"; return 1 ;;
+              talos/*) : ;;
+              *) echo "::error::fixture ${name}: target '${target}' must be under talos/"; return 1 ;;
+            esac
+
+            tmp=$(mktemp -d)
+            cp -r talos "$tmp/talos"
+            target_path="${tmp}/${target}"
+
+            case "$kind" in
+              yq_assign)
+                local path value
+                path=$(yq -r '.mutation.path' "$fixture")
+                value=$(yq -r '.mutation.value' "$fixture")
+                [[ "$path" =~ $SAFE_PATH_RE ]] || { echo "::error::fixture ${name}: yq path '${path}' fails SAFE_PATH_RE"; rm -rf "$tmp"; return 1; }
+                [[ "$value" =~ $SAFE_VALUE_RE ]] || { echo "::error::fixture ${name}: yq value '${value}' fails SAFE_VALUE_RE"; rm -rf "$tmp"; return 1; }
+                yq -i "${path} = ${value}" "$target_path"
+                ;;
+              yq_delete)
+                local path
+                path=$(yq -r '.mutation.path' "$fixture")
+                [[ "$path" =~ $SAFE_PATH_RE ]] || { echo "::error::fixture ${name}: yq path '${path}' fails SAFE_PATH_RE"; rm -rf "$tmp"; return 1; }
+                yq -i "del(${path})" "$target_path"
+                ;;
+              sed_delete_section)
+                local heading
+                heading=$(yq -r '.mutation.heading_pattern' "$fixture")
+                [[ "$heading" =~ $SAFE_SED_PATTERN_RE ]] || { echo "::error::fixture ${name}: sed heading_pattern '${heading}' fails SAFE_SED_PATTERN_RE (literal alphanumeric only)"; rm -rf "$tmp"; return 1; }
+                # R3 hardening (team-red): pre-check that the heading
+                # appears at least once in the target — silent-no-op
+                # under sed -i would otherwise produce a confusing
+                # "mutation not caught" error blaming the gate.
+                grep -qE "^## ${heading}" "$target_path" || { echo "::error::fixture ${name}: heading_pattern '${heading}' matches no line in '${target}' (sed would no-op)"; rm -rf "$tmp"; return 1; }
+                # Delete the heading line plus all lines until the next '## ' heading
+                sed -i "/^## ${heading}/,/^## /{/^## /!d;}; /^## ${heading}/d" "$target_path"
+                ;;
+              *)
+                echo "::error::fixture ${name}: unknown mutation.kind '${kind}' (allowed: yq_assign, yq_delete, sed_delete_section)"
+                rm -rf "$tmp"
+                return 1
+                ;;
+            esac
+
+            # R3 hardening (team-red): invoke via executable bit
+            # (matches the CI-step invocation in the same workflow).
+            # Requires AC I2 chmod +x; verified by gate-script self-test.
+            if ( cd "$tmp" && ./talos/scripts/check-role-patches-field.sh ) >/dev/null 2>&1; then
+              echo "::error::mutation ${name} was NOT caught by the gate"
+              rm -rf "$tmp"
+              return 1
+            fi
+            echo "mutation ${name}: caught (gate exited non-zero as expected)"
+            rm -rf "$tmp"
+            echo "::endgroup::"
+          }
+
+          for fixture in "${fixtures[@]}"; do
+            run_fixture "$fixture"
+          done
