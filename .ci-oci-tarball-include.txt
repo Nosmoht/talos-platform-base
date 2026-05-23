@@ -15,6 +15,7 @@ talos/schemas/cluster.schema.json
 talos/scripts/argv-print.sh
 talos/scripts/build-schematic-cache.sh
 talos/scripts/generate-argv-dump.sh
+talos/scripts/resolve-placeholders.sh
 talos/scripts/test-bit-identity.sh
 talos/scripts/translate-legacy-cluster-yaml.sh
 talos/scripts/validate-schematics.sh

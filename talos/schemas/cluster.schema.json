@@ -86,17 +86,12 @@
         },
         {
           "type": "object",
-          "description": "File-reference patch: path to a YAML patch file applied via talosctl --config-patch @<file>.",
+          "description": "File-reference patch: path to a YAML patch file applied via talosctl --config-patch @<file>. NOTE: placeholder_bindings (PLACEHOLDER -> yq-path in nodes/<n>.yaml) lives on the hardware-capability-spec, not on the patch-item — see $defs/hardware-capability-spec.",
           "required": ["file"],
           "properties": {
             "file": {
               "type": "string",
               "description": "Relative path to a YAML patch file (relative to the talos base directory)."
-            },
-            "placeholder_bindings": {
-              "type": "object",
-              "description": "Map of PLACEHOLDER_NAME to the cluster.yaml field path supplying the value. Used by Phase 3 substitution.",
-              "additionalProperties": {"type": "string"}
             }
           },
           "additionalProperties": false
@@ -212,6 +207,12 @@
           "type": "array",
           "items": {"$ref": "#/$defs/patch-item"},
           "description": "JSON-pointer patches applied to the Talos machine config when this capability is active. Duplicate pointers across capabilities produce a conflict diagnostic."
+        },
+        "placeholder_bindings": {
+          "type": "object",
+          "description": "Map of PLACEHOLDER_NAME -> yq path (absolute from the nodes/<n>.yaml root, e.g. machine.network.bridge.nic). At gen-configs time argv-print.sh resolves each binding against the per-node yaml; resolve-placeholders.sh substitutes ${PLACEHOLDER} tokens in any patch the role applies. Each placeholder name MUST be declared by exactly one capability the node uses (argv-print.sh emits binding-conflict otherwise). The field-path value is charset-restricted to ^[A-Za-z_][A-Za-z0-9_.-]*$ to prevent yq-expression injection.",
+          "propertyNames": {"pattern": "^[A-Z][A-Z0-9_]*$"},
+          "additionalProperties": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"}
         },
         "description": {
           "type": "string"

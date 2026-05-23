@@ -67,6 +67,38 @@ Security: substitutions are literal (`sed s|...|...|g`), never
 `envsubst` or shell evaluation. Multi-line values are rejected. Sed
 RHS metachars are escaped.
 
+**Additional hardening in v0.5.2 (R1 team-red findings):**
+
+- The `field_path` value (RHS of `placeholder_bindings`) is
+  charset-validated against `^[A-Za-z_][A-Za-z0-9_.-]*$` before yq
+  interpolation. This prevents an attacker-controlled cluster.yaml
+  from authoring a binding RHS like
+  `nic // .cluster.secrets.kubernetes_ca` that would exfiltrate
+  sibling fields from `nodes/<n>.yaml` into the substituted patch
+  (and into the talosctl argv visible in CI logs / argv-dump).
+- Duplicate placeholder names across capabilities on the same node
+  are now detected and fail closed with a `binding-conflict`
+  diagnostic; the prior silent-first-wins ordering was non-deterministic.
+- Schema declares `placeholder_bindings` on the
+  `hardware-capability-spec` (matches runtime); the prior dual
+  declaration on the patch-item file-form has been removed to
+  eliminate the silent-skip footgun.
+
+### Cap-patches composition (scope clarification)
+
+A capability spec can declare its own `patches:` array. v0.5.2 does
+**not** auto-compose capability patches into the per-node argv —
+`argv-print.sh` emits only the patches listed in
+`roles[<role>].patches`. Consumers who want a capability's patch to
+apply on a node must include the patch file in the role's patch
+list manually. Auto-composition is post-v0.6.0 work.
+
+The positive test fixture
+`talos/test/fixtures/valid-substitution.yaml` demonstrates the
+manual-inclusion pattern: `roles.kubevirt-worker.patches` carries
+`worker-kubevirt.yaml` explicitly even though the
+`kubevirt-networking` capability also lists it.
+
 ### CRIT-4 — NTP on new path
 
 Resolved. `argv-print.sh` reads `cluster.ntp_server` (singular,
@@ -80,15 +112,35 @@ machine:
       - <cluster.ntp_server value>
 ```
 
-and emits `--config-patch @<tmpdir>/ntp.yaml` immediately after the
-first patch whose basename is `common.yaml` in the role's patch list
-(or first, if no `common.yaml` is present). When `cluster.ntp_server`
-is unset, no NTP patch is emitted (preserves opt-in semantics for
-consumers who manage NTP externally).
+and emits `--config-patch @<tmpdir>/ntp.yaml` as the **first**
+`--config-patch` in the per-node argv (before any role-patch and
+before `nodes/<n>.yaml`). Every subsequent patch can therefore
+override `machine.time.servers` if a consumer needs different NTP
+configuration at the role or per-node layer. When `cluster.ntp_server`
+is unset, no NTP patch is emitted (opt-in for consumers managing NTP
+externally).
 
-The position-after-common heuristic matches the legacy injection
-position (`_out/<overlay>/cluster.yaml` came right after
-`patches/common.yaml` in legacy ordering).
+Position note: legacy gen-configs emitted the NTP-bearing
+`_out/<overlay>/cluster.yaml` patch *after* `patches/common.yaml`.
+v0.5.2 changes this to position-1 universally (drops the legacy
+"after first common.yaml" heuristic + its fallback path, which
+produced different precedences for roles with vs without a
+`common.yaml` patch — see R1 review of commit 37dd69a). Bit-identity
+diff against the legacy argv-dump will show a 1-position shift of
+the NTP entry; the semantic effect is identical when consumer
+patches do not contain `machine.time.servers`.
+
+Install-image JSON patch retains its prior position (final, after
+`nodes/<n>.yaml`); NTP slots before everything.
+
+**Security hardening (R2 closures of R1 team-red findings):**
+
+- `cluster.ntp_server` value is charset-validated against
+  `^[A-Za-z0-9.:_-]{1,253}$` before substitution into the heredoc.
+  Refusal at gen-configs time prevents YAML-injection via a
+  newline-bearing value (e.g., an attacker landing
+  `machine.install.extraKernelArgs` through the NTP slot to bypass
+  the AGENTS.md Hard Constraints check on SecureBoot / debugfs=off).
 
 ## Safe Operations at v0.5.2
 

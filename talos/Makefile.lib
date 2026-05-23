@@ -85,6 +85,39 @@ ARGV_DUMP_DIR ?= $(REPO_ROOT)/.work/p2-talos-oci/argv-dump
 
 test-bit-identity:
 	@bash "$(BASE_DIR)/scripts/test-bit-identity.sh" 	    "$(CLUSTER_YAML)" "$(BASE_DIR)" "$(SCHEMATIC_CACHE)" "$(ARGV_DUMP_DIR)"
+
+# ---------------------------------------------------------------------------
+# test-substitution — Phase 3: assert placeholder substitution renders the
+# expected golden for a known NIC_NAME binding. Validates R2 fix end-to-end:
+# resolve-placeholders.sh receives a binding, substitutes ${NIC_NAME} in
+# worker-kubevirt.yaml, output matches talos/test/goldens/substitution/.
+# ---------------------------------------------------------------------------
+SUBST_FIXTURE  ?= $(BASE_DIR)/test/fixtures/valid-substitution.yaml
+SUBST_NODES    ?= $(BASE_DIR)/test/fixtures
+SUBST_GOLDEN   ?= $(BASE_DIR)/test/goldens/substitution/subst-01.rendered.yaml
+
+.PHONY: test-substitution test-substitution-update
+
+test-substitution:
+	@TMPD=$$(mktemp -d); trap 'rm -rf $$TMPD' EXIT; \
+	printf 'NIC_NAME\teth0\n' > "$$TMPD/bindings.txt"; \
+	bash "$(BASE_DIR)/scripts/resolve-placeholders.sh" \
+	    "$(BASE_DIR)/patches/worker-kubevirt.yaml" "$$TMPD/bindings.txt" \
+	    > "$$TMPD/rendered.yaml"; \
+	if diff -u "$(SUBST_GOLDEN)" "$$TMPD/rendered.yaml"; then \
+	    echo "OK: substitution renders match golden ($(SUBST_GOLDEN))"; \
+	else \
+	    echo "FAIL: substitution drift — regenerate via 'make test-substitution-update'" >&2; \
+	    exit 1; \
+	fi
+
+test-substitution-update:
+	@TMPD=$$(mktemp -d); trap 'rm -rf $$TMPD' EXIT; \
+	printf 'NIC_NAME\teth0\n' > "$$TMPD/bindings.txt"; \
+	bash "$(BASE_DIR)/scripts/resolve-placeholders.sh" \
+	    "$(BASE_DIR)/patches/worker-kubevirt.yaml" "$$TMPD/bindings.txt" \
+	    > "$(SUBST_GOLDEN)"; \
+	echo "wrote $(SUBST_GOLDEN)"
 # ---------------------------------------------------------------------------
 # Per-node rules (one explicit rule per node, no pattern matching)
 # ---------------------------------------------------------------------------
