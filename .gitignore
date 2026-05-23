@@ -4,6 +4,8 @@ talos/.secrets.dec.yaml
 talos/.versions.stamp
 talos/.schematic-ids.mk
 talos/.schematics.stamp
+# Phase 1B: hash-dedup schematic cache — cluster-specific cached state, not committed.
+talos/.schematic-cache.yaml
 /cluster.yaml
 /talos/_out/
 /kubernetes/bootstrap/argocd/_out/

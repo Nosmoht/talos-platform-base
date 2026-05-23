@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Nosmoht/talos-platform-base/talos/schemas/cluster.schema.json",
+  "title": "cluster.yaml — 5-axis Talos cluster configuration",
+  "description": "JSON Schema for the 5-axis cluster.yaml format consumed by talos/Makefile.lib. Validates shape only; cross-reference to Layer-C hardware-features registry enforced by make validate-schematics (Phase 1B).",
+  "type": "object",
+  "required": ["roles", "architectures", "infrastructure-platforms", "hardware-platforms", "hardware-capabilities", "nodes"],
+  "additionalProperties": true,
+  "properties": {
+    "strict_capability_merge": {
+      "type": "boolean",
+      "description": "When true, capability patch conflicts (two capabilities patching the same JSON-pointer) are FAIL diagnostics instead of WARN. Default: false.",
+      "default": false
+    },
+    "roles": {
+      "type": "object",
+      "description": "Role identifiers mapped to role specifications.",
+      "additionalProperties": {
+        "$ref": "#/$defs/role-spec"
+      }
+    },
+    "architectures": {
+      "type": "object",
+      "description": "CPU architecture identifiers mapped to architecture specifications.",
+      "additionalProperties": {
+        "$ref": "#/$defs/arch-spec"
+      }
+    },
+    "infrastructure-platforms": {
+      "type": "object",
+      "description": "Infrastructure platform identifiers mapped to platform specifications (Talos installer image profile).",
+      "additionalProperties": {
+        "$ref": "#/$defs/infrastructure-platform-spec"
+      }
+    },
+    "hardware-platforms": {
+      "type": "object",
+      "description": "Hardware platform identifiers mapped to platform specifications (SBC / server identity).",
+      "additionalProperties": {
+        "$ref": "#/$defs/hardware-platform-spec"
+      }
+    },
+    "hardware-capabilities": {
+      "type": "object",
+      "description": "Composite capability identifiers mapped to capability specifications. Each entry optionally lists the atomic Layer-C feature ids it requires.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9._-]+$",
+        "description": "Capability keys must consist of alphanumerics, dots, underscores, or hyphens only (no whitespace or shell-special chars)."
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/hardware-capability-spec"
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "description": "Ordered list of node declarations. Each node binds exactly one value on each of the 5 axes.",
+      "items": {
+        "$ref": "#/$defs/node-spec"
+      },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "extension-url": {
+      "type": "string",
+      "format": "uri-reference",
+      "description": "Talos system extension URL (e.g. https://github.com/siderolabs/extensions/releases/download/v1.7.0/iscsi-tools-v1.7.0-linux-amd64.tar.gz)."
+    },
+    "patch-item": {
+      "description": "A single patch to apply to the Talos machine config. Supports two forms: inline JSON-pointer patch ({pointer, value}) or file-reference ({file: <path>}).",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Inline JSON-pointer patch: sets the value at the given RFC 6901 pointer in the machine config.",
+          "required": ["pointer", "value"],
+          "properties": {
+            "pointer": {
+              "type": "string",
+              "description": "RFC 6901 JSON Pointer identifying the target location (e.g. /machine/install/disk)."
+            },
+            "value": {
+              "description": "Value to set at the JSON-pointer location. May be any JSON type."
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "File-reference patch: path to a YAML patch file applied via talosctl --config-patch @<file>.",
+          "required": ["file"],
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Relative path to a YAML patch file (relative to the talos base directory)."
+            },
+            "placeholder_bindings": {
+              "type": "object",
+              "description": "Map of PLACEHOLDER_NAME to the cluster.yaml field path supplying the value. Used by Phase 3 substitution.",
+              "additionalProperties": {"type": "string"}
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "role-spec": {
+      "type": "object",
+      "description": "Specification for a node role (e.g. controlplane, worker, gpu-worker).",
+      "properties": {
+        "default_patches": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of patch file paths applied to every node carrying this role."
+        },
+        "default_extensions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/extension-url"},
+          "description": "List of Talos system extension URLs included for every node carrying this role."
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "arch-spec": {
+      "type": "object",
+      "description": "Specification for a CPU architecture axis value.",
+      "properties": {
+        "compatible-infrastructure-platforms": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Infrastructure platform ids this architecture is compatible with."
+        },
+        "compatible-hardware-platforms": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Hardware platform ids this architecture is compatible with. When present, nodes with this arch must use one of these hardware platforms."
+        },
+        "talos-arch": {
+          "type": "string",
+          "description": "Talos/Kubernetes architecture string (e.g. amd64, arm64)."
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "infrastructure-platform-spec": {
+      "type": "object",
+      "description": "Specification for an infrastructure platform axis value (installer image profile).",
+      "properties": {
+        "installer-profile": {
+          "type": "string",
+          "description": "Talos installer image profile. SecureBoot variants are forbidden by AGENTS.md Hard Constraints (cause boot loops on this platform) and enforced via .github/workflows/hard-constraints-check.yml.",
+          "enum": ["metal", "aws", "vmware", "hetzner", "nocloud"]
+        },
+        "extensions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/extension-url"},
+          "description": "Talos system extension URLs contributed by all nodes using this infrastructure platform."
+        },
+        "compatible-hardware-platforms": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Hardware platform ids compatible with this infrastructure platform. When present, nodes using this infra platform must use one of these hardware platforms."
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "hardware-platform-spec": {
+      "type": "object",
+      "description": "Specification for a hardware platform axis value (SBC / server identity).",
+      "properties": {
+        "vendor": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "extensions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/extension-url"},
+          "description": "Talos system extension URLs contributed by all nodes using this hardware platform."
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "hardware-capability-spec": {
+      "type": "object",
+      "description": "Composite capability specification. requires_features optionally lists the atomic Layer-C hardware feature ids this capability comprises; omitting it means the capability has no Layer-C cross-reference requirement (cross-reference validation is then skipped for this capability in validate-schematics).",
+      "properties": {
+        "requires_features": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of atomic Layer-C hardware feature ids required to satisfy this composite capability.",
+          "minItems": 1
+        },
+        "extensions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/extension-url"},
+          "description": "Talos system extension URLs contributed when this capability is active on a node."
+        },
+        "patches": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/patch-item"},
+          "description": "JSON-pointer patches applied to the Talos machine config when this capability is active. Duplicate pointers across capabilities produce a conflict diagnostic."
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "node-spec": {
+      "type": "object",
+      "description": "Single node declaration binding exactly one value on each of the 5 axes.",
+      "required": ["name", "role", "arch", "infrastructure-platform", "hardware-platform", "hardware_capabilities"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique node name (used as talosctl target and Make rule name).",
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "role": {
+          "type": "string",
+          "description": "Role id — must match a key in the top-level roles map."
+        },
+        "arch": {
+          "type": "string",
+          "description": "Architecture id — must match a key in the top-level architectures map."
+        },
+        "infrastructure-platform": {
+          "type": "string",
+          "description": "Infrastructure platform id — must match a key in the top-level infrastructure-platforms map."
+        },
+        "hardware-platform": {
+          "type": "string",
+          "description": "Hardware platform id — must match a key in the top-level hardware-platforms map."
+        },
+        "hardware_capabilities": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "description": "List of composite capability ids from the top-level hardware-capabilities map. Items must match the same charset as hardware-capabilities propertyNames."
+        },
+        "ip": {
+          "type": "string",
+          "description": "Node IP address."
+        },
+        "nic": {
+          "type": "string",
+          "description": "Primary NIC name (placeholder variable NIC_NAME convention; Phase 1C refactor)."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

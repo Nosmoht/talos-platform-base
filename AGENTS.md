@@ -156,7 +156,7 @@ These are universal cluster invariants. CLAUDE.md imports this file via
 `@AGENTS.md`. Both tools treat this section as canonical. Do NOT relax these
 without repo-maintainer approval.
 
-- **No SecureBoot** — `metal-installer-secureboot` causes boot loops; always use `metal-installer`
+- **No SecureBoot** — `metal-installer-secureboot` and the bare `metal-secureboot` installer-profile value both cause boot loops; always use `metal-installer`. CI gate: `hard-constraints-check.yml` greps `metal-(installer-)?secureboot`.
 - **No `debugfs=off`** — causes "failed to create root filesystem" boot loop in Talos
 - **Gateway API only** — no `kind: Ingress` or Ingress controllers; use HTTPRoute/TLSRoute
 - **EndpointSlices only** — `kind: Endpoints` deprecated since Kubernetes v1.33.0; use `EndpointSlice`

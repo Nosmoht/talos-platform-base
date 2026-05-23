@@ -593,3 +593,31 @@ jobs:
         # --config: pin shared .gitleaks.toml so this scan and the
         # pre-commit hook cannot drift across the project lifecycle.
         run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose --exit-code 1 --no-banner
+
+  oci-allowlist-check:
+    name: OCI Allowlist Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify OCI tarball allowlist matches expected fixture
+        # Builds the talos OCI tarball locally from .ci-oci-tarball-include.txt
+        # and diffs against the committed .ci-oci-tarball-expected.txt fixture.
+        # Catches accidental additions or removals before a tag fires the publish
+        # workflow. Allowlist is fail-closed: any path not listed is excluded.
+        run: |
+          set -euo pipefail
+          [ -f .ci-oci-tarball-include.txt ] || { echo "::error::.ci-oci-tarball-include.txt missing"; exit 1; }
+          [ -f .ci-oci-tarball-expected.txt ] || { echo "::error::.ci-oci-tarball-expected.txt missing"; exit 1; }
+          mkdir -p .work
+          tar -czf .work/oci-check.tar.gz --files-from=.ci-oci-tarball-include.txt
+          tar -tzf .work/oci-check.tar.gz | sed 's|^\./||' | LC_ALL=C sort | sed 's|^|./|' > .work/oci-check-contents.txt
+          if diff -u .ci-oci-tarball-expected.txt .work/oci-check-contents.txt; then
+            echo "OK: tarball contents match .ci-oci-tarball-expected.txt"
+          else
+            echo "::error::Tarball contents diverge from .ci-oci-tarball-expected.txt"
+            echo "To update the fixture: mv .work/oci-check-contents.txt .ci-oci-tarball-expected.txt"
+            exit 1
+          fi

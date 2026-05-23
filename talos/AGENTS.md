@@ -91,3 +91,30 @@ make -C talos dry-run-all       # Validate config without applying
 make -C talos upgrade-k8s       # Upgrade Kubernetes (reconciles extraManifests)
 make -C talos schematics        # Create/update Image Factory schematic IDs
 ```
+
+## v0.5.1 Dual-Path Scope (IMPORTANT — read before using Makefile.lib)
+
+At v0.5.1, the 5-axis Makefile.lib ships **argv-print + validation ONLY**. The
+legacy `gen-configs` path (consumer-side `talos/Makefile`) remains the only
+production-blessed path for generating talosctl machine config.
+
+**DO NOT use `make gen-configs` via Makefile.lib (the new path) in production
+until Phase 3 cut-over is complete.** Two blockers:
+
+1. **Placeholder resolution not implemented** (CRIT-1): `argv-print.sh` emits
+   `@nodes/<name>.yaml` verbatim; `${NIC_NAME}` and similar placeholders in
+   KubeVirt patch files are NOT substituted. Phase 3 adds the substitution
+   mechanism.
+
+2. **NTP not configured on new path** (CRIT-4): `patches/common.yaml` does not
+   include a `machine.time.servers` block. The legacy path injected NTP via a
+   rendered `_out/<overlay>/cluster.yaml` patch. On the new path, clock drift
+   accumulates until Phase 3 updates `common.yaml` to read `cluster.ntp_server`
+   from the 5-axis cluster.yaml.
+
+**Phase 3 is a HARD prerequisite for new-path gen-configs.** Until then:
+
+- `make argv-print` — safe for inspection / bit-identity diff
+- `make validate-schematics` — safe for cluster.yaml validation
+- `make schematics` — safe for schematic cache refresh
+- `make gen-configs` (new path) — **NOT safe for production use**

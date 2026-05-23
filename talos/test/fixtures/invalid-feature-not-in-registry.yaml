@@ -1,0 +1,37 @@
+# invalid-feature-not-in-registry.yaml — triggers:
+# FAIL [hardware-capabilities.custom-cap]: feature 'not-a-real-feature' in requires_features not present in Layer-C registry
+roles:
+  controlplane:
+    description: "Control-plane node"
+
+architectures:
+  amd64:
+    talos-arch: amd64
+    compatible-infrastructure-platforms:
+      - metal
+
+infrastructure-platforms:
+  metal:
+    installer-profile: metal
+
+hardware-platforms:
+  intel-generic:
+    vendor: Intel
+    model: "Generic x86-64"
+
+hardware-capabilities:
+  custom-cap:
+    description: "Capability referencing a non-existent Layer-C feature"
+    requires_features:
+      - not-a-real-feature
+
+nodes:
+  - name: cp-01
+    role: controlplane
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - custom-cap
+    ip: 192.0.2.11
+    nic: eth0

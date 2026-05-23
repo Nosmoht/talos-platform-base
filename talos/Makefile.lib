@@ -1,0 +1,101 @@
+# Makefile.lib — 5-axis talosctl config generation library (v0.5.1+)
+#
+# Consumer-side usage:
+#   BASE_DIR ?= ../vendor/base/talos
+#   ENV      ?= ../cluster.yaml
+#   include $(BASE_DIR)/Makefile.lib
+#
+# Phase 1A: skeleton targets.
+# Phase 1B: validate-schematics (cross-reference diagnostics) + schematics (hash-dedup cache).
+#
+# DUAL-PATH SCOPE (v0.5.1): gen-configs on the new path is NOT production-safe.
+# Two Phase 3 blockers remain:
+#   (1) Placeholder resolution not implemented -- ${NIC_NAME} in KubeVirt patches
+#       passes unsubstituted to talosctl gen config.
+#   (2) NTP not in patches/common.yaml -- clock drift -> etcd cert failure class.
+# Safe targets at v0.5.1: argv-print, validate-schematics, schematics.
+# Legacy make -C talos gen-configs (consumer Makefile) is the only production path.
+# See talos/RELEASE-NOTES-v0.5.1.md for full details.
+
+BASE_DIR ?= $(shell pwd)
+ENV ?= ../cluster.yaml
+CLUSTER_YAML ?= $(ENV)
+
+# ---------------------------------------------------------------------------
+# Guard: ENV must exist at parse-time for per-node rule expansion.
+# ---------------------------------------------------------------------------
+ifeq ($(wildcard $(CLUSTER_YAML)),)
+  $(error Cluster config not found: $(CLUSTER_YAML). Set ENV= or CLUSTER_YAML= to your cluster.yaml path.)
+endif
+
+# ---------------------------------------------------------------------------
+# Node list (5-axis format: nodes[].name)
+# ---------------------------------------------------------------------------
+NODES := $(shell yq -r '.nodes[].name' $(CLUSTER_YAML) 2>/dev/null)
+ifeq ($(strip $(NODES)),)
+  $(error yq required and cluster.yaml .nodes[] must be non-empty. Is yq on PATH? CLUSTER_YAML=$(CLUSTER_YAML))
+endif
+
+.PHONY: gen-configs schematics validate-schematics argv-print
+
+# ---------------------------------------------------------------------------
+# gen-configs — top-level phony: depends on per-node rules
+# ---------------------------------------------------------------------------
+gen-configs: $(NODES)
+
+# ---------------------------------------------------------------------------
+# schematics — Phase 1B: hash-dedup schematic cache
+# ---------------------------------------------------------------------------
+SCHEMATIC_CACHE ?= $(BASE_DIR)/../talos/.schematic-cache.yaml
+
+schematics:
+	@bash "$(BASE_DIR)/scripts/build-schematic-cache.sh" "$(CLUSTER_YAML)" "$(SCHEMATIC_CACHE)"
+
+# ---------------------------------------------------------------------------
+# validate-schematics — Phase 1B: cross-reference diagnostics
+# ---------------------------------------------------------------------------
+validate-schematics:
+	@bash "$(BASE_DIR)/scripts/validate-schematics.sh" "$(CLUSTER_YAML)" "$(BASE_DIR)"
+
+# ---------------------------------------------------------------------------
+# argv-print — Phase 1C: emit exact talosctl gen config argv for NODE=<name>
+# ---------------------------------------------------------------------------
+# Usage: make argv-print NODE=<name>
+# Reads cluster.yaml via argv-print.sh; emits one argv element per line.
+# SCHEMATIC_CACHE defaults to <BASE_DIR>/.schematic-cache.yaml.
+# ---------------------------------------------------------------------------
+NODE ?=
+SCHEMATIC_CACHE ?= $(BASE_DIR)/.schematic-cache.yaml
+
+.PHONY: argv-print test-bit-identity
+
+argv-print:
+	@if [ -z "$(NODE)" ]; then \
+	    echo "Usage: make argv-print NODE=<name>" >&2; exit 1; \
+	fi
+	@bash "$(BASE_DIR)/scripts/argv-print.sh" "$(CLUSTER_YAML)" "$(NODE)" "$(BASE_DIR)" "$(SCHEMATIC_CACHE)"
+
+# ---------------------------------------------------------------------------
+# test-bit-identity — Phase 1C: diff argv-print output against legacy argv-dump
+# ---------------------------------------------------------------------------
+# Usage: make test-bit-identity
+# Requires: ARGV_DUMP_DIR pointing to .work/p2-talos-oci/argv-dump/
+REPO_ROOT ?= $(shell git -C "$(BASE_DIR)" rev-parse --show-toplevel 2>/dev/null || echo "$(BASE_DIR)/..")
+ARGV_DUMP_DIR ?= $(REPO_ROOT)/.work/p2-talos-oci/argv-dump
+
+test-bit-identity:
+	@bash "$(BASE_DIR)/scripts/test-bit-identity.sh" 	    "$(CLUSTER_YAML)" "$(BASE_DIR)" "$(SCHEMATIC_CACHE)" "$(ARGV_DUMP_DIR)"
+# ---------------------------------------------------------------------------
+# Per-node rules (one explicit rule per node, no pattern matching)
+# ---------------------------------------------------------------------------
+define _node-rule
+.PHONY: $(1) _validate-node-$(1)
+
+$(1): | _validate-node-$(1)
+	@echo "would generate $(1) via 5-axis path (Phase 1A stub)"
+
+_validate-node-$(1):
+	@true  # Phase 1C will add real per-node validation
+endef
+
+$(foreach n,$(NODES),$(eval $(call _node-rule,$(n))))

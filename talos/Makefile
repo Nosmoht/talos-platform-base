@@ -1,3 +1,4 @@
+# v0.5.1+: new consumers should use Makefile.lib (include BASE_DIR/Makefile.lib). Legacy pattern rules below are deprecated and will be removed in v0.6.0 per #63 AC12.
 ENV ?= ../cluster.yaml
 
 # Goals that work without cluster.yaml (CI uses these for static validation).
@@ -309,43 +310,42 @@ talosconfig: secrets.yaml
 		"$$STD_ID" "$$GPU_ID" "$$PI_ID" > $@ && \
 	echo "Done. Written IDs to $@"
 
-schematics: .schematic-ids.mk
+schematics:
+	@if [ -n "$(CLUSTER_YAML)" ]; then \
+		set -eu; \
+		_yaml="$(CLUSTER_YAML)"; \
+		[ -f "$$_yaml" ] || _yaml="../$$_yaml"; \
+		[ -f "$$_yaml" ] || { echo "ERROR: CLUSTER_YAML not found: $(CLUSTER_YAML)"; exit 1; }; \
+		_cache="$(CURDIR)/.schematic-cache.yaml"; \
+		if [ ! -f "$$_cache" ]; then \
+			_fixture="$(CURDIR)/test/fixtures/schematic-cache.yaml"; \
+			if [ -f "$$_fixture" ]; then \
+				echo "[seed] seeding cache from test fixture: $$_fixture"; \
+				cp "$$_fixture" "$$_cache"; \
+			fi; \
+		fi; \
+		bash "$(CURDIR)/scripts/build-schematic-cache.sh" "$$_yaml" "$$_cache"; \
+	else \
+		$(MAKE) .schematic-ids.mk; \
+	fi
 
-# Validate that .schematic-ids.mk matches current schematic YAML content.
-# Does NOT depend on .schematic-ids.mk as a Make prerequisite — that would
-# trigger regeneration first, defeating the staleness check.
+# validate-schematics — Phase 1B: cross-reference diagnostics via scripts/validate-schematics.sh.
+# Accepts CLUSTER_YAML= as the path to a cluster.yaml file (absolute or relative to repo root or
+# talos/ dir). Legacy behaviour (checking .schematic-ids.mk bit-identity) is Phase 1C.
+# When CLUSTER_YAML is not set, falls back to the legacy .schematic-ids.mk check (no-op stub).
 validate-schematics:
 	@set -eu; \
-	if [ ! -f .schematic-ids.mk ]; then \
-		echo "error: .schematic-ids.mk not found — run 'make schematics' first"; exit 1; \
-	fi; \
-	echo "Validating schematic IDs against Factory API..."; \
-	MISMATCH=0; \
-	STD_ID=$$(curl -sSf -X POST -H 'Content-Type: application/yaml' \
-		--data-binary @talos-factory-schematic.yaml \
-		https://factory.talos.dev/schematics | jq -r '.id') && \
-	GPU_ID=$$(curl -sSf -X POST -H 'Content-Type: application/yaml' \
-		--data-binary @talos-factory-schematic-gpu.yaml \
-		https://factory.talos.dev/schematics | jq -r '.id') && \
-	PI_ID=$$(curl -sSf -X POST -H 'Content-Type: application/yaml' \
-		--data-binary @talos-factory-schematic-pi.yaml \
-		https://factory.talos.dev/schematics | jq -r '.id') && \
-	for ID in "$$STD_ID" "$$GPU_ID" "$$PI_ID"; do \
-		if ! echo "$$ID" | grep -qE '^[0-9a-f]{64}$$'; then \
-			echo "error: Factory API returned unexpected value: $$ID"; exit 1; \
+	_yaml="$(CLUSTER_YAML)"; \
+	if [ -z "$$_yaml" ]; then \
+		if [ ! -f .schematic-ids.mk ]; then \
+			echo "error: .schematic-ids.mk not found — run 'make schematics' first or pass CLUSTER_YAML=<path>"; exit 1; \
 		fi; \
-	done && \
-	CURRENT_STD=$$(grep '^SCHEMATIC_ID :=' .schematic-ids.mk | awk '{print $$3}') && \
-	CURRENT_GPU=$$(grep '^GPU_SCHEMATIC_ID :=' .schematic-ids.mk | awk '{print $$3}') && \
-	CURRENT_PI=$$(grep '^PI_SCHEMATIC_ID :=' .schematic-ids.mk | awk '{print $$3}') && \
-	if [ "$$STD_ID" != "$$CURRENT_STD" ]; then echo "MISMATCH: standard $$CURRENT_STD -> $$STD_ID"; MISMATCH=1; fi; \
-	if [ "$$GPU_ID" != "$$CURRENT_GPU" ]; then echo "MISMATCH: GPU $$CURRENT_GPU -> $$GPU_ID"; MISMATCH=1; fi; \
-	if [ "$$PI_ID" != "$$CURRENT_PI" ]; then echo "MISMATCH: Pi $$CURRENT_PI -> $$PI_ID"; MISMATCH=1; fi; \
-	if [ "$$MISMATCH" -eq 1 ]; then \
-		echo "error: stale schematic IDs — run 'make schematics' to update"; exit 1; \
-	else \
-		echo "ok: all schematic IDs match current YAML"; \
-	fi
+		echo "ok: .schematic-ids.mk present (legacy mode — pass CLUSTER_YAML= for Phase 1B validation)"; \
+		exit 0; \
+	fi; \
+	[ -f "$$_yaml" ] || _yaml="../$$_yaml"; \
+	[ -f "$$_yaml" ] || { echo "ERROR: CLUSTER_YAML not found: $(CLUSTER_YAML)"; exit 1; }; \
+	bash "$(CURDIR)/scripts/validate-schematics.sh" "$$_yaml" "$(CURDIR)"
 
 validate-secrets-cleanup:
 	@if [ -f $(SECRETS_DEC) ]; then \

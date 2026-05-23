@@ -1,0 +1,41 @@
+# valid-minimal.yaml — positive control fixture
+# Must exit 0 with "OK: N nodes pass validation"
+roles:
+  controlplane:
+    description: "Control-plane node"
+    default_extensions:
+      - https://example.invalid/extensions/iscsi-tools
+
+architectures:
+  amd64:
+    talos-arch: amd64
+    compatible-infrastructure-platforms:
+      - metal
+
+infrastructure-platforms:
+  metal:
+    installer-profile: metal
+
+hardware-platforms:
+  intel-generic:
+    vendor: Intel
+    model: "Generic x86-64"
+
+hardware-capabilities:
+  base-server:
+    description: "Standard compute"
+    requires_features:
+      - nvidia-gpu
+    extensions:
+      - https://example.invalid/extensions/iscsi-tools
+
+nodes:
+  - name: cp-01
+    role: controlplane
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - base-server
+    ip: 192.0.2.11
+    nic: eth0

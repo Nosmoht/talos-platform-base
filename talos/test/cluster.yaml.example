@@ -1,0 +1,213 @@
+# cluster.yaml.example — 5-axis format fixture for schema acceptance tests
+#
+# One node per role/arch/infra/hw combination.
+# NOT the homelab cluster.yaml (that is the legacy format; Phase 1C migrates it).
+# Extended in Phase 1B to exercise:
+#   - extensions fields on hardware-capabilities (hash-dedup schematic cache)
+#   - requires_features using real Layer-C ids from docs/platform-hardware-features.yaml
+#   - 2+ nodes sharing the same extension set (worker-01 and worker-02) to verify
+#     that bySet count < byNode count in the schematic cache
+#
+# Sentinel extension URLs (https://example.invalid/*) are used so tests do not
+# require network access to factory.talos.dev. The schematic cache fixture
+# at talos/test/fixtures/schematic-cache.yaml pre-populates sentinel IDs.
+
+# Axis 1 — Roles
+roles:
+  controlplane:
+    description: "Kubernetes control-plane node running etcd + API server"
+    patches:
+      - patches/common.yaml
+      - patches/controlplane.yaml
+    default_patches:
+      - patches/controlplane.yaml
+      - patches/system-clock.yaml
+    default_extensions:
+      - https://example.invalid/extensions/iscsi-tools
+      - https://example.invalid/extensions/util-linux-tools
+
+  worker:
+    description: "Standard Kubernetes worker node"
+    patches:
+      - patches/common.yaml
+      - patches/worker.yaml
+    default_patches:
+      - patches/worker.yaml
+      - patches/system-clock.yaml
+    default_extensions:
+      - https://example.invalid/extensions/iscsi-tools
+      - https://example.invalid/extensions/util-linux-tools
+
+  gpu-worker:
+    description: "Kubernetes worker node with GPU passthrough"
+    default_patches:
+      - patches/worker.yaml
+      - patches/system-clock.yaml
+    default_extensions:
+      - https://example.invalid/extensions/iscsi-tools
+      - https://example.invalid/extensions/util-linux-tools
+      - https://example.invalid/extensions/nvidia-container-toolkit-lts
+
+# Axis 2 — Architectures
+architectures:
+  amd64:
+    talos-arch: amd64
+    description: "x86-64 (Intel/AMD)"
+    compatible-infrastructure-platforms:
+      - metal
+      - vmware
+      - hetzner
+
+  arm64:
+    talos-arch: arm64
+    description: "AArch64 (Ampere, Apple Silicon, Raspberry Pi)"
+    compatible-infrastructure-platforms:
+      - metal
+      - nocloud
+
+# Axis 3 — Infrastructure Platforms
+infrastructure-platforms:
+  metal:
+    installer-profile: metal
+    description: "Bare-metal boot via Talos metal installer"
+
+  vmware:
+    installer-profile: vmware
+    description: "VMware ESXi / vSphere via OVA"
+
+  hetzner:
+    installer-profile: hetzner
+    description: "Hetzner Cloud via nocloud/hetzner customization"
+
+  nocloud:
+    installer-profile: nocloud
+    description: "Generic cloud-init / nocloud (Proxmox, QEMU)"
+
+# Axis 4 — Hardware Platforms
+hardware-platforms:
+  intel-generic:
+    vendor: Intel
+    model: "Generic x86-64 server / NUC"
+    description: "Generic Intel x86-64 platform"
+
+  raspberry-pi-4:
+    vendor: Raspberry Pi Foundation
+    model: Raspberry Pi 4 Model B
+    description: "ARM Cortex-A72, 4–8 GB LPDDR4"
+
+  nvidia-gpu-node:
+    vendor: NVIDIA
+    model: "Server with NVIDIA PCIe GPU"
+    description: "x86-64 server carrying one or more NVIDIA PCIe graphics cards"
+
+# Axis 5 — Hardware Capabilities (composite; requires_features refs Layer-C ids)
+hardware-capabilities:
+  base-server:
+    description: "Standard compute capability with no special hardware"
+    requires_features:
+      - vt-x-or-amd-v
+      - ebpf-capable-kernel
+    extensions:
+      - https://example.invalid/extensions/iscsi-tools
+
+  gpu-nvidia:
+    description: "NVIDIA GPU present and accessible via PCIe passthrough"
+    requires_features:
+      - nvidia-gpu
+      - iommu-enabled
+    extensions:
+      - https://example.invalid/extensions/nvidia-container-toolkit-lts
+    patches:
+      - pointer: /machine/kernel/modules/0/name
+        value: nvidia
+
+  arm-sbc:
+    description: "ARM single-board computer (SBC) platform"
+    requires_features:
+      - ebpf-capable-kernel
+    extensions:
+      - https://example.invalid/extensions/rpi-firmware
+
+  kubevirt-networking:
+    description: "KubeVirt VM networking via VLAN + Linux bridge (requires NIC binding)"
+    placeholder_bindings:
+      NIC_NAME: network.bridge.nic
+    patches:
+      - file: patches/worker-kubevirt.yaml
+
+# Nodes — flat array; worker-01 and worker-02 share the same extension set
+# (both are role=worker, infra=metal, hw=intel-generic, caps=[base-server])
+# so bySet count (3 unique sets) < byNode count (5 nodes).
+nodes:
+  - name: cp-01
+    role: controlplane
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - base-server
+    ip: 10.0.0.11
+    nic: eth0
+
+  - name: worker-01
+    role: worker
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - base-server
+    ip: 10.0.0.21
+    nic: eth0
+
+  - name: worker-02
+    role: worker
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - base-server
+    ip: 10.0.0.22
+    nic: eth0
+
+  - name: gpu-01
+    role: gpu-worker
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: nvidia-gpu-node
+    hardware_capabilities:
+      - base-server
+      - gpu-nvidia
+    ip: 10.0.0.31
+    nic: eth0
+
+  - name: pi-01
+    role: worker
+    arch: arm64
+    infrastructure-platform: metal
+    hardware-platform: raspberry-pi-4
+    hardware_capabilities:
+      - arm-sbc
+    ip: 10.0.0.41
+    nic: eth0
+
+  - name: worker-test
+    role: worker
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - base-server
+      - kubevirt-networking
+    ip: 10.0.0.23
+    nic: eth0
+
+# Cluster identity for Makefile.lib integration tests
+cluster:
+  name: test-cluster
+  overlay: test-cluster
+  api_vip: 10.0.0.100
+  gateway_vip: 10.0.0.200
+  network: 10.0.0.0/24
+  gateway: 10.0.0.1
+  ntp_server: 10.0.0.1
+  target_revision: main
