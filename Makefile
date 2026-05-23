@@ -1,4 +1,4 @@
-.PHONY: argocd-install argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml verify-tools render-component render-all verify-rendered chart-pull .argocd-bootstrap-render
+.PHONY: argocd-install argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml verify-tools render-component render-all verify-rendered chart-pull .argocd-bootstrap-render oci-allowlist-check
 
 ENV ?= cluster.yaml
 
@@ -120,6 +120,24 @@ validate-gitops:
 		echo "kubeconform: $$f"; \
 		kubeconform -strict -ignore-missing-schemas "$$f"; \
 	done
+
+oci-allowlist-check: ## Build talos OCI tarball locally and diff against .ci-oci-tarball-expected.txt
+	# Allowlist-based (fail-closed) tarball verification. Builds locally per the
+	# same logic as oci-publish.yml "Build tarball" + "Verify tarball contents".
+	# Run before pushing a tag to confirm the fixture matches actual contents.
+	@[ -f .ci-oci-tarball-include.txt ] || { echo "ERROR: .ci-oci-tarball-include.txt not found"; exit 1; }
+	@[ -f .ci-oci-tarball-expected.txt ] || { echo "ERROR: .ci-oci-tarball-expected.txt not found"; exit 1; }
+	@mkdir -p .work
+	@tar -czf .work/oci-check.tar.gz --files-from=.ci-oci-tarball-include.txt
+	@tar -tzf .work/oci-check.tar.gz | sed 's|^\./||' | sort | sed 's|^|./|' > .work/oci-check-contents.txt
+	@if diff -u .ci-oci-tarball-expected.txt .work/oci-check-contents.txt; then \
+		echo "OK: tarball contents match .ci-oci-tarball-expected.txt"; \
+	else \
+		echo "FAIL: tarball contents diverge from .ci-oci-tarball-expected.txt"; \
+		echo "To update the fixture: mv .work/oci-check-contents.txt .ci-oci-tarball-expected.txt"; \
+		exit 1; \
+	fi
+	@rm -f .work/oci-check.tar.gz
 
 install-pre-commit:
 	uvx pre-commit install
