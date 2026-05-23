@@ -10,12 +10,17 @@ Regenerate: scripts/render-capability-index.sh
 
 This document is generated from `docs/platform-capability-index.yaml`.
 It is the **Layer A** catalogue defined in
-[ADR — Two-Layer Capability Architecture](./adr-two-layer-capability-architecture.md):
+[ADR — Three-Layer Capability Architecture](./adr-three-layer-capability-architecture.md)
+(which supersedes the earlier
+[Two-Layer ADR](./adr-two-layer-capability-architecture.md)):
 the tool-capability-index that names every functional capability this
 base provides, its current implementations, and what swap classes
 exist between alternatives. For the network-trust subset (Layer B,
 Kyverno-consumed), see
-[capability-reference.md](./capability-reference.md).
+[capability-reference.md](./capability-reference.md). For the atomic
+hardware-features registry (Layer C, referenced via
+`requires_hardware_features[]`), see
+[platform-hardware-features.md](./platform-hardware-features.md).
 
 ---
 
@@ -673,7 +678,7 @@ Node-local device-plugin socket + DCGM metrics exporter
 on host-network.
 ```
 
-**Independence test:** alt-impls=true · contract-stable=true · independent-lifecycle=true
+**Independence test:** alt-impls=— · contract-stable=true · independent-lifecycle=true
 
 **Implementations:**
 

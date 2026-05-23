@@ -1,13 +1,21 @@
 #!/usr/bin/env bash
 # check-capability-index-refs.sh — cross-reference validation for the
-# Layer A Tool-Capability-Index against (a) the on-disk infrastructure
-# component set and (b) the Layer B PNI capability registry.
+# Layer A Tool-Capability-Index against:
+#   (a) the on-disk infrastructure component set,
+#   (b) the Layer B PNI capability registry (the network-trust subset),
+#   (c) the Layer C hardware-features registry (atomic hardware predicates).
 #
-# Per docs/adr-two-layer-capability-architecture.md §"Validation":
+# Per docs/adr-three-layer-capability-architecture.md §"Validation tooling"
+# (extending the original two-artifact contract from the superseded
+# Two-Layer ADR):
 #   - composition[] entries exist as base infra directories or are marked
 #     external (source.external truthy).
 #   - replaced_by / split_into resolve to another Layer A capability id.
 #   - pni_capability_id is null OR resolves to a Layer B entry.
+#   - requires_hardware_features[] entries resolve to Layer C ids.
+#   - orphan-infra-dir advisory: dirs under kubernetes/base/infrastructure/
+#     not referenced by any Layer-A composition[] AND not in the Layer-C
+#     producer-tooling allow-list emit a WARN line (informational; not a fail).
 #
 # Usage:
 #   scripts/check-capability-index-refs.sh
@@ -25,13 +33,15 @@ HW_FEATURES_FILE="$REPO_ROOT/docs/platform-hardware-features.yaml"
 PNI_REGISTRY="$REPO_ROOT/kubernetes/base/infrastructure/platform-network-interface/resources/capability-registry-configmap.yaml"
 INFRA_DIR="$REPO_ROOT/kubernetes/base/infrastructure"
 
-# Layer-C producer-tooling components — directories under
-# kubernetes/base/infrastructure/ that exist to discover hardware features
-# (NFD as the primary case). Per adr-three-layer-capability-architecture.md
-# §"NFD placement": NFD is Layer-C producer-tooling, NOT Layer-A composition.
-# It therefore won't appear in any composition[] but is NOT an orphan.
-# Keep this list small; extending it adds tooling that is not in Layer A.
-LAYER_C_PRODUCER_DIRS="node-feature-discovery"
+# Expected non-Layer-A infrastructure directories — dirs under
+# kubernetes/base/infrastructure/ that are load-bearing but legitimately
+# don't appear in any Layer-A composition[]. Per
+# adr-three-layer-capability-architecture.md §"NFD placement": NFD is
+# Layer-C producer-tooling, NOT Layer-A composition. PNI is policy/
+# admission machinery, not a tool capability. Both are expected to show
+# clean (no orphan WARN); future tooling-only dirs should be added here.
+# Keep this list small and audit periodically.
+EXPECTED_NON_LAYER_A_DIRS="node-feature-discovery platform-network-interface"
 
 case "${1:-}" in
   --help|-h)
@@ -177,11 +187,11 @@ done
 sort -u -o "$referenced_dirs_file" "$referenced_dirs_file" 2>/dev/null || true
 while IFS= read -r dir; do
   in_set "$dir" "$referenced_dirs_file" && continue
-  is_layer_c=false
-  for c_dir in $LAYER_C_PRODUCER_DIRS; do
-    [ "$dir" = "$c_dir" ] && { is_layer_c=true; break; }
+  is_expected=false
+  for c_dir in $EXPECTED_NON_LAYER_A_DIRS; do
+    [ "$dir" = "$c_dir" ] && { is_expected=true; break; }
   done
-  $is_layer_c && continue
+  $is_expected && continue
   echo "WARN: orphan-infra-dir kubernetes/base/infrastructure/$dir/" >&2
 done < "$infra_components_file"
 

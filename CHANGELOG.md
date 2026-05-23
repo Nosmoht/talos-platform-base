@@ -49,9 +49,16 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Kyverno ClusterPolicy `pni-reserved-labels-enforce`** extended with
   new rule `reserved-layer-c-hardware-labels`: denies tenant-set
   `platform.io/hardware-feature.*` and `platform.io/hardware-capability.*`
-  labels on tenant-owned resources (Pod, Deployment, StatefulSet,
-  DaemonSet, Job, CronJob, Service, Namespace). Defense-in-depth against
-  tenant forgery of hardware-attestation claims.
+  labels on standard-workload kinds (Pod, Deployment, StatefulSet,
+  DaemonSet, ReplicaSet, ReplicationController, Job, CronJob, Service,
+  Namespace), checking BOTH the resource's own `metadata.labels` AND
+  workload-template paths (`spec.template.metadata.labels`,
+  `spec.jobTemplate.spec.template.metadata.labels`). Closes the
+  controller-mediated propagation attack surface identified in Round-1
+  team-red review (`.work/reviews/r1/team-red.md` CRITICAL). Per-CRD
+  enforcement (KubeVirt `VirtualMachine`, CNPG `Cluster`, etc.) is
+  out-of-scope and tracked as a follow-up issue per ADR §"Enforcement
+  scope (intentional limits)".
 
 ### Changed
 

@@ -193,14 +193,34 @@ spec:
     - name: reserved-layer-c-hardware-labels
       # Layer-C Reserved-label rule per
       # docs/adr-three-layer-capability-architecture.md §"Reserved label
-      # namespaces". Tenant-owned resources MUST NOT carry labels in the
-      # `platform.io/hardware-feature.*` (atomic) or
-      # `platform.io/hardware-capability.*` (composite) namespaces.
-      # These are node-attestation labels set by Talos
-      # machine.nodeLabels (or, optionally, by a Layer-C discovery
-      # relay) and consumed by scheduling/admission. Tenant forgery
-      # would poison scheduling decisions for hardware-coupled
-      # capabilities (KubeVirt VMs, GPU workloads, DRBD storage).
+      # namespaces". Tenant-owned standard-workload resources MUST NOT
+      # carry labels in the `platform.io/hardware-feature.*` (atomic) or
+      # `platform.io/hardware-capability.*` (composite) namespaces, on
+      # either the resource itself OR any workload-template path the
+      # controller will propagate to child Pods.
+      #
+      # The reservation defends:
+      #   - direct labels on Pod / Namespace / Service
+      #   - direct + template labels on workload controllers:
+      #     Deployment, StatefulSet, DaemonSet, ReplicaSet,
+      #     ReplicationController, Job
+      #   - jobTemplate.spec.template.metadata.labels on CronJob
+      #
+      # Scope-limit (intentional): tenant-owned CRD instances
+      # (KubeVirt VirtualMachine, CNPG Cluster, RabbitmqCluster,
+      # RedisFailover, Kafka, etc.) carry their own template-label
+      # paths. Per-CRD enforcement is the operator's responsibility
+      # (parallel to the per-instance generate/mutate machinery the
+      # producer/consumer-symmetry ADR scopes to consumer overlays).
+      # A follow-up issue tracks per-CRD policy generation; the
+      # threat-model surface this rule defends is documented in
+      # AGENTS.md §Reserved-label rule.
+      #
+      # Trust boundary for Node-target writes: Kubernetes RBAC. The
+      # rule does NOT match Node kind; legitimate writers are Talos
+      # `machine.nodeLabels` (cluster-bootstrap) and human admins
+      # with nodes/update RBAC. Tenants without nodes/patch RBAC
+      # cannot reach the Node label path.
       skipBackgroundRequests: true
       match:
         any:
@@ -210,6 +230,8 @@ spec:
                 - Deployment
                 - StatefulSet
                 - DaemonSet
+                - ReplicaSet
+                - ReplicationController
                 - Job
                 - CronJob
                 - Service
@@ -220,14 +242,18 @@ spec:
           PNI Layer-C violation: {{ request.object.kind }}
           '{{ request.object.metadata.name }}' declares a label in the
           reserved Layer-C namespace platform.io/hardware-feature.* or
-          platform.io/hardware-capability.*. These namespaces are
-          owned by the platform's hardware-attestation path (Talos
-          machine.nodeLabels) and must not be set on tenant-owned
-          resources. See docs/adr-three-layer-capability-architecture.md
+          platform.io/hardware-capability.* — on the resource itself
+          OR on a workload-template (spec.template.metadata.labels /
+          spec.jobTemplate.spec.template.metadata.labels). These
+          namespaces are owned by the platform's hardware-attestation
+          path (Talos machine.nodeLabels) and must not be set on
+          tenant-owned resources. See
+          docs/adr-three-layer-capability-architecture.md
           §"Reserved label namespaces".
         deny:
           conditions:
             any:
+              # Direct metadata.labels — applies to all matched kinds.
               - key: >-
                   {{ request.object.metadata.labels | items(@, 'key', 'value')
                      | [?starts_with(key, 'platform.io/hardware-feature.')]
@@ -236,6 +262,40 @@ spec:
                 value: 0
               - key: >-
                   {{ request.object.metadata.labels | items(@, 'key', 'value')
+                     | [?starts_with(key, 'platform.io/hardware-capability.')]
+                     | length(@) }}
+                operator: GreaterThan
+                value: 0
+              # Workload-template path — applies to Deployment, StatefulSet,
+              # DaemonSet, ReplicaSet, ReplicationController, Job. For kinds
+              # without spec.template (Pod, Service, Namespace, CronJob),
+              # the JMESPath defaults to `{}` and length(@) returns 0.
+              - key: >-
+                  {{ request.object.spec.template.metadata.labels || `{}`
+                     | items(@, 'key', 'value')
+                     | [?starts_with(key, 'platform.io/hardware-feature.')]
+                     | length(@) }}
+                operator: GreaterThan
+                value: 0
+              - key: >-
+                  {{ request.object.spec.template.metadata.labels || `{}`
+                     | items(@, 'key', 'value')
+                     | [?starts_with(key, 'platform.io/hardware-capability.')]
+                     | length(@) }}
+                operator: GreaterThan
+                value: 0
+              # CronJob jobTemplate path — applies only to CronJob; defaults
+              # to `{}` on other kinds.
+              - key: >-
+                  {{ request.object.spec.jobTemplate.spec.template.metadata.labels || `{}`
+                     | items(@, 'key', 'value')
+                     | [?starts_with(key, 'platform.io/hardware-feature.')]
+                     | length(@) }}
+                operator: GreaterThan
+                value: 0
+              - key: >-
+                  {{ request.object.spec.jobTemplate.spec.template.metadata.labels || `{}`
+                     | items(@, 'key', 'value')
                      | [?starts_with(key, 'platform.io/hardware-capability.')]
                      | length(@) }}
                 operator: GreaterThan

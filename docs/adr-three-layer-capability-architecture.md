@@ -198,6 +198,37 @@ capability}.*` reservations is added to the existing
 `kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml` (or a
 co-located sibling policy) — same rule shape, extended key list.
 
+**Enforcement scope (intentional limits):**
+
+- **Standard-workload kinds, direct + template label paths.** The rule
+  matches Pod, Deployment, StatefulSet, DaemonSet, ReplicaSet,
+  ReplicationController, Job, CronJob, Service, Namespace, and denies
+  reserved-label keys on both the resource's own `metadata.labels` AND
+  on workload-template paths (`spec.template.metadata.labels`,
+  `spec.jobTemplate.spec.template.metadata.labels`). Closing the
+  template path prevents controller-mediated propagation to child Pods
+  from defeating direct-Pod admission.
+- **Tenant-deployable CRD instances** (KubeVirt `VirtualMachine`, CNPG
+  `Cluster`, `RabbitmqCluster`, `RedisFailover`, `Kafka`, KubeVirt
+  `DataVolume`, etc.) carry their own template-label paths. Per-CRD
+  enforcement is the **operator's responsibility** (parallel to the
+  per-instance generate/mutate machinery the
+  [Producer/Consumer Symmetry ADR](./adr-capability-producer-consumer-symmetry.md)
+  scopes to consumer overlays). A follow-up issue tracks per-CRD policy
+  generation; the base does not pre-empt operator-specific admission
+  shapes.
+- **`Node` is NOT in the rule's match list.** Legitimate writers are
+  Talos `machine.nodeLabels` (cluster-bootstrap path) and operators
+  with `nodes/patch` RBAC. The trust boundary for Node-target writes
+  is Kubernetes RBAC, not this policy. Consumer clusters that grant
+  `nodes/patch` to a tenant workload must add an audit-mode policy on
+  Node-update or accept that the tenant can write Layer-C labels to
+  Nodes it has RBAC for.
+
+These scope limits were surfaced by the Round-1 adversarial review
+(`team-red`); the rule scope and ADR claim were tightened together.
+Findings ledger: `.work/reviews/r1/team-red.md`.
+
 ### Composite capability convention
 
 The CNCF Platforms White Paper "capabilities comprised of features"
@@ -246,6 +277,19 @@ Per `.work/issues/layer-audit/cleanup-scope.md` Q2 verdict (B): NFD is
 a META Layer-A entry to document its presence and lifecycle (this is an
 open question deferred from issue #61's scope — see "Out of scope for
 v1" below). It MUST NOT appear in any Layer-A entry's `composition[]`.
+
+**Single-source convention for per-feature labels.** Where the platform
+ships *both* NFD AND a Talos-`machine.nodeLabels` path for the same
+atomic feature (current example: `nvidia-gpu`), consumer cluster repos
+MUST pick exactly one source and MUST NOT have both writing labels for
+the same feature on the same Node. Allowing both creates a label-drift
+hazard (Round-1 reviewer MED — `.work/reviews/r1/reviewer.md`): NFD
+might transiently miss a PCI re-enumeration while the Talos label stays
+stale `true`, or vice versa. Scheduling decisions then diverge depending
+on which key the consumer's nodeSelector references. The two
+`node_label_key` and `alt_label_keys` columns in
+`docs/platform-hardware-features.yaml` document the available sources;
+they do NOT authorize using more than one per cluster.
 
 Concretely: `docs/platform-capability-index.yaml` entry `gpu-runtime`
 removes `node-feature-discovery` from `composition[]` and gains
@@ -314,8 +358,15 @@ A follow-up ADR may be filed when cross-component need surfaces.
   centralized composite registry.
 - **C+5.** Reserved-label vocabulary covers the full
   `platform.io/{provide, capability-*, hardware-feature,
-  hardware-capability}.*` surface; tenants cannot forge
-  hardware-attestation claims.
+  hardware-capability}.*` surface; tenants without elevated RBAC
+  cannot forge hardware-attestation claims through standard-workload
+  kinds (Pod, Service, Namespace, Deployment, StatefulSet, DaemonSet,
+  ReplicaSet, ReplicationController, Job, CronJob — direct labels and
+  workload-template labels). Per-CRD instance forgery (KubeVirt VM,
+  CNPG Cluster, etc.) and Node-target forgery (requires `nodes/patch`
+  RBAC) are out of this rule's scope — see §"Enforcement scope
+  (intentional limits)" above for the rationale and follow-up issue
+  pointer.
 - **C+6.** The four-concept boundary (capabilities Layer A; trust
   Layer B; hardware Layer C; workload-class explicitly out-of-scope)
   is now stated rather than implicit.

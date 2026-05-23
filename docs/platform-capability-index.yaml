@@ -612,15 +612,21 @@ capabilities:
       on host-network.
     requires_hardware_features: [nvidia-gpu, iommu-enabled]
     independence_test:
-      alt_impls_exist: true
+      alt_impls_exist: false
       contract_stable: true
       independent_lifecycle: true
       notes: |
-        Post-NFD-removal (issue #61) honestly: device-plugin layer has
-        AMD ROCm and Intel Gaudi/Habana alt-impls upstream; DCGM
-        exporter has independent lifecycle from the device plugin
-        (separate version trains). Bundle-of-three label no longer
-        applies — NFD is Layer-C producer-tooling, not Layer-A.
+        Single implementation by NVIDIA-scope: name, contract, and
+        requires_hardware_features ([nvidia-gpu, iommu-enabled]) all
+        pin this entry to NVIDIA hardware. AMD ROCm and Intel Gaudi
+        would be sibling Layer-A capabilities (`gpu-runtime-amd`,
+        `gpu-runtime-intel`) with disjoint `requires_hardware_features`,
+        NOT alt-impls of this entry. Per Round-1 review (reviewer
+        HIGH, .work/reviews/r1/reviewer.md) the earlier post-NFD-removal
+        flip to `true` was overcorrection. NFD removal correctly
+        flipped `independent_lifecycle` to true (device-plugin and
+        DCGM-exporter have separate version trains); `alt_impls_exist`
+        stays false honestly.
     implementations:
       - name: nvidia-stack
         status: active
@@ -790,8 +796,14 @@ capabilities:
       here rather than via a `requires_transitive_from` field so the
       lint script can resolve each id against Layer C without walking
       the composed_of graph. The two ids match vm-runtime's
-      `requires_hardware_features` set; transitive coherence is the
-      responsibility of the Phase-4 lint extension.
+      `requires_hardware_features` set; transitive coherence between
+      this entry and `vm-runtime` is MANUALLY MAINTAINED — if
+      `vm-runtime` later adds a hardware-feature, an author must
+      remember to update this entry. A follow-up issue tracks a
+      transitive-coherence lint check that would walk `composed_of[]`
+      and assert parent ⊇ union(children); per Round-1 review
+      (reviewer HIGH, .work/reviews/r1/reviewer.md) shipping the note
+      without the lint was misleading.
     independence_test:
       alt_impls_exist: true
       contract_stable: false
