@@ -7,6 +7,11 @@
   "required": ["roles", "architectures", "infrastructure-platforms", "hardware-platforms", "hardware-capabilities", "nodes"],
   "additionalProperties": true,
   "properties": {
+    "strict_capability_merge": {
+      "type": "boolean",
+      "description": "When true, capability patch conflicts (two capabilities patching the same JSON-pointer) are FAIL diagnostics instead of WARN. Default: false.",
+      "default": false
+    },
     "roles": {
       "type": "object",
       "description": "Role identifiers mapped to role specifications.",
@@ -52,6 +57,26 @@
     }
   },
   "$defs": {
+    "extension-url": {
+      "type": "string",
+      "format": "uri-reference",
+      "description": "Talos system extension URL (e.g. https://github.com/siderolabs/extensions/releases/download/v1.7.0/iscsi-tools-v1.7.0-linux-amd64.tar.gz)."
+    },
+    "patch-item": {
+      "type": "object",
+      "description": "A single JSON-pointer patch to apply to the Talos machine config.",
+      "required": ["pointer", "value"],
+      "properties": {
+        "pointer": {
+          "type": "string",
+          "description": "RFC 6901 JSON Pointer identifying the target location (e.g. /machine/install/disk)."
+        },
+        "value": {
+          "description": "Value to set at the JSON-pointer location. May be any JSON type."
+        }
+      },
+      "additionalProperties": false
+    },
     "role-spec": {
       "type": "object",
       "description": "Specification for a node role (e.g. controlplane, worker, gpu-worker).",
@@ -63,8 +88,8 @@
         },
         "default_extensions": {
           "type": "array",
-          "items": {"type": "string"},
-          "description": "List of Talos system extension names included for every node carrying this role."
+          "items": {"$ref": "#/$defs/extension-url"},
+          "description": "List of Talos system extension URLs included for every node carrying this role."
         },
         "description": {
           "type": "string"
@@ -80,6 +105,11 @@
           "type": "array",
           "items": {"type": "string"},
           "description": "Infrastructure platform ids this architecture is compatible with."
+        },
+        "compatible-hardware-platforms": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Hardware platform ids this architecture is compatible with. When present, nodes with this arch must use one of these hardware platforms."
         },
         "talos-arch": {
           "type": "string",
@@ -100,6 +130,16 @@
           "description": "Talos installer image profile (e.g. metal, aws, vmware, hetzner, nocloud).",
           "enum": ["metal", "aws", "vmware", "hetzner", "nocloud", "metal-secureboot"]
         },
+        "extensions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/extension-url"},
+          "description": "Talos system extension URLs contributed by all nodes using this infrastructure platform."
+        },
+        "compatible-hardware-platforms": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Hardware platform ids compatible with this infrastructure platform. When present, nodes using this infra platform must use one of these hardware platforms."
+        },
         "description": {
           "type": "string"
         }
@@ -115,6 +155,11 @@
         },
         "model": {
           "type": "string"
+        },
+        "extensions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/extension-url"},
+          "description": "Talos system extension URLs contributed by all nodes using this hardware platform."
         },
         "description": {
           "type": "string"
@@ -132,6 +177,16 @@
           "items": {"type": "string"},
           "description": "List of atomic Layer-C hardware feature ids required to satisfy this composite capability.",
           "minItems": 1
+        },
+        "extensions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/extension-url"},
+          "description": "Talos system extension URLs contributed when this capability is active on a node."
+        },
+        "patches": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/patch-item"},
+          "description": "JSON-pointer patches applied to the Talos machine config when this capability is active. Duplicate pointers across capabilities produce a conflict diagnostic."
         },
         "description": {
           "type": "string"

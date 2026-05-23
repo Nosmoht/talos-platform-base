@@ -2,10 +2,15 @@
 #
 # One node per role/arch/infra/hw combination.
 # NOT the homelab cluster.yaml (that is the legacy format; Phase 1C migrates it).
-# Used in Phase 1A only for:
-#   yq -o=json talos/test/cluster.yaml.example | \
-#       uvx --from check-jsonschema check-jsonschema \
-#           --schemafile talos/schemas/cluster.schema.json -
+# Extended in Phase 1B to exercise:
+#   - extensions fields on hardware-capabilities (hash-dedup schematic cache)
+#   - requires_features using real Layer-C ids from docs/platform-hardware-features.yaml
+#   - 2+ nodes sharing the same extension set (worker-01 and worker-02) to verify
+#     that bySet count < byNode count in the schematic cache
+#
+# Sentinel extension URLs (https://example.invalid/*) are used so tests do not
+# require network access to factory.talos.dev. The schematic cache fixture
+# at talos/test/fixtures/schematic-cache.yaml pre-populates sentinel IDs.
 
 # Axis 1 — Roles
 roles:
@@ -15,8 +20,8 @@ roles:
       - patches/controlplane.yaml
       - patches/system-clock.yaml
     default_extensions:
-      - siderolabs/iscsi-tools
-      - siderolabs/util-linux-tools
+      - https://example.invalid/extensions/iscsi-tools
+      - https://example.invalid/extensions/util-linux-tools
 
   worker:
     description: "Standard Kubernetes worker node"
@@ -24,8 +29,8 @@ roles:
       - patches/worker.yaml
       - patches/system-clock.yaml
     default_extensions:
-      - siderolabs/iscsi-tools
-      - siderolabs/util-linux-tools
+      - https://example.invalid/extensions/iscsi-tools
+      - https://example.invalid/extensions/util-linux-tools
 
   gpu-worker:
     description: "Kubernetes worker node with GPU passthrough"
@@ -33,9 +38,9 @@ roles:
       - patches/worker.yaml
       - patches/system-clock.yaml
     default_extensions:
-      - siderolabs/iscsi-tools
-      - siderolabs/util-linux-tools
-      - siderolabs/nvidia-container-toolkit-lts
+      - https://example.invalid/extensions/iscsi-tools
+      - https://example.invalid/extensions/util-linux-tools
+      - https://example.invalid/extensions/nvidia-container-toolkit-lts
 
 # Axis 2 — Architectures
 architectures:
@@ -94,20 +99,32 @@ hardware-capabilities:
   base-server:
     description: "Standard compute capability with no special hardware"
     requires_features:
-      - cpu-x86-64-v2
+      - vt-x-or-amd-v
+      - ebpf-capable-kernel
+    extensions:
+      - https://example.invalid/extensions/iscsi-tools
 
   gpu-nvidia:
     description: "NVIDIA GPU present and accessible via PCIe passthrough"
     requires_features:
-      - gpu-nvidia-pcie
-      - cpu-x86-64-v3
+      - nvidia-gpu
+      - iommu-enabled
+    extensions:
+      - https://example.invalid/extensions/nvidia-container-toolkit-lts
+    patches:
+      - pointer: /machine/kernel/modules/0/name
+        value: nvidia
 
   arm-sbc:
     description: "ARM single-board computer (SBC) platform"
     requires_features:
-      - cpu-armv8
+      - ebpf-capable-kernel
+    extensions:
+      - https://example.invalid/extensions/rpi-firmware
 
-# Nodes — flat array, one per row; each binds one value on each axis
+# Nodes — flat array; worker-01 and worker-02 share the same extension set
+# (both are role=worker, infra=metal, hw=intel-generic, caps=[base-server])
+# so bySet count (3 unique sets) < byNode count (5 nodes).
 nodes:
   - name: cp-01
     role: controlplane
@@ -127,6 +144,16 @@ nodes:
     hardware_capabilities:
       - base-server
     ip: 10.0.0.21
+    nic: eth0
+
+  - name: worker-02
+    role: worker
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - base-server
+    ip: 10.0.0.22
     nic: eth0
 
   - name: gpu-01

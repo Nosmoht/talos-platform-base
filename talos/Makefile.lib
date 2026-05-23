@@ -5,24 +5,26 @@
 #   ENV      ?= ../cluster.yaml
 #   include $(BASE_DIR)/Makefile.lib
 #
-# Phase 1A: skeleton targets (full implementation in Phase 1B/1C).
+# Phase 1A: skeleton targets.
+# Phase 1B: validate-schematics (cross-reference diagnostics) + schematics (hash-dedup cache).
 
 BASE_DIR ?= $(shell pwd)
 ENV ?= ../cluster.yaml
+CLUSTER_YAML ?= $(ENV)
 
 # ---------------------------------------------------------------------------
 # Guard: ENV must exist at parse-time for per-node rule expansion.
 # ---------------------------------------------------------------------------
-ifeq ($(wildcard $(ENV)),)
-  $(error Cluster config not found: $(ENV). Set ENV= to your cluster.yaml path.)
+ifeq ($(wildcard $(CLUSTER_YAML)),)
+  $(error Cluster config not found: $(CLUSTER_YAML). Set ENV= or CLUSTER_YAML= to your cluster.yaml path.)
 endif
 
 # ---------------------------------------------------------------------------
 # Node list (5-axis format: nodes[].name)
 # ---------------------------------------------------------------------------
-NODES := $(shell yq -r '.nodes[].name' $(ENV) 2>/dev/null)
+NODES := $(shell yq -r '.nodes[].name' $(CLUSTER_YAML) 2>/dev/null)
 ifeq ($(strip $(NODES)),)
-  $(error yq required and cluster.yaml .nodes[] must be non-empty. Is yq on PATH? ENV=$(ENV))
+  $(error yq required and cluster.yaml .nodes[] must be non-empty. Is yq on PATH? CLUSTER_YAML=$(CLUSTER_YAML))
 endif
 
 .PHONY: gen-configs schematics validate-schematics argv-print
@@ -33,22 +35,24 @@ endif
 gen-configs: $(NODES)
 
 # ---------------------------------------------------------------------------
-# schematics — hash-dedup logic deferred to Phase 1B
+# schematics — Phase 1B: hash-dedup schematic cache
 # ---------------------------------------------------------------------------
+SCHEMATIC_CACHE ?= $(BASE_DIR)/../talos/.schematic-cache.yaml
+
 schematics:
-	@echo "[Phase 1B] schematics: hash-dedup not yet implemented"
+	@bash "$(BASE_DIR)/scripts/build-schematic-cache.sh" "$(CLUSTER_YAML)" "$(SCHEMATIC_CACHE)"
 
 # ---------------------------------------------------------------------------
-# validate-schematics — diagnostics deferred to Phase 1B
+# validate-schematics — Phase 1B: cross-reference diagnostics
 # ---------------------------------------------------------------------------
 validate-schematics:
-	@echo "[Phase 1B] validate-schematics: cross-ref diagnostics not yet implemented"
+	@bash "$(BASE_DIR)/scripts/validate-schematics.sh" "$(CLUSTER_YAML)" "$(BASE_DIR)"
 
 # ---------------------------------------------------------------------------
 # argv-print — stub per-node argv (bit-identity verification in Phase 1C)
 # ---------------------------------------------------------------------------
-CLUSTER_NAME_LIB := $(shell yq -r '.cluster.name // "unknown"' $(ENV) 2>/dev/null)
-ENDPOINT_LIB     := $(shell yq -r '(.cluster.api_vip // "ENDPOINT") | "https://" + . + ":6443"' $(ENV) 2>/dev/null)
+CLUSTER_NAME_LIB := $(shell yq -r '.cluster.name // "unknown"' $(CLUSTER_YAML) 2>/dev/null)
+ENDPOINT_LIB     := $(shell yq -r '(.cluster.api_vip // "ENDPOINT") | "https://" + . + ":6443"' $(CLUSTER_YAML) 2>/dev/null)
 
 argv-print:
 	@for n in $(NODES); do \
@@ -65,7 +69,7 @@ $(1): | _validate-node-$(1)
 	@echo "would generate $(1) via 5-axis path (Phase 1A stub)"
 
 _validate-node-$(1):
-	@true  # Phase 1B will add real validation
+	@true  # Phase 1C will add real per-node validation
 endef
 
 $(foreach n,$(NODES),$(eval $(call _node-rule,$(n))))
