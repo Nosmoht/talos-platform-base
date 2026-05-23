@@ -3,6 +3,7 @@
 ./talos/AGENTS.md
 ./talos/Makefile.lib
 ./talos/RELEASE-NOTES-v0.5.1.md
+./talos/RELEASE-NOTES-v0.5.2.md
 ./talos/patches/common.yaml
 ./talos/patches/controlplane.yaml
 ./talos/patches/drbd.yaml

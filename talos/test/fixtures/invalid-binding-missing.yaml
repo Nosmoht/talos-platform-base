@@ -1,10 +1,10 @@
 # invalid-binding-missing.yaml — triggers binding-missing FAIL diagnostic:
 # FAIL [n.missing-binding]: binding-missing — capability 'kubevirt-networking' references
 #   placeholder '${NIC_NAME}' but nodes/missing-binding.yaml is missing the binding
-#   (expected at path 'network.bridge.nic')
+#   (expected at path 'machine.network.bridge.nic')
 #
 # The node file talos/test/fixtures/nodes/missing-binding.yaml intentionally
-# omits the network.bridge.nic field to trigger the diagnostic.
+# omits the machine.network.bridge.nic field to trigger the diagnostic.
 
 roles:
   worker:
@@ -29,7 +29,7 @@ hardware-capabilities:
   kubevirt-networking:
     description: "KubeVirt VM networking via VLAN + Linux bridge (requires NIC binding)"
     placeholder_bindings:
-      NIC_NAME: network.bridge.nic
+      NIC_NAME: machine.network.bridge.nic
     patches:
       - file: patches/worker-kubevirt.yaml
 
