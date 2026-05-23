@@ -66,7 +66,7 @@ jobs:
           set -euo pipefail
           mkdir -p .work
           tar -tzf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" \
-            | sort > .work/tarball-contents.txt
+            | sed 's|^\./||' | sort | sed 's|^|./|' > .work/tarball-contents.txt
           if [ -f .ci-oci-tarball-expected.txt ]; then
             if ! diff -u .ci-oci-tarball-expected.txt .work/tarball-contents.txt; then
               echo "::error::Tarball contents diverge from .ci-oci-tarball-expected.txt"

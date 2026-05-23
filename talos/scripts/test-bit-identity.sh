@@ -5,6 +5,24 @@
 #
 # Exits 0 when all nodes match; exits 1 with diff output for each failing node.
 # Nodes without a legacy dump file are skipped (SKIP status).
+#
+# NORMALIZATION RULES (CRIT-2 §Methodology — reproducibility guarantee):
+#   Comment lines (#...) and blank lines are stripped from the legacy dump before
+#   diffing (see grep -v filters below). Two normalizations apply to dump files:
+#
+#   Rule 1 — Secrets path: the legacy talosctl invocation passes --with-secrets
+#     followed by a mktemp-generated ephemeral path. Dump files store the literal
+#     `.secrets.dec.yaml` form that argv-print.sh emits. Dumps are captured via
+#     talos/scripts/generate-argv-dump.sh which applies this substitution.
+#
+#   Rule 2 — NTP patch present: the legacy argv includes
+#     "--config-patch @_out/<overlay>/cluster.yaml" which injects NTP. This is
+#     NOT stripped from dump files. It appears as the documented delta (see
+#     .work/p2-talos-oci/bit-identity-deltas.md) and is expected to remain until
+#     Phase 3 adds machine.time.servers to patches/common.yaml.
+#
+# To regenerate dump files from a consumer cluster repo:
+#   bash talos/scripts/generate-argv-dump.sh <homelab-dir> <argv-dump-dir>
 
 set -euo pipefail
 
