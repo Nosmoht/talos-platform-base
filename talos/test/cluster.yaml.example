@@ -1,0 +1,151 @@
+# cluster.yaml.example — 5-axis format fixture for schema acceptance tests
+#
+# One node per role/arch/infra/hw combination.
+# NOT the homelab cluster.yaml (that is the legacy format; Phase 1C migrates it).
+# Used in Phase 1A only for:
+#   yq -o=json talos/test/cluster.yaml.example | \
+#       uvx --from check-jsonschema check-jsonschema \
+#           --schemafile talos/schemas/cluster.schema.json -
+
+# Axis 1 — Roles
+roles:
+  controlplane:
+    description: "Kubernetes control-plane node running etcd + API server"
+    default_patches:
+      - patches/controlplane.yaml
+      - patches/system-clock.yaml
+    default_extensions:
+      - siderolabs/iscsi-tools
+      - siderolabs/util-linux-tools
+
+  worker:
+    description: "Standard Kubernetes worker node"
+    default_patches:
+      - patches/worker.yaml
+      - patches/system-clock.yaml
+    default_extensions:
+      - siderolabs/iscsi-tools
+      - siderolabs/util-linux-tools
+
+  gpu-worker:
+    description: "Kubernetes worker node with GPU passthrough"
+    default_patches:
+      - patches/worker.yaml
+      - patches/system-clock.yaml
+    default_extensions:
+      - siderolabs/iscsi-tools
+      - siderolabs/util-linux-tools
+      - siderolabs/nvidia-container-toolkit-lts
+
+# Axis 2 — Architectures
+architectures:
+  amd64:
+    talos-arch: amd64
+    description: "x86-64 (Intel/AMD)"
+    compatible-infrastructure-platforms:
+      - metal
+      - vmware
+      - hetzner
+
+  arm64:
+    talos-arch: arm64
+    description: "AArch64 (Ampere, Apple Silicon, Raspberry Pi)"
+    compatible-infrastructure-platforms:
+      - metal
+      - nocloud
+
+# Axis 3 — Infrastructure Platforms
+infrastructure-platforms:
+  metal:
+    installer-profile: metal
+    description: "Bare-metal boot via Talos metal installer"
+
+  vmware:
+    installer-profile: vmware
+    description: "VMware ESXi / vSphere via OVA"
+
+  hetzner:
+    installer-profile: hetzner
+    description: "Hetzner Cloud via nocloud/hetzner customization"
+
+  nocloud:
+    installer-profile: nocloud
+    description: "Generic cloud-init / nocloud (Proxmox, QEMU)"
+
+# Axis 4 — Hardware Platforms
+hardware-platforms:
+  intel-generic:
+    vendor: Intel
+    model: "Generic x86-64 server / NUC"
+    description: "Generic Intel x86-64 platform"
+
+  raspberry-pi-4:
+    vendor: Raspberry Pi Foundation
+    model: Raspberry Pi 4 Model B
+    description: "ARM Cortex-A72, 4–8 GB LPDDR4"
+
+  nvidia-gpu-node:
+    vendor: NVIDIA
+    model: "Server with NVIDIA PCIe GPU"
+    description: "x86-64 server carrying one or more NVIDIA PCIe graphics cards"
+
+# Axis 5 — Hardware Capabilities (composite; requires_features refs Layer-C ids)
+hardware-capabilities:
+  base-server:
+    description: "Standard compute capability with no special hardware"
+    requires_features:
+      - cpu-x86-64-v2
+
+  gpu-nvidia:
+    description: "NVIDIA GPU present and accessible via PCIe passthrough"
+    requires_features:
+      - gpu-nvidia-pcie
+      - cpu-x86-64-v3
+
+  arm-sbc:
+    description: "ARM single-board computer (SBC) platform"
+    requires_features:
+      - cpu-armv8
+
+# Nodes — flat array, one per row; each binds one value on each axis
+nodes:
+  - name: cp-01
+    role: controlplane
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - base-server
+    ip: 10.0.0.11
+    nic: eth0
+
+  - name: worker-01
+    role: worker
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - base-server
+    ip: 10.0.0.21
+    nic: eth0
+
+  - name: gpu-01
+    role: gpu-worker
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: nvidia-gpu-node
+    hardware_capabilities:
+      - base-server
+      - gpu-nvidia
+    ip: 10.0.0.31
+    nic: eth0
+
+  - name: pi-01
+    role: worker
+    arch: arm64
+    infrastructure-platform: metal
+    hardware-platform: raspberry-pi-4
+    hardware_capabilities:
+      - arm-sbc
+    ip: 10.0.0.41
+    nic: eth0

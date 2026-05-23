@@ -1,3 +1,4 @@
+# v0.5.1+: new consumers should use Makefile.lib (include BASE_DIR/Makefile.lib). Legacy pattern rules below are deprecated and will be removed in v0.6.0 per #63 AC12.
 ENV ?= ../cluster.yaml
 
 # Goals that work without cluster.yaml (CI uses these for static validation).

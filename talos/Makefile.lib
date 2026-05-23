@@ -1,0 +1,71 @@
+# Makefile.lib — 5-axis talosctl config generation library (v0.5.1+)
+#
+# Consumer-side usage:
+#   BASE_DIR ?= ../vendor/base/talos
+#   ENV      ?= ../cluster.yaml
+#   include $(BASE_DIR)/Makefile.lib
+#
+# Phase 1A: skeleton targets (full implementation in Phase 1B/1C).
+
+BASE_DIR ?= $(shell pwd)
+ENV ?= ../cluster.yaml
+
+# ---------------------------------------------------------------------------
+# Guard: ENV must exist at parse-time for per-node rule expansion.
+# ---------------------------------------------------------------------------
+ifeq ($(wildcard $(ENV)),)
+  $(error Cluster config not found: $(ENV). Set ENV= to your cluster.yaml path.)
+endif
+
+# ---------------------------------------------------------------------------
+# Node list (5-axis format: nodes[].name)
+# ---------------------------------------------------------------------------
+NODES := $(shell yq -r '.nodes[].name' $(ENV) 2>/dev/null)
+ifeq ($(strip $(NODES)),)
+  $(error yq required and cluster.yaml .nodes[] must be non-empty. Is yq on PATH? ENV=$(ENV))
+endif
+
+.PHONY: gen-configs schematics validate-schematics argv-print
+
+# ---------------------------------------------------------------------------
+# gen-configs — top-level phony: depends on per-node rules
+# ---------------------------------------------------------------------------
+gen-configs: $(NODES)
+
+# ---------------------------------------------------------------------------
+# schematics — hash-dedup logic deferred to Phase 1B
+# ---------------------------------------------------------------------------
+schematics:
+	@echo "[Phase 1B] schematics: hash-dedup not yet implemented"
+
+# ---------------------------------------------------------------------------
+# validate-schematics — diagnostics deferred to Phase 1B
+# ---------------------------------------------------------------------------
+validate-schematics:
+	@echo "[Phase 1B] validate-schematics: cross-ref diagnostics not yet implemented"
+
+# ---------------------------------------------------------------------------
+# argv-print — stub per-node argv (bit-identity verification in Phase 1C)
+# ---------------------------------------------------------------------------
+CLUSTER_NAME_LIB := $(shell yq -r '.cluster.name // "unknown"' $(ENV) 2>/dev/null)
+ENDPOINT_LIB     := $(shell yq -r '(.cluster.api_vip // "ENDPOINT") | "https://" + . + ":6443"' $(ENV) 2>/dev/null)
+
+argv-print:
+	@for n in $(NODES); do \
+	    echo "talosctl gen config $(CLUSTER_NAME_LIB) $(ENDPOINT_LIB) --config-patch @patches/<stub> [Phase 1C]  # node=$$n"; \
+	done
+
+# ---------------------------------------------------------------------------
+# Per-node rules (one explicit rule per node, no pattern matching)
+# ---------------------------------------------------------------------------
+define _node-rule
+.PHONY: $(1) _validate-node-$(1)
+
+$(1): | _validate-node-$(1)
+	@echo "would generate $(1) via 5-axis path (Phase 1A stub)"
+
+_validate-node-$(1):
+	@true  # Phase 1B will add real validation
+endef
+
+$(foreach n,$(NODES),$(eval $(call _node-rule,$(n))))
