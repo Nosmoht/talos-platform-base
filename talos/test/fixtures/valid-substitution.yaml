@@ -1,0 +1,47 @@
+# valid-substitution.yaml — positive fixture for placeholder substitution.
+#
+# Used by `make test-substitution` (talos/Makefile.lib). The kubevirt-worker
+# role explicitly includes worker-kubevirt.yaml in its patches list so the
+# substitution code path in argv-print.sh fires end-to-end. Goldens for the
+# expected rendered patch live in talos/test/goldens/substitution/.
+
+roles:
+  kubevirt-worker:
+    description: "Worker role that includes the kubevirt patch directly in role.patches (composes the cap-patch manually until cap-patch auto-composition lands in v0.6.x)."
+    patches:
+      - patches/common.yaml
+      - patches/worker-kubevirt.yaml
+
+architectures:
+  amd64:
+    talos-arch: amd64
+    compatible-infrastructure-platforms: [metal]
+
+infrastructure-platforms:
+  metal:
+    installer-profile: metal
+
+hardware-platforms:
+  intel-generic:
+    vendor: Intel
+    model: "Generic x86-64"
+
+hardware-capabilities:
+  kubevirt-networking:
+    description: "KubeVirt VM networking via VLAN + Linux bridge (requires NIC binding)"
+    placeholder_bindings:
+      NIC_NAME: machine.network.bridge.nic
+
+nodes:
+  - name: subst-01
+    role: kubevirt-worker
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware_capabilities:
+      - kubevirt-networking
+
+cluster:
+  name: subst-test
+  overlay: subst-test
+  api_vip: 10.0.0.100

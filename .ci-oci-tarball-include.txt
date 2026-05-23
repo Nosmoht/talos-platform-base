@@ -3,6 +3,7 @@ docs/schemas/hardware-features.schema.json
 talos/AGENTS.md
 talos/Makefile.lib
 talos/RELEASE-NOTES-v0.5.1.md
+talos/RELEASE-NOTES-v0.5.2.md
 talos/patches/common.yaml
 talos/patches/controlplane.yaml
 talos/patches/drbd.yaml
@@ -14,6 +15,7 @@ talos/schemas/cluster.schema.json
 talos/scripts/argv-print.sh
 talos/scripts/build-schematic-cache.sh
 talos/scripts/generate-argv-dump.sh
+talos/scripts/resolve-placeholders.sh
 talos/scripts/test-bit-identity.sh
 talos/scripts/translate-legacy-cluster-yaml.sh
 talos/scripts/validate-schematics.sh

@@ -2,7 +2,7 @@
 ENV ?= ../cluster.yaml
 
 # Goals that work without cluster.yaml (CI uses these for static validation).
-NO_ENV_GOALS := cilium-bootstrap cilium-bootstrap-check schematics validate-schematics validate-secrets-cleanup clean
+NO_ENV_GOALS := cilium-bootstrap cilium-bootstrap-check schematics validate-schematics validate-secrets-cleanup clean test-substitution test-substitution-update
 NEEDS_ENV    := $(strip $(filter-out $(NO_ENV_GOALS),$(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)))
 
 ifneq ($(NEEDS_ENV),)

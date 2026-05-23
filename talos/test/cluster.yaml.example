@@ -131,7 +131,9 @@ hardware-capabilities:
   kubevirt-networking:
     description: "KubeVirt VM networking via VLAN + Linux bridge (requires NIC binding)"
     placeholder_bindings:
-      NIC_NAME: network.bridge.nic
+      # Field path under nodes/<n>.yaml's machine.* subtree.
+      # Schema constraint: ^machine[.][A-Za-z_][A-Za-z0-9_.-]*$
+      NIC_NAME: machine.network.bridge.nic
     patches:
       - file: patches/worker-kubevirt.yaml
 

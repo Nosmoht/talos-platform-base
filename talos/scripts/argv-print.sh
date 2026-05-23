@@ -71,12 +71,146 @@ NODE_INFRA=$(yq -r ".nodes[$NODE_IDX][\"infrastructure-platform\"]" "$CLUSTER_YA
 CLUSTER_NAME=$(yq -r '.cluster.name' "$CLUSTER_YAML")
 ENDPOINT="https://$(yq -r '.cluster.api_vip' "$CLUSTER_YAML"):6443"
 OVERLAY=$(yq -r '.cluster.overlay // .cluster.name' "$CLUSTER_YAML")
+NTP_SERVER=$(yq -r '.cluster.ntp_server // ""' "$CLUSTER_YAML" 2>/dev/null || true)
+
+# ---------------------------------------------------------------------------
+# CRIT-4 (closed in v0.5.2): render NTP patch from cluster.ntp_server.
+# Legacy gen-configs injected NTP via a rendered _out/<overlay>/cluster.yaml
+# patch; the new path renders an equivalent ephemeral patch into tmpdir and
+# emits it as the FIRST role-patch (so every subsequent role-patch and the
+# per-node nodes/<n>.yaml can override it). machine.time.servers is the
+# Talos field the patch sets.
+#
+# R2 HIGH (team-red): the value goes into a heredoc — validate it as a
+# strict hostname/IPv4/IPv6 charset and reject any newline / shell-meta to
+# prevent YAML injection into machine.* keys (e.g. attacker-controlled
+# extraKernelArgs landing through the NTP slot bypassing the AGENTS.md
+# Hard-Constraints check). Pattern admits letters, digits, dot, hyphen,
+# colon (IPv6) — nothing else.
+# ---------------------------------------------------------------------------
+NTP_PATCH_FILE=""
+if [[ -n "$NTP_SERVER" && "$NTP_SERVER" != "null" ]]; then
+    if ! [[ "$NTP_SERVER" =~ ^[A-Za-z0-9.:_-]{1,253}$ ]]; then
+        echo "ERROR: cluster.ntp_server value violates charset ^[A-Za-z0-9.:_-]{1,253}\$ — refused (potential YAML injection). Use a single RFC 1123 hostname, IPv4, or IPv6 literal." >&2
+        exit 1
+    fi
+    NTP_PATCH_FILE="$TMPDIR_LOCAL/ntp.yaml"
+    cat > "$NTP_PATCH_FILE" <<EOF
+machine:
+  time:
+    servers:
+      - $NTP_SERVER
+EOF
+fi
 
 # ---------------------------------------------------------------------------
 # Patch list: roles[role].patches (ordered list; this IS the full patch list)
 # ---------------------------------------------------------------------------
 ROLE_PATCHES_FILE="$TMPDIR_LOCAL/role_patches.txt"
 yq -r ".roles[\"$NODE_ROLE\"].patches // [] | .[]" "$CLUSTER_YAML" 2>/dev/null > "$ROLE_PATCHES_FILE" || true
+
+# ---------------------------------------------------------------------------
+# CRIT-1 (closed in v0.5.2): build per-node placeholder bindings from the
+# node's hardware_capabilities entries. For each cap, read its
+# placeholder_bindings map (PLACEHOLDER -> yq path into nodes/<NODE>.yaml)
+# and resolve the field into a flat NAME<TAB>VALUE bindings file.
+# resolve-placeholders.sh consumes this file and renders any patch that
+# contains ${PLACEHOLDER} tokens. validate-schematics already enforces
+# binding-missing at the diagnostic layer; this is the runtime resolution.
+# ---------------------------------------------------------------------------
+BINDINGS_FILE="$TMPDIR_LOCAL/bindings.txt"
+: > "$BINDINGS_FILE"
+NODE_YAML_PATH="$(dirname "$CLUSTER_YAML")/nodes/$NODE_NAME.yaml"
+
+# Collect per-node caps
+NODE_CAPS_FILE="$TMPDIR_LOCAL/node_caps.txt"
+yq -r ".nodes[$NODE_IDX].hardware_capabilities // [] | .[]" "$CLUSTER_YAML" 2>/dev/null > "$NODE_CAPS_FILE" || true
+
+CAP_BINDINGS_FILE="$TMPDIR_LOCAL/cap_bindings.txt"
+while IFS= read -r cap; do
+    [[ -z "$cap" ]] && continue
+    # Charset guard — mirrors validate-schematics.sh runtime check.
+    [[ "$cap" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+    # R2 MED: explicit truncate per iteration (prior `>` redirect truncates
+    # on success but can leak prior-iteration content if yq spawn fails).
+    : > "$CAP_BINDINGS_FILE"
+    # Read the cap's placeholder_bindings map. Use --output-format=props for a
+    # NAME=VALUE flat shape (stable bash-parameter-expansion parsing without
+    # a jq dependency or yq path accessors that could collide with file-name
+    # patterns).
+    yq -o=props -r ".\"hardware-capabilities\".\"$cap\".placeholder_bindings // {}" "$CLUSTER_YAML" 2>/dev/null > "$CAP_BINDINGS_FILE" || true
+    while IFS= read -r binding; do
+        [[ -z "$binding" ]] && continue
+        # props output shape: "KEY = VALUE" (yq adds spaces around =)
+        placeholder="${binding%% =*}"
+        field_path="${binding#*= }"
+        [[ -z "$placeholder" || -z "$field_path" ]] && continue
+        # R2 HIGH (team-red): field_path is consumer-authored cluster.yaml
+        # content and gets interpolated into a yq expression below — strict
+        # charset blocks yq-expression injection (comma/pipe/coalesce
+        # operators, square-brackets, parentheses).
+        # R3 HIGH (team-red): also scope the path to the machine.* subtree
+        # so a malicious binding RHS cannot traverse into cluster.* or
+        # other root-level keys that the per-node yaml may carry by
+        # accident (e.g. via a templating copy-paste) — preventing
+        # value-exfiltration into the substituted patch and the talosctl
+        # argv (visible in CI logs / argv-dump).
+        if ! [[ "$field_path" =~ ^machine[.][A-Za-z_][A-Za-z0-9_.-]*$ ]]; then
+            echo "ERROR: placeholder_bindings.$placeholder value '$field_path' violates field-path charset ^machine[.][A-Za-z_][A-Za-z0-9_.-]*\$ — refused (potential yq-expression injection or out-of-scope traversal). Field paths must address fields under nodes/<n>.yaml's 'machine.*' subtree." >&2
+            exit 1
+        fi
+        # Resolve the field from nodes/<NODE>.yaml using the field path AS WRITTEN
+        # (absolute from the nodes/<n>.yaml root — e.g., `machine.network.bridge.nic`).
+        # No implicit `machine.` prefix added: the cluster.yaml author is in charge
+        # of the path; this avoids hidden-magic ambiguity.
+        if [[ -f "$NODE_YAML_PATH" ]]; then
+            field_val=$(yq -r ".${field_path} // \"\"" "$NODE_YAML_PATH" 2>/dev/null || true)
+            if [[ -n "$field_val" && "$field_val" != "null" ]]; then
+                printf '%s\t%s\n' "$placeholder" "$field_val" >> "$BINDINGS_FILE"
+            fi
+        fi
+    done < "$CAP_BINDINGS_FILE"
+done < "$NODE_CAPS_FILE"
+
+# R2 MED: detect duplicate placeholder names across capabilities (silent
+# first-write semantics in sed render is non-deterministic on cap-iteration
+# order; fail-closed instead with a named diagnostic).
+if [[ -s "$BINDINGS_FILE" ]]; then
+    DUP_NAMES=$(awk -F'\t' '{print $1}' "$BINDINGS_FILE" | sort | uniq -d || true)
+    if [[ -n "$DUP_NAMES" ]]; then
+        echo "ERROR: duplicate placeholder names across capabilities (each placeholder must be declared by exactly one capability):" >&2
+        echo "$DUP_NAMES" | sed 's/^/  /' >&2
+        exit 1
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Helper: emit one --config-patch flag. If the patch contains ${PLACEHOLDER}
+# tokens, render via resolve-placeholders.sh into tmpdir and emit the rendered
+# path; otherwise emit @<source-path> verbatim (bit-identical with legacy).
+# ---------------------------------------------------------------------------
+emit_patch() {
+    local patch="$1"
+    local resolved_dir base rendered abs_patch
+    # Patch paths in cluster.yaml are relative to the base talos dir.
+    if [[ "$patch" == /* ]]; then
+        abs_patch="$patch"
+    else
+        abs_patch="$BASE_DIR/$patch"
+    fi
+    if [[ -f "$abs_patch" ]] && grep -qE '\$\{[A-Z][A-Z0-9_]*\}' "$abs_patch"; then
+        resolved_dir="$TMPDIR_LOCAL/patches"
+        mkdir -p "$resolved_dir"
+        base=$(basename "$patch")
+        rendered="$resolved_dir/$base"
+        bash "$BASE_DIR/scripts/resolve-placeholders.sh" "$abs_patch" "$BINDINGS_FILE" > "$rendered"
+        echo "--config-patch"
+        echo "@$rendered"
+    else
+        echo "--config-patch"
+        echo "@$patch"
+    fi
+}
 
 # ---------------------------------------------------------------------------
 # Install-image URI
@@ -123,9 +257,22 @@ echo "$ENDPOINT"
 echo "--with-secrets"
 echo ".secrets.dec.yaml"
 
-while IFS= read -r patch; do
+# R2 HIGH (reviewer): simplify NTP precedence. NTP is a platform baseline
+# the consumer may override at any layer (role-patch or per-node patch).
+# Always emit NTP as the FIRST patch (before any role-patch); every
+# subsequent --config-patch then has the chance to override
+# machine.time.servers. This drops the prior "after first common.yaml"
+# heuristic + fallback, which produced different precedences for roles
+# with vs without common.yaml and contradicted the production-safe claim.
+# Documented in talos/RELEASE-NOTES-v0.5.2.md §CRIT-4.
+if [[ -n "$NTP_PATCH_FILE" ]]; then
     echo "--config-patch"
-    echo "@$patch"
+    echo "@$NTP_PATCH_FILE"
+fi
+
+# Emit role patches in declared order; each may override the NTP baseline.
+while IFS= read -r patch; do
+    emit_patch "$patch"
 done < "$ROLE_PATCHES_FILE"
 
 echo "--config-patch"

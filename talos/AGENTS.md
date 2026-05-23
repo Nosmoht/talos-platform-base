@@ -92,29 +92,53 @@ make -C talos upgrade-k8s       # Upgrade Kubernetes (reconciles extraManifests)
 make -C talos schematics        # Create/update Image Factory schematic IDs
 ```
 
-## v0.5.1 Dual-Path Scope (IMPORTANT — read before using Makefile.lib)
+## v0.5.x Dual-Path Status
 
-At v0.5.1, the 5-axis Makefile.lib ships **argv-print + validation ONLY**. The
-legacy `gen-configs` path (consumer-side `talos/Makefile`) remains the only
-production-blessed path for generating talosctl machine config.
+Legacy `gen-configs` (consumer-side `talos/Makefile` pattern rules) remains
+the default production path until v0.6.0. The 5-axis Makefile.lib path is
+additive and now production-eligible per v0.5.2 when the Phase 3 cut-over
+checklist is satisfied (see `talos/RELEASE-NOTES-v0.5.2.md`).
 
-**DO NOT use `make gen-configs` via Makefile.lib (the new path) in production
-until Phase 3 cut-over is complete.** Two blockers:
+History:
 
-1. **Placeholder resolution not implemented** (CRIT-1): `argv-print.sh` emits
-   `@nodes/<name>.yaml` verbatim; `${NIC_NAME}` and similar placeholders in
-   KubeVirt patch files are NOT substituted. Phase 3 adds the substitution
-   mechanism.
+- **v0.5.1** — argv-print + validation only. Two blockers: CRIT-1 (placeholder
+  resolution not implemented) and CRIT-4 (NTP not injected on new path).
+  `talos/RELEASE-NOTES-v0.5.1.md` documents both.
+- **v0.5.2** — both CRIT-1 and CRIT-4 closed. `argv-print.sh` substitutes
+  `${PLACEHOLDER}` tokens via `resolve-placeholders.sh` (capability-level
+  `placeholder_bindings` resolved against `nodes/<NODE>.yaml`) and renders a
+  synthetic NTP patch from `cluster.ntp_server` immediately after the first
+  `common.yaml` reference. Both behaviours are opt-in (no NTP patch when
+  `cluster.ntp_server` unset; no substitution when patch contains no token).
 
-2. **NTP not configured on new path** (CRIT-4): `patches/common.yaml` does not
-   include a `machine.time.servers` block. The legacy path injected NTP via a
-   rendered `_out/<overlay>/cluster.yaml` patch. On the new path, clock drift
-   accumulates until Phase 3 updates `common.yaml` to read `cluster.ntp_server`
-   from the 5-axis cluster.yaml.
+### Placeholder convention
 
-**Phase 3 is a HARD prerequisite for new-path gen-configs.** Until then:
+Capability spec carries a `placeholder_bindings` map:
 
-- `make argv-print` — safe for inspection / bit-identity diff
-- `make validate-schematics` — safe for cluster.yaml validation
-- `make schematics` — safe for schematic cache refresh
-- `make gen-configs` (new path) — **NOT safe for production use**
+```yaml
+hardware-capabilities:
+  <cap-id>:
+    placeholder_bindings:
+      NIC_NAME: machine.network.bridge.nic   # ABSOLUTE path from nodes/<n>.yaml root
+    patches:
+      - file: patches/<cap-patch>.yaml
+```
+
+The value is a yq path **absolute from the `nodes/<n>.yaml` root** — include
+the `machine.` prefix where appropriate. `argv-print` does not add any
+implicit prefix; the same path is read at validate-schematics' `binding-missing`
+diagnostic time.
+
+Placeholder names in patch files: `${[A-Z][A-Z0-9_]*}` (shouty-snake). Both
+`resolve-placeholders.sh` and `validate-schematics.sh` enforce the
+charset constraint.
+
+### Safe operations matrix
+
+| Operation | v0.5.1 | v0.5.2 |
+|---|---|---|
+| `make argv-print` | YES (inspection) | YES (production-eligible, includes substitution + NTP) |
+| `make validate-schematics` | YES | YES |
+| `make schematics` | YES | YES |
+| `make gen-configs` (new path) | **NO** | YES — when Phase 3 cut-over checklist satisfied |
+| Legacy `make -C talos gen-configs` (consumer wrapper) | YES | YES (default until v0.6.0) |
