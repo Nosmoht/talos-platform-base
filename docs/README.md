@@ -22,6 +22,8 @@ tutorial / how-to / reference / explanation.
 ## Reference — look-up material (factual, dry)
 
 - [`capability-reference.md`](capability-reference.md) — per-capability catalogue (**auto-generated**, do not hand-edit).
+- [`platform-capability-index.md`](platform-capability-index.md) — Layer A: Tool-Capability-Index, generated from `platform-capability-index.yaml`.
+- [`platform-hardware-features.md`](platform-hardware-features.md) — Layer C: atomic hardware features registry, generated from `platform-hardware-features.yaml`.
 - [`primitive-contract.md`](primitive-contract.md) — Diagnostics primitive output schema (harness-plugin contract).
 - [`rendered-manifests.md`](rendered-manifests.md) — render-pipeline factual description (stages, chart.lock.yaml schema, workflow commands).
 - [`glossary.md`](glossary.md) — cross-domain vocabulary (PNI, capability terms, GitOps, Talos, repo conventions). Cite this when a term first appears in a new doc.
@@ -33,7 +35,8 @@ tutorial / how-to / reference / explanation.
 - [`day-zero-pattern.md`](day-zero-pattern.md) — the three layers (Talos + bundled K8s + CNI / ArgoCD self-bootstrap / ArgoCD-reconciled day-two), the five documented `kubectl apply` exceptions, and the end-to-end command sequence.
 - [`adr-multi-repo-platform-split.md`](adr-multi-repo-platform-split.md) — why base + consumer is a two-repo split.
 - [`adr-capability-producer-consumer-symmetry.md`](adr-capability-producer-consumer-symmetry.md) — why capability-first, namespace-anchored trust, instance scoping.
-- [`adr-two-layer-capability-architecture.md`](adr-two-layer-capability-architecture.md) — separating Tool-Capability-Index (Layer A) from PNI network-trust registry (Layer B). **Status: proposed.**
+- [`adr-three-layer-capability-architecture.md`](adr-three-layer-capability-architecture.md) — adds Layer C (Hardware Features Registry) alongside Layer A (Tool-Capability-Index) and Layer B (PNI network-trust). Documents the Composite Capability Convention, NFD placement, and the Workload-class out-of-scope deferral. **Status: accepted.** Supersedes the Two-Layer ADR.
+- [`adr-two-layer-capability-architecture.md`](adr-two-layer-capability-architecture.md) — separating Tool-Capability-Index (Layer A) from PNI network-trust registry (Layer B). **Status: superseded** by the Three-Layer ADR; body preserved for decision history.
 - [`harness-plugin-integration.md`](harness-plugin-integration.md) — what the `kube-agent-harness` Claude Code plugin should provide for this base.
 - [`vision.md`](vision.md) — forward-looking statements (v1.X / v2.X). Aspiration, **not roadmap and not commitments**. Cite this file when extracting hypothetical-future statements from operative docs.
 

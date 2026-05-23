@@ -109,7 +109,14 @@ Reserved keys MUST NOT appear on tenant-owned resources. Concretely:
 - `platform.io/provide.*` — settable only by base manifests (RBAC).
 - `platform.io/capability-provider.*` — settable on a workload only if its namespace carries the matching `provide.*` (namespace-anchored rule in `kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml`).
 - `platform.io/capability-endpoint.*` / `capability-protocol.*` on a Service — settable only by producer charts (admission policy `pni-reserved-annotations-enforce`).
+- `platform.io/hardware-feature.*` (Layer-C atomic) — settable only by Talos `machine.nodeLabels` or a Layer-C discovery relay. Tenant forgery on Pods / Namespaces / Services denied by the `reserved-layer-c-hardware-labels` rule in `kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml`. Catalogue: `docs/platform-hardware-features.yaml`.
+- `platform.io/hardware-capability.*` (Layer-C composite, downstream-defined) — settable only by Talos `machine.nodeLabels`. Composite capability ids are NOT base-shipped; consumer cluster repos declare them per the composite-capability convention in `docs/adr-three-layer-capability-architecture.md` §Composite capability convention. Same enforcement rule as above.
 - Legacy keys still forbidden everywhere: `platform.io/provider`, `platform.io/managed-by`, `platform.io/capability`.
+
+Upstream-owned label namespaces are governed by **convention, not by base policy**:
+
+- `feature.node.kubernetes.io/*` — owned by the NFD chart (NFD discovers hardware features and emits labels in its own namespace). The base does NOT relabel, proxy, or duplicate NFD-emitted labels into `platform.io/hardware-feature.*`. Both namespaces coexist; consumers choose which to reference for which decision.
+- `nvidia.com/*` — owned by the NVIDIA device plugin (vendor namespace = package name). Same coexistence convention.
 
 ### Capability-first selectors
 

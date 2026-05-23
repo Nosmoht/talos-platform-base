@@ -84,11 +84,23 @@ captured in a separate ADR with MADR 3.0 frontmatter:
 | **Goal 4** (no cluster identity) — base is fully cluster-agnostic | Rendered manifests pattern + consumer-side overlays own namespace creation | [`adr-namespace-ownership-rendered-manifests.md`](docs/adr-namespace-ownership-rendered-manifests.md) |
 
 A fifth ADR
-([`adr-two-layer-capability-architecture.md`](docs/adr-two-layer-capability-architecture.md))
-defines the separation between Layer A (Tool-Capability-Index, the
-platform-wide catalogue) and Layer B (PNI network-trust registry, the
-runtime contract). Both consume the same capability identifiers; only
-Layer B drives Kyverno + Cilium.
+([`adr-three-layer-capability-architecture.md`](docs/adr-three-layer-capability-architecture.md))
+defines the **three-layer capability model** that supersedes the earlier
+two-layer split:
+
+- **Layer A — Tool-Capability-Index** (`docs/platform-capability-index.yaml`):
+  the platform-wide catalogue of swappable tool capabilities.
+- **Layer B — PNI Network-Trust Registry** (`kubernetes/base/infrastructure/platform-network-interface/resources/capability-registry-configmap.yaml`):
+  the runtime contract that drives Kyverno + Cilium.
+- **Layer C — Hardware Features Registry** (`docs/platform-hardware-features.yaml`):
+  the catalogue of atomic hardware predicates that Layer A entries declare
+  via `requires_hardware_features[]` and that consumer-side composite
+  capabilities (in `cluster.yaml`) declare via `requires_features[]`.
+
+All three layers share the same identifier discipline; only Layer B drives
+Kyverno + Cilium at runtime. The superseded
+[`adr-two-layer-capability-architecture.md`](docs/adr-two-layer-capability-architecture.md)
+is preserved verbatim for decision history.
 
 ## L1 — System Context
 

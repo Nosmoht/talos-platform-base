@@ -2,10 +2,12 @@
 # lint-capability-index.sh — schema lint for docs/platform-capability-index.yaml
 # (Layer A — Tool-Capability-Index).
 #
-# Per docs/adr-two-layer-capability-architecture.md §"Validation (CI required
-# checks)". This script is a form-check only: required fields, kebab-case ids,
-# enum validity, ISO-8601 dates. Cross-reference validation lives in the sibling
-# check-capability-index-refs.sh.
+# Per docs/adr-three-layer-capability-architecture.md §"Validation tooling"
+# (which inherits the validation contract from the superseded Two-Layer ADR).
+# This script is a form-check only: required fields, kebab-case ids,
+# enum validity, ISO-8601 dates, and shape checks for `requires_hardware_features[]`
+# (Layer-C cross-reference resolution lives in the sibling
+# check-capability-index-refs.sh).
 #
 # Usage:
 #   scripts/lint-capability-index.sh              # lint default index file
@@ -161,6 +163,32 @@ for i in $(seq 0 $((count - 1))); do
   topo="$(yq -r ".capabilities[$i].deployment_topology // \"\"" "$INDEX_FILE")"
   if [ -n "$topo" ] && [ "$topo" != "null" ] && ! is_in_set "$topo" $VALID_TOPOLOGY; then
     violate "$prefix: .deployment_topology=$topo not in {$VALID_TOPOLOGY}"
+  fi
+
+  # requires_hardware_features[] (optional) — array of kebab-case strings, no
+  # duplicates, soft cap of 10 entries. Layer-C cross-reference resolution
+  # lives in check-capability-index-refs.sh; this script only enforces shape.
+  rhf_len="$(yq -r ".capabilities[$i].requires_hardware_features // [] | length" "$INDEX_FILE")"
+  if [ "$rhf_len" -gt 10 ]; then
+    violate "$prefix .requires_hardware_features: array length $rhf_len exceeds soft cap of 10 — split into composite capabilities or revisit the Layer-C atom set"
+  fi
+  if [ "$rhf_len" -gt 0 ]; then
+    rhf_seen_file="$(mktemp)"
+    for k in $(seq 0 $((rhf_len - 1))); do
+      fid="$(yq -r ".capabilities[$i].requires_hardware_features[$k]" "$INDEX_FILE")"
+      if [ -z "$fid" ] || [ "$fid" = "null" ]; then
+        violate "$prefix .requires_hardware_features[$k]: empty"
+      elif [ "${#fid}" -gt 64 ]; then
+        violate "$prefix .requires_hardware_features[$k]=$fid: id exceeds 64 chars"
+      elif ! is_kebab "$fid"; then
+        violate "$prefix .requires_hardware_features[$k]=$fid: not kebab-case"
+      elif grep -qxF "$fid" "$rhf_seen_file"; then
+        violate "$prefix .requires_hardware_features: duplicate id $fid"
+      else
+        echo "$fid" >> "$rhf_seen_file"
+      fi
+    done
+    rm -f "$rhf_seen_file"
   fi
 
   # implementations: must be non-empty, each with name, status, swap_class.

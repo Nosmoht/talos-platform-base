@@ -1,0 +1,183 @@
+# Platform Hardware Features Registry (Layer C)
+# =============================================
+# Static catalog of atomic hardware features that nodes in this platform
+# may carry. Layer A entries reference these via `requires_hardware_features[]`;
+# consumer-side composite capabilities in cluster.yaml reference them via
+# `requires_features[]` under the `hardware-capabilities:` block.
+#
+# Not consumed at runtime by any in-cluster component; read at build time
+# by validation scripts, at PR time by `capability-index-check` CI, and
+# at design time by humans and agentic tools.
+#
+# See:
+#   - docs/adr-three-layer-capability-architecture.md  (architecture rationale)
+#   - docs/platform-capability-index.yaml              (Layer A — refs these ids)
+#   - docs/schemas/hardware-features.schema.json       (JSON Schema for this file)
+#
+# Schema (per-entry):
+#   - id                  kebab-case identifier (matches `^[a-z0-9-]+$`)
+#   - name                short human-readable name
+#   - description         prose explanation (multi-line allowed)
+#   - discovery_source    one of: nfd | talos-machine-config | device-plugin | external-bios-or-firmware
+#   - node_label_key      authoritative label key asserting the feature is present;
+#                         REQUIRED when discovery_source ∈ {nfd, talos-machine-config, device-plugin};
+#                         null allowed for external-bios-or-firmware
+#   - presence_predicate  prose condition that, when true on a node, justifies setting the label
+#
+# Optional per-entry fields (informational):
+#   - alt_label_keys      array of additional label keys downstream consumers may match
+#                         (e.g. NFD upstream key plus the Layer-C `platform.io/hardware-feature.<id>` mirror)
+#   - references          array of upstream documentation URLs
+
+schema_version: "1"
+
+hardware_features:
+
+  - id: nvidia-gpu
+    name: NVIDIA GPU presence
+    description: |
+      The node has at least one NVIDIA-vendor GPU (PCI vendor 0x10de)
+      physically present and accessible to the kernel. Does NOT assert
+      driver readiness, MIG configuration, or CUDA capability — those are
+      separate predicates.
+    discovery_source: nfd
+    node_label_key: feature.node.kubernetes.io/pci-10de.present
+    presence_predicate: |
+      NFD's pci-source detects PCI vendor 10de on the node and emits the
+      `feature.node.kubernetes.io/pci-10de.present=true` label.
+    alt_label_keys:
+      - platform.io/hardware-feature.nvidia-gpu        # Layer-C reserved namespace; set via Talos machine.nodeLabels when NFD is not in use
+      - nvidia.com/gpu.present                         # set by the NVIDIA k8s-device-plugin DaemonSet
+    references:
+      - https://kubernetes-sigs.github.io/node-feature-discovery/master/usage/features.html#pci
+      - https://github.com/NVIDIA/k8s-device-plugin
+
+  - id: vt-x-or-amd-v
+    name: x86 virtualization extensions present and BIOS-enabled
+    description: |
+      The CPU exposes Intel VT-x (VMX) OR AMD-V (SVM) instruction-set
+      extensions to the kernel. Required for hardware-accelerated
+      virtualization (KubeVirt VMs, kata-containers, gVisor with
+      KVM platform). Presence is BIOS-controlled; a chip may support
+      VT-x while the BIOS keeps it disabled.
+    discovery_source: nfd
+    node_label_key: feature.node.kubernetes.io/cpu-cpuid.VMX
+    presence_predicate: |
+      NFD's cpu-source reports the VMX (Intel) or SVM (AMD) CPUID feature.
+      Either label being present satisfies the predicate; consumers should
+      match the OR of both. See `alt_label_keys`.
+    alt_label_keys:
+      - feature.node.kubernetes.io/cpu-cpuid.SVM       # AMD path (same predicate, different vendor)
+      - platform.io/hardware-feature.vt-x-or-amd-v     # Layer-C reserved namespace
+    references:
+      - https://kubernetes-sigs.github.io/node-feature-discovery/master/usage/features.html#cpu
+
+  - id: kvm-kernel-module
+    name: KVM kernel module loaded
+    description: |
+      The `kvm` kernel module (plus the vendor sub-module `kvm_intel` or
+      `kvm_amd`) is loaded on the node. Implies a `/dev/kvm` character
+      device that KubeVirt / kata-containers / gVisor-KVM can open. Does
+      NOT assert hardware virtualization extensions are enabled — see
+      `vt-x-or-amd-v` for that.
+    discovery_source: nfd
+    node_label_key: feature.node.kubernetes.io/kernel-module.kvm
+    presence_predicate: |
+      NFD's kernel-module source reports `kvm` loaded; configurable in
+      Talos via `machine.kernel.modules` or matched at boot when the
+      kernel auto-loads on VMX/SVM-capable hardware.
+    alt_label_keys:
+      - platform.io/hardware-feature.kvm-kernel-module
+    references:
+      - https://kubernetes-sigs.github.io/node-feature-discovery/master/usage/features.html#kernel
+      - https://www.talos.dev/v1.7/reference/configuration/v1alpha1/config/#Config.machine.kernel
+
+  - id: drbd-kernel-module
+    name: DRBD kernel module loaded
+    description: |
+      The `drbd` kernel module is loaded on the node. Required for
+      LINSTOR / Piraeus replicated block-storage workloads. Talos
+      packages DRBD as a system extension; nodes must select the
+      drbd-bearing schematic to satisfy this predicate.
+    discovery_source: talos-machine-config
+    node_label_key: platform.io/hardware-feature.drbd-kernel-module
+    presence_predicate: |
+      Talos machine config declares the drbd extension in the schematic
+      AND `machine.nodeLabels` carries
+      `platform.io/hardware-feature.drbd-kernel-module=true`. NFD's
+      kernel-module source can also detect this; `alt_label_keys` lists
+      the NFD equivalent.
+    alt_label_keys:
+      - feature.node.kubernetes.io/kernel-module.drbd  # NFD path when NFD's kernel-module source is enabled
+    references:
+      - https://github.com/siderolabs/extensions/tree/main/storage/drbd
+      - https://linbit.com/drbd/
+
+  - id: local-nvme-block-device
+    name: Local NVMe block device attached
+    description: |
+      The node has at least one locally-attached NVMe block device
+      (`/dev/nvme*`). Required for capabilities backed by node-local
+      high-IOPS storage (LINSTOR storage pools, local-path-provisioner
+      hot tiers, KubeVirt ephemeral disks). Does NOT assert capacity,
+      partition layout, or filesystem state.
+    discovery_source: nfd
+    node_label_key: feature.node.kubernetes.io/storage-nonrotationaldisk
+    presence_predicate: |
+      NFD's storage-source detects at least one non-rotational
+      (`/sys/block/*/queue/rotational == 0`) block device on the node.
+      The label does not distinguish NVMe from SATA SSD; consumers
+      requiring NVMe-specific characteristics should additionally match
+      the platform-set
+      `platform.io/hardware-feature.local-nvme-block-device` Layer-C
+      label declared by Talos `machine.nodeLabels`.
+    alt_label_keys:
+      - platform.io/hardware-feature.local-nvme-block-device
+    references:
+      - https://kubernetes-sigs.github.io/node-feature-discovery/master/usage/features.html#storage
+
+  - id: iommu-enabled
+    name: IOMMU enabled in BIOS and kernel
+    description: |
+      The IOMMU (Intel VT-d or AMD-Vi) is enabled in BIOS AND the
+      kernel was booted with `intel_iommu=on` (or `amd_iommu=on`).
+      Required for safe PCI passthrough (GPU passthrough in KubeVirt,
+      SR-IOV NIC isolation). NFD does not have a dedicated source for
+      this predicate; presence is asserted by Talos kernel-cmdline
+      configuration plus BIOS state, both of which are out of NFD's
+      observation scope.
+    discovery_source: talos-machine-config
+    node_label_key: platform.io/hardware-feature.iommu-enabled
+    presence_predicate: |
+      Talos machine config carries `intel_iommu=on` (or `amd_iommu=on`)
+      in `machine.install.extraKernelArgs` AND the BIOS has IOMMU
+      enabled. The platform.io label is the consumer's assertion that
+      both conditions hold; there is no upstream NFD label that asserts
+      the BIOS half of the predicate.
+    alt_label_keys: []
+    references:
+      - https://docs.kernel.org/x86/intel-iommu.html
+      - https://www.talos.dev/v1.7/reference/configuration/v1alpha1/config/#Config.machine.install
+
+  - id: ebpf-capable-kernel
+    name: Kernel supports eBPF (≥ Linux 5.10)
+    description: |
+      The running kernel version is at least 5.10, which is the floor
+      that Cilium 1.16+ assumes for eBPF feature support
+      (BPF_F_TEST_RUN_ON_CPU, BTF embedded in vmlinuz, bpf_link API).
+      Talos node images all satisfy this on supported releases; the
+      predicate exists to make the requirement explicit for any future
+      LTS-kernel constraint debugging.
+    discovery_source: nfd
+    node_label_key: feature.node.kubernetes.io/kernel-version.major
+    presence_predicate: |
+      NFD's kernel-source reports kernel `version.major >= 5` AND
+      `version.minor >= 10`, OR `version.major >= 6`. Consumers
+      typically match a derived label rather than this raw one; the
+      Layer-C `platform.io/hardware-feature.ebpf-capable-kernel`
+      alternative key carries the derived assertion.
+    alt_label_keys:
+      - platform.io/hardware-feature.ebpf-capable-kernel
+    references:
+      - https://kubernetes-sigs.github.io/node-feature-discovery/master/usage/features.html#kernel
+      - https://docs.cilium.io/en/stable/operations/system_requirements/

@@ -10,12 +10,17 @@ Regenerate: scripts/render-capability-index.sh
 
 This document is generated from `docs/platform-capability-index.yaml`.
 It is the **Layer A** catalogue defined in
-[ADR — Two-Layer Capability Architecture](./adr-two-layer-capability-architecture.md):
+[ADR — Three-Layer Capability Architecture](./adr-three-layer-capability-architecture.md)
+(which supersedes the earlier
+[Two-Layer ADR](./adr-two-layer-capability-architecture.md)):
 the tool-capability-index that names every functional capability this
 base provides, its current implementations, and what swap classes
 exist between alternatives. For the network-trust subset (Layer B,
 Kyverno-consumed), see
-[capability-reference.md](./capability-reference.md).
+[capability-reference.md](./capability-reference.md). For the atomic
+hardware-features registry (Layer C, referenced via
+`requires_hardware_features[]`), see
+[platform-hardware-features.md](./platform-hardware-features.md).
 
 ---
 
@@ -659,8 +664,12 @@ Kafka wire protocol over TCP.
 
 **NVIDIA GPU scheduling and telemetry** · stability `beta` · domain runtime / Container Runtime · topology `tenant-instance`
 
-GPU device-plugin + DCGM telemetry + node-feature labels;
-ships as a unit, no per-component swap.
+GPU device-plugin + DCGM telemetry. Schedules GPU resources via
+the NVIDIA device plugin and surfaces per-GPU utilization metrics
+via DCGM exporter. Node-feature discovery (NFD) is Layer-C
+producer-tooling (see adr-three-layer-capability-architecture.md);
+it discovers the hardware predicate but is not part of this
+capability's composition.
 
 **Contract:**
 
@@ -669,11 +678,11 @@ Node-local device-plugin socket + DCGM metrics exporter
 on host-network.
 ```
 
-**Independence test:** alt-impls=— · contract-stable=true · independent-lifecycle=—
+**Independence test:** alt-impls=— · contract-stable=true · independent-lifecycle=true
 
 **Implementations:**
 
-- `nvidia-stack` — status `active`, swap-class `rewrite-required` — composition: nvidia-device-plugin, nvidia-dcgm-exporter, node-feature-discovery
+- `nvidia-stack` — status `active`, swap-class `rewrite-required` — composition: nvidia-device-plugin, nvidia-dcgm-exporter
 
 **Layer B (PNI) counterpart:** `gpu-runtime`
 

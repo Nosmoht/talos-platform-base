@@ -356,6 +356,7 @@ capabilities:
     deployment_topology: tenant-instance
     contract: |
       CSI gRPC interface (standard K8s CSI v1).
+    requires_hardware_features: [drbd-kernel-module]
     independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
     implementations:
       - { name: piraeus-operator, status: active, composition: [piraeus-operator], swap_class: data-migration }
@@ -375,6 +376,7 @@ capabilities:
     deployment_topology: tenant-instance
     contract: |
       CSI gRPC interface; topology-aware scheduling required.
+    requires_hardware_features: [local-nvme-block-device]
     independence_test: { alt_impls_exist: true, contract_stable: true, independent_lifecycle: true }
     implementations:
       - { name: local-path-provisioner, status: active, composition: [local-path-provisioner], swap_class: data-migration }
@@ -485,6 +487,14 @@ capabilities:
     contract: |
       Pod annotation k8s.v1.cni.cncf.io/networks plus a
       NetworkAttachmentDefinition CRD.
+    requires_hardware_features: [ebpf-capable-kernel]
+    requires_hardware_features_notes: |
+      Multus itself is hardware-agnostic at the kernel level; the
+      kernel-floor predicate covers the eBPF-aware CNI chaining that
+      modern Multus assumes. Specific NetworkAttachmentDefinition
+      backends (SR-IOV, macvlan-bridge) carry their own hardware
+      predicates not modeled at this Layer-A entry (Phase 3 of issue
+      #61 chose the soft floor over per-backend enumeration).
     independence_test:
       alt_impls_exist: false
       contract_stable: true
@@ -588,23 +598,39 @@ capabilities:
   - id: gpu-runtime
     name: NVIDIA GPU scheduling and telemetry
     description: |
-      GPU device-plugin + DCGM telemetry + node-feature labels;
-      ships as a unit, no per-component swap.
+      GPU device-plugin + DCGM telemetry. Schedules GPU resources via
+      the NVIDIA device plugin and surfaces per-GPU utilization metrics
+      via DCGM exporter. Node-feature discovery (NFD) is Layer-C
+      producer-tooling (see adr-three-layer-capability-architecture.md);
+      it discovers the hardware predicate but is not part of this
+      capability's composition.
     domain: { layer: runtime, category: "Container Runtime" }
     stability: beta
     deployment_topology: tenant-instance
     contract: |
       Node-local device-plugin socket + DCGM metrics exporter
       on host-network.
+    requires_hardware_features: [nvidia-gpu, iommu-enabled]
     independence_test:
       alt_impls_exist: false
       contract_stable: true
-      independent_lifecycle: false
-      notes: "Bundle of three NVIDIA tools; AMD ROCm/Intel Gaudi are theoretical alternatives but not in scope."
+      independent_lifecycle: true
+      notes: |
+        Single implementation by NVIDIA-scope: name, contract, and
+        requires_hardware_features ([nvidia-gpu, iommu-enabled]) all
+        pin this entry to NVIDIA hardware. AMD ROCm and Intel Gaudi
+        would be sibling Layer-A capabilities (`gpu-runtime-amd`,
+        `gpu-runtime-intel`) with disjoint `requires_hardware_features`,
+        NOT alt-impls of this entry. Per Round-1 review (reviewer
+        HIGH, .work/reviews/r1/reviewer.md) the earlier post-NFD-removal
+        flip to `true` was overcorrection. NFD removal correctly
+        flipped `independent_lifecycle` to true (device-plugin and
+        DCGM-exporter have separate version trains); `alt_impls_exist`
+        stays false honestly.
     implementations:
       - name: nvidia-stack
         status: active
-        composition: [nvidia-device-plugin, nvidia-dcgm-exporter, node-feature-discovery]
+        composition: [nvidia-device-plugin, nvidia-dcgm-exporter]
         swap_class: rewrite-required
     pni_capability_id: gpu-runtime
     references: ["https://github.com/NVIDIA/k8s-device-plugin"]
@@ -620,6 +646,7 @@ capabilities:
     contract: |
       KubeVirt CRDs + Containerized Data Importer for image
       ingestion. Tenant-cluster VMs run on host's KubeVirt.
+    requires_hardware_features: [vt-x-or-amd-v, kvm-kernel-module]
     independence_test:
       alt_impls_exist: false
       contract_stable: true
@@ -763,6 +790,20 @@ capabilities:
       materializes CAPI Cluster + KubeadmControlPlane +
       KubevirtMachineTemplate. Output: kubeconfig Secret.
     composed_of: [vm-runtime]
+    requires_hardware_features: [vt-x-or-amd-v, kvm-kernel-module]
+    requires_hardware_features_notes: |
+      Inherited from vm-runtime (via composed_of). Enumerated explicitly
+      here rather than via a `requires_transitive_from` field so the
+      lint script can resolve each id against Layer C without walking
+      the composed_of graph. The two ids match vm-runtime's
+      `requires_hardware_features` set; transitive coherence between
+      this entry and `vm-runtime` is MANUALLY MAINTAINED — if
+      `vm-runtime` later adds a hardware-feature, an author must
+      remember to update this entry. A follow-up issue tracks a
+      transitive-coherence lint check that would walk `composed_of[]`
+      and assert parent ⊇ union(children); per Round-1 review
+      (reviewer HIGH, .work/reviews/r1/reviewer.md) shipping the note
+      without the lint was misleading.
     independence_test:
       alt_impls_exist: true
       contract_stable: false
