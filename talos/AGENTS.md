@@ -37,9 +37,50 @@ the `kube-agent-harness` Claude Code plugin (or vendored into a consumer repo's
 | `talosctl` operations, lifecycle, gotchas (MCP-first) | `.claude/rules/talos-mcp-first.md` |
 | Node IPs, endpoint flags, inventory | `.claude/rules/talos-nodes.md` |
 
-## Patch Ordering
+## Patch slots — where things go
 
-Patches apply in this order: `common` → `controlplane|worker` → `<node-name>`. More-specific patches override less-specific. Never edit files in `talos/generated/` — regenerate them.
+A Talos node's machine-config is composed at `gen-configs` time by feeding
+patches to `talosctl gen config --config-patch @<file>` in a specific order.
+Knowing which slot to write in is more useful than memorising which slot
+overrides which — choosing the wrong slot still works but spreads the
+intent across files that future readers won't think to look at.
+
+### Composition order (v0.5.2 — `talos/scripts/argv-print.sh:268-279`)
+
+Patches apply in this order; each subsequent patch may override
+`machine.*` keys set by earlier ones.
+
+1. **NTP baseline** — synthetic patch rendered from `cluster.ntp_server`
+   (emitted first when set; opt-in — no patch when unset).
+2. **`roles.<role>.patches[]`** — role-wide patch files in declared
+   order. This is the canonical place for anything every node of that
+   role needs (static `machine.nodeLabels`, install-image variants,
+   role-uniform sysctls).
+3. **`nodes/<NODE_NAME>.yaml`** — last in composition; **highest
+   override precedence**. Per-node overrides go here.
+4. **`hardware-capabilities[X].patches[]`** — **DECLARATIVE-ONLY in
+   v0.5.x.** Listed in the capability spec but **NOT auto-composed
+   into the per-node argv** by `argv-print.sh` today. Auto-composition
+   is post-v0.6.0 work (see `talos/RELEASE-NOTES-v0.5.2.md:89-100`).
+   Consumers who want a capability's patch to apply on a node MUST
+   include the patch file in the role's patch list manually.
+
+### Which slot for which concern
+
+| Concern | Slot | Example |
+|---|---|---|
+| Role-uniform static node-labels (every node of the role) | `roles.<role>.patches[]` with a `machine.nodeLabels` patch file | `roles.worker.patches: [patches/worker-gvisor.yaml]` writes `node.kubernetes.io/runtime=gvisor` on every worker |
+| Conceptual single-purpose role for N≥1 nodes (dedicated topology cluster: pi-edge, kubevirt-host, GPU-worker) | A **dedicated role** with its own `roles.<role-name>.patches[]` | `roles.pi-worker.patches: [patches/worker-pi.yaml, patches/pi-firewall.yaml]` |
+| Ad-hoc per-node override (NIC name, install-disk specifics, bridge-NIC binding) | `nodes/<NODE_NAME>.yaml` | `nodes/n1.yaml` sets `machine.install.disk` for that node only |
+| hardware predicate (CPU features, GPU presence, storage class) | `hardware-capabilities` — **declarative composition only**, no runtime effect today | `hardware-capabilities.gpu-nvidia.requires_features: [pci.10de.*]` (the hardware predicate is read; the `.patches[]` field is informational until v0.6.0) |
+
+### Post-v0.6.0 milestone
+
+`hardware-capabilities[X].patches[]` becomes runtime-composing in
+post-v0.6.0; see `talos/RELEASE-NOTES-v0.5.2.md:89-100` (cap-patches
+composition scope). The slot exists in the schema today so consumer
+cluster.yaml files can be authored against the eventual contract;
+they have no per-node argv effect until the v0.6.0 path lands.
 
 ## Role-spec patches field
 
@@ -124,8 +165,9 @@ History:
 - **v0.5.2** — both CRIT-1 and CRIT-4 closed. `argv-print.sh` substitutes
   `${PLACEHOLDER}` tokens via `resolve-placeholders.sh` (capability-level
   `placeholder_bindings` resolved against `nodes/<NODE>.yaml`) and renders a
-  synthetic NTP patch from `cluster.ntp_server` immediately after the first
-  `common.yaml` reference. Both behaviours are opt-in (no NTP patch when
+  synthetic NTP patch from `cluster.ntp_server` as the first patch (before
+  any role patch — see §"Patch slots — where things go" for full composition
+  order). Both behaviours are opt-in (no NTP patch when
   `cluster.ntp_server` unset; no substitution when patch contains no token).
 
 ### Placeholder convention
