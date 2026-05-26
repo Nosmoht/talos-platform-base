@@ -201,3 +201,57 @@ charset constraint.
 | `make schematics` | YES | YES |
 | `make gen-configs` (new path) | **NO** | YES — when Phase 3 cut-over checklist satisfied |
 | Legacy `make -C talos gen-configs` (consumer wrapper) | YES | YES (default until v0.6.0) |
+
+## Schema hygiene — consumer-local metadata vs cluster.yaml fields (F2-B)
+
+`cluster.yaml` is the **5-axis Talos cluster contract** consumed by
+`talos/Makefile.lib`. Its schema (`talos/schemas/cluster.schema.json`)
+declares the required fields: `roles`, `architectures`,
+`infrastructure-platforms`, `hardware-platforms`, `hardware-capabilities`,
+`nodes`, plus the optional `cluster` / `strict_capability_merge` /
+`migration-modes` blocks. The top-level `additionalProperties: true`
+historically tolerated **consumer-local metadata** (e.g. `repo:`,
+`kubeconfig:`) co-located with the cluster contract — but the schema
+does NOT consume these fields, and `Makefile.lib` does NOT read them.
+
+**Convention (v0.5.4+):** consumer-local metadata does NOT belong in
+`cluster.yaml`. It belongs in a separate consumer-local file (e.g.
+`.repo-meta.yaml`, `consumer.yaml`, or the consumer's own Makefile
+variables). Mixing them into `cluster.yaml` makes the schema look
+internally inconsistent (declared-vs-tolerated fields) and creates
+friction for new consumers reading the schema as documentation.
+
+The canonical `talos/test/cluster.yaml.example` does NOT carry such
+metadata; consumer cluster.yamls SHOULD follow the same convention.
+`additionalProperties: true` remains as-is for backward compatibility —
+tightening it is a separate concern (see issue tracker).
+
+## Casing convention — `hardware-capabilities` per-node alias (F21-A)
+
+The schema declares the per-node capability list under two property
+names during the v0.5.4 grace window:
+
+- `hardware-capabilities` (kebab-case) — **canonical**, aligned with
+  the top-level `hardware-capabilities` map key.
+- `hardware_capabilities` (snake_case) — **deprecated alias**, still
+  accepted for backward compatibility. Planned removal in v0.6.0.
+
+The `anyOf` constraint in `$defs.node-spec` enforces that at least
+one of the two is present on every node. Do NOT set both keys on the
+same node — their semantics are identical and the alias is solely
+for migration.
+
+### Important — DO NOT migrate consumer cluster.yamls in v0.5.4
+
+The schema accepts kebab-case in v0.5.4, but the Makefile.lib runtime
+scripts (`argv-print.sh`, `validate-schematics.sh`,
+`build-schematic-cache.sh`, `translate-legacy-cluster-yaml.sh`) read
+only the snake_case key during v0.5.4. **Renaming a consumer
+`cluster.yaml` to kebab-case while still on v0.5.4 produces
+silent zero-capability nodes** in `make argv-print` / `make gen-configs`
+— the schema validates, but every node's capability list reads as empty.
+
+Consumer migration to kebab-case is gated on v0.6.0, which lands
+the script renames + alias removal together in a single coordinated
+bump. The migration command and pre-bump survey will be documented
+in `RELEASE-NOTES-v0.6.0.md`.

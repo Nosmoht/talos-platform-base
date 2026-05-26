@@ -223,7 +223,15 @@
     "node-spec": {
       "type": "object",
       "description": "Single node declaration binding exactly one value on each of the 5 axes.",
-      "required": ["name", "role", "arch", "infrastructure-platform", "hardware-platform", "hardware_capabilities"],
+      "required": ["name", "role", "arch", "infrastructure-platform", "hardware-platform"],
+      "allOf": [
+        {
+          "anyOf": [
+            {"required": ["hardware-capabilities"]},
+            {"required": ["hardware_capabilities"]}
+          ]
+        }
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -246,10 +254,16 @@
           "type": "string",
           "description": "Hardware platform id — must match a key in the top-level hardware-platforms map."
         },
+        "hardware-capabilities": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "description": "List of composite capability ids from the top-level hardware-capabilities map. Items must match the same charset as hardware-capabilities propertyNames. Canonical kebab-case form aligned with the top-level hardware-capabilities key."
+        },
         "hardware_capabilities": {
           "type": "array",
           "items": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
-          "description": "List of composite capability ids from the top-level hardware-capabilities map. Items must match the same charset as hardware-capabilities propertyNames."
+          "description": "DEPRECATED ALIAS for hardware-capabilities (kebab-case). Accepted during the v0.5.4 grace window for migration compatibility; planned removal in v0.6.0. Equivalent in shape and semantics to hardware-capabilities; do NOT set both keys on the same node.",
+          "deprecated": true
         },
         "ip": {
           "type": "string",
