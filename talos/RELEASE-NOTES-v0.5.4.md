@@ -27,6 +27,7 @@ snake_case as a deprecated alias. **The Makefile.lib runtime scripts
 still read only snake_case during v0.5.4.**
 
 **Schema change** (`$defs.node-spec`):
+
 - `hardware-capabilities` added as canonical property (kebab-case).
 - `hardware_capabilities` retained as `deprecated: true` alias.
 - `required` array updated: hard `hardware_capabilities` entry replaced
@@ -52,6 +53,7 @@ rename + alias removal. The migration command, pre-bump survey, and
 verification commands will ship in `RELEASE-NOTES-v0.6.0.md`.
 
 This v0.5.4 release is intentionally schema-only so that:
+
 - the schema declares the canonical form for new consumers reading
   the schema as authoring documentation,
 - existing consumers see no breaking change,
@@ -60,6 +62,7 @@ This v0.5.4 release is intentionally schema-only so that:
 ## Known limitations (carried)
 
 Same as v0.5.3:
+
 - Capability `patches:` declared on a capability spec are still
   declarative-only (auto-composition post-v0.6.0; see #75).
 - `additionalProperties: true` on top-level `cluster.yaml`, `node-spec`,
