@@ -1,0 +1,71 @@
+# Taskfile for talos-platform-base — OpenTofu module validation.
+# https://taskfile.dev
+#
+# Scope: this Taskfile covers the tofu/ subtree only (the OpenTofu modules
+# added for the Crossplane/Stage-0 cluster-lifecycle work). The existing
+# kustomize/Kyverno/Talos validation lives in the repo Makefile
+# (`make validate-gitops`, `make validate-kyverno-policies`) and is unchanged.
+# A full Makefile -> go-task migration, if wanted, is a separate decision.
+
+version: '3'
+
+# Convention (mirrors talos-platform-apps): silent tasks — only the commands
+# themselves write to the console, not their own invocation echo.
+silent: true
+
+vars:
+  # All OpenTofu modules under tofu/modules/, one dir per module.
+  TOFU_MODULES:
+    sh: find tofu/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort
+
+tasks:
+  default:
+    desc: List available targets
+    cmd: task --list
+
+  fmt:
+    desc: Rewrite all tofu/ files to canonical format
+    cmd: tofu fmt -recursive tofu/
+
+  fmt:check:
+    desc: Verify tofu/ formatting (CI-safe, non-mutating)
+    cmd: tofu fmt -check -recursive -diff tofu/
+
+  validate:
+    desc: tofu validate per module (init with -backend=false, no state needed)
+    cmd: |
+      shopt -s nullglob
+      for m in {{.TOFU_MODULES}}; do
+        echo "=== validate ${m} ==="
+        ( cd "$m" && tofu init -backend=false -input=false >/dev/null && tofu validate )
+      done
+
+  lint:
+    desc: tflint per module
+    cmd: |
+      shopt -s nullglob
+      for m in {{.TOFU_MODULES}}; do
+        echo "=== tflint ${m} ==="
+        ( cd "$m" && tflint --chdir=. )
+      done
+
+  docs:
+    desc: Regenerate module READMEs' input/output tables via terraform-docs
+    cmd: |
+      shopt -s nullglob
+      for m in {{.TOFU_MODULES}}; do
+        terraform-docs markdown table --output-file README.md --output-mode inject "$m" || true
+      done
+
+  lint:yaml:
+    desc: yamllint + markdownlint over tofu/ (module READMEs, example manifests)
+    cmd: |
+      yamllint -d relaxed tofu/ 2>/dev/null || true
+      markdownlint 'tofu/**/*.md' || true
+
+  ci:
+    desc: Full local tofu validation (fmt-check + validate + lint) — mirrors CI
+    cmds:
+      - task: fmt:check
+      - task: validate
+      - task: lint

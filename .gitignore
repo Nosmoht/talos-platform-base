@@ -48,3 +48,9 @@ logs/security/
 .vale/styles/Vocab/
 .vale/styles/.vale-config/
 .vale/styles/config/
+.devbox/
+.direnv/
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl

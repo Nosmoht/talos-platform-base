@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
+  "packages": [
+    "opentofu@latest",
+    "tflint@latest",
+    "terraform-docs@latest",
+    "go-task@latest",
+    "yamllint@latest",
+    "markdownlint-cli@latest"
+  ],
+  "shell": {
+    "init_hook": [
+      "echo 'talos-platform-base devbox shell active — run \"task --list\" for available targets'"
+    ],
+    "scripts": {}
+  }
+}
