@@ -43,7 +43,7 @@ to all 22 components in lock-step and forces Multi-Cluster consumers
 to accept the full offering matrix regardless of which subset they
 deploy. The OCI artifact already published by this repo
 (`.ci-oci-tarball-include.txt`, 42 paths) contains **only** `talos/`
-+ `docs/platform-hardware-features.yaml` — `infrastructure/` is
+plus `docs/platform-hardware-features.yaml` — `infrastructure/` is
 consumed exclusively via Git-source Multi-Source-App. The
 Substrate-vs-offering split therefore already exists at the artifact
 boundary; only the repository structure lags behind.
