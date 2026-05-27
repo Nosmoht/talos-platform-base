@@ -1,6 +1,9 @@
 ---
-status: proposed
-date: 2026-05-26
+status: accepted
+date: 2026-05-27
+date-history:
+  - 2026-05-26 initial (proposed)
+  - 2026-05-27 accepted
 deciders:
   - Thomas Krahn
 consulted: []
