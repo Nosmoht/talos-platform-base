@@ -11,21 +11,31 @@
 # Hard-coded defaults (documented for transparency):
 #   - All nodes get infrastructure-platform: metal  (homelab is bare-metal)
 #   - arch: arm64 for nodes whose name matches node-pi-*; amd64 for all others
-#   - hardware-platform: raspberry-pi-4 for arm64 nodes; intel-generic for amd64 nodes
-#   - GPU nodes (name matches node-gpu-*) get role: worker and hardware_capabilities:
-#       [gvisor, gpu-nvidia] matching the legacy GPU worker patch set
+#   - hardware-platform: raspberry-pi-4 for arm64 nodes; intel-generic for all
+#     amd64 nodes (a GPU server is still an x86-64 platform — GPU presence is
+#     captured on Axis 5 via the gpu-nvidia hardware-capability, not Axis 4)
+#   - GPU nodes (name matches node-gpu-*) get role: gpu-worker and
+#       hardware_capabilities: [gpu-nvidia] matching the legacy GPU worker
+#       patch set (gvisor lives in roles.gpu-worker.patches[], not as a cap)
 #   - Pi nodes (name matches node-pi-*) get role: worker and hardware_capabilities:
 #       [pi-worker] matching the legacy Pi worker patch set
 #   - Control-plane nodes get role: controlplane and hardware_capabilities: [drbd-storage]
 #   - Standard workers get role: worker and hardware_capabilities:
-#       [gvisor, drbd-storage, kubevirt-networking]
+#       [drbd-storage, kubevirt-networking] (gvisor is workload-runtime-class,
+#       carried by roles.worker.patches[] — see talos/AGENTS.md §Patch slots)
 #
 # Mapping from legacy nodes/* fields to 5-axis cluster.yaml:
 #   nodes.control_plane[]  → role=controlplane, arch=amd64, infra=metal
 #   nodes.workers[]        → role=worker, arch=amd64, infra=metal
-#   nodes.gpu_workers[]    → role=worker, arch=amd64, infra=metal, caps=[gvisor,gpu-nvidia]
-#   nodes.pi_nodes[]       → role=worker, arch=arm64, infra=metal, hw=raspberry-pi-4, caps=[pi-worker]
+#   nodes.gpu_workers[]    → role=gpu-worker, arch=amd64, infra=metal, hw=intel-generic, caps=[gpu-nvidia]
+#   nodes.pi_nodes[]       → role=pi-worker,  arch=arm64, infra=metal, hw=raspberry-pi-4, caps=[pi-worker]
 #   nodes[].nic            → nic field (carried through for per-node reference)
+#
+# Workload-runtime-class concerns (gvisor sandbox) are NOT modeled on Axis 5;
+# the worker-gvisor.yaml patch lives in roles.worker.patches[] /
+# roles.gpu-worker.patches[] per talos/AGENTS.md §"Patch slots — where things
+# go" and docs/adr-three-layer-capability-architecture.md §"Workload-class
+# out-of-scope".
 #
 # The roles[].patches arrays in the translated output match the legacy Makefile
 # patch order exactly (required for bit-identity verification in Phase 1C-3):
@@ -61,6 +71,9 @@ API_VIP=$(yq -r '.cluster.api_vip' "$INPUT")
 # the consumer's Gateway-API manifests (a cluster may host multiple Gateways).
 NETWORK=$(yq -r '.cluster.network // ""' "$INPUT")
 GATEWAY=$(yq -r '.cluster.gateway // ""' "$INPUT")
+# Legacy schema only carried a single NTP server; map to a single-element
+# ntp_servers list in the v0.6.0 output. Consumers should expand to ≥2
+# servers post-translation for redundancy.
 NTP_SERVER=$(yq -r '.cluster.ntp_server // ""' "$INPUT")
 OVERLAY=$(yq -r '.cluster.overlay // .cluster.name' "$INPUT")
 TARGET_REVISION=$(yq -r '.cluster.target_revision // "main"' "$INPUT")
@@ -114,8 +127,7 @@ while [[ $IDX -lt $W_COUNT ]]; do
     IP=$(yq -r ".nodes.workers[$IDX].ip" "$INPUT")
     NIC=$(yq -r ".nodes.workers[$IDX].nic // \"\"" "$INPUT")
     emit_node "$NAME" "$IP" "worker" "amd64" "intel-generic" \
-        "      - gvisor
-      - drbd-storage
+        "      - drbd-storage
       - kubevirt-networking" "$NIC"
     IDX=$(( IDX + 1 ))
 done
@@ -127,7 +139,7 @@ while [[ $IDX -lt $GPU_COUNT ]]; do
     NAME=$(yq -r ".nodes.gpu_workers[$IDX].name" "$INPUT")
     IP=$(yq -r ".nodes.gpu_workers[$IDX].ip" "$INPUT")
     NIC=$(yq -r ".nodes.gpu_workers[$IDX].nic // \"\"" "$INPUT")
-    emit_node "$NAME" "$IP" "gpu-worker" "amd64" "nvidia-gpu-node" \
+    emit_node "$NAME" "$IP" "gpu-worker" "amd64" "intel-generic" \
         "      - gpu-nvidia" "$NIC"
     IDX=$(( IDX + 1 ))
 done
@@ -154,7 +166,8 @@ TRANSLATED=$(cat <<YAML
 # Hard-coded defaults applied:
 #   - infrastructure-platform: metal (all nodes)
 #   - arch: amd64 (except node-pi-* → arm64)
-#   - hardware-platform: intel-generic / raspberry-pi-4 / nvidia-gpu-node
+#   - hardware-platform: intel-generic (x86-64; GPU nodes included) /
+#                        raspberry-pi-4 (arm64)
 #   - roles[].patches match legacy Makefile patch order for bit-identity parity
 
 cluster:
@@ -163,7 +176,8 @@ cluster:
   vip: $API_VIP
   network: $NETWORK
   gateway: $GATEWAY
-  ntp_server: $NTP_SERVER
+  ntp_servers:
+    - $NTP_SERVER
   target_revision: $TARGET_REVISION
 
 roles:
@@ -214,10 +228,7 @@ infrastructure-platforms:
 hardware-platforms:
   intel-generic:
     vendor: Intel
-    model: "Generic x86-64"
-  nvidia-gpu-node:
-    vendor: NVIDIA
-    model: "Server with NVIDIA PCIe GPU"
+    model: "Generic x86-64 (includes servers carrying PCIe GPUs)"
   raspberry-pi-4:
     vendor: "Raspberry Pi Foundation"
     model: "Raspberry Pi 4 Model B"
@@ -227,11 +238,6 @@ hardware-capabilities:
     description: "DRBD distributed block storage (applied to all standard nodes)"
     patches:
       - file: patches/drbd.yaml
-
-  gvisor:
-    description: "gVisor container runtime sandbox"
-    patches:
-      - file: patches/worker-gvisor.yaml
 
   kubevirt-networking:
     description: "KubeVirt VM networking via VLAN + Linux bridge"

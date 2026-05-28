@@ -10,8 +10,9 @@
 # DUAL-PATH SCOPE note are closed:
 #   - CRIT-1 (Placeholder resolution): closed v0.5.2 — argv-print.sh:213 calls
 #     resolve-placeholders.sh for any patch containing ${NAME} tokens.
-#   - CRIT-4 (NTP patch): closed v0.5.2 — argv-print.sh:108-122 renders the
-#     NTP patch from cluster.ntp_server as the first --config-patch.
+#   - CRIT-4 (NTP patch): closed v0.5.2 — argv-print.sh renders the NTP patch
+#     as the first --config-patch. v0.6.0 widens the source to
+#     cluster.ntp_servers[] (array) so consumers can declare ≥2 servers.
 # Provided targets: gen-configs, schematics, validate-schematics, argv-print,
 # test-bit-identity, test-substitution.
 # See talos/RELEASE-NOTES-v0.5.2.md (Phase-3 closures) and v0.5.4.md / v0.6.0

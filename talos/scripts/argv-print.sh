@@ -71,36 +71,46 @@ NODE_INFRA=$(yq -r ".nodes[$NODE_IDX][\"infrastructure-platform\"]" "$CLUSTER_YA
 CLUSTER_NAME=$(yq -r '.cluster.name' "$CLUSTER_YAML")
 ENDPOINT="https://$(yq -r '.cluster.vip' "$CLUSTER_YAML"):6443"
 OVERLAY=$(yq -r '.cluster.overlay // .cluster.name' "$CLUSTER_YAML")
-NTP_SERVER=$(yq -r '.cluster.ntp_server // ""' "$CLUSTER_YAML" 2>/dev/null || true)
 
 # ---------------------------------------------------------------------------
-# CRIT-4 (closed in v0.5.2): render NTP patch from cluster.ntp_server.
+# CRIT-4 (closed in v0.5.2): render NTP patch from cluster.ntp_servers.
 # Legacy gen-configs injected NTP via a rendered _out/<overlay>/cluster.yaml
 # patch; the new path renders an equivalent ephemeral patch into tmpdir and
 # emits it as the FIRST role-patch (so every subsequent role-patch and the
 # per-node nodes/<n>.yaml can override it). machine.time.servers is the
-# Talos field the patch sets.
+# Talos field the patch sets — natively a list, so v0.6.0+ accepts an array
+# (≥2 servers recommended for redundancy).
 #
-# R2 HIGH (team-red): the value goes into a heredoc — validate it as a
-# strict hostname/IPv4/IPv6 charset and reject any newline / shell-meta to
-# prevent YAML injection into machine.* keys (e.g. attacker-controlled
-# extraKernelArgs landing through the NTP slot bypassing the AGENTS.md
-# Hard-Constraints check). Pattern admits letters, digits, dot, hyphen,
-# colon (IPv6) — nothing else.
+# R2 HIGH (team-red): every element goes into a heredoc — validate each
+# against the strict hostname/IPv4/IPv6 charset and reject any newline /
+# shell-meta to prevent YAML injection into machine.* keys (e.g.
+# attacker-controlled extraKernelArgs landing through the NTP slot
+# bypassing the AGENTS.md Hard-Constraints check). Pattern admits letters,
+# digits, dot, hyphen, colon (IPv6), underscore — nothing else.
 # ---------------------------------------------------------------------------
+NTP_SERVERS_FILE="$TMPDIR_LOCAL/ntp_servers.txt"
+yq -r '.cluster.ntp_servers // [] | .[]' "$CLUSTER_YAML" 2>/dev/null > "$NTP_SERVERS_FILE" || true
+
 NTP_PATCH_FILE=""
-if [[ -n "$NTP_SERVER" && "$NTP_SERVER" != "null" ]]; then
-    if ! [[ "$NTP_SERVER" =~ ^[A-Za-z0-9.:_-]{1,253}$ ]]; then
-        echo "ERROR: cluster.ntp_server value violates charset ^[A-Za-z0-9.:_-]{1,253}\$ — refused (potential YAML injection). Use a single RFC 1123 hostname, IPv4, or IPv6 literal." >&2
-        exit 1
-    fi
+if [[ -s "$NTP_SERVERS_FILE" ]]; then
+    while IFS= read -r _ntp; do
+        [[ -z "$_ntp" || "$_ntp" == "null" ]] && continue
+        if ! [[ "$_ntp" =~ ^[A-Za-z0-9.:_-]{1,253}$ ]]; then
+            echo "ERROR: cluster.ntp_servers element '$_ntp' violates charset ^[A-Za-z0-9.:_-]{1,253}\$ — refused (potential YAML injection). Each element must be an RFC 1123 hostname, IPv4, or IPv6 literal." >&2
+            exit 1
+        fi
+    done < "$NTP_SERVERS_FILE"
+
     NTP_PATCH_FILE="$TMPDIR_LOCAL/ntp.yaml"
-    cat > "$NTP_PATCH_FILE" <<EOF
-machine:
-  time:
-    servers:
-      - $NTP_SERVER
-EOF
+    {
+        printf 'machine:\n'
+        printf '  time:\n'
+        printf '    servers:\n'
+        while IFS= read -r _ntp; do
+            [[ -z "$_ntp" || "$_ntp" == "null" ]] && continue
+            printf '      - %s\n' "$_ntp"
+        done < "$NTP_SERVERS_FILE"
+    } > "$NTP_PATCH_FILE"
 fi
 
 # ---------------------------------------------------------------------------

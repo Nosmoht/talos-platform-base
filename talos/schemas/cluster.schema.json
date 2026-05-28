@@ -66,8 +66,8 @@
   "$defs": {
     "cluster-identity": {
       "type": "object",
-      "description": "Cluster identity SOT. Single Kubernetes API VIP, NTP server, and network metadata. Gateway/LoadBalancer VIPs are NOT modeled here — a cluster may host multiple Gateway-API Gateway objects, each with its own LB IP; those are consumer-specific and declared in the respective Gateway/HTTPRoute manifests (kubernetes/base/infrastructure/<gateway>/values.yaml), not in cluster.yaml.",
-      "required": ["name", "vip", "ntp_server"],
+      "description": "Cluster identity SOT. Single Kubernetes API VIP, NTP servers (Talos machine.time.servers is an array — declare ≥2 for redundancy), and network metadata. Gateway/LoadBalancer VIPs are NOT modeled here — a cluster may host multiple Gateway-API Gateway objects, each with its own LB IP; those are consumer-specific and declared in the respective Gateway/HTTPRoute manifests (kubernetes/base/infrastructure/<gateway>/values.yaml), not in cluster.yaml.",
+      "required": ["name", "vip", "ntp_servers"],
       "additionalProperties": false,
       "properties": {
         "name": {
@@ -87,9 +87,14 @@
           "type": "string",
           "description": "Default IPv4 gateway / upstream DNS resolver. Informational; not consumed by talosctl gen config."
         },
-        "ntp_server": {
-          "type": "string",
-          "description": "NTP server hostname or IP. Required: empty NTP causes etcd cert validation failures via clock drift. Charset is validated at argv-print.sh:108 against ^[A-Za-z0-9.:_-]{1,253}$ to prevent YAML injection into the rendered NTP patch."
+        "ntp_servers": {
+          "type": "array",
+          "description": "Ordered list of NTP server hostnames or IPs. Required: empty NTP causes etcd cert validation failures via clock drift. Talos machine.time.servers is natively a list — declare ≥2 servers for redundancy. Each element charset is validated at argv-print.sh against ^[A-Za-z0-9.:_-]{1,253}$ to prevent YAML injection into the rendered NTP patch. Replaces the v0.5.x scalar field 'ntp_server' (hard-renamed v0.6.0).",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9.:_-]{1,253}$"
+          }
         },
         "overlay": {
           "type": "string",

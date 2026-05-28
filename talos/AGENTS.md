@@ -50,8 +50,9 @@ intent across files that future readers won't think to look at.
 Patches apply in this order; each subsequent patch may override
 `machine.*` keys set by earlier ones.
 
-1. **NTP baseline** — synthetic patch rendered from `cluster.ntp_server`
-   (emitted first when set; opt-in — no patch when unset).
+1. **NTP baseline** — synthetic patch rendered from `cluster.ntp_servers[]`
+   (emitted first when set; opt-in — no patch when the list is empty or
+   absent).
 2. **`roles.<role>.patches[]`** — role-wide patch files in declared
    order. This is the canonical place for anything every node of that
    role needs (static `machine.nodeLabels`, install-image variants,
@@ -172,6 +173,10 @@ History:
   any role patch — see §"Patch slots — where things go" for full composition
   order). Both behaviours are opt-in (no NTP patch when
   `cluster.ntp_server` unset; no substitution when patch contains no token).
+- **v0.6.0** — `cluster.ntp_server` (scalar) hard-renamed to `cluster.ntp_servers[]`
+  (array) so consumers can declare ≥2 NTP servers for redundancy. Talos
+  `machine.time.servers` is natively a list; the v0.5.x single-value field
+  was a SPOF. argv-print.sh charset-validates every list element.
 
 ### Placeholder convention
 

@@ -26,7 +26,9 @@ cluster:
   vip: 10.0.0.100                          # Kubernetes API virtual IP (exactly one per cluster)
   network: 10.0.0.0/24                     # cluster network CIDR (informational)
   gateway: 10.0.0.1                        # default gateway / DNS (informational)
-  ntp_server: 10.0.0.1                     # NTP server IP or hostname (required)
+  ntp_servers:                             # required; ≥1 server, ≥2 recommended for redundancy
+    - 10.0.0.1                             # primary (local router / firewall)
+    - pool.ntp.org                         # public fallback (or your second internal NTP)
   overlay: my-cluster                      # kustomize overlay name under kubernetes/overlays/
   target_revision: main                    # git branch/tag for ArgoCD root application
 
@@ -80,18 +82,18 @@ infrastructure-platforms:
     description: "Bare-metal boot via Talos metal installer"
 
 # ---------------------------------------------------------------------------
-# Axis 4 — Hardware platforms (SBC / server identity)
+# Axis 4 — Hardware platforms (SBC / server form-factor identity)
+#
+# Models the CPU mainboard / chassis class only. Peripherals such as PCIe
+# GPUs are NOT a hardware-platform — they are captured on Axis 5
+# (hardware-capabilities), so a GPU server keeps hardware-platform:
+# intel-generic and gains gpu-nvidia on Axis 5.
 # ---------------------------------------------------------------------------
 hardware-platforms:
   intel-generic:
     vendor: Intel
     model: "Generic x86-64 server / NUC"
-    description: "Generic Intel x86-64 platform"
-
-  nvidia-gpu-node:
-    vendor: NVIDIA
-    model: "Server with NVIDIA PCIe GPU"
-    description: "x86-64 server carrying one or more NVIDIA PCIe GPUs"
+    description: "Generic Intel/AMD x86-64 platform (includes servers carrying PCIe GPUs)"
 
   raspberry-pi-4:
     vendor: Raspberry Pi Foundation
@@ -162,12 +164,12 @@ nodes:
     ip: 10.0.0.21
     nic: eth0
 
-  # Example GPU worker — role=worker, GPU via hardware-capabilities
+  # Example GPU worker — x86-64 platform, GPU captured on Axis 5 only
   # - name: gpu-01
   #   role: worker
   #   arch: amd64
   #   infrastructure-platform: metal
-  #   hardware-platform: nvidia-gpu-node
+  #   hardware-platform: intel-generic
   #   hardware-capabilities: [base-server, gpu-nvidia]
   #   ip: 10.0.0.31
   #   nic: enp0s20f0u2
