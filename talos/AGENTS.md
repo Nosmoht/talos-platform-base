@@ -234,32 +234,15 @@ metadata; consumer cluster.yamls SHOULD follow the same convention.
 `additionalProperties: true` remains as-is for backward compatibility —
 tightening it is a separate concern (see issue tracker).
 
-## Casing convention — `hardware-capabilities` per-node alias (F21-A)
+## Casing convention — `hardware-capabilities` per-node (F21-A, finalized v0.6.0)
 
-The schema declares the per-node capability list under two property
-names during the v0.5.4 grace window:
+The per-node capability list is declared as `hardware-capabilities`
+(kebab-case), aligned with the top-level `hardware-capabilities` map
+key. The v0.5.4 grace-window underscore alias (`hardware_capabilities`)
+was removed in v0.6.0 from the schema, `argv-print.sh`, and
+`validate-schematics.sh`. The schema's `required` list now hard-includes
+`hardware-capabilities` on every node-spec; underscore-only documents
+fail validation with `'hardware-capabilities' is a required property`.
 
-- `hardware-capabilities` (kebab-case) — **canonical**, aligned with
-  the top-level `hardware-capabilities` map key.
-- `hardware_capabilities` (snake_case) — **deprecated alias**, still
-  accepted for backward compatibility. Planned removal in v0.6.0.
-
-The `anyOf` constraint in `$defs.node-spec` enforces that at least
-one of the two is present on every node. Do NOT set both keys on the
-same node — their semantics are identical and the alias is solely
-for migration.
-
-### Important — DO NOT migrate consumer cluster.yamls in v0.5.4
-
-The schema accepts kebab-case in v0.5.4, but the Makefile.lib runtime
-scripts (`argv-print.sh`, `validate-schematics.sh`,
-`build-schematic-cache.sh`, `translate-legacy-cluster-yaml.sh`) read
-only the snake_case key during v0.5.4. **Renaming a consumer
-`cluster.yaml` to kebab-case while still on v0.5.4 produces
-silent zero-capability nodes** in `make argv-print` / `make gen-configs`
-— the schema validates, but every node's capability list reads as empty.
-
-Consumer migration to kebab-case is gated on v0.6.0, which lands
-the script renames + alias removal together in a single coordinated
-bump. The migration command and pre-bump survey will be documented
-in `RELEASE-NOTES-v0.6.0.md`.
+Consumer migration is covered in
+[`UPGRADING.md` §`v0.6.0`](../UPGRADING.md) step 5.

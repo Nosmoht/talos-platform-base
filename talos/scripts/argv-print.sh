@@ -7,7 +7,7 @@
 #         bit-identity diff in Phase 1C-3).
 #
 # Resolution chain (per Makefile.lib §Phase 1C-2 brief):
-#   1. Read node attrs: role, arch, infrastructure-platform, hardware_capabilities
+#   1. Read node attrs: role, arch, infrastructure-platform, hardware-capabilities
 #   2. Resolve patch list from roles[role].patches (ordered; includes base patches)
 #   3. Append per-node nodes/<name>.yaml (always last patch)
 #   4. Resolve install-image from infrastructure-platforms[infra].install-image-template
@@ -121,7 +121,7 @@ yq -r ".roles[\"$NODE_ROLE\"].patches // [] | .[]" "$CLUSTER_YAML" 2>/dev/null >
 
 # ---------------------------------------------------------------------------
 # CRIT-1 (closed in v0.5.2): build per-node placeholder bindings from the
-# node's hardware_capabilities entries. For each cap, read its
+# node's hardware-capabilities entries. For each cap, read its
 # placeholder_bindings map (PLACEHOLDER -> yq path into nodes/<NODE>.yaml)
 # and resolve the field into a flat NAME<TAB>VALUE bindings file.
 # resolve-placeholders.sh consumes this file and renders any patch that
@@ -132,11 +132,9 @@ BINDINGS_FILE="$TMPDIR_LOCAL/bindings.txt"
 : > "$BINDINGS_FILE"
 NODE_YAML_PATH="$(dirname "$CLUSTER_YAML")/nodes/$NODE_NAME.yaml"
 
-# Collect per-node caps
+# Collect per-node caps (canonical kebab-case; underscore alias removed in v0.6.0).
 NODE_CAPS_FILE="$TMPDIR_LOCAL/node_caps.txt"
-# Read canonical kebab-case field first; fall back to deprecated underscore
-# alias (kept for v0.5.4 grace window per schema $defs.node-spec).
-yq -r ".nodes[$NODE_IDX].\"hardware-capabilities\" // .nodes[$NODE_IDX].hardware_capabilities // [] | .[]" "$CLUSTER_YAML" 2>/dev/null > "$NODE_CAPS_FILE" || true
+yq -r ".nodes[$NODE_IDX].\"hardware-capabilities\" // [] | .[]" "$CLUSTER_YAML" 2>/dev/null > "$NODE_CAPS_FILE" || true
 
 CAP_BINDINGS_FILE="$TMPDIR_LOCAL/cap_bindings.txt"
 while IFS= read -r cap; do

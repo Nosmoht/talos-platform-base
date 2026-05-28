@@ -31,7 +31,7 @@ nodes:
     arch: riscv64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
     ip: 192.0.2.11
     nic: eth0

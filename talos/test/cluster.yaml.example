@@ -137,7 +137,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
     ip: 10.0.0.11
     nic: eth0
@@ -147,7 +147,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
     ip: 10.0.0.21
     nic: eth0
@@ -157,7 +157,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
     ip: 10.0.0.22
     nic: eth0
@@ -167,7 +167,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
       - gpu-nvidia
     ip: 10.0.0.31
@@ -178,7 +178,7 @@ nodes:
     arch: arm64
     infrastructure-platform: metal
     hardware-platform: raspberry-pi-4
-    hardware_capabilities:
+    hardware-capabilities:
       - arm-sbc
     ip: 10.0.0.41
     nic: eth0
@@ -188,7 +188,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
       - kubevirt-networking
     ip: 10.0.0.23

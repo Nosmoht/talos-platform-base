@@ -8,7 +8,7 @@
 #   2. Each node's infrastructure-platform is compatible with its arch
 #   3. Each node's hardware-platform is compatible with its arch
 #   4. Each node's hardware-platform is compatible with its infrastructure-platform
-#   5. Each node's hardware_capabilities entries exist in hardware-capabilities
+#   5. Each node's hardware-capabilities entries exist in hardware-capabilities
 #   6. Each hardware-capability's requires_features entries exist in Layer-C registry
 #   7. Conflict detection: two capabilities patching the same JSON-pointer
 #
@@ -157,19 +157,19 @@ while [[ $NODE_IDX -lt $NODE_COUNT ]]; do
         fi
     fi
 
-    # Check 5: hardware_capabilities entries exist in hardware-capabilities
+    # Check 5: hardware-capabilities entries exist in hardware-capabilities
     NODE_CAPS_FILE="$TMPDIR_LOCAL/node_caps_${NODE_IDX}.txt"
-    yq -r ".nodes[$NODE_IDX].hardware_capabilities | .[]" "$CLUSTER_YAML" 2>/dev/null > "$NODE_CAPS_FILE" || true
+    yq -r ".nodes[$NODE_IDX].\"hardware-capabilities\" | .[]" "$CLUSTER_YAML" 2>/dev/null > "$NODE_CAPS_FILE" || true
     while IFS= read -r cap; do
         # Charset guard before interpolating into yq expressions
         if ! [[ "$cap" =~ ^[A-Za-z0-9._-]+$ ]]; then
-            fail "[n.$NODE_NAME]: hardware_capabilities entry '$cap' contains illegal characters; expected ^[A-Za-z0-9._-]+\$"
+            fail "[n.$NODE_NAME]: hardware-capabilities entry '$cap' contains illegal characters; expected ^[A-Za-z0-9._-]+\$"
             NODE_FAIL=1
             continue
         fi
         CAP_EXISTS=$(yq -r ".\"hardware-capabilities\" | has(\"$cap\")" "$CLUSTER_YAML" 2>/dev/null || echo "false")
         if [[ "$CAP_EXISTS" != "true" ]]; then
-            fail "[n.$NODE_NAME]: capability '$cap' in hardware_capabilities not defined in cluster.yaml hardware-capabilities"
+            fail "[n.$NODE_NAME]: capability '$cap' in hardware-capabilities not defined in cluster.yaml hardware-capabilities"
             NODE_FAIL=1
         else
             # Check 6: binding-missing — capability declares placeholder_bindings

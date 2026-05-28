@@ -47,7 +47,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - gpu-accelerated
       - virtualization
       - storage-and-network
