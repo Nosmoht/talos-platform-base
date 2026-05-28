@@ -137,12 +137,18 @@ bpf:
 
 # --- L2 announcements / LoadBalancer ---
 # Enable Cilium as the L2 announcer for Service type=LoadBalancer VIPs.
-# Replaces kube-vip / MetalLB for L2 ARP announcements on the cluster LAN.
+# Service LoadBalancer (ADR-0014). Both modes enabled so consumers can pick per
+# CiliumLoadBalancerIPPool: L2 announcements on the node VLAN (kube-vip /
+# MetalLB replacement), BGP control-plane v2 for ECMP-routed VIP subnets via
+# an upstream router (e.g. UCG-Max). Mode selection is configured per cluster
+# in the consumer repo's BGP / L2 manifests; the platform doesn't pick one.
 l2announcements:
   enabled: true
 loadBalancer:
   l2:
     enabled: true
+bgpControlPlane:
+  enabled: true
 
 # --- cilium-secrets Namespace labels ---
 # PNI contract (platform.io/network-interface-version + network-profile) is required by

@@ -21,6 +21,18 @@ cluster:
   ntp_server: 10.0.0.1                    # NTP server IP or hostname (required, no public default)
   target_revision: main                   # git branch/tag for ArgoCD root application (optional, default: main)
 
+  # BGP for Cilium load-balancing (ADR-0014). Each cluster peers with the edge
+  # router (e.g. UCG-Max) using a private ASN; Cilium advertises a per-cluster
+  # /28 VIP pool which the router routes back to the cluster nodes via ECMP.
+  # Empty block (or removed entirely) → Cilium falls back to L2 announcements
+  # on the node VLAN (see kubernetes/bootstrap/cilium/values.yaml — both modes
+  # are enabled, the consumer picks via CiliumLoadBalancerIPPool annotations).
+  bgp:
+    cluster_asn: 65001                    # this cluster's ASN (unique per cluster, e.g. 65001=seeder, 65002=dhq)
+    peer_asn:    65000                    # router ASN (same for all clusters in this site)
+    peer_ip:     10.0.0.1                 # router IP on this cluster's VLAN
+    lb_ipam_pool: 10.0.1.0/28             # CIDR Cilium-LB-IPAM hands out + advertises via BGP
+
 kubeconfig: /tmp/my-cluster-kubeconfig     # path to kubeconfig file
 
 nodes:
