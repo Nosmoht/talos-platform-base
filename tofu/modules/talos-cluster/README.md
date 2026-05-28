@@ -28,6 +28,29 @@ Out of scope (handled elsewhere):
 Precondition: every node in `var.nodes` is reachable on the Talos API port,
 i.e. already booted into Talos maintenance mode.
 
+## What's in scope
+
+| Stage | Module-managed |
+|---|---|
+| Day-1: cluster PKI | `talos_machine_secrets` |
+| Day-1: machine config (per role) | `data.talos_machine_configuration` |
+| Day-1: per-class installer image | `talos_image_factory_extensions_versions` → `talos_image_factory_schematic` → `talos_image_factory_urls` |
+| Day-1: apply config to each node | `talos_machine_configuration_apply` (per-node hostname + install.image patch) |
+| Day-1: etcd bootstrap | `talos_machine_bootstrap` (first controlplane only) |
+| Day-1: kubeconfig + talosconfig | `talos_cluster_kubeconfig` + `data.talos_client_configuration` |
+| **Day-2: Talos OS upgrade** | Bumping `talos_version` re-renders machine configs AND the per-class installer image from the Image Factory; `talos_machine_configuration_apply` rolls them out. |
+| **Day-2: Extension changes** | Edit `extensions` map → schematic ID changes → installer image URL changes → `machine_configuration_apply` re-rolls nodes of the affected class. |
+
+Most of the declarative lifecycle is in scope: one `tofu apply` reconciles
+Talos version, system extensions and config patches. **One Day-2 op stays
+out-of-band**: Kubernetes version upgrades. The `siderolabs/talos` provider
+does not ship a `talos_cluster_kubernetes_upgrade` resource yet, so K8s
+bumps are run with `talosctl upgrade-k8s --to <version>` against the
+cluster. Bumping `kubernetes_version` in `cluster.yaml` keeps the
+machine-config in sync; the actual rolling upgrade is the talosctl command.
+This is a tracked follow-up for when the provider exposes the upgrade as
+a resource.
+
 ## Usage
 
 ```hcl
@@ -40,10 +63,17 @@ module "dhq" {
   cluster_endpoint   = "https://dhq.devoba.de:6443"
 
   nodes = [
-    { hostname = "dhq-cp-1", ip = "10.0.10.11", role = "controlplane" },
-    { hostname = "dhq-w-1", ip = "10.0.10.21", role = "worker" },
-    { hostname = "dhq-w-2", ip = "10.0.10.22", role = "worker" },
+    { hostname = "dhq-cp-1", ip = "10.0.10.11", role = "controlplane", class = "standard" },
+    { hostname = "dhq-w-1",  ip = "10.0.10.21", role = "worker",       class = "standard" },
+    { hostname = "dhq-gpu-1", ip = "10.0.10.31", role = "worker",      class = "gpu" },
   ]
+
+  # Image-Factory extensions per node class. Empty list = default installer.
+  extensions = {
+    standard = ["siderolabs/qemu-guest-agent"]
+    gpu      = ["siderolabs/nvidia-container-toolkit", "siderolabs/nonfree-kmod-nvidia"]
+    pi       = []
+  }
 
   # Cluster-specific machine-config patches (install disk, registry mirrors, …)
   config_patches = [
@@ -80,7 +110,8 @@ provider "talos" {}
 | `talos_version` | string | — | v-prefixed semver, e.g. `v1.13.0` |
 | `kubernetes_version` | string | — | v-prefixed semver, e.g. `v1.36.0` |
 | `cluster_endpoint` | string | — | `https://…:6443` API endpoint / VIP |
-| `nodes` | list(object) | — | `{hostname, ip, role}`, role ∈ {controlplane, worker} |
+| `nodes` | list(object) | — | `{hostname, ip, role, class?}`; role ∈ {controlplane, worker}; class defaults to `"standard"` and must exist in `extensions` |
+| `extensions` | map(list(string)) | `{ standard = [], gpu = [], pi = [] }` | Image-Factory system extensions per node class. Empty list = default Talos installer. |
 | `config_patches` | list(string) | `[]` | machine-config patches applied to all nodes |
 | `controlplane_config_patches` | list(string) | `[]` | patches for controlplane nodes only |
 | `worker_config_patches` | list(string) | `[]` | patches for worker nodes only |
@@ -94,6 +125,8 @@ provider "talos" {}
 | `client_configuration` | yes | Talos client cert bundle for chaining |
 | `cluster_endpoint` | no | echoed API endpoint |
 | `controlplane_ips` | no | controlplane node IPs |
+| `schematic_ids` | no | Image-Factory schematic ID per node class (audit) |
+| `installer_images` | no | resolved `metal-installer` image URL per node class |
 
 ## Notes
 

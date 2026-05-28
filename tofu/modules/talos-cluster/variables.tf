@@ -42,11 +42,16 @@ variable "nodes" {
     PXE-booted into Talos maintenance mode (reachable at `ip` on the Talos
     API port) — see the lifecycle/ipxe component. The module applies the
     machine config, it does not provision the hardware or boot the nodes.
+
+    `class` (optional, default "standard") selects the Image-Factory
+    schematic from var.extensions — used to install Talos with the right
+    set of system extensions (e.g. drbd, qemu-guest-agent, nvidia drivers).
   EOT
   type = list(object({
     hostname = string
     ip       = string
-    role     = string # "controlplane" | "worker"
+    role     = string                       # "controlplane" | "worker"
+    class    = optional(string, "standard") # must exist as key in var.extensions
   }))
 
   validation {
@@ -57,6 +62,28 @@ variable "nodes" {
   validation {
     condition     = alltrue([for n in var.nodes : contains(["controlplane", "worker"], n.role)])
     error_message = "Each node.role must be either \"controlplane\" or \"worker\"."
+  }
+}
+
+variable "extensions" {
+  description = <<-EOT
+    Image-Factory system extensions per node class. Key = class name
+    (matching `node.class`), value = list of extension package names like
+    "siderolabs/qemu-guest-agent" or "siderolabs/drbd". The module resolves
+    each list against the Talos Image Factory at var.talos_version, derives
+    a schematic ID, and uses the resulting installer image
+    (metal-installer — NEVER metal-installer-secureboot per the base
+    AGENTS.md Hard Constraint) for nodes of that class.
+
+    Empty list → default Talos installer (no extensions) for that class.
+    Class "standard" is mandatory; "gpu" / "pi" are conventional but optional.
+  EOT
+  type        = map(list(string))
+  default     = { standard = [], gpu = [], pi = [] }
+
+  validation {
+    condition     = contains(keys(var.extensions), "standard")
+    error_message = "extensions must define a 'standard' class (even if empty) — node.class defaults to it."
   }
 }
 

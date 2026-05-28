@@ -33,3 +33,13 @@ output "controlplane_ips" {
   description = "IPs of the controlplane nodes (talosconfig endpoints)."
   value       = [for n in local.controlplanes : n.ip]
 }
+
+output "schematic_ids" {
+  description = "Image-Factory schematic IDs per node class (for auditing / debugging which extensions ended up baked into the installer)."
+  value       = { for k, s in talos_image_factory_schematic.per_class : k => s.id }
+}
+
+output "installer_images" {
+  description = "Resolved metal-installer image URL per node class."
+  value       = { for k, u in data.talos_image_factory_urls.per_class : k => u.installer_image }
+}
