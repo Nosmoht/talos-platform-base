@@ -21,17 +21,27 @@ cluster:
   ntp_server: 10.0.0.1                    # NTP server IP or hostname (required, no public default)
   target_revision: main                   # git branch/tag for ArgoCD root application (optional, default: main)
 
-  # BGP for Cilium load-balancing (ADR-0014). Each cluster peers with the edge
-  # router (e.g. UCG-Max) using a private ASN; Cilium advertises a per-cluster
-  # /28 VIP pool which the router routes back to the cluster nodes via ECMP.
+  # BGP for Cilium load-balancing (ADR-0014, Rev. 2026-05-28). Each cluster peers
+  # with the edge router (e.g. UCG-Max) using a private ASN; Cilium advertises a
+  # per-cluster dedicated VIP range as /32 routes which the router ECMP-balances
+  # across all cluster nodes.
+  #
+  # Topology assumption (ADR-0002 Rev. 2026-05-28): single VLAN per site is the
+  # Phase-1 reality. lb_ipam_pool is therefore a *routable L3 sub-range* on the
+  # router, sharing the L2 broadcast domain with the node IPs but in its own
+  # /28 — the UCG accepts the /32 service advertisements and treats the pool as
+  # a routed range. BGP is chosen over L2 announcements not because of VLAN
+  # separation (there is none) but for ECMP performance and a clean VIP pool
+  # decoupled from the node IP range.
+  #
   # Empty block (or removed entirely) → Cilium falls back to L2 announcements
   # on the node VLAN (see kubernetes/bootstrap/cilium/values.yaml — both modes
   # are enabled, the consumer picks via CiliumLoadBalancerIPPool annotations).
   bgp:
     cluster_asn: 65001                    # this cluster's ASN (unique per cluster, e.g. 65001=seeder, 65002=dhq)
     peer_asn:    65000                    # router ASN (same for all clusters in this site)
-    peer_ip:     10.0.0.1                 # router IP on this cluster's VLAN
-    lb_ipam_pool: 10.0.1.0/28             # CIDR Cilium-LB-IPAM hands out + advertises via BGP
+    peer_ip:     10.0.0.1                 # router IP reachable from the node VLAN
+    lb_ipam_pool: 10.0.1.0/28             # routable VIP sub-range — router has a static accept-route for this CIDR + accepts /32 advertisements from peer_asn
 
 kubeconfig: /tmp/my-cluster-kubeconfig     # path to kubeconfig file
 
