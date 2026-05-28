@@ -43,9 +43,13 @@ $(foreach _c,$(CLUSTER_NAME_DISALLOWED_CHARS),\
 
 API_VIP    := $(strip $(shell yq -e '.cluster.api_vip' $(ENV) 2>/dev/null))
 ENDPOINT   := https://$(API_VIP):6443
-NTP_SERVER := $(strip $(shell yq -e '.cluster.ntp_server' $(ENV) 2>/dev/null))
+# First entry of cluster.ntp_servers (list). Multi-server support in the
+# Makefile path is gated on migrating envsubst → yq merge in cluster.yaml.tmpl;
+# until then the gen-configs pipeline uses the primary only. The tofu module
+# consumes the full list via machine.time.servers.
+NTP_SERVER := $(strip $(shell yq -e '.cluster.ntp_servers[0]' $(ENV) 2>/dev/null))
 ifeq ($(strip $(NTP_SERVER)),)
-$(error cluster.yaml is missing required key '.cluster.ntp_server')
+$(error cluster.yaml is missing required key '.cluster.ntp_servers' (must be a non-empty list))
 endif
 
 CP_NODES     := $(shell yq -e '.nodes.control_plane[].name' $(ENV) 2>/dev/null | tr '\n' ' ')

@@ -18,7 +18,16 @@ cluster:
   gateway_vip: 10.0.0.200                 # Gateway/LoadBalancer virtual IP
   network: 10.0.0.0/24                    # cluster network CIDR
   gateway: 10.0.0.1                       # default gateway / DNS
-  ntp_server: 10.0.0.1                    # NTP server IP or hostname (required, no public default)
+  # NTP servers — list, at least one. The tofu/talos-cluster module pipes
+  # every entry into machine.time.servers (chrony uses them all). The
+  # `make -C talos gen-configs` path uses the FIRST entry only (envsubst
+  # limitation; revisit when the Makefile pipeline migrates from envsubst
+  # to yq merge). Convention:
+  #   1st = primary (LAN router NTP service, e.g. UCG)
+  #   2nd = out-of-cluster fallback (e.g. NAS NTP service)
+  #   3rd+ = public pool, optional
+  ntp_servers:
+    - 10.0.0.1
   target_revision: main                   # git branch/tag for ArgoCD root application (optional, default: main)
 
 kubeconfig: /tmp/my-cluster-kubeconfig     # path to kubeconfig file
