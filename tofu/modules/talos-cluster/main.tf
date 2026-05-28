@@ -24,6 +24,11 @@ locals {
   # Node classes actually referenced by var.nodes. Used to verify each class
   # has a matching entry in var.extensions before installer URLs are looked up.
   used_classes = distinct([for n in var.nodes : n.class])
+
+  # OS version running on the nodes. Defaults to talos_version (= schema-pin)
+  # for new clusters; bump talos_install_version for an OS upgrade while
+  # keeping talos_version fixed at bootstrap.
+  install_version = var.talos_install_version != "" ? var.talos_install_version : var.talos_version
 }
 
 # Defensive cross-check: every class referenced by a node must be defined in
@@ -55,7 +60,9 @@ check "node_class_extensions_defined" {
 data "talos_image_factory_extensions_versions" "per_class" {
   for_each = var.extensions
 
-  talos_version = var.talos_version
+  # Use the OS version actually being installed — extension package versions
+  # are pinned per Talos release in the factory.
+  talos_version = local.install_version
   filters = {
     names = each.value
   }
@@ -79,7 +86,9 @@ resource "talos_image_factory_schematic" "per_class" {
 data "talos_image_factory_urls" "per_class" {
   for_each = var.extensions
 
-  talos_version = var.talos_version
+  # Installer image tag = the OS version we want running. Schema-version
+  # `talos_version` stays out of this URL on purpose.
+  talos_version = local.install_version
   schematic_id  = talos_image_factory_schematic.per_class[each.key].id
   platform      = "metal"
   architecture  = "amd64" # TODO when ARM classes appear: per-class architecture map

@@ -107,8 +107,9 @@ provider "talos" {}
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `cluster_name` | string | — | RFC-1123 label, used in PKI CNs |
-| `talos_version` | string | — | v-prefixed semver, e.g. `v1.13.0` |
-| `kubernetes_version` | string | — | v-prefixed semver, e.g. `v1.36.0` |
+| `talos_version` | string | — | **Schema-pin**, v-prefixed semver (e.g. `v1.13.0`). Fixed at bootstrap; do NOT change. Drives `talos_machine_secrets` and `data.talos_machine_configuration`. |
+| `talos_install_version` | string | `""` | **OS-version pin** — what's actually installed on the nodes. Defaults to `talos_version`. Bump for OS upgrades; `task talos:upgrade:cluster` reads it from tfplan JSON and runs `talosctl upgrade` per node. |
+| `kubernetes_version` | string | — | v-prefixed semver, e.g. `v1.36.0`. Bump triggers out-of-band `talosctl upgrade-k8s` (taskfile). |
 | `cluster_endpoint` | string | — | `https://…:6443` API endpoint / VIP |
 | `nodes` | list(object) | — | `{hostname, ip, role, class?}`; role ∈ {controlplane, worker}; class defaults to `"standard"` and must exist in `extensions` |
 | `extensions` | map(list(string)) | `{ standard = [], gpu = [], pi = [] }` | Image-Factory system extensions per node class. Empty list = default Talos installer. |
@@ -125,8 +126,27 @@ provider "talos" {}
 | `client_configuration` | yes | Talos client cert bundle for chaining |
 | `cluster_endpoint` | no | echoed API endpoint |
 | `controlplane_ips` | no | controlplane node IPs |
-| `schematic_ids` | no | Image-Factory schematic ID per node class (audit) |
+| `schematic_ids` | no | Image-Factory schematic ID per node class (audit + upgrade-task input via tfplan JSON) |
 | `installer_images` | no | resolved `metal-installer` image URL per node class |
+| `talos_install_version` | no | effective installer version (= `talos_install_version` or `talos_version` if unset) |
+
+## Versions: schema-pin vs install-pin (Day-2-Pattern)
+
+Inspired by `KPS/k8s.platform`. Two distinct versions:
+
+- **`talos_version`** — the **machine-config schema** the cluster was bootstrapped against. Fixed for the lifetime of the cluster. Drives `talos_machine_secrets.talos_version`, `data.talos_machine_configuration.talos_version`.
+- **`talos_install_version`** — the **installer-image tag** rendered into `machine.install.image` and into the Image-Factory installer URL. This is what's actually running on the nodes. Bump it to roll an OS upgrade.
+
+For OS upgrades, the consumer-side workflow is:
+
+1. Bump `cluster.yaml.talos.install_version` (e.g. `v1.13.0` → `v1.13.1`).
+2. `tofu plan -out tfplan.bin && tofu show -json tfplan.bin > tfplan.json` — the new installer image URL and `schematic_id` per class flow through.
+3. `task talos:upgrade:cluster` (consumer Taskfile) reads `tfplan.json`, iterates over the nodes, checks `talosctl version` against `tfplan.json:.variables.talos_install_version.value`, and runs `talosctl upgrade --image factory.talos.dev/installer/<schematic>:<version>` idempotently per node.
+4. `tofu apply` afterwards updates the machine-config in state.
+
+For Kubernetes upgrades, analogous: bump `cluster.yaml.kubernetes.version`, `task talos:upgrade:k8s` reads it from tfplan-JSON and runs `talosctl upgrade-k8s --to <version>` idempotently.
+
+Tofu owns the declarative state (versions, schematics, machine-config); the consumer Taskfile owns the imperative talosctl execution. Both are driven by the same tfplan-JSON, so there's a single source of truth.
 
 ## Notes
 

@@ -40,6 +40,11 @@ output "schematic_ids" {
 }
 
 output "installer_images" {
-  description = "Resolved metal-installer image URL per node class."
+  description = "Resolved metal-installer image URL per node class. Echoed for tfplan-JSON consumption by `talos:upgrade:cluster` task."
   value       = { for k, u in data.talos_image_factory_urls.per_class : k => u.installer_image }
+}
+
+output "talos_install_version" {
+  description = "Effective Talos OS installer version (= var.talos_install_version, or var.talos_version if unset). The upgrade task reads this from tfplan JSON for `talosctl upgrade --image …:<version>`."
+  value       = local.install_version
 }

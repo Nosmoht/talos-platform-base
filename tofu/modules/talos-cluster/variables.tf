@@ -17,12 +17,44 @@ variable "cluster_name" {
 }
 
 variable "talos_version" {
-  description = "Talos Linux version, e.g. \"v1.13.0\". Pins the machine-config schema."
+  description = <<-EOT
+    Talos Linux version for the **machine-config schema contract** —
+    fixed at cluster bootstrap. Do NOT change this after the cluster
+    exists; it drives data.talos_machine_configuration and the
+    machine_secrets schema and changing it can cause schema drift on
+    rolling reapplies.
+
+    For OS upgrades, bump `talos_install_version` instead — that is the
+    installer-image tag rendered into machine.install.image and the
+    Image-Factory installer URL. The taskfile-driven `talosctl upgrade`
+    reads it via tfplan JSON.
+  EOT
   type        = string
 
   validation {
     condition     = can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+", var.talos_version))
     error_message = "talos_version must be a v-prefixed semver, e.g. v1.13.0."
+  }
+}
+
+variable "talos_install_version" {
+  description = <<-EOT
+    Talos installer-image tag — what's actually running on the nodes.
+    Defaults to `talos_version` (= matches schema at bootstrap). Bump
+    this for an OS upgrade; the Image-Factory installer URL and the
+    per-node `machine.install.image` patch follow.
+
+    The schema-pin `talos_version` stays fixed; the upgrade task
+    (`task talos:upgrade:cluster` in the consumer repo) reads this value
+    from tfplan JSON and runs `talosctl upgrade --image …:<version>`
+    idempotently per node.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.talos_install_version == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+", var.talos_install_version))
+    error_message = "talos_install_version must be empty (= falls back to talos_version) or a v-prefixed semver, e.g. v1.13.1."
   }
 }
 
