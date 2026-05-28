@@ -12,6 +12,9 @@
       "description": "When true, capability patch conflicts (two capabilities patching the same JSON-pointer) are FAIL diagnostics instead of WARN. Default: false.",
       "default": false
     },
+    "cluster": {
+      "$ref": "#/$defs/cluster-identity"
+    },
     "roles": {
       "type": "object",
       "description": "Role identifiers mapped to role specifications.",
@@ -61,6 +64,43 @@
     }
   },
   "$defs": {
+    "cluster-identity": {
+      "type": "object",
+      "description": "Cluster identity SOT. Single Kubernetes API VIP, NTP server, and network metadata. Gateway/LoadBalancer VIPs are NOT modeled here — a cluster may host multiple Gateway-API Gateway objects, each with its own LB IP; those are consumer-specific and declared in the respective Gateway/HTTPRoute manifests (kubernetes/base/infrastructure/<gateway>/values.yaml), not in cluster.yaml.",
+      "required": ["name", "vip", "ntp_server"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Cluster name. Used as talosctl cluster-name and as the directory key under _out/. Charset: [A-Za-z0-9._-].",
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "vip": {
+          "type": "string",
+          "description": "Kubernetes API VIP. Exactly one per cluster (single kube-apiserver virtual IP). Used to construct the talosctl endpoint URL https://<vip>:6443. Replaces the v0.5.x field 'api_vip' (hard-renamed v0.6.0)."
+        },
+        "network": {
+          "type": "string",
+          "description": "Cluster network CIDR (e.g. 192.168.2.0/24). Informational; not consumed by talosctl gen config."
+        },
+        "gateway": {
+          "type": "string",
+          "description": "Default IPv4 gateway / upstream DNS resolver. Informational; not consumed by talosctl gen config."
+        },
+        "ntp_server": {
+          "type": "string",
+          "description": "NTP server hostname or IP. Required: empty NTP causes etcd cert validation failures via clock drift. Charset is validated at argv-print.sh:108 against ^[A-Za-z0-9.:_-]{1,253}$ to prevent YAML injection into the rendered NTP patch."
+        },
+        "overlay": {
+          "type": "string",
+          "description": "Kustomize overlay name under kubernetes/overlays/<overlay>/. Defaults to cluster.name."
+        },
+        "target_revision": {
+          "type": "string",
+          "description": "Git branch/tag the ArgoCD root application tracks. Defaults to 'main'."
+        }
+      }
+    },
     "extension-url": {
       "type": "string",
       "format": "uri-reference",
@@ -206,7 +246,7 @@
         "patches": {
           "type": "array",
           "items": {"$ref": "#/$defs/patch-item"},
-          "description": "JSON-pointer patches declaratively associated with this capability. NOTE: declarative-only in v0.5.x — argv-print.sh does NOT auto-compose these into the per-node patch list; consumers must include the patch file in the role's patches[] manually. Auto-composition lands post-v0.6.0 (see RELEASE-NOTES-v0.5.2.md, section Cap-patches composition). Duplicate pointers across capabilities still produce a conflict diagnostic at validate time."
+          "description": "Patches declaratively associated with this capability. File-form entries ({file: <path>}) are AUTO-COMPOSED by argv-print.sh in v0.6.0+: for every cap on a node, its file-form patches are emitted after role.patches[] and before nodes/<n>.yaml. Inline JSON-pointer entries ({pointer, value}) remain declarative-only (advisory; not yet composed into talosctl argv). Cap-patches override role-patches at merge time (later wins). Duplicate pointers across capabilities continue to produce a conflict diagnostic at validate-schematics time."
         },
         "placeholder_bindings": {
           "type": "object",

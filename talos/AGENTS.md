@@ -20,9 +20,9 @@ linked rule files before editing in the listed contexts.
 | `talos/patches/` | Talos machine config patches (common, controlplane, worker, per-node) | base (this repo) |
 | `talos/versions.mk` | Pinned versions (Talos, Kubernetes, Cilium, extensions) | base (this repo) |
 | `talos/*.schematic-ids.mk` | Image Factory schematic IDs per node class | base (this repo) |
-| `talos/Makefile` | Lifecycle targets: gen-configs, apply-*, dry-run-*, upgrade-k8s, schematics | base (this repo) |
+| `talos/Makefile.lib` | Includable library: gen-configs, schematics, validate-schematics, argv-print, test-substitution. Consumer-side: `include $(BASE_DIR)/Makefile.lib`. | base (this repo) |
 | `talos/nodes/` | Node-specific config inputs | **consumer repo** |
-| `talos/generated/` | **Generated output** — never hand-edit; regenerate with `make -C talos gen-configs` | **consumer repo** |
+| `talos/generated/` | **Generated output** — never hand-edit; regenerate with `make -C talos gen-configs` (consumer wrapper that includes Makefile.lib) | **consumer repo** |
 
 ## Domain Rules by Edit Context
 
@@ -137,8 +137,10 @@ make schematics                 # POSTs to factory.talos.dev/schematics
                                 # touches .schematics.stamp
 ```
 
-The generation rule itself (`talos/Makefile` ~line 291) remains intact and
-unchanged; only the cached output is no longer tracked.
+The schematics-cache build (`talos/scripts/build-schematic-cache.sh`,
+invoked via `make schematics` from a consumer Makefile that
+`include`s `Makefile.lib`) remains intact and unchanged; only the
+cached output is no longer tracked.
 
 ## Makefile Targets
 
@@ -150,12 +152,13 @@ make -C talos upgrade-k8s       # Upgrade Kubernetes (reconciles extraManifests)
 make -C talos schematics        # Create/update Image Factory schematic IDs
 ```
 
-## v0.5.x Dual-Path Status
+## v0.6.0 single-path
 
-Legacy `gen-configs` (consumer-side `talos/Makefile` pattern rules) remains
-the default production path until v0.6.0. The 5-axis Makefile.lib path is
-additive and now production-eligible per v0.5.2 when the Phase 3 cut-over
-checklist is satisfied (see `talos/RELEASE-NOTES-v0.5.2.md`).
+The legacy `talos/Makefile` (Phase-1A pattern-rule generator) was removed
+in v0.6.0. `talos/Makefile.lib` is the single supported path: consumer
+Makefiles `include $(BASE_DIR)/Makefile.lib`. The Phase-3 blockers from
+v0.5.x (placeholder resolution, NTP patch ordering) closed in v0.5.2;
+the production `gen-configs` recipe lives in `Makefile.lib` `_node-rule`.
 
 History:
 

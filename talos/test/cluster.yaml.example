@@ -27,7 +27,7 @@ roles:
     description: "Standard Kubernetes worker node"
     patches:
       - patches/common.yaml
-      - patches/worker.yaml
+      - patches/worker-gvisor.yaml
     default_extensions:
       - https://example.invalid/extensions/iscsi-tools
       - https://example.invalid/extensions/util-linux-tools
@@ -202,8 +202,7 @@ nodes:
 cluster:
   name: test-cluster
   overlay: test-cluster
-  api_vip: 10.0.0.100
-  gateway_vip: 10.0.0.200
+  vip: 10.0.0.100
   network: 10.0.0.0/24
   gateway: 10.0.0.1
   ntp_server: 10.0.0.1

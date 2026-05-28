@@ -56,7 +56,9 @@ fi
 # Read legacy fields
 CLUSTER_NAME=$(yq -r '.cluster.name' "$INPUT")
 API_VIP=$(yq -r '.cluster.api_vip' "$INPUT")
-GATEWAY_VIP=$(yq -r '.cluster.gateway_vip // ""' "$INPUT")
+# Legacy gateway_vip is intentionally dropped: in v0.6+ cluster identity holds
+# only the single Kubernetes API VIP. Gateway/LoadBalancer VIPs belong with
+# the consumer's Gateway-API manifests (a cluster may host multiple Gateways).
 NETWORK=$(yq -r '.cluster.network // ""' "$INPUT")
 GATEWAY=$(yq -r '.cluster.gateway // ""' "$INPUT")
 NTP_SERVER=$(yq -r '.cluster.ntp_server // ""' "$INPUT")
@@ -158,8 +160,7 @@ TRANSLATED=$(cat <<YAML
 cluster:
   name: $CLUSTER_NAME
   overlay: $OVERLAY
-  api_vip: $API_VIP
-  gateway_vip: $GATEWAY_VIP
+  vip: $API_VIP
   network: $NETWORK
   gateway: $GATEWAY
   ntp_server: $NTP_SERVER
