@@ -38,10 +38,12 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - kubevirt-networking
 
 cluster:
   name: subst-test
   overlay: subst-test
-  api_vip: 10.0.0.100
+  vip: 10.0.0.100
+  ntp_servers:
+    - 10.0.0.1

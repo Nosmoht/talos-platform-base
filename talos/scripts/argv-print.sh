@@ -7,7 +7,7 @@
 #         bit-identity diff in Phase 1C-3).
 #
 # Resolution chain (per Makefile.lib §Phase 1C-2 brief):
-#   1. Read node attrs: role, arch, infrastructure-platform, hardware_capabilities
+#   1. Read node attrs: role, arch, infrastructure-platform, hardware-capabilities
 #   2. Resolve patch list from roles[role].patches (ordered; includes base patches)
 #   3. Append per-node nodes/<name>.yaml (always last patch)
 #   4. Resolve install-image from infrastructure-platforms[infra].install-image-template
@@ -69,38 +69,48 @@ NODE_INFRA=$(yq -r ".nodes[$NODE_IDX][\"infrastructure-platform\"]" "$CLUSTER_YA
 # Cluster-level values
 # ---------------------------------------------------------------------------
 CLUSTER_NAME=$(yq -r '.cluster.name' "$CLUSTER_YAML")
-ENDPOINT="https://$(yq -r '.cluster.api_vip' "$CLUSTER_YAML"):6443"
+ENDPOINT="https://$(yq -r '.cluster.vip' "$CLUSTER_YAML"):6443"
 OVERLAY=$(yq -r '.cluster.overlay // .cluster.name' "$CLUSTER_YAML")
-NTP_SERVER=$(yq -r '.cluster.ntp_server // ""' "$CLUSTER_YAML" 2>/dev/null || true)
 
 # ---------------------------------------------------------------------------
-# CRIT-4 (closed in v0.5.2): render NTP patch from cluster.ntp_server.
+# CRIT-4 (closed in v0.5.2): render NTP patch from cluster.ntp_servers.
 # Legacy gen-configs injected NTP via a rendered _out/<overlay>/cluster.yaml
 # patch; the new path renders an equivalent ephemeral patch into tmpdir and
 # emits it as the FIRST role-patch (so every subsequent role-patch and the
 # per-node nodes/<n>.yaml can override it). machine.time.servers is the
-# Talos field the patch sets.
+# Talos field the patch sets — natively a list, so v0.6.0+ accepts an array
+# (≥2 servers recommended for redundancy).
 #
-# R2 HIGH (team-red): the value goes into a heredoc — validate it as a
-# strict hostname/IPv4/IPv6 charset and reject any newline / shell-meta to
-# prevent YAML injection into machine.* keys (e.g. attacker-controlled
-# extraKernelArgs landing through the NTP slot bypassing the AGENTS.md
-# Hard-Constraints check). Pattern admits letters, digits, dot, hyphen,
-# colon (IPv6) — nothing else.
+# R2 HIGH (team-red): every element goes into a heredoc — validate each
+# against the strict hostname/IPv4/IPv6 charset and reject any newline /
+# shell-meta to prevent YAML injection into machine.* keys (e.g.
+# attacker-controlled extraKernelArgs landing through the NTP slot
+# bypassing the AGENTS.md Hard-Constraints check). Pattern admits letters,
+# digits, dot, hyphen, colon (IPv6), underscore — nothing else.
 # ---------------------------------------------------------------------------
+NTP_SERVERS_FILE="$TMPDIR_LOCAL/ntp_servers.txt"
+yq -r '.cluster.ntp_servers // [] | .[]' "$CLUSTER_YAML" 2>/dev/null > "$NTP_SERVERS_FILE" || true
+
 NTP_PATCH_FILE=""
-if [[ -n "$NTP_SERVER" && "$NTP_SERVER" != "null" ]]; then
-    if ! [[ "$NTP_SERVER" =~ ^[A-Za-z0-9.:_-]{1,253}$ ]]; then
-        echo "ERROR: cluster.ntp_server value violates charset ^[A-Za-z0-9.:_-]{1,253}\$ — refused (potential YAML injection). Use a single RFC 1123 hostname, IPv4, or IPv6 literal." >&2
-        exit 1
-    fi
+if [[ -s "$NTP_SERVERS_FILE" ]]; then
+    while IFS= read -r _ntp; do
+        [[ -z "$_ntp" || "$_ntp" == "null" ]] && continue
+        if ! [[ "$_ntp" =~ ^[A-Za-z0-9.:_-]{1,253}$ ]]; then
+            echo "ERROR: cluster.ntp_servers element '$_ntp' violates charset ^[A-Za-z0-9.:_-]{1,253}\$ — refused (potential YAML injection). Each element must be an RFC 1123 hostname, IPv4, or IPv6 literal." >&2
+            exit 1
+        fi
+    done < "$NTP_SERVERS_FILE"
+
     NTP_PATCH_FILE="$TMPDIR_LOCAL/ntp.yaml"
-    cat > "$NTP_PATCH_FILE" <<EOF
-machine:
-  time:
-    servers:
-      - $NTP_SERVER
-EOF
+    {
+        printf 'machine:\n'
+        printf '  time:\n'
+        printf '    servers:\n'
+        while IFS= read -r _ntp; do
+            [[ -z "$_ntp" || "$_ntp" == "null" ]] && continue
+            printf '      - %s\n' "$_ntp"
+        done < "$NTP_SERVERS_FILE"
+    } > "$NTP_PATCH_FILE"
 fi
 
 # ---------------------------------------------------------------------------
@@ -111,7 +121,7 @@ yq -r ".roles[\"$NODE_ROLE\"].patches // [] | .[]" "$CLUSTER_YAML" 2>/dev/null >
 
 # ---------------------------------------------------------------------------
 # CRIT-1 (closed in v0.5.2): build per-node placeholder bindings from the
-# node's hardware_capabilities entries. For each cap, read its
+# node's hardware-capabilities entries. For each cap, read its
 # placeholder_bindings map (PLACEHOLDER -> yq path into nodes/<NODE>.yaml)
 # and resolve the field into a flat NAME<TAB>VALUE bindings file.
 # resolve-placeholders.sh consumes this file and renders any patch that
@@ -122,9 +132,9 @@ BINDINGS_FILE="$TMPDIR_LOCAL/bindings.txt"
 : > "$BINDINGS_FILE"
 NODE_YAML_PATH="$(dirname "$CLUSTER_YAML")/nodes/$NODE_NAME.yaml"
 
-# Collect per-node caps
+# Collect per-node caps (canonical kebab-case; underscore alias removed in v0.6.0).
 NODE_CAPS_FILE="$TMPDIR_LOCAL/node_caps.txt"
-yq -r ".nodes[$NODE_IDX].hardware_capabilities // [] | .[]" "$CLUSTER_YAML" 2>/dev/null > "$NODE_CAPS_FILE" || true
+yq -r ".nodes[$NODE_IDX].\"hardware-capabilities\" // [] | .[]" "$CLUSTER_YAML" 2>/dev/null > "$NODE_CAPS_FILE" || true
 
 CAP_BINDINGS_FILE="$TMPDIR_LOCAL/cap_bindings.txt"
 while IFS= read -r cap; do
@@ -138,7 +148,10 @@ while IFS= read -r cap; do
     # NAME=VALUE flat shape (stable bash-parameter-expansion parsing without
     # a jq dependency or yq path accessors that could collide with file-name
     # patterns).
-    yq -o=props -r ".\"hardware-capabilities\".\"$cap\".placeholder_bindings // {}" "$CLUSTER_YAML" 2>/dev/null > "$CAP_BINDINGS_FILE" || true
+    # yq -o=props passes YAML comments through as '# ...' lines; strip them
+    # before bash parsing (KEY = VALUE lines start with [A-Z]).
+    yq -o=props -r ".\"hardware-capabilities\".\"$cap\".placeholder_bindings // {}" "$CLUSTER_YAML" 2>/dev/null \
+        | grep -E '^[A-Z]' > "$CAP_BINDINGS_FILE" || true
     while IFS= read -r binding; do
         [[ -z "$binding" ]] && continue
         # props output shape: "KEY = VALUE" (yq adds spaces around =)
@@ -191,14 +204,28 @@ fi
 # ---------------------------------------------------------------------------
 emit_patch() {
     local patch="$1"
-    local resolved_dir base rendered abs_patch
-    # Patch paths in cluster.yaml are relative to the base talos dir.
+    local resolved_dir base rendered abs_patch emit_path
+    # Patch resolution: CWD-first overlay, BASE_DIR fallback.
+    #   1. absolute path → use as-is
+    #   2. CWD-relative path exists → consumer-local overlay wins (consumer-talos/patches/<x>)
+    #   3. $BASE_DIR/<patch> exists → base-shipped patch
+    #   4. otherwise → fail loud
+    # The emitted talosctl @<path> stays in the same form so talosctl finds
+    # the file relative to its CWD (caller-controlled, e.g. consumer-talos/).
     if [[ "$patch" == /* ]]; then
         abs_patch="$patch"
-    else
+        emit_path="$patch"
+    elif [[ -f "$patch" ]]; then
+        abs_patch="$patch"
+        emit_path="$patch"
+    elif [[ -f "$BASE_DIR/$patch" ]]; then
         abs_patch="$BASE_DIR/$patch"
+        emit_path="$BASE_DIR/$patch"
+    else
+        echo "ERROR: patch file not found in CWD nor under \$BASE_DIR ($BASE_DIR): $patch" >&2
+        exit 1
     fi
-    if [[ -f "$abs_patch" ]] && grep -qE '\$\{[A-Z][A-Z0-9_]*\}' "$abs_patch"; then
+    if grep -qE '\$\{[A-Z][A-Z0-9_]*\}' "$abs_patch"; then
         resolved_dir="$TMPDIR_LOCAL/patches"
         mkdir -p "$resolved_dir"
         base=$(basename "$patch")
@@ -208,7 +235,7 @@ emit_patch() {
         echo "@$rendered"
     else
         echo "--config-patch"
-        echo "@$patch"
+        echo "@$emit_path"
     fi
 }
 
@@ -255,7 +282,11 @@ echo "config"
 echo "$CLUSTER_NAME"
 echo "$ENDPOINT"
 echo "--with-secrets"
-echo ".secrets.dec.yaml"
+# SECRETS_FILE env var overrides the default for ephemeral SOPS decryption
+# in Makefile.lib gen-configs (mktemp+trap). Default preserves legacy
+# bit-identity tests (`.work/p2-talos-oci/argv-dump/` golden expects
+# the literal '.secrets.dec.yaml').
+echo "${SECRETS_FILE:-.secrets.dec.yaml}"
 
 # R2 HIGH (reviewer): simplify NTP precedence. NTP is a platform baseline
 # the consumer may override at any layer (role-patch or per-node patch).
@@ -274,6 +305,23 @@ fi
 while IFS= read -r patch; do
     emit_patch "$patch"
 done < "$ROLE_PATCHES_FILE"
+
+# Auto-compose file-form cap.patches[]:
+# For each hardware-capability on this node, emit its patches[].file entries
+# (in cap-list order). Inline {pointer, value} entries remain declarative-only
+# (see talos/schemas/cluster.schema.json $defs.hardware-capability-spec.patches).
+# Cap-patches are emitted AFTER role-patches so capability-specific overrides
+# take precedence (later --config-patch wins in talosctl merge semantics).
+# Duplicate-file detection across role+cap and inter-cap is intentionally not
+# implemented here; validate-schematics surfaces it as a diagnostic.
+while IFS= read -r cap; do
+    [[ -z "$cap" ]] && continue
+    [[ "$cap" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+    while IFS= read -r patch_file; do
+        [[ -z "$patch_file" || "$patch_file" == "null" ]] && continue
+        emit_patch "$patch_file"
+    done < <(yq -r ".\"hardware-capabilities\".\"$cap\".patches // [] | .[] | select(has(\"file\")) | .file" "$CLUSTER_YAML" 2>/dev/null)
+done < "$NODE_CAPS_FILE"
 
 echo "--config-patch"
 echo "@nodes/$NODE_NAME.yaml"

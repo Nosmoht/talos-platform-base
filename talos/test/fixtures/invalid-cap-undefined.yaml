@@ -1,5 +1,5 @@
 # invalid-cap-undefined.yaml — triggers:
-# FAIL [n.cp-01]: capability 'nonexistent-cap' in hardware_capabilities not defined in cluster.yaml hardware-capabilities
+# FAIL [n.cp-01]: capability 'nonexistent-cap' in hardware-capabilities not defined in cluster.yaml hardware-capabilities
 roles:
   controlplane:
     description: "Control-plane node"
@@ -31,7 +31,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
       - nonexistent-cap
     ip: 192.0.2.11

@@ -20,9 +20,9 @@ linked rule files before editing in the listed contexts.
 | `talos/patches/` | Talos machine config patches (common, controlplane, worker, per-node) | base (this repo) |
 | `talos/versions.mk` | Pinned versions (Talos, Kubernetes, Cilium, extensions) | base (this repo) |
 | `talos/*.schematic-ids.mk` | Image Factory schematic IDs per node class | base (this repo) |
-| `talos/Makefile` | Lifecycle targets: gen-configs, apply-*, dry-run-*, upgrade-k8s, schematics | base (this repo) |
+| `talos/Makefile.lib` | Includable library: gen-configs, schematics, validate-schematics, argv-print, test-substitution. Consumer-side: `include $(BASE_DIR)/Makefile.lib`. | base (this repo) |
 | `talos/nodes/` | Node-specific config inputs | **consumer repo** |
-| `talos/generated/` | **Generated output** — never hand-edit; regenerate with `make -C talos gen-configs` | **consumer repo** |
+| `talos/generated/` | **Generated output** — never hand-edit; regenerate with `make -C talos gen-configs` (consumer wrapper that includes Makefile.lib) | **consumer repo** |
 
 ## Domain Rules by Edit Context
 
@@ -50,8 +50,9 @@ intent across files that future readers won't think to look at.
 Patches apply in this order; each subsequent patch may override
 `machine.*` keys set by earlier ones.
 
-1. **NTP baseline** — synthetic patch rendered from `cluster.ntp_server`
-   (emitted first when set; opt-in — no patch when unset).
+1. **NTP baseline** — synthetic patch rendered from `cluster.ntp_servers[]`
+   (emitted first when set; opt-in — no patch when the list is empty or
+   absent).
 2. **`roles.<role>.patches[]`** — role-wide patch files in declared
    order. This is the canonical place for anything every node of that
    role needs (static `machine.nodeLabels`, install-image variants,
@@ -137,8 +138,10 @@ make schematics                 # POSTs to factory.talos.dev/schematics
                                 # touches .schematics.stamp
 ```
 
-The generation rule itself (`talos/Makefile` ~line 291) remains intact and
-unchanged; only the cached output is no longer tracked.
+The schematics-cache build (`talos/scripts/build-schematic-cache.sh`,
+invoked via `make schematics` from a consumer Makefile that
+`include`s `Makefile.lib`) remains intact and unchanged; only the
+cached output is no longer tracked.
 
 ## Makefile Targets
 
@@ -150,12 +153,13 @@ make -C talos upgrade-k8s       # Upgrade Kubernetes (reconciles extraManifests)
 make -C talos schematics        # Create/update Image Factory schematic IDs
 ```
 
-## v0.5.x Dual-Path Status
+## v0.6.0 single-path
 
-Legacy `gen-configs` (consumer-side `talos/Makefile` pattern rules) remains
-the default production path until v0.6.0. The 5-axis Makefile.lib path is
-additive and now production-eligible per v0.5.2 when the Phase 3 cut-over
-checklist is satisfied (see `talos/RELEASE-NOTES-v0.5.2.md`).
+The legacy `talos/Makefile` (Phase-1A pattern-rule generator) was removed
+in v0.6.0. `talos/Makefile.lib` is the single supported path: consumer
+Makefiles `include $(BASE_DIR)/Makefile.lib`. The Phase-3 blockers from
+v0.5.x (placeholder resolution, NTP patch ordering) closed in v0.5.2;
+the production `gen-configs` recipe lives in `Makefile.lib` `_node-rule`.
 
 History:
 
@@ -169,6 +173,10 @@ History:
   any role patch — see §"Patch slots — where things go" for full composition
   order). Both behaviours are opt-in (no NTP patch when
   `cluster.ntp_server` unset; no substitution when patch contains no token).
+- **v0.6.0** — `cluster.ntp_server` (scalar) hard-renamed to `cluster.ntp_servers[]`
+  (array) so consumers can declare ≥2 NTP servers for redundancy. Talos
+  `machine.time.servers` is natively a list; the v0.5.x single-value field
+  was a SPOF. argv-print.sh charset-validates every list element.
 
 ### Placeholder convention
 
@@ -226,32 +234,15 @@ metadata; consumer cluster.yamls SHOULD follow the same convention.
 `additionalProperties: true` remains as-is for backward compatibility —
 tightening it is a separate concern (see issue tracker).
 
-## Casing convention — `hardware-capabilities` per-node alias (F21-A)
+## Casing convention — `hardware-capabilities` per-node (F21-A, finalized v0.6.0)
 
-The schema declares the per-node capability list under two property
-names during the v0.5.4 grace window:
+The per-node capability list is declared as `hardware-capabilities`
+(kebab-case), aligned with the top-level `hardware-capabilities` map
+key. The v0.5.4 grace-window underscore alias (`hardware_capabilities`)
+was removed in v0.6.0 from the schema, `argv-print.sh`, and
+`validate-schematics.sh`. The schema's `required` list now hard-includes
+`hardware-capabilities` on every node-spec; underscore-only documents
+fail validation with `'hardware-capabilities' is a required property`.
 
-- `hardware-capabilities` (kebab-case) — **canonical**, aligned with
-  the top-level `hardware-capabilities` map key.
-- `hardware_capabilities` (snake_case) — **deprecated alias**, still
-  accepted for backward compatibility. Planned removal in v0.6.0.
-
-The `anyOf` constraint in `$defs.node-spec` enforces that at least
-one of the two is present on every node. Do NOT set both keys on the
-same node — their semantics are identical and the alias is solely
-for migration.
-
-### Important — DO NOT migrate consumer cluster.yamls in v0.5.4
-
-The schema accepts kebab-case in v0.5.4, but the Makefile.lib runtime
-scripts (`argv-print.sh`, `validate-schematics.sh`,
-`build-schematic-cache.sh`, `translate-legacy-cluster-yaml.sh`) read
-only the snake_case key during v0.5.4. **Renaming a consumer
-`cluster.yaml` to kebab-case while still on v0.5.4 produces
-silent zero-capability nodes** in `make argv-print` / `make gen-configs`
-— the schema validates, but every node's capability list reads as empty.
-
-Consumer migration to kebab-case is gated on v0.6.0, which lands
-the script renames + alias removal together in a single coordinated
-bump. The migration command and pre-bump survey will be documented
-in `RELEASE-NOTES-v0.6.0.md`.
+Consumer migration is covered in
+[`UPGRADING.md` §`v0.6.0`](../UPGRADING.md) step 5.

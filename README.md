@@ -96,7 +96,7 @@ manifests. Those live in the consumer cluster repo.
 Day-0 — vendor the base into a consumer cluster repo:
 
 ```bash
-TAG=v0.5.0
+TAG=v0.6.0
 OWNER=<your-github-owner>   # owner of the consumer repo
 
 # 1. Verify before pulling — see "Verify" section below for the full
@@ -119,7 +119,7 @@ kind: Application
 spec:
   sources:
     - repoURL: https://github.com/Nosmoht/talos-platform-base.git
-      targetRevision: v0.5.0
+      targetRevision: v0.6.0
       ref: base
     - repoURL: https://github.com/<owner>/<consumer-cluster-repo>.git
       targetRevision: main

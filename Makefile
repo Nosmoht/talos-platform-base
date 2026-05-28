@@ -29,8 +29,8 @@ init-cluster-yaml: cluster.yaml.example
 	  cp cluster.yaml.example cluster.yaml && \
 	  echo "Created cluster.yaml from cluster.yaml.example -- fill in your cluster values"; \
 	fi; \
-	if ! yq -e '.cluster.ntp_server' cluster.yaml >/dev/null 2>&1; then \
-	  echo "ERROR: cluster.yaml missing .cluster.ntp_server -- add it (e.g. yq -i '.cluster.ntp_server = \"<ntp-ip>\"' cluster.yaml)"; \
+	if ! yq -e '.cluster.ntp_servers | length > 0' cluster.yaml >/dev/null 2>&1; then \
+	  echo "ERROR: cluster.yaml missing .cluster.ntp_servers -- add it (e.g. yq -i '.cluster.ntp_servers = [\"<ntp-ip-1>\", \"<ntp-ip-2>\"]' cluster.yaml)"; \
 	  exit 1; \
 	fi
 

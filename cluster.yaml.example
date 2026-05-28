@@ -1,66 +1,184 @@
-# Cluster Identity — Single Source of Truth
+# Cluster Identity — Single Source of Truth (5-axis format)
 #
-# This file is the canonical cluster identity SOT for this repo.
-# It is tool-agnostic: read by make (talos/Makefile), kubectl (argocd bootstrap),
-# and Claude Code skills/agents — no AI tooling required to use it.
+# This file is the canonical cluster identity SOT for this repo and consumer
+# cluster repos. It is tool-agnostic: read by make (talos/Makefile.lib),
+# kubectl (argocd bootstrap), and Claude Code skills/agents.
 #
-# Copy this file to cluster.yaml (gitignored) and fill in your cluster values.
-# One cluster.yaml per working tree. For multi-cluster: pass ENV=../other/cluster.yaml
-# to talos/Makefile targets.
+# Copy this file to cluster.yaml (gitignored at the base; committed in consumer
+# repos per repo convention) and fill in your cluster values. One cluster.yaml
+# per working tree. For multi-cluster: pass ENV=../other/cluster.yaml to
+# talos/Makefile.lib targets.
+#
+# Schema: talos/schemas/cluster.schema.json
+# Migration from v0.5.x legacy format: see talos/scripts/translate-legacy-cluster-yaml.sh
 #
 # NOTE: secrets.yaml (PKI material) is scoped to a single cluster and is NOT
 # interpolated from cluster.yaml. Each cluster has its own secrets.yaml.
 
+# ---------------------------------------------------------------------------
+# Cluster identity — Kubernetes API VIP, NTP, network metadata.
+# Gateway/LoadBalancer VIPs are NOT here: a cluster may host multiple
+# Gateway-API Gateways, each with its own LB IP, declared in the respective
+# Gateway/HTTPRoute manifests (kubernetes/base/infrastructure/<gateway>/...).
+# ---------------------------------------------------------------------------
 cluster:
   name: my-cluster
+  vip: 10.0.0.100                          # Kubernetes API virtual IP (exactly one per cluster)
+  network: 10.0.0.0/24                     # cluster network CIDR (informational)
+  gateway: 10.0.0.1                        # default gateway / DNS (informational)
+  ntp_servers:                             # required; ≥1 server, ≥2 recommended for redundancy
+    - 10.0.0.1                             # primary (local router / firewall)
+    - pool.ntp.org                         # public fallback (or your second internal NTP)
   overlay: my-cluster                      # kustomize overlay name under kubernetes/overlays/
-  api_vip: 10.0.0.100                     # Kubernetes API virtual IP
-  gateway_vip: 10.0.0.200                 # Gateway/LoadBalancer virtual IP
-  network: 10.0.0.0/24                    # cluster network CIDR
-  gateway: 10.0.0.1                       # default gateway / DNS
-  ntp_server: 10.0.0.1                    # NTP server IP or hostname (required, no public default)
-  target_revision: main                   # git branch/tag for ArgoCD root application (optional, default: main)
+  target_revision: main                    # git branch/tag for ArgoCD root application
 
 kubeconfig: /tmp/my-cluster-kubeconfig     # path to kubeconfig file
-
-nodes:
-  # Control plane nodes (minimum 3 for etcd quorum)
-  control_plane:
-    - name: cp-01
-      ip: 10.0.0.11
-      nic: eth0                            # primary NIC device name
-    - name: cp-02
-      ip: 10.0.0.12
-      nic: eth0
-    - name: cp-03
-      ip: 10.0.0.13
-      nic: eth0
-
-  # Standard worker nodes
-  workers:
-    - name: worker-01
-      ip: 10.0.0.21
-      nic: eth0
-
-  # GPU worker nodes (optional — leave empty if none)
-  gpu_workers: []
-  # gpu_workers:
-  #   - name: gpu-worker-01
-  #     ip: 10.0.0.31
-  #     nic: enp0s20f0u2
-
-  # ARM/Pi nodes (optional — leave empty if none)
-  pi_nodes: []
-  # pi_nodes:
-  #   - name: pi-01
-  #     ip: 10.0.0.41
 
 repo:
   url: https://github.com/your-org/your-repo.git
 
-# Hardware hints — used by skills that need hardware context without live queries
-hardware:
-  standard_nodes: "Generic x86_64"         # short description of standard node hardware
-  gpu_node: ""                             # short description of GPU node hardware
-  standard_nic_driver: ""                  # e.g. "e1000e", "igc"
-  gpu_nic_driver: ""                       # e.g. "r8152" for USB Realtek
+# ---------------------------------------------------------------------------
+# Axis 1 — Roles (Talos patch-set identity, NOT Kubernetes node role).
+# Kubernetes itself knows only control-plane and worker. GPU workers, ARM
+# workers etc. are role=worker with hardware-capabilities attached on the
+# node (see Axis 5).
+# ---------------------------------------------------------------------------
+roles:
+  controlplane:
+    description: "Kubernetes control-plane node running etcd + API server"
+    patches:
+      - patches/common.yaml
+      - patches/controlplane.yaml
+
+  worker:
+    description: "Kubernetes worker node"
+    patches:
+      - patches/common.yaml
+      - patches/worker.yaml
+
+# ---------------------------------------------------------------------------
+# Axis 2 — CPU architectures
+# ---------------------------------------------------------------------------
+architectures:
+  amd64:
+    talos-arch: amd64
+    description: "x86-64 (Intel/AMD)"
+    compatible-infrastructure-platforms:
+      - metal
+
+  arm64:
+    talos-arch: arm64
+    description: "AArch64 (Apple Silicon, Ampere, Raspberry Pi)"
+    compatible-infrastructure-platforms:
+      - metal
+
+# ---------------------------------------------------------------------------
+# Axis 3 — Infrastructure platforms (Talos installer image profile)
+# ---------------------------------------------------------------------------
+infrastructure-platforms:
+  metal:
+    installer-profile: metal
+    install-image-template: "factory.talos.dev/metal-installer/${SCHEMATIC_ID}:${TALOS_VERSION}"
+    description: "Bare-metal boot via Talos metal installer"
+
+# ---------------------------------------------------------------------------
+# Axis 4 — Hardware platforms (SBC / server form-factor identity)
+#
+# Models the CPU mainboard / chassis class only. Peripherals such as PCIe
+# GPUs are NOT a hardware-platform — they are captured on Axis 5
+# (hardware-capabilities), so a GPU server keeps hardware-platform:
+# intel-generic and gains gpu-nvidia on Axis 5.
+# ---------------------------------------------------------------------------
+hardware-platforms:
+  intel-generic:
+    vendor: Intel
+    model: "Generic x86-64 server / NUC"
+    description: "Generic Intel/AMD x86-64 platform (includes servers carrying PCIe GPUs)"
+
+  raspberry-pi-4:
+    vendor: Raspberry Pi Foundation
+    model: Raspberry Pi 4 Model B
+    description: "ARM Cortex-A72 SBC, 4-8 GB LPDDR4"
+
+# ---------------------------------------------------------------------------
+# Axis 5 — Hardware capabilities (composite; requires_features refs Layer-C
+# atomic feature ids from docs/platform-hardware-features.yaml)
+# ---------------------------------------------------------------------------
+hardware-capabilities:
+  base-server:
+    description: "Standard compute capability"
+    requires_features:
+      - vt-x-or-amd-v
+      - ebpf-capable-kernel
+
+  gpu-nvidia:
+    description: "NVIDIA GPU present and accessible via PCIe passthrough"
+    requires_features:
+      - nvidia-gpu
+      - iommu-enabled
+
+  arm-sbc:
+    description: "ARM single-board computer"
+    requires_features:
+      - ebpf-capable-kernel
+
+# ---------------------------------------------------------------------------
+# Nodes — flat array. Each node binds exactly one value on each of the 5
+# axes. GPU nodes and Pi/ARM nodes are role=worker; the differentiation
+# lives on the hardware-platform + hardware-capabilities axes.
+# ---------------------------------------------------------------------------
+nodes:
+  - name: cp-01
+    role: controlplane
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware-capabilities: [base-server]
+    ip: 10.0.0.11
+    nic: eth0
+
+  - name: cp-02
+    role: controlplane
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware-capabilities: [base-server]
+    ip: 10.0.0.12
+    nic: eth0
+
+  - name: cp-03
+    role: controlplane
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware-capabilities: [base-server]
+    ip: 10.0.0.13
+    nic: eth0
+
+  - name: worker-01
+    role: worker
+    arch: amd64
+    infrastructure-platform: metal
+    hardware-platform: intel-generic
+    hardware-capabilities: [base-server]
+    ip: 10.0.0.21
+    nic: eth0
+
+  # Example GPU worker — x86-64 platform, GPU captured on Axis 5 only
+  # - name: gpu-01
+  #   role: worker
+  #   arch: amd64
+  #   infrastructure-platform: metal
+  #   hardware-platform: intel-generic
+  #   hardware-capabilities: [base-server, gpu-nvidia]
+  #   ip: 10.0.0.31
+  #   nic: enp0s20f0u2
+
+  # Example ARM/Pi worker — role=worker, ARM via hardware-platform + arm-sbc capability
+  # - name: pi-01
+  #   role: worker
+  #   arch: arm64
+  #   infrastructure-platform: metal
+  #   hardware-platform: raspberry-pi-4
+  #   hardware-capabilities: [arm-sbc]
+  #   ip: 10.0.0.41

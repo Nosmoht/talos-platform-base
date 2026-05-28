@@ -44,7 +44,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - cap-a
       - cap-b
     ip: 192.0.2.11
