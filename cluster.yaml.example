@@ -26,22 +26,22 @@ cluster:
   # per-cluster dedicated VIP range as /32 routes which the router ECMP-balances
   # across all cluster nodes.
   #
-  # Topology assumption (ADR-0002 Rev. 2026-05-28): single VLAN per site is the
-  # Phase-1 reality. lb_ipam_pool is therefore a *routable L3 sub-range* on the
-  # router, sharing the L2 broadcast domain with the node IPs but in its own
-  # /28 — the UCG accepts the /32 service advertisements and treats the pool as
-  # a routed range. BGP is chosen over L2 announcements not because of VLAN
-  # separation (there is none) but for ECMP performance and a clean VIP pool
-  # decoupled from the node IP range.
+  # Topology (ADR-0002 Rev. 2026-05-28): single VLAN per site for the node
+  # subnet. Only the *node subnet* (`network` above) is L2-present in that VLAN.
+  # The VIP subnet (`lb_ipam_pool`) lives in NO VLAN — it exists purely as a
+  # BGP-advertised routing prefix in the router's table, with next-hops on the
+  # node IPs. That is exactly what BGP-LB buys us over L2 announcements: VIPs
+  # in a logical range that is nowhere ARP-present, decoupled from the node /24.
   #
   # Empty block (or removed entirely) → Cilium falls back to L2 announcements
   # on the node VLAN (see kubernetes/bootstrap/cilium/values.yaml — both modes
   # are enabled, the consumer picks via CiliumLoadBalancerIPPool annotations).
+  # Note: L2 mode would force VIPs into the node /24 (ARP-bound to the VLAN).
   bgp:
     cluster_asn: 65001                    # this cluster's ASN (unique per cluster, e.g. 65001=seeder, 65002=dhq)
     peer_asn:    65000                    # router ASN (same for all clusters in this site)
     peer_ip:     10.0.0.1                 # router IP reachable from the node VLAN
-    lb_ipam_pool: 10.0.1.0/28             # routable VIP sub-range — router has a static accept-route for this CIDR + accepts /32 advertisements from peer_asn
+    lb_ipam_pool: 10.0.1.0/28             # pure routing prefix — no L2 presence; router gets the /32s via BGP from peer_asn
 
 kubeconfig: /tmp/my-cluster-kubeconfig     # path to kubeconfig file
 
