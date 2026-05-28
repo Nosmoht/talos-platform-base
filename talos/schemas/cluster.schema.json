@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Nosmoht/talos-platform-base/talos/schemas/cluster.schema.json",
-  "title": "cluster.yaml — 5-axis Talos cluster configuration",
-  "description": "JSON Schema for the 5-axis cluster.yaml format consumed by talos/Makefile.lib. Validates shape only; cross-reference to Layer-C hardware-features registry enforced by make validate-schematics (Phase 1B).",
+  "title": "cluster.yaml v0.6.0 — 5-axis Talos cluster configuration",
+  "description": "JSON Schema for the 5-axis cluster.yaml format consumed by talos/Makefile.lib. Validates shape only; cross-reference to Layer-C hardware-features registry enforced by make validate-schematics (Phase 1B). Schema evolution is tracked via talos/RELEASE-NOTES-vX.Y.Z.md and UPGRADING.md §vX.Y.Z in the repo; consumers detect contract changes through the OCI tag they vendor, not through an in-schema version field. Breaking changes always coincide with a MAJOR OCI tag bump.",
   "type": "object",
   "required": ["roles", "architectures", "infrastructure-platforms", "hardware-platforms", "hardware-capabilities", "nodes"],
   "additionalProperties": true,
