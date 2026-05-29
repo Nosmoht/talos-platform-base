@@ -11,7 +11,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   config renderer can now emit a JSON object
   `{node, machine_type, config_patches:[yaml,...]}` of the resolved per-node
   patch contents (in merge order) instead of the default `EMIT=argv`
-  talosctl-argv output. This lets a non-CLI frontend — e.g. the Terraform talos
+  talosctl-argv output. This lets a non-CLI frontend — for example, the Terraform talos
   provider's `data.talos_machine_configuration.config_patches` — consume the
   same 5-axis composition the `make` path uses, so a Crossplane/OpenTofu-provisioned
   cluster gets the same patch substance as a `make`-provisioned one (one source
