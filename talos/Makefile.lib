@@ -142,7 +142,7 @@ SUBST_FIXTURE  ?= $(BASE_DIR)/test/fixtures/valid-substitution.yaml
 SUBST_NODES    ?= $(BASE_DIR)/test/fixtures
 SUBST_GOLDEN   ?= $(BASE_DIR)/test/goldens/substitution/subst-01.rendered.yaml
 
-.PHONY: test-substitution test-substitution-update
+.PHONY: test-substitution test-substitution-update test-content-mode
 
 test-substitution:
 	@TMPD=$$(mktemp -d); trap 'rm -rf $$TMPD' EXIT; \
@@ -164,6 +164,12 @@ test-substitution-update:
 	    "$(BASE_DIR)/patches/worker-kubevirt.yaml" "$$TMPD/bindings.txt" \
 	    > "$(SUBST_GOLDEN)"; \
 	echo "wrote $(SUBST_GOLDEN)"
+
+# test-content-mode — assert EMIT=content shares the argv composition
+# (same patch count, valid list(string), placeholder resolved). Behavioural
+# invariant, not a byte snapshot. See scripts/test-content-mode.sh.
+test-content-mode:
+	@bash "$(BASE_DIR)/scripts/test-content-mode.sh" "$(BASE_DIR)"
 # ---------------------------------------------------------------------------
 # Per-node rules (one explicit rule per node, no pattern matching).
 #
