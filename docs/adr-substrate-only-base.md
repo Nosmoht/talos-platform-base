@@ -4,6 +4,7 @@ date: 2026-05-27
 date-history:
   - 2026-05-26 initial (proposed)
   - 2026-05-27 accepted
+  - 2026-05-29 amended (realisability-validation note)
 deciders:
   - Thomas Krahn
 consulted: []
@@ -303,6 +304,27 @@ PR.
 
 Re-review date: **2027-05-26** (12 months post-decision) or upon
 the next Talos major-version release, whichever is sooner.
+
+### Realisability validation (2026-05-29)
+
+A four-cluster realisability stress-test (homelab, DHQ office,
+seeder, and a vSphere-VM cluster) confirmed the substrate thesis
+this ADR rests on: the `cluster.yaml` **config-axis holds** across
+all four archetypes with zero unavoidable non-parametrisable base
+changes. The control model that held is three-category —
+substrate-invariant settings the base fixes, universal mechanisms
+the base enables for the consumer to select at Day-2, and
+cluster-topology the base deliberately does not know and passes
+through generically. A non-parametrisable base change is the
+failure signal for this model.
+
+The investigation did surface one **implementation-axis** erosion,
+distinct from the config-axis: two provisioning frontends
+(`make` / `argv-print.sh` and `tofu/modules/talos-cluster`)
+re-derived per-node patch composition independently. That erosion
+is addressed by
+[`adr-shared-render-artifact.md`](adr-shared-render-artifact.md),
+not by re-opening this split.
 
 ## Links
 
