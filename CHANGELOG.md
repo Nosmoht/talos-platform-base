@@ -23,7 +23,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Next release is the v1.0.0 substrate split per
 [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md).
 
-## v0.6.0 — TBD
+## v0.6.0 — 2026-05-28
 
 This is the coordinated MAJOR release that turns the v0.5.x 5-axis
 preview into the only supported `cluster.yaml` path and folds the
