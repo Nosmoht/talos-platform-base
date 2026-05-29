@@ -17,6 +17,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cluster gets the same patch substance as a `make`-provisioned one (one source
   of truth, two frontends). `EMIT=argv` (default) is unchanged and bit-identical.
   New regression gate `make -f talos/Makefile.lib test-content-mode`.
+  Decision recorded in
+  [`docs/adr-shared-render-artifact.md`](docs/adr-shared-render-artifact.md).
 
 Next release is the v1.0.0 substrate split per
 [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md).
