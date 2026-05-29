@@ -5,8 +5,21 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-(Nothing queued. Next release is the v1.0.0 substrate split per
-[`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md).)
+### Added
+
+- **`talos/scripts/argv-print.sh` `EMIT=content` mode** — the per-node Talos
+  config renderer can now emit a JSON object
+  `{node, machine_type, config_patches:[yaml,...]}` of the resolved per-node
+  patch contents (in merge order) instead of the default `EMIT=argv`
+  talosctl-argv output. This lets a non-CLI frontend — e.g. the Terraform talos
+  provider's `data.talos_machine_configuration.config_patches` — consume the
+  same 5-axis composition the `make` path uses, so a Crossplane/OpenTofu-provisioned
+  cluster gets the same patch substance as a `make`-provisioned one (one source
+  of truth, two frontends). `EMIT=argv` (default) is unchanged and bit-identical.
+  New regression gate `make -f talos/Makefile.lib test-content-mode`.
+
+Next release is the v1.0.0 substrate split per
+[`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md).
 
 ## v0.6.0 — TBD
 

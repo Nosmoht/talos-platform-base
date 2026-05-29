@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# argv-print.sh — emit the exact talosctl gen config argv for one node.
+# argv-print.sh — emit the per-node Talos config composition for one node.
 #
 # Usage: argv-print.sh <cluster.yaml> <node-name> [base-dir] [schematic-cache]
 #
-# Output: one argv element per line (matches legacy argv-dump format for
-#         bit-identity diff in Phase 1C-3).
+# Output (EMIT=argv, default): one talosctl gen config argv element per line
+#         (matches legacy argv-dump format for bit-identity diff in Phase 1C-3).
+# Output (EMIT=content): a JSON object {node, machine_type, config_patches:[yaml,...]}
+#         of the resolved per-node patch contents in merge order — for non-CLI
+#         frontends (e.g. the Terraform talos provider's
+#         data.talos_machine_configuration.config_patches). Same composition as
+#         argv mode; one source of truth, two frontends.
 #
 # Resolution chain (per Makefile.lib §Phase 1C-2 brief):
 #   1. Read node attrs: role, arch, infrastructure-platform, hardware-capabilities
@@ -29,6 +34,14 @@ VERSIONS_MK="${BASE_DIR}/versions.mk"
 
 TMPDIR_LOCAL=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_LOCAL"' EXIT
+
+# EMIT output mode (default argv = unchanged legacy behaviour). content mode
+# collects the resolved per-node patch paths and emits their CONTENTS as JSON
+# at the end (see the content frontend block below). PATCH_PATHS_FILE records
+# the patch order; in argv mode it is written but unused.
+EMIT="${EMIT:-argv}"
+PATCH_PATHS_FILE="$TMPDIR_LOCAL/patch_paths.txt"
+: > "$PATCH_PATHS_FILE"
 
 # ---------------------------------------------------------------------------
 # Load versions
@@ -231,11 +244,11 @@ emit_patch() {
         base=$(basename "$patch")
         rendered="$resolved_dir/$base"
         bash "$BASE_DIR/scripts/resolve-placeholders.sh" "$abs_patch" "$BINDINGS_FILE" > "$rendered"
-        echo "--config-patch"
-        echo "@$rendered"
+        echo "$rendered" >> "$PATCH_PATHS_FILE"
+        if [[ "$EMIT" == "argv" ]]; then echo "--config-patch"; echo "@$rendered"; fi
     else
-        echo "--config-patch"
-        echo "@$emit_path"
+        echo "$abs_patch" >> "$PATCH_PATHS_FILE"
+        if [[ "$EMIT" == "argv" ]]; then echo "--config-patch"; echo "@$emit_path"; fi
     fi
 }
 
@@ -276,6 +289,7 @@ esac
 # ---------------------------------------------------------------------------
 # Emit argv (one element per line — matches argv-dump format)
 # ---------------------------------------------------------------------------
+if [[ "$EMIT" == "argv" ]]; then
 echo "talosctl"
 echo "gen"
 echo "config"
@@ -287,6 +301,7 @@ echo "--with-secrets"
 # bit-identity tests (`.work/p2-talos-oci/argv-dump/` golden expects
 # the literal '.secrets.dec.yaml').
 echo "${SECRETS_FILE:-.secrets.dec.yaml}"
+fi
 
 # R2 HIGH (reviewer): simplify NTP precedence. NTP is a platform baseline
 # the consumer may override at any layer (role-patch or per-node patch).
@@ -297,8 +312,8 @@ echo "${SECRETS_FILE:-.secrets.dec.yaml}"
 # with vs without common.yaml and contradicted the production-safe claim.
 # Documented in talos/RELEASE-NOTES-v0.5.2.md §CRIT-4.
 if [[ -n "$NTP_PATCH_FILE" ]]; then
-    echo "--config-patch"
-    echo "@$NTP_PATCH_FILE"
+    echo "$NTP_PATCH_FILE" >> "$PATCH_PATHS_FILE"
+    if [[ "$EMIT" == "argv" ]]; then echo "--config-patch"; echo "@$NTP_PATCH_FILE"; fi
 fi
 
 # Emit role patches in declared order; each may override the NTP baseline.
@@ -323,14 +338,16 @@ while IFS= read -r cap; do
     done < <(yq -r ".\"hardware-capabilities\".\"$cap\".patches // [] | .[] | select(has(\"file\")) | .file" "$CLUSTER_YAML" 2>/dev/null)
 done < "$NODE_CAPS_FILE"
 
-echo "--config-patch"
-echo "@nodes/$NODE_NAME.yaml"
+_NODE_PATCH="$(dirname "$CLUSTER_YAML")/nodes/$NODE_NAME.yaml"
+[[ -f "$_NODE_PATCH" ]] && echo "$_NODE_PATCH" >> "$PATCH_PATHS_FILE"
+if [[ "$EMIT" == "argv" ]]; then echo "--config-patch"; echo "@nodes/$NODE_NAME.yaml"; fi
 
-if [[ -n "$INSTALL_IMAGE" ]]; then
+if [[ "$EMIT" == "argv" ]] && [[ -n "$INSTALL_IMAGE" ]]; then
     echo "--config-patch"
     printf '{"machine":{"install":{"image":"%s"}}}\n' "$INSTALL_IMAGE"
 fi
 
+if [[ "$EMIT" == "argv" ]]; then
 echo "--output"
 echo "_out/$OVERLAY/$OUTPUT_TYPE/$NODE_NAME.yaml"
 echo "--output-types"
@@ -340,3 +357,20 @@ echo "$TALOS_VERSION"
 echo "--kubernetes-version"
 echo "$KUBERNETES_VERSION"
 echo "--force"
+fi
+
+# Content frontend: emit the per-node resolved patch CONTENTS as a JSON object a
+# non-CLI consumer can use directly. config_patches preserves merge order
+# (NTP -> role -> cap -> per-node) = talosctl --config-patch precedence, so a
+# frontend that re-applies them in array order reproduces the same layering.
+# machine.install.image is intentionally omitted: a Terraform/Image-Factory
+# frontend resolves the installer URL per node-class itself (no double source).
+if [[ "$EMIT" == "content" ]]; then
+    patches_json="[]"
+    while IFS= read -r patch_path; do
+        [[ -z "$patch_path" ]] && continue
+        patches_json=$(jq --rawfile patch "$patch_path" '. + [$patch]' <<<"$patches_json")
+    done < "$PATCH_PATHS_FILE"
+    jq -n --arg node "$NODE_NAME" --arg mt "$OUTPUT_TYPE" --argjson cp "$patches_json" \
+        '{node: $node, machine_type: $mt, config_patches: $cp}'
+fi
