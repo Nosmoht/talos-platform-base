@@ -11,6 +11,18 @@ It is **NOT a runnable cluster**. It does NOT contain cluster identity, node
 IPs, secrets, or environment-specific overrides. Those live in consumer
 cluster repos that pin a specific tag of this base.
 
+**Platform layering (base / apps / consumer).** The platform is layered and
+the boundary is binary. `talos-platform-base` is the **substrate** (Talos +
+Cilium + ArgoCD + cert-approver) — the cluster-agnostic floor every cluster
+needs. `talos-platform-apps` is the **central catalog**: every platform
+component that is *not* substrate lives there as independently versioned,
+signed OCI artifacts. Consumer cluster repos **compose** — they pin a base
+tag for the substrate and serve themselves from the apps catalog by
+referencing exactly the OCI components they need. Routing rule: if it is not
+substrate, it belongs in the apps catalog, never in base. See
+[`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md) and the
+platform layer model (`talos-platform-docs` ADR-0009).
+
 ## Project Structure & Module Organization
 
 - `kubernetes/base/infrastructure/`: base Helm values and namespace/kustomization manifests per infrastructure component.
