@@ -48,3 +48,12 @@ logs/security/
 .vale/styles/Vocab/
 .vale/styles/.vale-config/
 .vale/styles/config/
+
+# Terraform / OpenTofu working directory and state.
+# `.terraform/` holds downloaded provider binaries (per-arch, ~tens of MB each)
+# and module sources — local cache, never committed.
+# `*.tfstate*` are state files; secrets / cluster identity inside, never committed.
+# `.terraform.lock.hcl` IS committed (provider version pin) — not ignored here.
+**/.terraform/
+*.tfstate
+*.tfstate.*
