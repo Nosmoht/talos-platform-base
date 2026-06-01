@@ -621,3 +621,18 @@ jobs:
             echo "To update the fixture: mv .work/oci-check-contents.txt .ci-oci-tarball-expected.txt"
             exit 1
           fi
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ShellCheck (-S warning) over all tracked shell scripts
+        run: |
+          set -euo pipefail
+          command -v shellcheck >/dev/null 2>&1 \
+            || sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck --version
+          git ls-files -z '*.sh' | xargs -0 -r shellcheck -S warning
