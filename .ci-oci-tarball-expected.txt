@@ -1,5 +1,8 @@
 ./docs/platform-hardware-features.yaml
 ./docs/schemas/hardware-features.schema.json
+./kubernetes/bootstrap/cilium/extras.yaml
+./kubernetes/bootstrap/cilium/values.yaml
+./scripts/render-cilium-bootstrap.sh
 ./talos/AGENTS.md
 ./talos/Makefile.lib
 ./talos/RELEASE-NOTES-v0.5.1.md

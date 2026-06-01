@@ -20,6 +20,14 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Decision recorded in
   [`docs/adr-shared-render-artifact.md`](docs/adr-shared-render-artifact.md).
 
+- **`feat(oci): ship Cilium recipe + inputs in OCI artifact (symmetric to
+  Talos)`** — the OCI tarball now also carries
+  `kubernetes/bootstrap/cilium/{extras,values}.yaml` and
+  `scripts/render-cilium-bootstrap.sh`, mirroring the existing `talos/`
+  surface. Additive only: no render-mechanic, schema, or Consumer-side
+  change; `talos-homelab-cluster` continues consuming Cilium via Git
+  Multi-Source. Closes #84.
+
 Next release is the v1.0.0 substrate split per
 [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md).
 
