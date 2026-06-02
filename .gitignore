@@ -1,13 +1,6 @@
-talos/talosconfig
-talos/generated/
-talos/.secrets.dec.yaml
-talos/.versions.stamp
-talos/.schematic-ids.mk
-talos/.schematics.stamp
-# Phase 1B: hash-dedup schematic cache — cluster-specific cached state, not committed.
-talos/.schematic-cache.yaml
+# cluster.yaml carries the local ArgoCD-bootstrap identity (name/overlay/
+# target_revision/repo.url); gitignored at the base, committed in consumer repos.
 /cluster.yaml
-/talos/_out/
 /kubernetes/bootstrap/argocd/_out/
 # Claude Code harness runtime dir — agent scratch state; this base ships
 # no .claude/ tree by policy (see CLAUDE.md).

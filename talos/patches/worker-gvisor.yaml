@@ -1,3 +1,0 @@
-machine:
-  nodeLabels:
-    sandbox.atlas.dev/gvisor: "true"

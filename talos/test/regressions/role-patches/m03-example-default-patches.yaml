@@ -1,5 +1,0 @@
-target: talos/test/cluster.yaml.example
-mutation:
-  kind: yq_assign
-  path: .roles.controlplane.default_patches
-  value: '["patches/system-clock.yaml"]'

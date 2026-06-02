@@ -1,4 +1,0 @@
-target: talos/schemas/cluster.schema.json
-mutation:
-  kind: yq_delete
-  path: ."$defs"."role-spec".properties.patches
