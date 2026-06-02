@@ -47,7 +47,7 @@ Recommended rule files the plugin should ship — `paths:` is a glob:
 | `pni-capability-first.md` | `kubernetes/**/*.yaml` | Rule prose tells the model: when the diff selects on `app.kubernetes.io/name: <tool>` inside a CCNP `endpointSelector`, suggest the capability-selector form |
 | `pni-reserved-labels.md` | `kubernetes/**/namespace*.yaml`, `kubernetes/**/values*.yaml`, `kubernetes/**/ccnp-*.yaml`, `kubernetes/**/cnp-*.yaml` | Loads when reserved keys may be set; explains namespace-anchored trust and producer/consumer split |
 | `pni-instanced-suffix.md` | `kubernetes/**/*.yaml` | Rule prose tells the model: when the file contains `consume.cnpg-postgres`, `consume.vault-secrets`, `consume.redis-managed`, `consume.rabbitmq-managed`, `consume.kafka-managed`, or `consume.s3-object` without an `.<inst>` suffix, flag it before the audit-mode advisory fires |
-| `talos-hard-constraints.md` | `talos/patches/**/*.yaml` | Reinforces "no `debugfs=off`", "no `secureboot` installer" |
+| `talos-hard-constraints.md` | `tofu/modules/talos-cluster/**/*.tf` | Reinforces "no `debugfs=off`", "no `secureboot` installer" |
 | `gateway-api-only.md` | `kubernetes/**/*.yaml` | Catches `kind: Ingress` insertions before CI rejects them |
 | `endpointslices-only.md` | `kubernetes/**/*.yaml` | Catches `kind: Endpoints` (deprecated since K8s 1.33.0) |
 

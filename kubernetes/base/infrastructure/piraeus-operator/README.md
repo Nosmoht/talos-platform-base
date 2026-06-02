@@ -32,7 +32,7 @@ Top-level keys in [`values.yaml`](./values.yaml) — anything not listed below u
 
 ## Known upgrade gotchas
 
-- DRBD kernel module must be loaded on every storage node; Talos requires `kernelModules: ["drbd"]` in the machine-config patch (`talos/patches/drbd.yaml`).
+- DRBD kernel module must be loaded on every storage node; Talos requires `kernelModules: ["drbd"]` in a machine-config patch — supply it via the storage node `class` config_patches in the consumer's `tofu/modules/talos-cluster` call (the `siderolabs/drbd` system extension lives in that class's `extensions`).
 - LinstorCluster + LinstorSatelliteConfiguration CRs are NOT shipped here; consumer overlay deploys them.
 
 ## See also

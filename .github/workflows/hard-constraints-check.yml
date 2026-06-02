@@ -59,21 +59,25 @@ jobs:
         run: |
           set -euo pipefail
           FAIL=0
-          CHANGED_TALOS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'talos/**' ':(exclude,glob)talos/**/*.md' 2>/dev/null || true)
+          # The Talos cluster-lifecycle path now lives in tofu/ (the OpenTofu
+          # module renders installer images + carries config_patches). Scan
+          # tofu/ for forbidden SecureBoot installer references.
+          CHANGED_TALOS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'tofu/**' ':(exclude,glob)**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_TALOS" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             [ -f "$f" ] || continue
-            # R3 MED-2: also catch the bare `metal-secureboot` form, which
-            # the v0.5.1 schema permits as installer-profile enum value and
-            # which can render into install-image-template references.
-            if grep -lE 'metal-(installer-)?secureboot' "$f" >/dev/null 2>&1; then
+            # Catch every SecureBoot installer form that can reach machine.install.image:
+            #   - legacy cluster.yaml template:  metal-installer-secureboot / metal-secureboot
+            #   - Image-Factory / talos-provider URL form: installer-secureboot
+            #     (factory.talos.dev/installer-secureboot/<schematic>:<ver>)
+            if grep -liE '(metal-secureboot|installer-secureboot)' "$f" >/dev/null 2>&1; then
               MATCHES="${MATCHES}${f}"$'\n'
             fi
           done <<<"$CHANGED_TALOS"
           if [ -n "$MATCHES" ]; then
-            echo "::error::Forbidden SecureBoot installer image (metal-installer-secureboot / metal-secureboot) detected in:"
+            echo "::error::Forbidden SecureBoot installer image (installer-secureboot / metal-installer-secureboot / metal-secureboot) detected in:"
             printf '%s' "$MATCHES"
             echo "Fix: Use metal-installer (SecureBoot causes boot loops on this cluster)."
             FAIL=1
@@ -85,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           FAIL=0
-          CHANGED_ALL=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' 'talos/**' ':(exclude,glob)**/*.md' 2>/dev/null || true)
+          CHANGED_ALL=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' 'tofu/**' ':(exclude,glob)**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_ALL" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do

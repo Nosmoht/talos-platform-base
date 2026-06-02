@@ -1,8 +1,0 @@
-# NOTE: not consumed by argv-print.sh in v0.6.0+ — NTP rendering moved into
-# argv-print.sh as an ephemeral role-patch built from cluster.ntp_servers[].
-# Retained as a reference for the historical envsubst-based NTP slot.
-apiVersion: v1alpha1
-kind: TimeSyncConfig
-ntp:
-  servers:
-    - ${NTP_SERVER}

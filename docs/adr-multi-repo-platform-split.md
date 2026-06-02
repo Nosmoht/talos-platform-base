@@ -123,6 +123,11 @@ consumer repo's `make day0` into a gitignored `vendor/base/` directory.
   `make -C vendor/base/talos gen-configs ENV=$(PWD)/cluster.yaml ...`. A
   `make day0` meta-target chains `bootstrap-base → gen-configs → apply →
   argocd-install → argocd-bootstrap` for new-cluster setup.
+  > **Superseded (2026-06-02):** the `make -C vendor/base/talos gen-configs`
+  > Day-0 mechanism described here was removed. Talos provisioning is now the
+  > OpenTofu module `tofu/modules/talos-cluster` — see
+  > [`adr-opentofu-cluster-lifecycle.md`](adr-opentofu-cluster-lifecycle.md).
+  > The OCI-vendor + `.base-version` pin mechanism above is unchanged.
 - `oras` CLI is a hard prerequisite on the workstation.
 
 **Day-2 mechanism**: ArgoCD Multi-Source Application. Each component

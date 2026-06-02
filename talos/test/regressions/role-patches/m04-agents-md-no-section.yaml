@@ -1,4 +1,0 @@
-target: talos/AGENTS.md
-mutation:
-  kind: sed_delete_section
-  heading_pattern: 'Role-spec patches'

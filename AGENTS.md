@@ -28,18 +28,18 @@ platform layer model (`talos-platform-docs` ADR-0009).
 - `kubernetes/base/infrastructure/`: base Helm values and namespace/kustomization manifests per infrastructure component.
 - `kubernetes/bootstrap/argocd/`: parameterized bootstrap templates (`*.tmpl`) consumed by `make argocd-bootstrap`.
 - `kubernetes/bootstrap/cilium/`: base Cilium Helm values and `extras.yaml` (rendered cilium.yaml is cluster-side).
-- `talos/`: Talos machine config inputs (`patches/`), Makefile with `cluster.yaml`-driven multi-cluster generation.
+- `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-class Image-Factory installer, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root. See [`docs/adr-opentofu-cluster-lifecycle.md`](docs/adr-opentofu-cluster-lifecycle.md).
 - `policies/`: conftest Rego policies for kustomize-rendered manifests.
 - `scripts/`: cluster-agnostic validation, render and helper scripts.
 - `docs/`: platform-base reference docs. See [`docs/README.md`](docs/README.md) for the navigable map (architecture, contract cookbook, ADRs, workflow refs).
 
 ## Build, Test, and Development Commands
 
-- `make init-cluster-yaml`: copies `cluster.yaml.example` to `cluster.yaml` (gitignored) for local validation.
+- `make init-cluster-yaml`: copies `cluster.yaml.example` to `cluster.yaml` (gitignored) — the ArgoCD-bootstrap identity (`cluster.{name,overlay,target_revision}` + `repo.url`) consumed by `make argocd-bootstrap`. (Talos node/class definitions live in the consumer's OpenTofu root, not in `cluster.yaml`.)
 - `make validate-gitops`: kustomize-render + SOPS check + conftest + kubeconform across all rendered manifests.
 - `make validate-kyverno-policies`: server-side validation of base Kyverno ClusterPolicies (PNI contract, reserved-labels, vault-ca-distribution, capability-validation).
 - `make mcp-install` / `make mcp-verify`: install and verify MCP server binaries.
-- `make -C talos gen-configs`: generates Talos node configs from `cluster.yaml` (consumer-side; needs `talos/nodes/` from a consumer repo).
+- `task ci` (devbox): `tofu fmt -check` + `tofu validate` + `tflint` over the `tofu/` cluster-lifecycle module and its examples.
 
 This base is consumed by cluster repos via OCI artifact (`oras pull
 ghcr.io/nosmoht/talos-platform-base:<tag>`) into a gitignored `vendor/base/`
@@ -157,8 +157,8 @@ is plugged in by the consumer overlay that deploys the tool.
   - `make validate-gitops`
 - If editing Kyverno `ClusterPolicy` resources:
   - `make validate-kyverno-policies`
-- For Talos config changes:
-  - `make -C talos gen-configs ENV=<consumer-cluster.yaml>` (in a consumer-repo checkout)
+- For Talos cluster-lifecycle (`tofu/`) changes:
+  - `task ci` (or `tofu fmt -check -recursive tofu/` + per-dir `tofu init -backend=false && tofu validate` + `tflint`)
 
 ---
 
@@ -168,7 +168,7 @@ These are universal cluster invariants. CLAUDE.md imports this file via
 `@AGENTS.md`. Both tools treat this section as canonical. Do NOT relax these
 without repo-maintainer approval.
 
-- **No SecureBoot** — `metal-installer-secureboot` and the bare `metal-secureboot` installer-profile value both cause boot loops; always use `metal-installer`. CI gate: `hard-constraints-check.yml` greps `metal-(installer-)?secureboot`.
+- **No SecureBoot** — `metal-installer-secureboot`, the bare `metal-secureboot`, and the Image-Factory `installer-secureboot` URL form all cause boot loops; always use the non-secureboot installer. The `tofu/modules/talos-cluster` module enforces this in code (selects `urls.installer`, never `urls.installer_secureboot`). CI gate: `hard-constraints-check.yml` greps `(metal-secureboot|installer-secureboot)` over `tofu/**`.
 - **No `debugfs=off`** — causes "failed to create root filesystem" boot loop in Talos
 - **Gateway API only** — no `kind: Ingress` or Ingress controllers; use HTTPRoute/TLSRoute
 - **EndpointSlices only** — `kind: Endpoints` deprecated since Kubernetes v1.33.0; use `EndpointSlice`
@@ -195,7 +195,7 @@ this list.
 - **Namespace-anchored trust** — `capability-provider.<cap>` on a pod is valid iff its namespace carries `provide.<cap>: "true"`. No central tool-signature whitelist.
 - **AppProject** — ArgoCD RBAC boundary scoping repos/namespaces an Application can deploy to.
 - **Sync-wave** — ArgoCD annotation for deploy order: `-1` (AppProjects) → `0` (infra) → `1` (apps).
-- **Schematic** — Talos Image Factory spec embedding system extensions into installer images. Cluster-side input lives in consumer repo's `talos/talos-factory-schematic*.yaml`.
+- **Schematic** — Talos Image Factory spec embedding system extensions (and optional SBC overlay) into installer images. Derived per node `class` by the `tofu/modules/talos-cluster` module from the class `extensions` + `overlay` + `architecture`.
 - **CCNP/CNP** — CiliumClusterwideNetworkPolicy / CiliumNetworkPolicy. Named `ccnp-*.yaml` / `cnp-*.yaml`.
 - **DRBD** — Distributed Replicated Block Device — LINSTOR replication layer for persistent storage.
 - **Multi-Source Application** — ArgoCD Application with `spec.sources[base, cluster]` consuming this base alongside consumer cluster manifests.
