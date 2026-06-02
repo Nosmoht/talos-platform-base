@@ -16,9 +16,10 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 INFRA_DIR="${ROOT}/kubernetes/base/infrastructure"
 
-# GNU find -printf is not portable to macOS; use -exec dirname instead.
-components="$(find "${INFRA_DIR}" -mindepth 2 -maxdepth 2 -name chart.lock.yaml -exec dirname {} \; \
-  | xargs -n1 basename | sort)"
+# GNU find -printf is not portable to macOS; -exec sh -c … + (not | xargs)
+# avoids the SC2038 unsafe-filename split.
+components="$(find "${INFRA_DIR}" -mindepth 2 -maxdepth 2 -name chart.lock.yaml \
+  -exec sh -c 'for f do basename "$(dirname "$f")"; done' _ {} + | sort)"
 
 if [ -z "${components}" ]; then
   echo "no components with chart.lock.yaml found — nothing to verify"

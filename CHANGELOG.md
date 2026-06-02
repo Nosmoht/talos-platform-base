@@ -28,6 +28,15 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   change; `talos-homelab-cluster` continues consuming Cilium via Git
   Multi-Source. Closes #84.
 
+- **Repo-wide shellcheck gate** — adds `shellcheck -S warning` over all
+  tracked `*.sh` to both pre-commit (local hook, `repo: local`) and CI
+  (`gitops-validate.yml` `shellcheck` job, parallel to `secret-scan`).
+  Fixes the two pre-existing findings: SC2034 (unused `src` in
+  `scripts/render-capability-index.sh:309`) and SC2038 (`find|xargs`
+  replaced with `-exec sh -c … +` in `scripts/verify-rendered.sh:19–21`).
+  Both fixes are behavior-preserving; enumeration output is byte-identical.
+  Closes #94.
+
 Next release is the v1.0.0 substrate split per
 [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md).
 

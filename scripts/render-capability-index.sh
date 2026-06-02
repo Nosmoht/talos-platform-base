@@ -306,7 +306,7 @@ render_a_write() { render_clean > "$OUTPUT_FILE"; echo "wrote $OUTPUT_FILE"; }
 render_c_write() { render_hw_clean > "$HW_FEATURES_OUTPUT"; echo "wrote $HW_FEATURES_OUTPUT"; }
 
 check_one() {
-  local label src tgt renderer
+  local label tgt renderer
   label="$1"
   tgt="$2"
   renderer="$3"
