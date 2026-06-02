@@ -1,9 +1,9 @@
 # Provider + OpenTofu version constraints for the talos-cluster module.
 #
 # Deliberately NO `terraform { backend ... }` block here: the backend is the
-# caller's concern (ADR-0006). Stage 0 uses a local+encrypted backend, Stage 1
-# uses the DS720+ Garage S3 backend via a Crossplane tf.Workspace. The module
-# must work with both without source-level changes.
+# caller's concern. The module is backend-agnostic so a consumer can wire any
+# encrypted backend (local+encrypted, S3, …) without source-level changes.
+# Because machine_secrets land in state, the chosen backend MUST be encrypted.
 
 terraform {
   required_version = ">= 1.7.0"

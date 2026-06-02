@@ -1,10 +1,11 @@
 # Inputs for the talos-cluster module.
 #
-# The shape mirrors the XCluster CRD schema in talos-platform-apps
-# (sub-layers/lifecycle/components/compositions): a Crossplane tf.Workspace
-# maps XCluster.spec fields onto these variables, and the Stage-0 root module
-# passes the same values from cluster.yaml. One module, two callers, identical
-# variable contract.
+# The module is backend- and caller-agnostic: a consumer's root module maps
+# its cluster.yaml onto these variables and supplies the `provider "talos"`
+# block plus the state backend. Cluster identity (endpoint, node IPs, NTP,
+# install disk, registry mirrors) is caller-supplied via patches — the module
+# ships none of its own. A direct `tofu apply` from a workstation and any
+# higher-level orchestrator use the identical variable contract.
 
 variable "cluster_name" {
   description = "Name of the Talos cluster (e.g. \"dhq\"). Used in PKI CNs and config."
@@ -72,18 +73,25 @@ variable "nodes" {
   description = <<-EOT
     Bare-metal nodes that make up the cluster. Each node must already be
     PXE-booted into Talos maintenance mode (reachable at `ip` on the Talos
-    API port) — see the lifecycle/ipxe component. The module applies the
-    machine config, it does not provision the hardware or boot the nodes.
+    API port). The module applies the machine config, it does not provision
+    the hardware or boot the nodes.
 
-    `class` (optional, default "standard") selects the Image-Factory
-    schematic from var.extensions — used to install Talos with the right
-    set of system extensions (e.g. drbd, qemu-guest-agent, nvidia drivers).
+    Kubernetes node roles are ONLY `controlplane` or `worker`. Hardware
+    specialisation (GPU, single-board-computer, storage) is NOT a role — it
+    is expressed via `class`, which selects an Image-Factory + patch profile
+    from var.classes.
+
+    `class` (optional, default "standard") must exist as a key in var.classes.
+    `config_patches` (optional) are machine-config patches applied to THIS
+    node only — use it for genuinely per-node values such as a NIC-specific
+    bridge config; the caller renders the concrete value into the YAML string.
   EOT
   type = list(object({
-    hostname = string
-    ip       = string
-    role     = string                       # "controlplane" | "worker"
-    class    = optional(string, "standard") # must exist as key in var.extensions
+    hostname       = string
+    ip             = string
+    role           = string                       # "controlplane" | "worker"
+    class          = optional(string, "standard") # must exist as key in var.classes
+    config_patches = optional(list(string), [])   # per-node patches (e.g. NIC binding)
   }))
 
   validation {
@@ -97,25 +105,50 @@ variable "nodes" {
   }
 }
 
-variable "extensions" {
+variable "classes" {
   description = <<-EOT
-    Image-Factory system extensions per node class. Key = class name
-    (matching `node.class`), value = list of extension package names like
-    "siderolabs/qemu-guest-agent" or "siderolabs/drbd". The module resolves
-    each list against the Talos Image Factory at var.talos_version, derives
-    a schematic ID, and uses the resulting installer image
-    (metal-installer — NEVER metal-installer-secureboot per the base
-    AGENTS.md Hard Constraint) for nodes of that class.
+    Per node-class Image-Factory + machine-config-patch profile. Key = class
+    name (matching `node.class`). The "standard" class is mandatory; add more
+    (e.g. "gpu", "pi") as the cluster needs. Each class carries:
 
-    Empty list → default Talos installer (no extensions) for that class.
-    Class "standard" is mandatory; "gpu" / "pi" are conventional but optional.
+      - architecture: "amd64" | "arm64" — installer-image architecture for
+        nodes of this class. This is what unblocks ARM single-board computers
+        (e.g. a Raspberry Pi worker uses architecture = "arm64").
+      - extensions: Image-Factory system-extension package names (e.g.
+        "siderolabs/drbd", "siderolabs/nvidia-container-toolkit-lts"). Empty
+        list = default installer with no system extensions for that class.
+      - overlay: optional SBC/board overlay for ARM single-board computers.
+        When set, the schematic is built with the board overlay (e.g.
+        name = "rpi_generic", image = "siderolabs/sbc-raspberrypi" for a
+        Raspberry Pi). Leave null for ordinary x86/metal nodes.
+      - config_patches: machine-config patches applied to EVERY node of this
+        class, on top of the all-nodes (var.config_patches) and role patches.
+
+    The installer image is always metal-installer (NEVER
+    metal-installer-secureboot, per the base AGENTS.md Hard Constraint).
   EOT
-  type        = map(list(string))
-  default     = { standard = [], gpu = [], pi = [] }
+  type = map(object({
+    architecture = optional(string, "amd64")
+    extensions   = optional(list(string), [])
+    overlay = optional(object({
+      name    = string
+      image   = string
+      options = optional(map(string), null)
+    }), null)
+    config_patches = optional(list(string), [])
+  }))
+  default = {
+    standard = { architecture = "amd64" }
+  }
 
   validation {
-    condition     = contains(keys(var.extensions), "standard")
-    error_message = "extensions must define a 'standard' class (even if empty) — node.class defaults to it."
+    condition     = contains(keys(var.classes), "standard")
+    error_message = "classes must define a 'standard' class — node.class defaults to it."
+  }
+
+  validation {
+    condition     = alltrue([for c in var.classes : contains(["amd64", "arm64"], c.architecture)])
+    error_message = "Each class.architecture must be \"amd64\" or \"arm64\"."
   }
 }
 

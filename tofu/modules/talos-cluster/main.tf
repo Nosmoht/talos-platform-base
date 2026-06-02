@@ -22,7 +22,7 @@ locals {
   nodes_by_hostname = { for n in var.nodes : n.hostname => n }
 
   # Node classes actually referenced by var.nodes. Used to verify each class
-  # has a matching entry in var.extensions before installer URLs are looked up.
+  # has a matching entry in var.classes before installer URLs are looked up.
   used_classes = distinct([for n in var.nodes : n.class])
 
   # OS version running on the nodes. Defaults to talos_version (= schema-pin)
@@ -32,15 +32,15 @@ locals {
 }
 
 # Defensive cross-check: every class referenced by a node must be defined in
-# var.extensions. Failing here gives a clearer error than a missing map key.
-check "node_class_extensions_defined" {
+# var.classes. Failing here gives a clearer error than a missing map key.
+check "node_class_defined" {
   assert {
     condition = alltrue([
-      for c in local.used_classes : contains(keys(var.extensions), c)
+      for c in local.used_classes : contains(keys(var.classes), c)
     ])
     error_message = format(
-      "Every node.class must be a key in var.extensions. Used by nodes: %v. Defined in extensions: %v.",
-      local.used_classes, keys(var.extensions),
+      "Every node.class must be a key in var.classes. Used by nodes: %v. Defined in classes: %v.",
+      local.used_classes, keys(var.classes),
     )
   }
 }
@@ -50,52 +50,71 @@ check "node_class_extensions_defined" {
 # ---------------------------------------------------------------------------
 # Per class, resolve the extension package names against the Talos Image
 # Factory (gets concrete versions for var.talos_version), commit them to a
-# schematic, and derive the metal-installer URL. Empty extension lists yield
+# schematic (with an optional SBC board overlay), and derive the
+# metal-installer URL at the class's architecture. Empty extension lists yield
 # the default Talos installer (no system extensions) for that class.
 #
 # Hard Constraint (base AGENTS.md): never use metal-installer-secureboot.
 # secure_boot defaults to false in talos_image_factory_urls — we keep it that
-# way.
+# way. ARM single-board computers (e.g. Raspberry Pi) use architecture =
+# "arm64" plus an overlay; the platform stays "metal".
 
 data "talos_image_factory_extensions_versions" "per_class" {
-  for_each = var.extensions
+  for_each = var.classes
 
   # Use the OS version actually being installed — extension package versions
   # are pinned per Talos release in the factory.
   talos_version = local.install_version
   filters = {
-    names = each.value
+    names = each.value.extensions
   }
 }
 
 resource "talos_image_factory_schematic" "per_class" {
-  for_each = var.extensions
+  for_each = var.classes
 
-  schematic = yamlencode({
-    customization = {
-      systemExtensions = {
-        officialExtensions = [
-          for ext in data.talos_image_factory_extensions_versions.per_class[each.key].extensions_info :
-          ext.name
-        ]
+  # systemExtensions for every class; overlay block only for classes that
+  # declare one (SBC boards such as Raspberry Pi).
+  schematic = yamlencode(merge(
+    {
+      customization = {
+        systemExtensions = {
+          officialExtensions = [
+            for ext in data.talos_image_factory_extensions_versions.per_class[each.key].extensions_info :
+            ext.name
+          ]
+        }
       }
-    }
-  })
+    },
+    each.value.overlay == null ? {} : {
+      overlay = merge(
+        {
+          name  = each.value.overlay.name
+          image = each.value.overlay.image
+        },
+        each.value.overlay.options == null ? {} : { options = each.value.overlay.options },
+      )
+    },
+  ))
 }
 
 data "talos_image_factory_urls" "per_class" {
-  for_each = var.extensions
+  for_each = var.classes
 
   # Installer image tag = the OS version we want running. Schema-version
-  # `talos_version` stays out of this URL on purpose.
+  # `talos_version` stays out of this URL on purpose. Architecture is per-class
+  # so amd64 and arm64 (SBC) classes coexist in one cluster.
   talos_version = local.install_version
   schematic_id  = talos_image_factory_schematic.per_class[each.key].id
   platform      = "metal"
-  architecture  = "amd64" # TODO when ARM classes appear: per-class architecture map
+  architecture  = each.value.architecture
 }
 
-# Cluster PKI + shared secrets. Generated once; stored in state (hence the
-# encrypted backends per ADR-0006).
+# Cluster PKI + shared secrets. Generated once and stored in Tofu state — so
+# the caller MUST use an encrypted state backend. NOTE: this generates fresh
+# PKI; adopting an ALREADY-RUNNING cluster (importing its existing secrets so
+# `tofu apply` does not re-bootstrap) is a separate, not-yet-implemented path —
+# see the module README and UPGRADING.md before pointing this at a live cluster.
 resource "talos_machine_secrets" "this" {
   talos_version = var.talos_version
 }
@@ -122,11 +141,14 @@ data "talos_machine_configuration" "worker" {
   config_patches     = concat(var.config_patches, var.worker_config_patches)
 }
 
-# Apply the config to each node. Module-injected per-node patches:
-#   - hostname (from node.hostname)
-#   - install.image (the class-specific Image-Factory installer URL)
-# Everything else is role-uniform from the data.talos_machine_configuration
-# above plus the caller's config_patches.
+# Apply the config to each node. Patch precedence (later overrides earlier):
+#   1. machine_configuration_input — all-nodes (var.config_patches) + role
+#      patches, baked in by data.talos_machine_configuration above.
+#   2. module-injected per-node patch: hostname + class-specific install.image.
+#   3. class patches (var.classes[class].config_patches) — every node of the
+#      class (e.g. kubevirt sysctls for a "kubevirt" class, GPU runtime for "gpu").
+#   4. node patches (node.config_patches) — genuinely per-node values such as a
+#      NIC-specific bridge; highest precedence.
 resource "talos_machine_configuration_apply" "this" {
   for_each = local.nodes_by_hostname
 
@@ -138,18 +160,22 @@ resource "talos_machine_configuration_apply" "this" {
   )
   node = each.value.ip
 
-  config_patches = [
-    yamlencode({
-      machine = {
-        network = {
-          hostname = each.value.hostname
+  config_patches = concat(
+    [
+      yamlencode({
+        machine = {
+          network = {
+            hostname = each.value.hostname
+          }
+          install = {
+            image = data.talos_image_factory_urls.per_class[each.value.class].installer_image
+          }
         }
-        install = {
-          image = data.talos_image_factory_urls.per_class[each.value.class].installer_image
-        }
-      }
-    })
-  ]
+      })
+    ],
+    var.classes[each.value.class].config_patches,
+    each.value.config_patches,
+  )
 }
 
 # Bootstrap etcd on the first controlplane only. Must run after the config is
@@ -189,7 +215,7 @@ data "talos_client_configuration" "this" {
 #   from the Image Factory. talos_machine_configuration_apply re-renders the
 #   per-node config (including install.image) and applies it rolling — Talos
 #   takes care of the actual upgrade.
-# - Image-Factory extension changes (var.extensions edits): schematic_id
+# - Image-Factory extension/overlay changes (var.classes edits): schematic_id
 #   changes, installer_image URL changes, machine_configuration_apply re-rolls
 #   nodes of the affected class.
 # - System-extension version pinning: data.talos_image_factory_extensions_versions

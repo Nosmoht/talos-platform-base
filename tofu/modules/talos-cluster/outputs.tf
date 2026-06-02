@@ -1,7 +1,7 @@
-# Outputs consumed by the caller. Stage 1 (Crossplane tf.Workspace) writes
-# kubeconfig + talosconfig into Kubernetes Secrets referenced by
-# XCluster.status.{kubeconfigSecretRef,talosconfigSecretRef}; Stage 0 writes
-# them to disk for talosctl/kubectl bootstrap.
+# Outputs consumed by the caller. A direct `tofu apply` writes kubeconfig +
+# talosconfig to disk for talosctl/kubectl bootstrap; a higher-level
+# orchestrator may instead write them into secret storage. The contract is the
+# same either way.
 #
 # All credential outputs are marked sensitive — they must never land in plan
 # output or logs.
