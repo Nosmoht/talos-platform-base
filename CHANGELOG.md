@@ -7,6 +7,114 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`talos/scripts/argv-print.sh` `EMIT=content` mode** — the per-node Talos
+  config renderer can now emit a JSON object
+  `{node, machine_type, config_patches:[yaml,...]}` of the resolved per-node
+  patch contents (in merge order) instead of the default `EMIT=argv`
+  talosctl-argv output. This lets a non-CLI frontend — for example, the Terraform talos
+  provider's `data.talos_machine_configuration.config_patches` — consume the
+  same 5-axis composition the `make` path uses, so a Crossplane/OpenTofu-provisioned
+  cluster gets the same patch substance as a `make`-provisioned one (one source
+  of truth, two frontends). `EMIT=argv` (default) is unchanged and bit-identical.
+  New regression gate `make -f talos/Makefile.lib test-content-mode`.
+  Decision recorded in
+  [`docs/adr-shared-render-artifact.md`](docs/adr-shared-render-artifact.md).
+
+- **`feat(oci): ship Cilium recipe + inputs in OCI artifact (symmetric to
+  Talos)`** — the OCI tarball now also carries
+  `kubernetes/bootstrap/cilium/{extras,values}.yaml` and
+  `scripts/render-cilium-bootstrap.sh`, mirroring the existing `talos/`
+  surface. Additive only: no render-mechanic, schema, or Consumer-side
+  change; `talos-homelab-cluster` continues consuming Cilium via Git
+  Multi-Source. Closes #84.
+
+- **Repo-wide shellcheck gate** — adds `shellcheck -S warning` over all
+  tracked `*.sh` to both pre-commit (local hook, `repo: local`) and CI
+  (`gitops-validate.yml` `shellcheck` job, parallel to `secret-scan`).
+  Fixes the two pre-existing findings: SC2034 (unused `src` in
+  `scripts/render-capability-index.sh:309`) and SC2038 (`find|xargs`
+  replaced with `-exec sh -c … +` in `scripts/verify-rendered.sh:19–21`).
+  Both fixes are behavior-preserving; enumeration output is byte-identical.
+  Closes #94.
+
+- **`feat(cilium): render script accepts CILIUM_VALUES_OVERLAY + CILIUM_OUTPUT_FILE for Consumer overrides`**
+  — `scripts/render-cilium-bootstrap.sh` gains two optional env vars; Helm `-f`
+  list-replace caveat documented in the script header. Additive only; overlay-unset
+  render is byte-identical. Closes #85.
+
+Next release is the v1.0.0 substrate split per
+[`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md).
+
+## v0.6.0 — 2026-05-28
+
+This is the coordinated MAJOR release that turns the v0.5.x 5-axis
+preview into the only supported `cluster.yaml` path and folds the
+remaining PNI policy name/behaviour cleanup. Engineering rationale per
+item lives in [`talos/RELEASE-NOTES-v0.6.0.md`](talos/RELEASE-NOTES-v0.6.0.md);
+consumer migration recipe in [`UPGRADING.md` §`v0.6.0`](UPGRADING.md).
+The substrate split (PNI + 19 other components move to a new
+`talos-platform-apps` repo) is **not** in this release — see
+[`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md)
+for the v1.0.0 plan.
+
+### Changed (breaking)
+
+- **Cluster identity field renames** — `cluster.api_vip` →
+  `cluster.vip`; `cluster.gateway_vip` removed. A cluster has exactly
+  one Kubernetes API VIP; Gateway / LoadBalancer VIPs belong with the
+  respective Gateway-API manifests, not cluster identity.
+- **NTP servers as a list** — `cluster.ntp_server` (string) →
+  `cluster.ntp_servers` (array, minItems 1, per-element charset
+  validation). Single-NTP was a SPOF: outage → clock drift → etcd
+  cert validation failure. Talos `machine.time.servers` is natively
+  a list; ≥2 servers now recommended for redundancy.
+- **`hardware-platforms.nvidia-gpu-node` removed.** Axis 4 names the
+  CPU mainboard / chassis class only. GPU presence is captured on
+  Axis 5 via the `gpu-nvidia` capability; the Axis-4 entry was a
+  duplicate contract. GPU nodes now declare
+  `hardware-platform: intel-generic` plus capability `gpu-nvidia`.
+- **gVisor removed from `hardware-capabilities`.** Workload-runtime-class
+  labels (`sandbox.atlas.dev/gvisor`) are not hardware predicates
+  per ADR Three-Layer §D7. `worker-gvisor.yaml` now lives in
+  `roles.<role>.patches[]` per the slot ladder in
+  `talos/AGENTS.md §Patch slots`. `translate-legacy-cluster-yaml.sh`
+  no longer emits a `gvisor` entry in the rendered
+  `hardware-capabilities` block.
+- **`hardware_capabilities` underscore alias removed.** The v0.5.4
+  grace-window alias is gone from the schema, `argv-print.sh`, and
+  `validate-schematics.sh`. Use canonical kebab-case
+  `hardware-capabilities` everywhere. Schema's `required` list now
+  hard-includes the kebab field; underscore-only documents fail with
+  `'hardware-capabilities' is a required property`.
+- **`hardware-capabilities[*].patches[].file` is now auto-composed.**
+  Was declarative-only in v0.5.x. `argv-print.sh` emits cap-patches
+  as `--config-patch` after role-patches (later-wins per talosctl
+  merge semantics). Audit for accidental duplication with
+  `roles.<role>.patches[]` — the same patch listed in both is
+  emitted twice (harmless for identical content; cap wins on
+  divergence).
+- **Legacy `talos/Makefile` deleted** — the 439-LOC pattern-rule
+  generator is gone. Consumers MUST include
+  `$(BASE_DIR)/Makefile.lib` from their `talos/Makefile`.
+- **Kyverno ClusterPolicies renamed (PNI name/behaviour cleanup).**
+  Two policies that were missed by the v0.5.0 rename (#40):
+  `pni-capability-validation-audit` →
+  `pni-capability-validation-enforce`;
+  `pni-reserved-labels-audit` → `pni-reserved-labels-enforce`.
+  Rule names, validation messages, and behaviour unchanged. File
+  names already matched the new policy names — only the
+  `metadata.name` field was renamed. Migration is identical to the
+  v0.5.0 `pni-contract` rename.
+
+### Added
+
+- **`talos/RELEASE-NOTES-v0.6.0.md`** — engineering rationale per
+  breaking change above.
+- **`UPGRADING.md §v0.6.0`** — consumer migration recipe (nine steps,
+  in order).
+
+### Added (Layer-A / Layer-C work, pre-cutover)
+
 - **Layer-A entry classification (issue #62).** New required `kind:`
   field on every entry in `docs/platform-capability-index.yaml` —
   enum `tool-capability | network-primitive`. Four entries
@@ -218,20 +326,6 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **RFC 9116 `.well-known/security.txt` (#50).** Machine-readable
   security contact metadata complementing `SECURITY.md`. Indexed by
   OpenSSF Scorecard and security scanners.
-
-### Changed
-
-- **PNI policy name/behaviour mismatch cleanup (#48).** Two further
-  ClusterPolicies that were missed by the v0.5.0 PR (#40) renamed to
-  match their `validationFailureAction: Enforce` semantics:
-  - `pni-capability-validation-audit` → `pni-capability-validation-enforce`
-  - `pni-reserved-labels-audit` → `pni-reserved-labels-enforce`
-
-  Rule names, validation messages, and behaviour are unchanged. File
-  names already matched the new policy names — only the
-  `metadata.name` field was renamed. See
-  [`UPGRADING.md` §`v0.6.0`](UPGRADING.md) for consumer-side migration
-  steps (identical pattern to the v0.5.0 `pni-contract` rename).
 
 ## v0.5.0 — 2026-05-18
 

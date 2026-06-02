@@ -27,7 +27,7 @@ roles:
     description: "Standard Kubernetes worker node"
     patches:
       - patches/common.yaml
-      - patches/worker.yaml
+      - patches/worker-gvisor.yaml
     default_extensions:
       - https://example.invalid/extensions/iscsi-tools
       - https://example.invalid/extensions/util-linux-tools
@@ -78,22 +78,18 @@ infrastructure-platforms:
     installer-profile: nocloud
     description: "Generic cloud-init / nocloud (Proxmox, QEMU)"
 
-# Axis 4 — Hardware Platforms
+# Axis 4 — Hardware Platforms (CPU mainboard / chassis class only)
+# PCIe peripherals such as GPUs are captured on Axis 5, not here.
 hardware-platforms:
   intel-generic:
     vendor: Intel
     model: "Generic x86-64 server / NUC"
-    description: "Generic Intel x86-64 platform"
+    description: "Generic Intel/AMD x86-64 platform (includes servers carrying PCIe GPUs)"
 
   raspberry-pi-4:
     vendor: Raspberry Pi Foundation
     model: Raspberry Pi 4 Model B
     description: "ARM Cortex-A72, 4–8 GB LPDDR4"
-
-  nvidia-gpu-node:
-    vendor: NVIDIA
-    model: "Server with NVIDIA PCIe GPU"
-    description: "x86-64 server carrying one or more NVIDIA PCIe graphics cards"
 
 # Axis 5 — Hardware Capabilities (composite; requires_features refs Layer-C ids)
 hardware-capabilities:
@@ -141,7 +137,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
     ip: 10.0.0.11
     nic: eth0
@@ -151,7 +147,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
     ip: 10.0.0.21
     nic: eth0
@@ -161,7 +157,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
     ip: 10.0.0.22
     nic: eth0
@@ -170,8 +166,8 @@ nodes:
     role: gpu-worker
     arch: amd64
     infrastructure-platform: metal
-    hardware-platform: nvidia-gpu-node
-    hardware_capabilities:
+    hardware-platform: intel-generic
+    hardware-capabilities:
       - base-server
       - gpu-nvidia
     ip: 10.0.0.31
@@ -182,7 +178,7 @@ nodes:
     arch: arm64
     infrastructure-platform: metal
     hardware-platform: raspberry-pi-4
-    hardware_capabilities:
+    hardware-capabilities:
       - arm-sbc
     ip: 10.0.0.41
     nic: eth0
@@ -192,7 +188,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
       - kubevirt-networking
     ip: 10.0.0.23
@@ -202,9 +198,10 @@ nodes:
 cluster:
   name: test-cluster
   overlay: test-cluster
-  api_vip: 10.0.0.100
-  gateway_vip: 10.0.0.200
+  vip: 10.0.0.100
   network: 10.0.0.0/24
   gateway: 10.0.0.1
-  ntp_server: 10.0.0.1
+  ntp_servers:
+    - 10.0.0.1
+    - 10.0.0.2
   target_revision: main

@@ -4,6 +4,8 @@ date: 2026-05-27
 date-history:
   - 2026-05-26 initial (proposed)
   - 2026-05-27 accepted
+  - 2026-05-29 amended (realisability-validation note)
+  - 2026-05-30 amended (apps built as catalog; Phase 1/2 superseded)
 deciders:
   - Thomas Krahn
 consulted: []
@@ -303,6 +305,61 @@ PR.
 
 Re-review date: **2027-05-26** (12 months post-decision) or upon
 the next Talos major-version release, whichever is sooner.
+
+### Realisability validation (2026-05-29)
+
+A four-cluster realisability stress-test (homelab, DHQ office,
+seeder, and a vSphere-VM cluster) confirmed the substrate thesis
+this ADR rests on: the `cluster.yaml` **config-axis holds** across
+all four archetypes with zero unavoidable non-parametrisable base
+changes. The control model that held is three-category —
+substrate-invariant settings the base fixes, universal mechanisms
+the base enables for the consumer to select at Day-2, and
+cluster-topology the base deliberately does not know and passes
+through generically. A non-parametrisable base change is the
+failure signal for this model.
+
+The investigation did surface one **implementation-axis** erosion,
+distinct from the config-axis: two provisioning frontends
+(`make` / `argv-print.sh` and `tofu/modules/talos-cluster`)
+re-derived per-node patch composition independently. That erosion
+is addressed by
+[`adr-shared-render-artifact.md`](adr-shared-render-artifact.md),
+not by re-opening this split.
+
+## Amendment 2026-05-30 — apps is the central catalog; Phase 1/2 superseded
+
+The Apps repository (`devobagmbh/talos-platform-apps`) was built
+independently as a **central catalog** ahead of this ADR's Phase 1/2,
+following the platform layer model (`talos-platform-docs` ADR-0009) and
+the policy-stack split (`talos-platform-docs` ADR-0018) — not by the
+`git filter-repo` extraction Phase 2 assumed. Consequently:
+
+- **Phase 1 and Phase 2 are obsolete.** There is no empty repo to seed
+  and no history to extract; apps already exists as a mature,
+  capability-sub-layer architecture with its own tooling, signing, and
+  OCI-per-component distribution.
+- **The boundary is binary and stands**: base = substrate (only `argocd`
+  and `cert-approver`); **everything that is not substrate belongs in the
+  apps catalog**, from which consumer cluster repos serve themselves by
+  referencing exactly the OCI components they need. This is the direction
+  the §Component Classification table intended; the table's per-component
+  routing is superseded by the catalog's own organisation (capability
+  sub-layers, growing to cover the hardware-enablement components — for
+  example `multus-cni`, `node-feature-discovery`, the NVIDIA stack,
+  KubeVirt, Piraeus — that have no catalog entry yet).
+- **PNI is not a movable component.** Per `talos-platform-docs` ADR-0018
+  it resolves into Conftest policies in the apps CI (`policies/platform/`)
+  plus Kyverno admission policies in the consumer clusters — not a
+  base-to-apps component move.
+- **Phase 3 (base ablation) is unchanged in intent** but gated on each
+  non-substrate component having a catalog home or an explicit drop
+  decision, so ablation does not orphan it.
+
+A full base-component-to-disposition mapping was produced 2026-05-30:
+2 stay-substrate, ~5 already re-homed in apps, the remainder are catalog
+entries still to build. The platform-level source of truth for the layer
+model is `talos-platform-docs` ADR-0009.
 
 ## Links
 

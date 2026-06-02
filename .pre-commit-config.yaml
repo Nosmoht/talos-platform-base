@@ -15,6 +15,12 @@ repos:
         files: '^(\.mcp\.json|\.codex/config\.toml)$'
         pass_filenames: false
 
+      - id: shellcheck
+        name: ShellCheck (-S warning) on shell scripts
+        entry: shellcheck -S warning
+        language: system
+        files: '\.sh$'
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.24.3
     hooks:

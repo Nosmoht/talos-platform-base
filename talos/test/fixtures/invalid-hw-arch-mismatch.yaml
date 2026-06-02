@@ -33,7 +33,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: raspberry-pi-4
-    hardware_capabilities:
+    hardware-capabilities:
       - base-server
     ip: 192.0.2.41
     nic: eth0

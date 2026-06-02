@@ -39,7 +39,7 @@ nodes:
     arch: amd64
     infrastructure-platform: metal
     hardware-platform: intel-generic
-    hardware_capabilities:
+    hardware-capabilities:
       - kubevirt-networking
     ip: 10.0.0.21
     nic: eth0

@@ -32,7 +32,7 @@ nodes:
     arch: arm64
     infrastructure-platform: vmware
     hardware-platform: raspberry-pi-4
-    hardware_capabilities:
+    hardware-capabilities:
       - arm-sbc
     ip: 192.0.2.41
     nic: eth0
