@@ -37,6 +37,11 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Both fixes are behavior-preserving; enumeration output is byte-identical.
   Closes #94.
 
+- **`feat(cilium): render script accepts CILIUM_VALUES_OVERLAY + CILIUM_OUTPUT_FILE for Consumer overrides`**
+  — `scripts/render-cilium-bootstrap.sh` gains two optional env vars; Helm `-f`
+  list-replace caveat documented in the script header. Additive only; overlay-unset
+  render is byte-identical. Closes #85.
+
 Next release is the v1.0.0 substrate split per
 [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md).
 
