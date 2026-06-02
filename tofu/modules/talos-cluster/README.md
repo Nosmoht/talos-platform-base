@@ -3,87 +3,118 @@
 Turns a set of PXE-booted Talos **maintenance-mode** nodes into a bootstrapped
 Kubernetes cluster, and returns the admin `kubeconfig` + `talosconfig`.
 
-This is the single Talos provisioning module used by **both** bootstrap stages
-(ADR-0003): the Stage-0 workstation root and the Stage-1 Crossplane
-`tf.Workspace` call it with the identical variable contract. It is
-**backend-agnostic** — it contains no `terraform { backend ... }` block; the
-caller supplies the state backend (ADR-0006: local+encrypted for Stage 0,
-DS720+ Garage S3 for Stage 1).
+This is the substrate base's **only** Talos cluster-lifecycle path (it replaced
+the former `talos/Makefile.lib` + 5-axis `cluster.yaml` generator — see
+[`docs/adr-opentofu-cluster-lifecycle.md`](../../../docs/adr-opentofu-cluster-lifecycle.md)).
+The module is **backend- and caller-agnostic**: it contains no
+`terraform { backend ... }` block. A consumer cluster repo pulls the base as an
+OCI artifact, supplies the `provider "talos"` block + an **encrypted** state
+backend, and calls the module directly with a `tofu apply` from a workstation.
+No higher-level orchestrator is required.
 
 ## Scope
 
 In scope:
 
 - Generate cluster PKI / machine secrets.
-- Render controlplane + worker machine configs (with k8s/Talos version + caller patches).
+- Render controlplane + worker machine configs (k8s/Talos version + caller patches).
+- Resolve a per-class Image-Factory installer image (extensions + architecture + optional SBC overlay).
 - Apply config to each node, bootstrap etcd on the first controlplane.
 - Output `kubeconfig` and `talosconfig`.
 
-Out of scope (handled elsewhere):
+Out of scope (caller / elsewhere):
 
-- Hardware provisioning + PXE boot → `lifecycle/ipxe` + DHCP `next-server`.
-- Cluster identity (node IPs, endpoint, install disk, registry mirrors) → caller via variables/patches.
-- Day-2 platform components (Cilium, ArgoCD, …) → Crossplane Composition steps / ArgoCD.
+- Hardware provisioning + PXE boot (DHCP `next-server`, iPXE).
+- Cluster identity (node IPs, endpoint, NTP, install disk, registry mirrors) → caller via variables/patches.
+- Day-2 platform components (Cilium, ArgoCD, …) → ArgoCD GitOps.
+- **Adopting an already-running cluster** — see the warning below.
 
 Precondition: every node in `var.nodes` is reachable on the Talos API port,
 i.e. already booted into Talos maintenance mode.
 
+> ⚠️ **Already-running cluster (PKI adoption).** This module *generates* fresh
+> `talos_machine_secrets` into Tofu state. Pointing it at a cluster that is
+> **already bootstrapped** (its PKI living elsewhere, e.g. a SOPS `secrets.yaml`
+> from the old Makefile path) would roll new PKI and break the cluster. A safe
+> import/adoption path is **not yet implemented** — it is a tracked follow-up.
+> Today the module is safe for greenfield clusters only. See
+> [`UPGRADING.md`](../../../UPGRADING.md).
+
 ## What's in scope
 
-| Stage | Module-managed |
+| Phase | Module-managed |
 |---|---|
 | Day-1: cluster PKI | `talos_machine_secrets` |
 | Day-1: machine config (per role) | `data.talos_machine_configuration` |
-| Day-1: per-class installer image | `talos_image_factory_extensions_versions` → `talos_image_factory_schematic` → `talos_image_factory_urls` |
-| Day-1: apply config to each node | `talos_machine_configuration_apply` (per-node hostname + install.image patch) |
+| Day-1: per-class installer image | `talos_image_factory_extensions_versions` → `talos_image_factory_schematic` → `talos_image_factory_urls` (per-class `architecture` + optional `overlay`) |
+| Day-1: apply config to each node | `talos_machine_configuration_apply` (hostname + install.image + class + node patches) |
 | Day-1: etcd bootstrap | `talos_machine_bootstrap` (first controlplane only) |
 | Day-1: kubeconfig + talosconfig | `talos_cluster_kubeconfig` + `data.talos_client_configuration` |
-| **Day-2: Talos OS upgrade** | Bumping `talos_version` re-renders machine configs AND the per-class installer image from the Image Factory; `talos_machine_configuration_apply` rolls them out. |
-| **Day-2: Extension changes** | Edit `extensions` map → schematic ID changes → installer image URL changes → `machine_configuration_apply` re-rolls nodes of the affected class. |
+| **Day-2: Talos OS upgrade** | Bumping `talos_install_version` re-renders the per-class installer image; `talos_machine_configuration_apply` rolls it out. |
+| **Day-2: class changes** | Edit `classes` (extensions/overlay/patches) → schematic ID + installer URL change → `machine_configuration_apply` re-rolls nodes of that class. |
 
-Most of the declarative lifecycle is in scope: one `tofu apply` reconciles
-Talos version, system extensions and config patches. **One Day-2 op stays
-out-of-band**: Kubernetes version upgrades. The `siderolabs/talos` provider
-does not ship a `talos_cluster_kubernetes_upgrade` resource yet, so K8s
-bumps are run with `talosctl upgrade-k8s --to <version>` against the
-cluster. Bumping `kubernetes_version` in `cluster.yaml` keeps the
-machine-config in sync; the actual rolling upgrade is the talosctl command.
-This is a tracked follow-up for when the provider exposes the upgrade as
-a resource.
+**One Day-2 op stays out-of-band**: Kubernetes version upgrades. The
+`siderolabs/talos` provider ships no `talos_cluster_kubernetes_upgrade`
+resource, so K8s bumps run with `talosctl upgrade-k8s --to <version>` against
+the cluster. Bumping `kubernetes_version` keeps the machine-config in sync; the
+rolling upgrade is the talosctl command. Tracked follow-up for when the provider
+exposes it as a resource.
+
+## Node roles vs classes
+
+Kubernetes node **roles** are ONLY `controlplane` and `worker`. Hardware
+specialisation — GPU, single-board-computer, storage — is **not** a role. It is
+expressed via a node's **`class`**, which selects an Image-Factory + patch
+profile from `var.classes`. This is what makes a heterogeneous, multi-arch
+cluster (amd64 servers + an arm64 Raspberry Pi worker) expressible in one apply.
 
 ## Usage
 
 ```hcl
-module "dhq" {
-  source = "git::https://github.com/Nosmoht/talos-platform-base.git//tofu/modules/talos-cluster?ref=v0.5.0"
+module "homelab" {
+  source = "git::https://github.com/Nosmoht/talos-platform-base.git//tofu/modules/talos-cluster?ref=<tag>"
 
-  cluster_name       = "dhq"
-  talos_version      = "v1.13.0"
-  kubernetes_version = "v1.36.0"
-  cluster_endpoint   = "https://dhq.devoba.de:6443"
+  cluster_name       = "homelab"
+  talos_version      = "v1.12.6"
+  kubernetes_version = "v1.35.0"
+  cluster_endpoint   = "https://api.example:6443"
 
   nodes = [
-    { hostname = "dhq-cp-1", ip = "10.0.10.11", role = "controlplane", class = "standard" },
-    { hostname = "dhq-w-1",  ip = "10.0.10.21", role = "worker",       class = "standard" },
-    { hostname = "dhq-gpu-1", ip = "10.0.10.31", role = "worker",      class = "gpu" },
+    { hostname = "node-cp-1", ip = "192.0.2.11", role = "controlplane", class = "standard" },
+    { hostname = "node-w-1", ip = "192.0.2.21", role = "worker", class = "kubevirt" },
+    { hostname = "node-gpu-1", ip = "192.0.2.31", role = "worker", class = "gpu",
+      config_patches = [file("${path.module}/patches/gpu-nic.yaml")] }, # per-node NIC binding
+    { hostname = "node-pi-1", ip = "192.0.2.41", role = "worker", class = "pi" }, # arm64
   ]
 
-  # Image-Factory extensions per node class. Empty list = default installer.
-  extensions = {
-    standard = ["siderolabs/qemu-guest-agent"]
-    gpu      = ["siderolabs/nvidia-container-toolkit", "siderolabs/nonfree-kmod-nvidia"]
-    pi       = []
+  classes = {
+    standard = { architecture = "amd64", extensions = ["siderolabs/drbd"] }
+    kubevirt = {
+      architecture   = "amd64"
+      extensions     = ["siderolabs/drbd"]
+      config_patches = [file("${path.module}/patches/kubevirt.yaml")] # whole class
+    }
+    gpu = {
+      architecture = "amd64"
+      extensions   = ["siderolabs/drbd", "siderolabs/nvidia-container-toolkit-lts"]
+    }
+    pi = {
+      architecture = "arm64"
+      extensions   = []
+      overlay      = { name = "rpi_generic", image = "siderolabs/sbc-raspberrypi" }
+    }
   }
 
-  # Cluster-specific machine-config patches (install disk, registry mirrors, …)
-  config_patches = [
-    file("${path.module}/patches/install-disk.yaml"),
-  ]
+  # Cluster-wide patches the caller owns (NTP, registry mirrors, install disk).
+  config_patches = [file("${path.module}/patches/cluster-common.yaml")]
 }
 ```
 
-The caller is responsible for the `provider "talos" {}` block and the backend
-configuration. Example Stage-0 root `versions.tf`:
+A runnable-shaped `tofu validate` fixture covering this exact topology lives in
+[`examples/homelab/`](examples/homelab).
+
+The caller owns the `provider "talos" {}` block and the (encrypted) backend.
+Example root `versions.tf`:
 
 ```hcl
 terraform {
@@ -91,7 +122,7 @@ terraform {
   required_providers {
     talos = { source = "siderolabs/talos", version = ">= 0.7.0, < 1.0.0" }
   }
-  # Stage 0: local + encrypted (ADR-0006). Stage 1 supplies an s3 backend instead.
+  # State holds machine_secrets — the backend MUST be encrypted.
   encryption {
     key_provider "pbkdf2" "k" { passphrase = var.tf_encryption_passphrase }
     method "aes_gcm" "m" { keys = key_provider.pbkdf2.k }
@@ -107,15 +138,19 @@ provider "talos" {}
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `cluster_name` | string | — | RFC-1123 label, used in PKI CNs |
-| `talos_version` | string | — | **Schema-pin**, v-prefixed semver (e.g. `v1.13.0`). Fixed at bootstrap; do NOT change. Drives `talos_machine_secrets` and `data.talos_machine_configuration`. |
-| `talos_install_version` | string | `""` | **OS-version pin** — what's actually installed on the nodes. Defaults to `talos_version`. Bump for OS upgrades; `task talos:upgrade:cluster` reads it from tfplan JSON and runs `talosctl upgrade` per node. |
-| `kubernetes_version` | string | — | v-prefixed semver, e.g. `v1.36.0`. Bump triggers out-of-band `talosctl upgrade-k8s` (taskfile). |
+| `talos_version` | string | — | **Schema-pin**, v-prefixed semver. Fixed at bootstrap; do NOT change. Drives `talos_machine_secrets` and `data.talos_machine_configuration`. |
+| `talos_install_version` | string | `""` | **OS-version pin** — what's installed on the nodes. Defaults to `talos_version`. Bump for OS upgrades. |
+| `kubernetes_version` | string | — | v-prefixed semver. Bump triggers out-of-band `talosctl upgrade-k8s`. |
 | `cluster_endpoint` | string | — | `https://…:6443` API endpoint / VIP |
-| `nodes` | list(object) | — | `{hostname, ip, role, class?}`; role ∈ {controlplane, worker}; class defaults to `"standard"` and must exist in `extensions` |
-| `extensions` | map(list(string)) | `{ standard = [], gpu = [], pi = [] }` | Image-Factory system extensions per node class. Empty list = default Talos installer. |
+| `nodes` | list(object) | — | `{hostname, ip, role, class?, config_patches?}`; role ∈ {controlplane, worker}; `class` defaults to `"standard"` and must be a key in `classes`; `config_patches` are per-node (highest precedence). |
+| `classes` | map(object) | `{ standard = { architecture = "amd64" } }` | Per-class profile: `{architecture("amd64"\|"arm64"), extensions, overlay?, config_patches}`. The `"standard"` class is mandatory. |
 | `config_patches` | list(string) | `[]` | machine-config patches applied to all nodes |
 | `controlplane_config_patches` | list(string) | `[]` | patches for controlplane nodes only |
 | `worker_config_patches` | list(string) | `[]` | patches for worker nodes only |
+
+**Patch precedence** (later overrides earlier): all-nodes (`config_patches`) →
+role (`controlplane`/`worker_config_patches`) → module hostname/install.image →
+class (`classes[class].config_patches`) → node (`node.config_patches`).
 
 ## Outputs
 
@@ -126,37 +161,39 @@ provider "talos" {}
 | `client_configuration` | yes | Talos client cert bundle for chaining |
 | `cluster_endpoint` | no | echoed API endpoint |
 | `controlplane_ips` | no | controlplane node IPs |
-| `schematic_ids` | no | Image-Factory schematic ID per node class (audit + upgrade-task input via tfplan JSON) |
-| `installer_images` | no | resolved `metal-installer` image URL per node class |
-| `talos_install_version` | no | effective installer version (= `talos_install_version` or `talos_version` if unset) |
+| `schematic_ids` | no | Image-Factory schematic ID per class |
+| `installer_images` | no | resolved `metal-installer` image URL per class |
+| `talos_install_version` | no | effective installer version |
 
-## Versions: schema-pin vs install-pin (Day-2-Pattern)
+## Versions: schema-pin vs install-pin (Day-2 pattern)
 
-Inspired by `KPS/k8s.platform`. Two distinct versions:
+Two distinct versions:
 
-- **`talos_version`** — the **machine-config schema** the cluster was bootstrapped against. Fixed for the lifetime of the cluster. Drives `talos_machine_secrets.talos_version`, `data.talos_machine_configuration.talos_version`.
-- **`talos_install_version`** — the **installer-image tag** rendered into `machine.install.image` and into the Image-Factory installer URL. This is what's actually running on the nodes. Bump it to roll an OS upgrade.
+- **`talos_version`** — the **machine-config schema** the cluster was
+  bootstrapped against. Fixed for the lifetime of the cluster.
+- **`talos_install_version`** — the **installer-image tag** rendered into
+  `machine.install.image` and the Image-Factory installer URL. What's actually
+  running. Bump it to roll an OS upgrade.
 
-For OS upgrades, the consumer-side workflow is:
-
-1. Bump `cluster.yaml.talos.install_version` (e.g. `v1.13.0` → `v1.13.1`).
-2. `tofu plan -out tfplan.bin && tofu show -json tfplan.bin > tfplan.json` — the new installer image URL and `schematic_id` per class flow through.
-3. `task talos:upgrade:cluster` (consumer Taskfile) reads `tfplan.json`, iterates over the nodes, checks `talosctl version` against `tfplan.json:.variables.talos_install_version.value`, and runs `talosctl upgrade --image factory.talos.dev/installer/<schematic>:<version>` idempotently per node.
-4. `tofu apply` afterwards updates the machine-config in state.
-
-For Kubernetes upgrades, analogous: bump `cluster.yaml.kubernetes.version`, `task talos:upgrade:k8s` reads it from tfplan-JSON and runs `talosctl upgrade-k8s --to <version>` idempotently.
-
-Tofu owns the declarative state (versions, schematics, machine-config); the consumer Taskfile owns the imperative talosctl execution. Both are driven by the same tfplan-JSON, so there's a single source of truth.
+For an OS upgrade: bump `talos_install_version`, `tofu plan -out tfplan.bin &&
+tofu show -json tfplan.bin > tfplan.json` (new installer URL + `schematic_id`
+per class flow through), then a consumer Taskfile target reads `tfplan.json` and
+runs `talosctl upgrade --image …:<version>` idempotently per node, and finally
+`tofu apply` updates state. Tofu owns the declarative state; the consumer
+Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
 
 ## Notes
 
 - etcd is bootstrapped on the **first** controlplane in `nodes` only; input
   order is significant and preserved.
-- The only node-specific config the module injects is the hostname patch.
-  Everything cluster-specific comes from the caller's patches.
+- Per-node module-injected config is the hostname + class installer image.
+  Everything else cluster-specific comes from the caller's patches.
+- The installer image is always `metal-installer` (NEVER
+  `metal-installer-secureboot`, per the base `AGENTS.md` Hard Constraint). ARM
+  SBC classes use `architecture = "arm64"` + an `overlay`; the platform stays
+  `metal`.
 
-## Related ADRs
+## Related
 
-- [ADR-0003 — Bootstrap Staging](https://github.com/devobagmbh/talos-platform-docs/blob/main/adr/0003-bootstrap-staging.md)
-- [ADR-0006 — TF-State Management](https://github.com/devobagmbh/talos-platform-docs/blob/main/adr/0006-tf-state-management.md)
-- [ADR-0004 — Cluster-Lifecycle-Tooling](https://github.com/devobagmbh/talos-platform-docs/blob/main/adr/0004-cluster-lifecycle-tooling.md)
+- [`docs/adr-opentofu-cluster-lifecycle.md`](../../../docs/adr-opentofu-cluster-lifecycle.md) — why OpenTofu replaced the Makefile/5-axis path, and the consequences.
+- [`Taskfile.yml`](../../../Taskfile.yml) — `task ci` validates this module (fmt-check + validate + lint).
