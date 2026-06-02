@@ -108,6 +108,17 @@ data "talos_image_factory_urls" "per_class" {
   schematic_id  = talos_image_factory_schematic.per_class[each.key].id
   platform      = "metal"
   architecture  = each.value.architecture
+
+  # `tofu validate` does not resolve this data source, so an arch/overlay/
+  # extension combination the Image Factory does not produce a metal installer
+  # for (notably an arm64 SBC schematic) would otherwise surface as a silent
+  # empty `machine.install.image`. Fail at PLAN time with a clear message.
+  lifecycle {
+    postcondition {
+      condition     = self.urls.installer != ""
+      error_message = "Image Factory returned no metal installer URL for class '${each.key}' (architecture ${each.value.architecture}). Check the schematic extensions / SBC overlay coordinates."
+    }
+  }
 }
 
 # Cluster PKI + shared secrets. Generated once and stored in Tofu state — so
@@ -149,10 +160,14 @@ data "talos_machine_configuration" "worker" {
 #     hostname + install.image, then class patches, then node patches.
 # NOTE: class/node patches run AFTER the module's install.image patch, so a
 # caller patch CAN override machine.install.image. The module selecting
-# urls.installer (never urls.installer_secureboot) guarantees the MODULE never
-# emits a SecureBoot installer; preventing a caller patch from injecting one is
-# the job of the hard-constraints-check CI grep over tofu/** (AGENTS.md
-# §Hard Constraints / §Tool-Agnostic Safety Invariants).
+# urls.installer (never urls.installer_secureboot) guarantees the MODULE itself
+# never emits a SecureBoot installer. Caller-supplied patch CONTENT is the
+# caller's responsibility: within this base repo, a SecureBoot installer string
+# in any tofu/** file is caught by hard-constraints-check; a CONSUMER's own root
+# and patch files live outside this repo's gate, and enforcing no-SecureBoot
+# (incl. schematic-level secureboot toggles the URL grep cannot see) there is the
+# consumer overlay's job — same substrate-only boundary as AGENTS.md
+# §"Out of scope for the base".
 resource "talos_machine_configuration_apply" "this" {
   for_each = local.nodes_by_hostname
 

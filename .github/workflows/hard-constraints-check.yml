@@ -72,7 +72,7 @@ jobs:
             #   - legacy cluster.yaml template:  metal-installer-secureboot / metal-secureboot
             #   - Image-Factory / talos-provider URL form: installer-secureboot
             #     (factory.talos.dev/installer-secureboot/<schematic>:<ver>)
-            if grep -lE '(metal-secureboot|installer-secureboot)' "$f" >/dev/null 2>&1; then
+            if grep -liE '(metal-secureboot|installer-secureboot)' "$f" >/dev/null 2>&1; then
               MATCHES="${MATCHES}${f}"$'\n'
             fi
           done <<<"$CHANGED_TALOS"

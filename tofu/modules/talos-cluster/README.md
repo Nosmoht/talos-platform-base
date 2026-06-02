@@ -154,9 +154,12 @@ role (`controlplane`/`worker_config_patches`). *Apply pass* (strategic-merge
 overlay, later wins): module hostname + install.image, then class
 (`classes[class].config_patches`), then node (`node.config_patches`). A
 class/node patch in the apply pass can override `machine.install.image` — the
-module always selects the non-secureboot `urls.installer`, and the base's
-`hard-constraints-check` CI gate (scanning `tofu/**`) backstops against a caller
-injecting a SecureBoot image via a patch string.
+module always selects the non-secureboot `urls.installer`, so the module itself
+never emits a SecureBoot installer. Patch *content* is the caller's
+responsibility: a SecureBoot string in this repo's `tofu/**` is caught by
+`hard-constraints-check`, but a consumer's own root/patch files (and
+schematic-level secureboot toggles the URL grep cannot see) are outside the base
+gate — enforcing the constraint there is the consumer overlay's job.
 
 ## Outputs
 

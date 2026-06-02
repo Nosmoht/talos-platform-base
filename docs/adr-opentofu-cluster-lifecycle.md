@@ -69,8 +69,11 @@ passes: a generation pass (all-nodes, role — baked into the machine config) an
 an apply-overlay pass (module install.image, class, node — later wins). devbox
 pins the toolchain (OpenTofu, tflint, go-task, …) and a `Taskfile.yml` exposes
 `fmt` / `validate` / `lint` / `ci`. The module selects the non-secureboot
-`urls.installer`; the `hard-constraints-check` CI gate (scanning `tofu/**`)
-backstops the no-SecureBoot constraint against caller patch strings.
+`urls.installer` (so the module never emits a SecureBoot installer); the
+`hard-constraints-check` CI gate scans this repo's `tofu/**`. Enforcing
+no-SecureBoot in consumer-supplied root/patch files (and schematic-level
+secureboot toggles) is the consumer overlay's responsibility — the same
+substrate-only boundary the base applies to PNI instance enforcement.
 
 ### Consequences
 
