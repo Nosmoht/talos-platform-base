@@ -54,7 +54,7 @@ check "node_class_defined" {
 # metal-installer URL at the class's architecture. Empty extension lists yield
 # the default Talos installer (no system extensions) for that class.
 #
-# Hard Constraint (base AGENTS.md): never use metal-installer-secureboot.
+# Hard Constraint (base AGENTS.md): never use the SecureBoot installer image.
 # secure_boot defaults to false in talos_image_factory_urls — we keep it that
 # way. ARM single-board computers (e.g. Raspberry Pi) use architecture =
 # "arm64" plus an overlay; the platform stays "metal".
@@ -189,7 +189,7 @@ resource "talos_machine_configuration_apply" "this" {
           install = {
             # Explicitly the NON-secureboot installer URL — `urls.installer`,
             # never `urls.installer_secureboot`. This is the code-level Hard
-            # Constraint enforcement (AGENTS.md: no metal-installer-secureboot);
+            # Constraint enforcement (AGENTS.md: no SecureBoot installer image);
             # the module cannot emit a SecureBoot installer through this path.
             image = data.talos_image_factory_urls.per_class[each.value.class].urls.installer
           }

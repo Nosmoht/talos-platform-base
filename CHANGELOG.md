@@ -15,7 +15,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hardware specialisation is a per-node `class` selecting an Image-Factory +
   patch profile (`architecture` incl. arm64/SBC `overlay`, `extensions`,
   `config_patches`); per-node `config_patches` carry genuinely per-node values
-  (e.g. NIC binding). `cluster.yaml` is slimmed to the ArgoCD-bootstrap identity
+  (for example, NIC binding). `cluster.yaml` is slimmed to the ArgoCD-bootstrap identity
   (`cluster.{name,overlay,target_revision}` + `repo.url`); Talos node/class
   definitions move to the consumer's OpenTofu root. Local tooling is pinned via
   devbox; `task ci` (fmt-check + validate + lint) is the validation entrypoint

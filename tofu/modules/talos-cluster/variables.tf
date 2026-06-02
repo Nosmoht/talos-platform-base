@@ -137,8 +137,8 @@ variable "classes" {
       - config_patches: machine-config patches applied to EVERY node of this
         class, on top of the all-nodes (var.config_patches) and role patches.
 
-    The installer image is always metal-installer (NEVER
-    metal-installer-secureboot, per the base AGENTS.md Hard Constraint).
+    The installer image is always the non-SecureBoot metal installer (NEVER
+    the SecureBoot variant, per the base AGENTS.md Hard Constraint).
   EOT
   type = map(object({
     architecture = optional(string, "amd64")
