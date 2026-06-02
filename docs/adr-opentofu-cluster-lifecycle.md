@@ -34,6 +34,11 @@ declaratively (machine secrets, machine config, Image-Factory schematics,
 config apply, etcd bootstrap, kubeconfig) what the bespoke scripts did
 imperatively.
 
+The generalised rationale behind this reversal — the recurring anti-pattern of
+re-implementing a maintained declarative tool as bespoke base-local imperative
+infrastructure, and a recognition checklist to catch it elsewhere — is recorded
+in #99. This ADR is the concrete decision; #99 is the pattern it instantiates.
+
 ## Decision Drivers
 
 - Kubernetes node roles are only `controlplane` and `worker`; hardware
@@ -141,6 +146,7 @@ substrate-only boundary the base applies to PNI instance enforcement.
 
 ## Links
 
+- #99 — the generalised pattern this ADR instantiates (prefer maintained declarative tooling over bespoke imperative reinvention).
 - PR #82 (reopened) — the implementation.
 - [adr-substrate-only-base.md](adr-substrate-only-base.md) — the substrate-only boundary this module respects.
 - [tofu/modules/talos-cluster/README.md](../tofu/modules/talos-cluster/README.md) — module contract.
