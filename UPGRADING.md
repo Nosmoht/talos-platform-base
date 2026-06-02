@@ -151,6 +151,12 @@ behaviour. No spec change.
 
 ## `v0.6.0` (forthcoming) — 5-axis cutover (MAJOR / breaking)
 
+> **Superseded by the OpenTofu cluster-lifecycle cutover** (see the section
+> below). The 5-axis `cluster.yaml` schema this checklist migrates *to* has
+> itself been removed — the entire `talos/Makefile.lib` + 5-axis generator is
+> gone. This section is retained for historical context only; consumers
+> migrate per the OpenTofu cutover instead.
+
 **Type:** MAJOR. Every consumer `cluster.yaml` needs migration plus,
 for live clusters, two ClusterPolicy renames.
 **Breaking?** yes — coordinated package of seven `cluster.yaml`-level
@@ -407,6 +413,58 @@ Consumers who reference `platform-network-interface/**` paths from
 this repo will need to re-source from `talos-platform-apps` at the
 v1.0.0 cut. The v0.6.0 PNI cleanup is forward-compatible with that
 move — the renamed `-enforce` ClusterPolicies travel as-is.
+
+---
+
+## (next MAJOR) — OpenTofu cluster-lifecycle cutover (MAJOR / breaking)
+
+**Type:** MAJOR. The Talos cluster lifecycle moves from the removed
+`talos/Makefile.lib` + 5-axis `cluster.yaml` generator to the OpenTofu module
+`tofu/modules/talos-cluster`. Rationale + consequences:
+[`docs/adr-opentofu-cluster-lifecycle.md`](docs/adr-opentofu-cluster-lifecycle.md).
+
+**Breaking?** Yes. Consumers stop generating Talos configs with
+`make -C talos gen-configs` and instead author an OpenTofu root that calls the
+module.
+
+### Migration checklist
+
+1. **Stop vendoring the `talos/` make path.** It no longer exists in the base.
+   `make -C talos gen-configs`, `argv-print.sh`, `validate-schematics.sh`,
+   `Makefile.lib`, and the 5-axis `cluster.schema.json` are gone.
+2. **Slim your `cluster.yaml`.** Keep only the ArgoCD-bootstrap identity:
+   `cluster.{name,overlay,target_revision}` and `repo.url`. Remove the Talos
+   sections (`roles`, `architectures`, `infrastructure-platforms`,
+   `hardware-platforms`, `hardware-capabilities`, `nodes`, `cluster.vip`,
+   `cluster.ntp_servers`, `kubeconfig`). `make argocd-bootstrap` still reads the
+   slim file.
+3. **Author an OpenTofu root** in your consumer repo that calls the module:
+
+   ```hcl
+   module "cluster" {
+     source = "git::https://github.com/Nosmoht/talos-platform-base.git//tofu/modules/talos-cluster?ref=<tag>"
+     # cluster_name / talos_version / kubernetes_version / cluster_endpoint
+     # nodes = [{ hostname, ip, role, class, config_patches? }, ...]
+     # classes = { standard = { architecture, extensions, overlay?, config_patches } , ... }
+     # config_patches = [...]  # NTP, registry mirrors, install disk
+   }
+   ```
+
+   Map your old `cluster.yaml` axes onto module inputs: per-node `role` →
+   `controlplane`/`worker` only; GPU/Pi/storage specialisations → a node
+   `class`; extension sets → `classes[class].extensions`; ARM/Pi → `class`
+   with `architecture = "arm64"` + an `overlay`; capability/kubevirt patches →
+   `classes[class].config_patches`; per-node NIC → `node.config_patches`; NTP
+   (formerly `cluster.ntp_servers`) → a `config_patches` entry. The
+   [`examples/homelab/`](tofu/modules/talos-cluster/examples/homelab) fixture is
+   a full mixed amd64+arm64 worked example.
+4. **Supply provider + encrypted backend** in your root (state holds
+   `machine_secrets`). See the module README for an example `versions.tf`.
+5. **Validate**: `task ci` (or `tofu fmt -check` + `tofu validate` + `tflint`).
+6. **⚠️ Already-running cluster?** The module *generates* fresh PKI. A safe
+   import/adopt path (no re-bootstrap) is **not yet implemented** — tracked
+   separately. Do NOT point `tofu apply` at a live cluster until that lands;
+   the module is greenfield-safe today.
 
 ---
 

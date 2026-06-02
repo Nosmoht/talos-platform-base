@@ -81,13 +81,15 @@ agent-context loading and links back here for the full definition.
 ## Talos & node lifecycle
 
 - **Schematic** — Talos Image Factory spec embedding system extensions
-  into an installer image. Consumer-repo input lives in
-  `talos/talos-factory-schematic*.yaml`; base-side schematic IDs are
-  recorded in `talos/*.schematic-ids.mk`.
+  (and an optional SBC board overlay) into an installer image. Derived per
+  node `class` by the `tofu/modules/talos-cluster` module from the class
+  `extensions` + `overlay` + `architecture`; resolved schematic IDs are
+  exposed via the module's `schematic_ids` output.
 
 - **DRBD** — Distributed Replicated Block Device. LINSTOR's replication
-  layer for persistent storage. Configured per-node via the `drbd.yaml`
-  Talos patch.
+  layer for persistent storage. Provisioned as a Talos system extension on
+  the relevant node `class` (e.g. `siderolabs/drbd` in
+  `classes[*].extensions`).
 
 ## Two-layer capability vocabulary (proposed)
 

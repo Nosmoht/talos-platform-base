@@ -70,8 +70,9 @@ mechanism**:
 Talos ships an immutable Linux node image with a bundled Kubernetes
 control plane. Two artifacts in this repo participate in Layer 1:
 
-1. **Talos machine-config patches** (`talos/patches/`). These define
-   kubelet args, kernel cmdline, install disk, and similar host-level
+1. **Talos machine-config patches** (the consumer's `tofu/modules/talos-cluster`
+   call — `config_patches` plus per-class/per-node `config_patches`). These
+   define kubelet args, kernel cmdline, install disk, and similar host-level
    inputs. They never touch Kubernetes resources directly.
 
 2. **Cilium bootstrap manifest** (`kubernetes/bootstrap/cilium/`).
@@ -188,16 +189,15 @@ repo has vendored it (`vendor/base/`) and runs the targets in the
 context of its own cluster.
 
 ```bash
-# Layer 1 — Talos
-make -C talos gen-secrets ENV=cluster.yaml          # PKI + cluster identity
-make -C talos cilium-bootstrap                       # render bootstrap/cilium/cilium.yaml
-make -C talos gen-configs ENV=cluster.yaml           # per-node machine configs
-make -C talos apply-all                              # talosctl apply-config to every node
-make -C talos bootstrap                              # talosctl bootstrap (etcd leader election)
-talosctl kubeconfig                                  # fetch kubeconfig
+# Layer 1 — Talos (OpenTofu cluster-lifecycle module; run from the consumer's
+# OpenTofu root that calls tofu/modules/talos-cluster — see the module README)
+tofu init                                            # provider + encrypted backend
+tofu apply                                           # PKI, per-class installer, config apply, etcd bootstrap
+tofu output -raw kubeconfig   > kubeconfig           # admin kubeconfig
+tofu output -raw talosconfig  > talosconfig          # talosctl client config
 
 # Layer 2 — ArgoCD self-bootstrap (one-time)
-make argocd-bootstrap ENV=cluster.yaml               # the five kubectl-apply/helm invocations above
+make argocd-bootstrap ENV=cluster.yaml               # reads the slim cluster.yaml bootstrap identity
 make argocd-password                                 # initial admin password (rotate after first login)
 
 # Layer 3 — wait, then git push

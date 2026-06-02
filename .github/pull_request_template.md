@@ -60,8 +60,8 @@ These run automatically; PR is blocked until all are green.
 
 ## Consumer impact
 
-If this PR changes a public interface (schema, Makefile.lib API, CLI argv,
-release notes shape, OCI tarball contents):
+If this PR changes a public interface (OpenTofu module variables/outputs,
+Helm-value defaults, release notes shape, OCI tarball contents):
 
 - [ ] Each known v0.5.x consumer named below with per-PR impact
   (cross-checked against `talos-orchestrator/DEPENDENCIES.md`

@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded
+superseded-by: docs/adr-opentofu-cluster-lifecycle.md
 date: 2026-05-29
 date-history:
   - 2026-05-29 initial (accepted; base-side renderer merged in PR #87)
+  - 2026-06-02 superseded (OpenTofu cutover removed the make/argv-print frontend)
 deciders:
   - Thomas Krahn
 consulted: []
@@ -11,7 +13,16 @@ supersedes: []
 related:
   - docs/adr-substrate-only-base.md
   - docs/adr-multi-repo-platform-split.md
+  - docs/adr-opentofu-cluster-lifecycle.md
 ---
+
+> **Superseded (2026-06-02).** This ADR's premise was *two* per-node config
+> frontends (`make`/`argv-print.sh` and the OpenTofu provider) needing a shared
+> render artifact. The OpenTofu cutover
+> ([`adr-opentofu-cluster-lifecycle.md`](adr-opentofu-cluster-lifecycle.md))
+> removed the `make`/argv-print frontend entirely, so only one renderer (the
+> provider) remains and no cross-frontend bridge is needed. Retained for
+> historical context.
 
 # ADR: Shared Render Artifact as the Cross-Frontend Source of Truth for Per-Node Talos Config
 

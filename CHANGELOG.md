@@ -5,20 +5,35 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
+### Changed — BREAKING
 
-- **`talos/scripts/argv-print.sh` `EMIT=content` mode** — the per-node Talos
-  config renderer can now emit a JSON object
-  `{node, machine_type, config_patches:[yaml,...]}` of the resolved per-node
-  patch contents (in merge order) instead of the default `EMIT=argv`
-  talosctl-argv output. This lets a non-CLI frontend — for example, the Terraform talos
-  provider's `data.talos_machine_configuration.config_patches` — consume the
-  same 5-axis composition the `make` path uses, so a Crossplane/OpenTofu-provisioned
-  cluster gets the same patch substance as a `make`-provisioned one (one source
-  of truth, two frontends). `EMIT=argv` (default) is unchanged and bit-identical.
-  New regression gate `make -f talos/Makefile.lib test-content-mode`.
-  Decision recorded in
-  [`docs/adr-shared-render-artifact.md`](docs/adr-shared-render-artifact.md).
+- **OpenTofu module is the sole Talos cluster-lifecycle path.** The entire
+  `talos/Makefile.lib` + `argv-print.sh` + 5-axis `cluster.yaml` generator is
+  removed and replaced by the `tofu/modules/talos-cluster` OpenTofu module
+  (machine secrets → per-class Image-Factory installer → machine config → apply
+  → bootstrap → kubeconfig). Node roles are `controlplane`/`worker` only;
+  hardware specialisation is a per-node `class` selecting an Image-Factory +
+  patch profile (`architecture` incl. arm64/SBC `overlay`, `extensions`,
+  `config_patches`); per-node `config_patches` carry genuinely per-node values
+  (e.g. NIC binding). `cluster.yaml` is slimmed to the ArgoCD-bootstrap identity
+  (`cluster.{name,overlay,target_revision}` + `repo.url`); Talos node/class
+  definitions move to the consumer's OpenTofu root. Local tooling is pinned via
+  devbox; `task ci` (fmt-check + validate + lint) is the validation entrypoint
+  and a new `tofu-validate` CI workflow enforces it. Decision + consequences:
+  [`docs/adr-opentofu-cluster-lifecycle.md`](docs/adr-opentofu-cluster-lifecycle.md).
+  **Migration:** see [`UPGRADING.md`](UPGRADING.md). Adopting an already-running
+  cluster (PKI import, no re-bootstrap) is a tracked follow-up — the module is
+  greenfield-safe today.
+
+### Removed
+
+- `talos/` in full (`Makefile.lib`, `scripts/*`, `patches/*`, `schemas/`,
+  `test/`, `versions.mk`, RELEASE-NOTES-v0.5.x/v0.6.0, `AGENTS.md`), the
+  `.github/workflows/role-patches-canonical.yml` workflow, and the 5-axis
+  sections of `cluster.yaml`. The `EMIT=content` shared-render-artifact work
+  (`adr-shared-render-artifact.md`) is superseded — the OpenTofu provider
+  renders machine config directly, so the cross-frontend render bridge is no
+  longer needed.
 
 - **`feat(oci): ship Cilium recipe + inputs in OCI artifact (symmetric to
   Talos)`** — the OCI tarball now also carries

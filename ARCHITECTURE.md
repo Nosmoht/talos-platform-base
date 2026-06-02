@@ -95,7 +95,7 @@ two-layer split:
 - **Layer C — Hardware Features Registry** (`docs/platform-hardware-features.yaml`):
   the catalogue of atomic hardware predicates that Layer A entries declare
   via `requires_hardware_features[]` and that consumer-side composite
-  capabilities (in `cluster.yaml`) declare via `requires_features[]`.
+  capabilities declare via `requires_features[]`.
 
 All three layers share the same identifier discipline; only Layer B drives
 Kyverno + Cilium at runtime. The superseded
@@ -151,7 +151,7 @@ flowchart LR
     Make[Makefile<br/>validate-gitops<br/>validate-kyverno-policies]
     Boot["kubernetes/bootstrap/<br/>(parameterized templates)"]
     Infra["kubernetes/base/infrastructure/<br/>22 standalone-renderable components<br/>(12 Helm-based, 10 resources-only)"]
-    Talos["talos/<br/>machine-config patches +<br/>cluster.yaml-driven Makefile"]
+    Talos["tofu/modules/talos-cluster/<br/>OpenTofu cluster-lifecycle module<br/>(per-class Image-Factory + bootstrap)"]
     Pol["policies/<br/>conftest Rego"]
     Scripts["scripts/<br/>render + lint helpers"]
     Docs["docs/<br/>ADRs + reference"]
@@ -178,7 +178,7 @@ flowchart LR
 | `kubernetes/base/infrastructure/` | 22 cluster-agnostic Helm-base components, each renderable in isolation | `<comp>/{application,kustomization,namespace,values}.yaml` |
 | `kubernetes/bootstrap/` | parameterized ArgoCD + Cilium bootstrap templates (envsubst) | `argocd/*.tmpl`, `cilium/extras.yaml` |
 | Platform Network Interface (PNI) | capability-first contract — registry, admission policies, CCNPs | `kubernetes/base/infrastructure/platform-network-interface/` |
-| `talos/` | machine-config patches + multi-cluster generation Makefile | `patches/*`, `cluster.yaml.tmpl` |
+| `tofu/modules/talos-cluster/` | OpenTofu cluster-lifecycle module — sole Talos provisioning path (per-class Image-Factory installer, machine config, bootstrap, kubeconfig) | `*.tf`, `examples/homelab/` |
 | `policies/` | conftest Rego — capability sunset, label hygiene | `policies/conftest/*` |
 | Validation pipeline | kustomize render + conftest + kubeconform + Kyverno-CLI | `scripts/`, `Makefile`, `.github/workflows/gitops-validate.yml` |
 | OCI publish | cosign keyless + SLSA attestation + immutable GHCR tag | `.github/workflows/oci-publish.yml` |
