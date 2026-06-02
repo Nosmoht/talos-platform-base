@@ -1,11 +1,10 @@
 # Taskfile for talos-platform-base — OpenTofu module validation.
 # https://taskfile.dev
 #
-# Scope: this Taskfile covers the tofu/ subtree only (the OpenTofu modules
-# added for the Crossplane/Stage-0 cluster-lifecycle work). The existing
-# kustomize/Kyverno/Talos validation lives in the repo Makefile
+# Scope: this Taskfile covers the tofu/ subtree — the OpenTofu cluster-lifecycle
+# module that is now the substrate base's sole Talos provisioning path. The
+# kustomize/Kyverno manifest validation lives in the repo Makefile
 # (`make validate-gitops`, `make validate-kyverno-policies`) and is unchanged.
-# A full Makefile -> go-task migration, if wanted, is a separate decision.
 
 version: '3'
 
@@ -14,7 +13,7 @@ version: '3'
 silent: true
 
 vars:
-  # All OpenTofu modules under tofu/modules/, one dir per module.
+  # Module directories (one per module) — terraform-docs targets these READMEs.
   TOFU_MODULES:
     sh: find tofu/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort
 
@@ -32,19 +31,19 @@ tasks:
     cmd: tofu fmt -check -recursive -diff tofu/
 
   validate:
-    desc: tofu validate per module (init with -backend=false, no state needed)
+    desc: tofu validate per tofu dir (modules + examples; init -backend=false, no state)
     cmd: |
-      shopt -s nullglob
-      for m in {{.TOFU_MODULES}}; do
+      set -e
+      for m in $(find tofu -type f -name '*.tf' -exec dirname {} \; | sort -u); do
         echo "=== validate ${m} ==="
         ( cd "$m" && tofu init -backend=false -input=false >/dev/null && tofu validate )
       done
 
   lint:
-    desc: tflint per module
+    desc: tflint per tofu dir (modules + examples)
     cmd: |
-      shopt -s nullglob
-      for m in {{.TOFU_MODULES}}; do
+      set -e
+      for m in $(find tofu -type f -name '*.tf' -exec dirname {} \; | sort -u); do
         echo "=== tflint ${m} ==="
         ( cd "$m" && tflint --chdir=. )
       done
