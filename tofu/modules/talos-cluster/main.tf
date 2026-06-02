@@ -8,16 +8,20 @@
 #     -> machine_secrets (PKI)
 #       -> machine_configuration (per machine_type, with k8s/talos version + patches)
 #         -> configuration_apply (per node, with hostname + install.image patch)
-#           -> bootstrap (first controlplane only)
+#           -> bootstrap (lowest-hostname controlplane only)
 #             -> kubeconfig + talosconfig
-#               -> cluster_kubernetes_upgrade (Day-2, on kubernetes_version bump)
+# (Day-2 Kubernetes upgrade is OUT-OF-BAND via `talosctl upgrade-k8s` — the
+#  siderolabs/talos provider ships no upgrade resource; see the Day-2 block below.)
 
 locals {
   controlplanes = [for n in var.nodes : n if n.role == "controlplane"]
 
-  # First controlplane is the bootstrap target and the node we pull
-  # kubeconfig/talosconfig from. Deterministic: input order is preserved.
-  first_controlplane = local.controlplanes[0]
+  # Bootstrap target + the node we pull kubeconfig/talosconfig from. Selected by
+  # a STABLE key (lowest controlplane hostname), NOT list order — so reordering
+  # var.nodes after bootstrap cannot move which node is bootstrapped
+  # (talos_machine_bootstrap is pinned to this node's IP).
+  controlplanes_by_hostname = { for n in local.controlplanes : n.hostname => n }
+  first_controlplane        = local.controlplanes_by_hostname[sort(keys(local.controlplanes_by_hostname))[0]]
 
   nodes_by_hostname = { for n in var.nodes : n.hostname => n }
 

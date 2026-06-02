@@ -40,7 +40,9 @@ jobs:
       - name: Install tflint
         uses: terraform-linters/setup-tflint@v4
         with:
-          tflint_version: latest
+          # Pinned to the devbox-locked version (devbox.lock) so CI and local
+          # `task ci` use the same tflint; an unrelated ruleset bump can't turn CI red.
+          tflint_version: v0.61.0
 
       - name: Install go-task
         uses: arduino/setup-task@v2
