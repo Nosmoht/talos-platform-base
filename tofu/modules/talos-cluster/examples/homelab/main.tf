@@ -49,10 +49,13 @@ locals {
 module "homelab" {
   source = "../../"
 
-  cluster_name       = "homelab"
-  talos_version      = "v1.12.6"
-  kubernetes_version = "v1.35.0"
-  cluster_endpoint   = "https://192.0.2.1:6443"
+  cluster_name = "homelab"
+  # Schema-pin fixed at bootstrap; install-pin bumped for an OS upgrade — the two
+  # differ here to exercise the schema-pin-vs-install-pin split.
+  talos_version         = "v1.12.6"
+  talos_install_version = "v1.12.7"
+  kubernetes_version    = "v1.35.0"
+  cluster_endpoint      = "https://192.0.2.1:6443"
 
   nodes = [
     { hostname = "node-cp-1", ip = "192.0.2.11", role = "controlplane", class = "standard" },
@@ -108,6 +111,19 @@ module "homelab" {
       machine = {
         time = {
           servers = ["192.0.2.123"]
+        }
+      }
+    })
+  ]
+
+  # Role tier — applied to controlplane nodes only (exercises the role pass).
+  controlplane_config_patches = [
+    yamlencode({
+      cluster = {
+        apiServer = {
+          extraArgs = {
+            "event-ttl" = "1h0m0s"
+          }
         }
       }
     })

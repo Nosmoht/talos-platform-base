@@ -40,8 +40,8 @@ output "schematic_ids" {
 }
 
 output "installer_images" {
-  description = "Resolved metal-installer image URL per node class. Echoed for tfplan-JSON consumption by `talos:upgrade:cluster` task."
-  value       = { for k, u in data.talos_image_factory_urls.per_class : k => u.installer_image }
+  description = "Resolved (non-secureboot) metal-installer image URL per node class. Echoed for tfplan-JSON consumption by the consumer's `talos:upgrade:cluster` task."
+  value       = { for k, u in data.talos_image_factory_urls.per_class : k => u.urls.installer }
 }
 
 output "talos_install_version" {

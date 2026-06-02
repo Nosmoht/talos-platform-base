@@ -148,9 +148,15 @@ provider "talos" {}
 | `controlplane_config_patches` | list(string) | `[]` | patches for controlplane nodes only |
 | `worker_config_patches` | list(string) | `[]` | patches for worker nodes only |
 
-**Patch precedence** (later overrides earlier): all-nodes (`config_patches`) →
-role (`controlplane`/`worker_config_patches`) → module hostname/install.image →
-class (`classes[class].config_patches`) → node (`node.config_patches`).
+**Patch precedence — two passes.** *Generation pass* (baked into the machine
+config by `data.talos_machine_configuration`): all-nodes (`config_patches`) then
+role (`controlplane`/`worker_config_patches`). *Apply pass* (strategic-merge
+overlay, later wins): module hostname + install.image, then class
+(`classes[class].config_patches`), then node (`node.config_patches`). A
+class/node patch in the apply pass can override `machine.install.image` — the
+module always selects the non-secureboot `urls.installer`, and the base's
+`hard-constraints-check` CI gate (scanning `tofu/**`) backstops against a caller
+injecting a SecureBoot image via a patch string.
 
 ## Outputs
 

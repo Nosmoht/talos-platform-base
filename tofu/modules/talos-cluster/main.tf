@@ -141,14 +141,18 @@ data "talos_machine_configuration" "worker" {
   config_patches     = concat(var.config_patches, var.worker_config_patches)
 }
 
-# Apply the config to each node. Patch precedence (later overrides earlier):
-#   1. machine_configuration_input — all-nodes (var.config_patches) + role
-#      patches, baked in by data.talos_machine_configuration above.
-#   2. module-injected per-node patch: hostname + class-specific install.image.
-#   3. class patches (var.classes[class].config_patches) — every node of the
-#      class (e.g. kubevirt sysctls for a "kubevirt" class, GPU runtime for "gpu").
-#   4. node patches (node.config_patches) — genuinely per-node values such as a
-#      NIC-specific bridge; highest precedence.
+# Apply the config to each node. Patches arrive in TWO passes:
+#   Pass 1 (config generation — data.talos_machine_configuration above): all-nodes
+#     (var.config_patches) then role (controlplane/worker_config_patches) are
+#     baked into the base machine config that becomes machine_configuration_input.
+#   Pass 2 (this apply, strategic-merge overlay, later wins): module
+#     hostname + install.image, then class patches, then node patches.
+# NOTE: class/node patches run AFTER the module's install.image patch, so a
+# caller patch CAN override machine.install.image. The module selecting
+# urls.installer (never urls.installer_secureboot) guarantees the MODULE never
+# emits a SecureBoot installer; preventing a caller patch from injecting one is
+# the job of the hard-constraints-check CI grep over tofu/** (AGENTS.md
+# §Hard Constraints / §Tool-Agnostic Safety Invariants).
 resource "talos_machine_configuration_apply" "this" {
   for_each = local.nodes_by_hostname
 
@@ -168,7 +172,11 @@ resource "talos_machine_configuration_apply" "this" {
             hostname = each.value.hostname
           }
           install = {
-            image = data.talos_image_factory_urls.per_class[each.value.class].installer_image
+            # Explicitly the NON-secureboot installer URL — `urls.installer`,
+            # never `urls.installer_secureboot`. This is the code-level Hard
+            # Constraint enforcement (AGENTS.md: no metal-installer-secureboot);
+            # the module cannot emit a SecureBoot installer through this path.
+            image = data.talos_image_factory_urls.per_class[each.value.class].urls.installer
           }
         }
       })

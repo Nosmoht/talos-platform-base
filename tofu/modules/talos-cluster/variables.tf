@@ -103,6 +103,19 @@ variable "nodes" {
     condition     = alltrue([for n in var.nodes : contains(["controlplane", "worker"], n.role)])
     error_message = "Each node.role must be either \"controlplane\" or \"worker\"."
   }
+
+  # Hostnames key the per-node apply resource; duplicates would silently collapse
+  # a node out of the apply set. IPs target talosctl; duplicates make bootstrap
+  # ambiguous. Catch both at plan time rather than as a silent mis-provision.
+  validation {
+    condition     = length(distinct([for n in var.nodes : n.hostname])) == length(var.nodes)
+    error_message = "node.hostname values must be unique."
+  }
+
+  validation {
+    condition     = length(distinct([for n in var.nodes : n.ip])) == length(var.nodes)
+    error_message = "node.ip values must be unique."
+  }
 }
 
 variable "classes" {

@@ -64,9 +64,13 @@ subsumes the bespoke generator. This is a breaking change (MAJOR).
 The module lives at `tofu/modules/talos-cluster/`. Node roles are
 `controlplane` / `worker` only; hardware specialisation is a node `class` that
 selects a per-class Image-Factory + patch profile (`architecture`,
-`extensions`, optional SBC `overlay`, `config_patches`). Patch precedence is
-all-nodes → role → class → node. devbox pins the toolchain (OpenTofu, tflint,
-go-task, …) and a `Taskfile.yml` exposes `fmt` / `validate` / `lint` / `ci`.
+`extensions`, optional SBC `overlay`, `config_patches`). Patches apply in two
+passes: a generation pass (all-nodes, role — baked into the machine config) and
+an apply-overlay pass (module install.image, class, node — later wins). devbox
+pins the toolchain (OpenTofu, tflint, go-task, …) and a `Taskfile.yml` exposes
+`fmt` / `validate` / `lint` / `ci`. The module selects the non-secureboot
+`urls.installer`; the `hard-constraints-check` CI gate (scanning `tofu/**`)
+backstops the no-SecureBoot constraint against caller patch strings.
 
 ### Consequences
 
