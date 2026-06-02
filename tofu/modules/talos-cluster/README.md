@@ -33,12 +33,15 @@ Precondition: every node in `var.nodes` is reachable on the Talos API port,
 i.e. already booted into Talos maintenance mode.
 
 > ⚠️ **Already-running cluster (PKI adoption).** This module *generates* fresh
-> `talos_machine_secrets` into Tofu state. Pointing it at a cluster that is
-> **already bootstrapped** (its PKI living elsewhere, e.g. a SOPS `secrets.yaml`
-> from the old Makefile path) would roll new PKI and break the cluster. A safe
-> import/adoption path is **not yet implemented** — it is a tracked follow-up.
-> Today the module is safe for greenfield clusters only. See
-> [`UPGRADING.md`](../../../UPGRADING.md).
+> `talos_machine_secrets` into Tofu state, so a naive `tofu apply` against a
+> cluster that is **already bootstrapped** (its PKI living elsewhere, e.g. a
+> SOPS `secrets.yaml` from the old Makefile path) would roll new PKI and
+> re-bootstrap etcd — destroying it. Adoption **is** supported, but only via a
+> `tofu import` of the existing secrets + bootstrap state **before** the first
+> apply — never apply blind. Full runbook:
+> [`UPGRADING.md` §Adopting an already-running cluster](../../../UPGRADING.md#adopting-an-already-running-cluster-no-re-bootstrap).
+> The no-replacement proof must still be observed on a real adopted cluster
+> (issue #97).
 
 ## What's in scope
 
@@ -193,14 +196,22 @@ Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
 
 ## Notes
 
-- etcd is bootstrapped on the **first** controlplane in `nodes` only; input
-  order is significant and preserved.
+- etcd is bootstrapped on exactly one controlplane: the one with the
+  **lowest hostname** (`sort()` over controlplane hostnames). This is a stable
+  key — reordering `nodes` after bootstrap does not move the bootstrap target.
 - Per-node module-injected config is the hostname + class installer image.
   Everything else cluster-specific comes from the caller's patches.
 - The installer image is always `metal-installer` (NEVER
   `metal-installer-secureboot`, per the base `AGENTS.md` Hard Constraint). ARM
   SBC classes use `architecture = "arm64"` + an `overlay`; the platform stays
   `metal`.
+- **Greenfield by default; adopting a running cluster needs `tofu import`.**
+  The module *generates* `talos_machine_secrets`, so a naive apply against a
+  live cluster would regenerate PKI and re-bootstrap etcd. To adopt an
+  already-running cluster without re-bootstrapping, import
+  `talos_machine_secrets.this` (from your existing `secrets.yaml`) and
+  `talos_machine_bootstrap.this` before the first apply — full runbook in
+  [`UPGRADING.md` §Adopting an already-running cluster](../../../UPGRADING.md#adopting-an-already-running-cluster-no-re-bootstrap).
 
 ## Related
 
