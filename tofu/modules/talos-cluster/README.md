@@ -212,6 +212,7 @@ Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
   `talos_machine_secrets.this` (from your existing `secrets.yaml`) and
   `talos_machine_bootstrap.this` before the first apply — full runbook in
   [`UPGRADING.md` §Adopting an already-running cluster](../../../UPGRADING.md#adopting-an-already-running-cluster-no-re-bootstrap).
+  Reproducible proof scripts: [`test/`](test/README.md).
 
 ## Related
 

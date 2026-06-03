@@ -588,11 +588,19 @@ assurance. If the workstation is untrusted or the plaintext may have been
 swapped/snapshotted, the real remedy is to **rotate the Talos secrets**, not to
 trust an in-place erase. Never commit or persist the plaintext.
 
-**Prove it on a scratch cluster first.** This procedure has not been validated
-end-to-end in this repo (see the status note above). Before adopting any real
-cluster, run the full sequence against a throwaway *already-bootstrapped*
-cluster and confirm step 5 shows no `machine_secrets`/`machine_bootstrap`
-replacement. That observed dry run is the acceptance gate for issue #97.
+**Prove it on your own cluster first.** This was validated against one live
+cluster (status note above), but provider defaults and your version pins shape
+the exact plan — dry-run it yourself before trusting it against production.
+Two reproducible harness scripts live in the module's
+[`test/`](tofu/modules/talos-cluster/test/README.md):
+
+- `pki-reconcile-microtest.sh` — self-contained (no cluster); proves the
+  `talos_version: v1.3 -> <pin>` reconcile preserves the `machine_secrets` bytes.
+- `run-adoption-proof.sh` — drives the import + `tofu plan` against an isolated
+  copy of your root (never your real backend) and asserts `0 to destroy`.
+
+Run both, and confirm step 5 shows no `machine_secrets`/`machine_bootstrap`
+replacement, before adopting any real cluster.
 
 ---
 
