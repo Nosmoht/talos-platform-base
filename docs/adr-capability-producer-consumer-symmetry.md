@@ -1,5 +1,6 @@
 ---
 status: accepted
+id: base:capability-producer-consumer-symmetry
 date: 2026-05-13
 deciders:
   - Thomas Krahn

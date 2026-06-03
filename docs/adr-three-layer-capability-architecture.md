@@ -1,5 +1,6 @@
 ---
 status: accepted
+id: base:three-layer-capability-architecture
 date: 2026-05-23
 date-history:
   - 2026-05-23 proposed + accepted
@@ -16,7 +17,7 @@ companion-docs:
   - "[Capability Producer/Consumer Symmetry ADR (Layer B)](./adr-capability-producer-consumer-symmetry.md)"
   - "[PNI Capability Architecture (Layer B)](./capability-architecture.md)"
 supersedes:
-  - "[adr-two-layer-capability-architecture.md](./adr-two-layer-capability-architecture.md)"
+  - base:two-layer-capability-architecture
 implementation-tracking-issue: "https://github.com/Nosmoht/talos-platform-base/issues/61"
 ---
 
