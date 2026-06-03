@@ -6,5 +6,8 @@
 ./tofu/modules/talos-cluster/README.md
 ./tofu/modules/talos-cluster/main.tf
 ./tofu/modules/talos-cluster/outputs.tf
+./tofu/modules/talos-cluster/test/README.md
+./tofu/modules/talos-cluster/test/pki-reconcile-microtest.sh
+./tofu/modules/talos-cluster/test/run-adoption-proof.sh
 ./tofu/modules/talos-cluster/variables.tf
 ./tofu/modules/talos-cluster/versions.tf

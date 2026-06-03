@@ -416,7 +416,7 @@ move — the renamed `-enforce` ClusterPolicies travel as-is.
 
 ---
 
-## (next MAJOR) — OpenTofu cluster-lifecycle cutover (MAJOR / breaking)
+## `v0.7.0` (2026-06-02) — OpenTofu cluster-lifecycle cutover (MAJOR / breaking)
 
 **Type:** MAJOR. The Talos cluster lifecycle moves from the removed
 `talos/Makefile.lib` + 5-axis `cluster.yaml` generator to the OpenTofu module
@@ -461,10 +461,146 @@ module.
 4. **Supply provider + encrypted backend** in your root (state holds
    `machine_secrets`). See the module README for an example `versions.tf`.
 5. **Validate**: `task ci` (or `tofu fmt -check` + `tofu validate` + `tflint`).
-6. **⚠️ Already-running cluster?** The module *generates* fresh PKI. A safe
-   import/adopt path (no re-bootstrap) is **not yet implemented** — tracked
-   separately. Do NOT point `tofu apply` at a live cluster until that lands;
-   the module is greenfield-safe today.
+6. **⚠️ Already-running cluster?** The module *generates* fresh PKI by default,
+   so a naive `tofu apply` against a live cluster would regenerate PKI and
+   re-bootstrap etcd — destroying it. Do **not** apply against a running cluster
+   without first following the import-based adoption runbook in
+   [§Adopting an already-running cluster](#adopting-an-already-running-cluster-no-re-bootstrap)
+   below. Greenfield clusters need no special steps.
+
+### Adopting an already-running cluster (no re-bootstrap)
+
+> **Status: validated against a live, already-bootstrapped cluster** (issue #97
+> AC#2). Proven on a real 9-node cluster (amd64 controlplanes + amd64 workers +
+> a GPU worker + an arm64 Raspberry-Pi worker) with the **v0.7.0** module,
+> provider **siderolabs/talos v0.11.0**, OpenTofu **v1.12.1**: import + `tofu
+> plan` reported `0 to destroy` — neither identity resource is replaced, so no
+> PKI roll and no re-bootstrap. Still **dry-run it on your own cluster** (import
+> and plan only, never apply blind) before trusting it against production —
+> provider defaults and your version pins shape the exact plan (see step 5).
+
+Use this when the cluster is **already running** and its PKI lives in a
+`talosctl gen secrets` bundle (for example a SOPS-encrypted `talos/secrets.yaml`
+from the old Makefile path), and you want to move it onto the module **without
+regenerating PKI or re-bootstrapping etcd**. The module needs no code change —
+adoption is a `tofu import` of the two identity-bearing resources before the
+first apply.
+
+**Why two imports make it safe** — they neutralise the two cluster-destroying
+actions a fresh apply would take:
+
+| A fresh `tofu apply` would… | The import that prevents it |
+|---|---|
+| generate fresh `machine_secrets` → every node certificate invalid, cluster unreachable | import `talos_machine_secrets.this` ← your existing `secrets.yaml` |
+| call `MachineBootstrap` on already-bootstrapped etcd | import `talos_machine_bootstrap.this` (marks done in state; no RPC) |
+
+**Critical precondition — the imported bundle must be the cluster's *real,
+current* PKI.** `talos_machine_configuration_apply` is **not importable** (the
+provider exposes no import for it), so after the two imports the per-node apply
+resources plan as *to be created* and the first apply re-pushes the
+module-rendered machine config to the running nodes. That rendered config
+**embeds the cluster PKI** (`data.talos_machine_configuration` injects
+`machine_secrets`). So the apply does **not** reconcile "config only" — it
+re-asserts the **same** PKI you imported. If the imported `secrets.yaml` is the
+node's actual current bundle, that is a no-op for PKI and at most a **rolling
+reboot** if non-PKI config fields differ (never a wipe). If the bundle is
+**stale, partial, or from another cluster**, the apply pushes *mismatched* PKI
+and can sever node↔etcd / kubelet↔apiserver trust on the live controlplane. Use
+the exact, current bundle; verify the diff in step 5 before applying.
+
+**Runbook** (adjust `module.cluster` to your module instance name):
+
+```bash
+# 0. Author your OpenTofu root (steps 1–4 above) so module + provider + an
+#    ENCRYPTED state backend are wired. Init, but do NOT apply yet.
+#    - `tofu import` of machine_secrets sets talos_version to the PROVIDER
+#      DEFAULT (observed v1.3 with provider v0.11.0) — it is NOT read from the
+#      bundle. So if your var.talos_version is pinned higher, expect an in-place
+#      `update` (talos_version: v1.3 -> <your pin>) on machine_secrets. That is
+#      a metadata reconcile and preserves the PKI bytes (verified, sha256
+#      identical); it is NOT a replacement. See step 5 — only a destroy/create
+#      (replacement) is the stop condition.
+tofu init
+
+# 0a. CONFIRM state encryption is active BEFORE importing — the import writes the
+#     full PKI into Tofu state. With an unencrypted/local backend you would leak
+#     plaintext PKI to disk. Verify your encryption {} block / backend is wired
+#     (e.g. inspect the backend config; a freshly-written state file must not
+#     contain readable cert PEM blocks).
+
+# 1. Decrypt your existing Talos secrets bundle to a TEMP plaintext file.
+#    Prefer a RAM-backed dir so no plaintext ever hits persistent storage:
+#      Linux:  TMPDIR=/dev/shm
+#      macOS:  create a RAM disk, or accept that secure single-file erase is
+#              unreliable on APFS/SSD (see "Plaintext hygiene" below).
+umask 077
+SECRETS_PLAINTEXT="$(mktemp "${TMPDIR:-/tmp}/talos-secrets-XXXXXX.yaml")"
+sops -d talos/secrets.yaml > "$SECRETS_PLAINTEXT"
+
+# 2. Import the existing PKI — no fresh generation. Import ID is the file path.
+tofu import 'module.cluster.talos_machine_secrets.this' "$SECRETS_PLAINTEXT"
+
+# 3. Import bootstrap state — no re-bootstrap RPC. The id is arbitrary.
+#    BOTH imports must succeed. If this one fails or is skipped while step 2
+#    succeeded, the next apply will run MachineBootstrap on live etcd. Verify:
+#      tofu state list | grep -E 'talos_machine_(secrets|bootstrap)\.this'
+#    must list BOTH before you proceed.
+tofu import 'module.cluster.talos_machine_bootstrap.this' adopted
+
+# 4. Remove the plaintext (see "Plaintext hygiene" — on SSD/COW this is best
+#    effort; rotation is the real remedy if the workstation is untrusted).
+rm -f "$SECRETS_PLAINTEXT"
+
+# 5. PROOF the adoption neither regenerated PKI nor scheduled a re-bootstrap.
+#    Use -refresh=false so the plan reflects imported state, not a live re-read.
+tofu plan -refresh=false
+#    PRIMARY GATE — the plan summary MUST end with "0 to destroy":
+#        Plan: <N> to add, <M> to change, 0 to destroy.
+#      `0 to destroy` == no resource is REPLACED == no PKI roll, no re-bootstrap.
+#      Any non-zero destroy count is a STOP — investigate before applying.
+#    EXPECTED "to change" (in-place update, NOT replacement — both are safe):
+#      * module.cluster.talos_machine_secrets.this    -> update
+#        (talos_version: v1.3 import-default -> your pin; PKI bytes preserved.
+#         The computed machine_secrets/client_configuration show "known after
+#         apply" as a CONSEQUENCE of that metadata change — not a regen.)
+#      * module.cluster.talos_machine_bootstrap.this  -> update  (no re-bootstrap)
+#    EXPECTED "to add" (not importable / recomputed; none re-bootstrap or roll PKI):
+#      * module.cluster.talos_image_factory_schematic.per_class[*]  (factory
+#        compute, no cluster contact)
+#      * module.cluster.talos_machine_configuration_apply.this["<host>"]  (on a
+#        real apply, pushes config — review the rendered diff vs the running
+#        nodes first; a no-op if it matches, else a rolling reboot)
+#      * module.cluster.talos_cluster_kubeconfig.this  (pulls a kubeconfig from
+#        the first controlplane — a read RPC, harmless on a healthy cluster)
+#    Anything with a destroy, or a create/change OUTSIDE this set, is a STOP.
+
+# 6. Apply only once the plan shows "0 to destroy" and matches the above.
+tofu apply
+```
+
+**Plaintext hygiene.** The import reads a *plaintext* file (the provider has no
+native SOPS support). Minimise exposure: `umask 077`, and decrypt into a
+RAM-backed location (`/dev/shm` on Linux; a RAM disk on macOS) so the plaintext
+never reaches persistent storage. Note that `shred`/`rm -P` do **not** reliably
+erase a single file on SSD or copy-on-write filesystems (APFS, Btrfs, ZFS) and
+`shred` is absent on stock macOS — do not rely on overwrite-delete for
+assurance. If the workstation is untrusted or the plaintext may have been
+swapped/snapshotted, the real remedy is to **rotate the Talos secrets**, not to
+trust an in-place erase. Never commit or persist the plaintext.
+
+**Prove it on your own cluster first.** This was validated against one live
+cluster (status note above), but provider defaults and your version pins shape
+the exact plan — dry-run it yourself before trusting it against production.
+Two reproducible harness scripts live in the module's
+[`test/`](tofu/modules/talos-cluster/test/README.md):
+
+- `pki-reconcile-microtest.sh` — self-contained (no cluster); proves the
+  `talos_version: v1.3 -> <pin>` reconcile preserves the `machine_secrets` bytes.
+- `run-adoption-proof.sh` — drives the import + `tofu plan` against an isolated
+  copy of your root (never your real backend) and asserts `0 to destroy`.
+
+Run both, and confirm step 5 shows no `machine_secrets`/`machine_bootstrap`
+replacement, before adopting any real cluster.
 
 ---
 

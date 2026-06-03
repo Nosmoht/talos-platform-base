@@ -127,9 +127,14 @@ data "talos_image_factory_urls" "per_class" {
 
 # Cluster PKI + shared secrets. Generated once and stored in Tofu state — so
 # the caller MUST use an encrypted state backend. NOTE: this generates fresh
-# PKI; adopting an ALREADY-RUNNING cluster (importing its existing secrets so
-# `tofu apply` does not re-bootstrap) is a separate, not-yet-implemented path —
-# see the module README and UPGRADING.md before pointing this at a live cluster.
+# PKI. To adopt an ALREADY-RUNNING cluster without re-bootstrapping, do NOT
+# apply blind — import this resource (and talos_machine_bootstrap.this) from the
+# existing secrets first: `tofu import module.<name>.talos_machine_secrets.this
+# <path-to-secrets.yaml>`. Full runbook: UPGRADING.md §"Adopting an
+# already-running cluster". (talos_machine_configuration_apply is not importable;
+# on the first post-import apply it re-pushes the rendered machine config, which
+# EMBEDS this PKI — so the imported secrets.yaml MUST be the cluster's real
+# current bundle, else mismatched PKI is pushed to live nodes.)
 resource "talos_machine_secrets" "this" {
   talos_version = var.talos_version
 }
