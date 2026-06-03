@@ -113,6 +113,12 @@ now has three sources (`base`, `apps`, `cluster`) instead of two.
 
 ### Component Classification (Substrate vs Apps)
 
+> **Refined by Amendment 2026-06-03 (below).** This original table routes every
+> non-substrate path coarsely to "Apps". The binding per-component disposition —
+> which components become catalog entries (and in which sub-layer), which
+> *dissolve* rather than move, which stay substrate — is the table in
+> §Amendment 2026-06-03. This table is retained for decision history.
+
 | Path | Destination |
 |---|---|
 | `talos/**` | Substrate |
@@ -188,6 +194,13 @@ repos have already begun preparing for.
 ### Migration plan
 
 Six phases, ordered:
+
+> **Phases 1–2 are obsolete (Amendments 2026-05-30 / 2026-06-03).** Apps was
+> built independently as a catalog — there is no `git filter-repo` extraction and
+> no empty repo to seed. The per-component build is now tracked in
+> `devobagmbh/talos-platform-apps` (one rollup epic per sub-layer + one issue per
+> component; taxonomy decision for the 5 new sub-layers in apps#16). Phases 3–5
+> stand.
 
 1. **Phase 0** — this ADR merges as `accepted`.
 2. **Phase 1** — `devobagmbh/talos-platform-apps` initialized with
@@ -360,6 +373,44 @@ A full base-component-to-disposition mapping was produced 2026-05-30:
 2 stay-substrate, ~5 already re-homed in apps, the remainder are catalog
 entries still to build. The platform-level source of truth for the layer
 model is `talos-platform-docs` ADR-0009.
+
+## Amendment 2026-06-03 — binding component disposition + catalog tracking
+
+Two corrections to the 2026-05-30 amendment, plus the binding per-component
+disposition now that catalog component tracking exists:
+
+1. **"~5 already re-homed" was optimistic.** apps holds **skeletal placeholders**
+   (README + `compatibility.yaml`) for most sub-layers; **no base component has
+   been functionally migrated**. The only functional apps components
+   (`crossplane`, `ipxe`, `providers`, `compositions`) are net-new bootstrap
+   tooling in the `lifecycle` sub-layer, not base re-homes. Catalog build has not
+   begun.
+2. **Hardware/cluster-specific components ARE catalog entries.** The working-draft
+   notion that `multus-cni`, `node-feature-discovery`, the NVIDIA stack,
+   `kubevirt(-cdi)`, `piraeus-operator`, `local-path-provisioner` belong only in
+   consumer repos is superseded: per `talos-platform-docs` ADR-0009 they are
+   catalog entries (catalog-distributed, consumer-*deployed*).
+
+Binding disposition of the 22 components (tracked per-component in
+`devobagmbh/talos-platform-apps`):
+
+| Component(s) | Disposition | Catalog sub-layer | Tracking |
+|---|---|---|---|
+| `argocd`, `cert-approver` | STAY substrate | — (base) | this ADR |
+| `platform-network-interface`, `kyverno` | DISSOLVE (not a move) | — | Conftest in apps-CI + Kyverno in consumers (ADR-0018) |
+| `external-secrets`, `cert-manager`, `vault-operator`, `vault-config-operator` | → catalog | `secrets` (existing) | apps epic #40 |
+| `kube-prometheus-stack`, `loki`, `alloy`, `metrics-server` | → catalog | `monitoring` (existing) | apps epic #38 |
+| `dex` | → catalog | `identity` (new) | apps#16 → Phase 2 |
+| `multus-cni` | → catalog | `network` (new) | apps#16 → Phase 2 |
+| `node-feature-discovery`, `nvidia-device-plugin`, `nvidia-dcgm-exporter`, `kubevirt`, `kubevirt-cdi` | → catalog | `compute` (new) | apps#16 → Phase 2 |
+| `piraeus-operator`, `local-path-provisioner` | → catalog | `storage-block` (new) | apps#16 → Phase 2 |
+| `tetragon` | → catalog | `security` (new) | apps#16 → Phase 2 |
+
+**18 → catalog, 2 → dissolve, 2 → substrate.** The 5 new sub-layers map 1:1 to
+existing `capability-index.yaml` domains; their final cut is decided in apps#16.
+Phase 3 (base ablation) remains gated on every component above having either a
+published catalog artifact or an explicit drop decision, so ablation orphans
+nothing.
 
 ## Links
 
