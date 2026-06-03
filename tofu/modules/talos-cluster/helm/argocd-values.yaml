@@ -1,0 +1,62 @@
+# Bootstrap Helm values for delivering ArgoCD via a Talos inlineManifest
+# (data.helm_template.argocd → cluster.inlineManifests, rendered locally).
+#
+# DELIBERATELY slim: only what ArgoCD needs at cluster bootstrap to come alive
+# and decrypt SOPS. The full configuration (cert-manager ClusterIssuer cert,
+# RBAC, OIDC/Dex) arrives in the steady state via ArgoCD self-management
+# (kubernetes/base/infrastructure/argocd). NO server.certificate here, because
+# the vault-internal ClusterIssuer does not exist yet at bootstrap.
+#
+# A consumer can replace this wholesale via var.argocd_values_override.
+
+# CRDs are NOT rendered into the inlineManifest: the three ArgoCD CRDs
+# (Application/ApplicationSet/AppProject) are ~1.8 MB and blow the Talos
+# inlineManifest size budget (the app itself is only ~109 KB). The module
+# applies the CRDs separately via kubectl server-side after the health gate
+# (see null_resource.argocd_crds in main.tf). Server-side apply also avoids the
+# >262 KB client-side last-applied-config annotation limit the ApplicationSet
+# CRD trips.
+crds:
+  install: false
+
+server:
+  service:
+    type: ClusterIP
+
+# ksops in the repoServer — so ArgoCD can decrypt SOPS-encrypted manifests
+# (runtime secrets, ADR-0023 class B). The age key comes from the sops-age-key
+# Secret (created by the module as an inlineManifest from var.sops_age_key,
+# same namespace).
+repoServer:
+  env:
+    - name: SOPS_AGE_KEY_FILE
+      value: /sops-age/keys.txt
+  volumes:
+    - name: custom-tools
+      emptyDir: {}
+    - name: sops-age
+      secret:
+        secretName: sops-age-key
+  volumeMounts:
+    - name: custom-tools
+      mountPath: /usr/local/bin/ksops
+      subPath: ksops
+    - name: sops-age
+      mountPath: /sops-age
+      readOnly: true
+  initContainers:
+    - name: install-ksops
+      image: viaductoss/ksops:v4.3.2
+      command: ["/bin/sh", "-c"]
+      args:
+        - cp /usr/local/bin/ksops /custom-tools/
+      volumeMounts:
+        - name: custom-tools
+          mountPath: /custom-tools
+
+configs:
+  cm:
+    kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
+  params:
+    # Bootstrap-insecure (TLS via Gateway/cert-manager in the steady state).
+    server.insecure: "true"

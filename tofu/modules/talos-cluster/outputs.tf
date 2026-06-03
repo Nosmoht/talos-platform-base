@@ -10,12 +10,27 @@ output "kubeconfig" {
   description = "Admin kubeconfig for the bootstrapped cluster (raw YAML)."
   value       = talos_cluster_kubeconfig.this.kubeconfig_raw
   sensitive   = true
+  # Only emit once the cluster is healthy — a consumer that writes this output
+  # into secret storage should not receive a kubeconfig for a cluster that is
+  # not yet reachable.
+  depends_on = [data.talos_cluster_health.this]
 }
 
 output "talosconfig" {
   description = "talosctl client config (raw YAML) for day-2 node access."
   value       = data.talos_client_configuration.this.talos_config
   sensitive   = true
+  depends_on  = [data.talos_cluster_health.this]
+}
+
+output "cluster_health" {
+  description = <<-EOT
+    "healthy" once data.talos_cluster_health has passed (etcd quorum, nodes
+    Ready, apiserver reachable). Because the output references the health data
+    source, any consumer that reads it blocks until the cluster is online — the
+    module's explicit "wait until reachable" contract.
+  EOT
+  value       = "healthy (${data.talos_cluster_health.this.id})"
 }
 
 output "client_configuration" {

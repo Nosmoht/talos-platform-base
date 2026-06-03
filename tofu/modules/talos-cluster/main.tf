@@ -50,6 +50,78 @@ check "node_class_defined" {
 }
 
 # ---------------------------------------------------------------------------
+# ArgoCD delivery as a Talos cluster.inlineManifest (C4 layer model, Layer 1;
+# local data.helm_template render, NO helm_release/apply).
+# Comes up with the bootstrap on the first controlplane.
+# ---------------------------------------------------------------------------
+data "helm_template" "argocd" {
+  count = var.deploy_argocd ? 1 : 0
+
+  name         = "argocd"
+  namespace    = var.argocd_namespace
+  repository   = "https://argoproj.github.io/argo-helm"
+  chart        = "argo-cd"
+  version      = var.argocd_chart_version
+  kube_version = var.kubernetes_version
+  # CRDs are NOT in the inlineManifest (too large for Talos, ~1.8 MB) — applied
+  # separately via kubectl server-side (null_resource.argocd_crds below).
+  include_crds = false
+
+  # Shipped base values, then the optional consumer override layered on top
+  # (helm merges value files; later wins) — a merge, not a wholesale replace.
+  values = var.argocd_values_override != "" ? [
+    file("${path.module}/helm/argocd-values.yaml"),
+    var.argocd_values_override,
+  ] : [file("${path.module}/helm/argocd-values.yaml")]
+
+  # Hard-fail at plan time (not a check block — that would only be a warning):
+  # evaluated only when deploy_argocd (count=1), but it sees var.sops_age_key.
+  # Without the key the ksops repoServer could not decrypt SOPS manifests.
+  lifecycle {
+    precondition {
+      condition     = var.sops_age_key != ""
+      error_message = "deploy_argocd = true requires sops_age_key (the ArgoCD ksops repoServer needs the age key to decrypt SOPS manifests)."
+    }
+  }
+}
+
+locals {
+  # ArgoCD as cluster.inlineManifests, in apply order:
+  #   1. argocd namespace
+  #   2. sops-age-key Secret (the ksops repoServer decrypts SOPS manifests with it)
+  #   3. the rendered ArgoCD manifest
+  # Hooked in as an additional controlplane config_patch (only when deploy_argocd).
+  argocd_controlplane_patch = var.deploy_argocd ? [yamlencode({
+    cluster = {
+      inlineManifests = [
+        {
+          name = "argocd-namespace"
+          contents = yamlencode({
+            apiVersion = "v1"
+            kind       = "Namespace"
+            metadata   = { name = var.argocd_namespace }
+          })
+        },
+        {
+          name = "argocd-sops-age-key"
+          contents = yamlencode({
+            apiVersion = "v1"
+            kind       = "Secret"
+            type       = "Opaque"
+            metadata   = { name = "sops-age-key", namespace = var.argocd_namespace }
+            stringData = { "keys.txt" = var.sops_age_key }
+          })
+        },
+        {
+          name     = "argocd"
+          contents = data.helm_template.argocd[0].manifest
+        },
+      ]
+    }
+  })] : []
+}
+
+# ---------------------------------------------------------------------------
 # Image-Factory: per-class custom installer image
 # ---------------------------------------------------------------------------
 # Per class, resolve the extension package names against the Talos Image
@@ -148,7 +220,13 @@ data "talos_machine_configuration" "controlplane" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  config_patches     = concat(var.config_patches, var.controlplane_config_patches)
+  # ArgoCD inlineManifest (local.argocd_controlplane_patch, empty when !deploy_argocd)
+  # LAST, so it merges after caller patches and is not overridden.
+  config_patches = concat(
+    var.config_patches,
+    var.controlplane_config_patches,
+    local.argocd_controlplane_patch,
+  )
 }
 
 data "talos_machine_configuration" "worker" {
@@ -237,6 +315,96 @@ data "talos_client_configuration" "this" {
   client_configuration = talos_machine_secrets.this.client_configuration
   endpoints            = [for n in local.controlplanes : n.ip]
   nodes                = [for n in var.nodes : n.ip]
+}
+
+# BLOCK until the cluster is genuinely healthy: etcd quorum established, all
+# nodes Ready, kubelet + apiserver responding. Without this `tofu apply` returns
+# right after the bootstrap call — the apiserver isn't reachable yet and ArgoCD
+# (inlineManifest) hasn't rolled out its pods. This health data source polls
+# until healthy (or timeout); only afterwards does downstream tooling consider
+# the cluster "online". depends_on the kubeconfig pull ensures the bootstrap has
+# completed before we check.
+data "talos_cluster_health" "this" {
+  depends_on = [
+    talos_machine_configuration_apply.this,
+    talos_machine_bootstrap.this,
+    talos_cluster_kubeconfig.this,
+  ]
+
+  client_configuration = talos_machine_secrets.this.client_configuration
+  control_plane_nodes  = [for n in local.controlplanes : n.ip]
+  worker_nodes         = [for n in var.nodes : n.ip if n.role == "worker"]
+  endpoints            = [for n in local.controlplanes : n.ip]
+
+  timeouts = {
+    read = var.cluster_health_timeout
+  }
+}
+
+# ---------------------------------------------------------------------------
+# ArgoCD CRDs — applied via kubectl server-side, NOT in the inlineManifest
+# ---------------------------------------------------------------------------
+# The three ArgoCD CRDs (Application/ApplicationSet/AppProject) render to ~1.8 MB
+# — far too large for a Talos inlineManifest (the app render is only ~109 KB, and
+# Talos inlineManifests must stay minimal). So the inlineManifest carries only
+# the namespace + sops-age-key + the ArgoCD app; the CRDs are applied here, by
+# tofu, via kubectl server-side once the cluster is healthy (the health gate
+# above is the depends_on). Server-side apply also sidesteps the >262 KB
+# client-side last-applied-config annotation limit the ApplicationSet CRD trips.
+#
+# >>> VERIFY: this needs `kubectl` on the machine running tofu. On a workstation
+# >>> (devbox) that holds; in a Crossplane provider-terraform runner kubectl must
+# >>> be in the runner image — confirm before relying on the Stage-1 path. The
+# >>> real boot proof (#2: CP boots, ArgoCD pods Ready once CRDs land) still needs
+# >>> a throwaway-cluster apply.
+
+data "helm_template" "argocd_crds" {
+  count = var.deploy_argocd ? 1 : 0
+
+  name         = "argocd"
+  namespace    = var.argocd_namespace
+  repository   = "https://argoproj.github.io/argo-helm"
+  chart        = "argo-cd"
+  version      = var.argocd_chart_version
+  kube_version = var.kubernetes_version
+  include_crds = true
+  set {
+    name  = "crds.install"
+    value = "true"
+  }
+}
+
+# kubeconfig on disk for the kubectl apply. Written under the module's .tmp/
+# (gitignored); sensitive (admin kubeconfig).
+resource "local_sensitive_file" "kubeconfig" {
+  count           = var.deploy_argocd ? 1 : 0
+  content         = talos_cluster_kubeconfig.this.kubeconfig_raw
+  filename        = "${path.module}/.tmp/${var.cluster_name}.kubeconfig"
+  file_permission = "0600"
+}
+
+resource "local_file" "argocd_crds" {
+  count    = var.deploy_argocd ? 1 : 0
+  content  = data.helm_template.argocd_crds[0].manifest
+  filename = "${path.module}/.tmp/${var.cluster_name}-argocd.yaml"
+}
+
+resource "null_resource" "argocd_crds" {
+  count      = var.deploy_argocd ? 1 : 0
+  depends_on = [data.talos_cluster_health.this]
+
+  # Re-run when the rendered manifest changes (chart/version bump).
+  triggers = {
+    manifest_sha = sha256(data.helm_template.argocd_crds[0].manifest)
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/sh", "-c"]
+    environment = { KUBECONFIG = local_sensitive_file.kubeconfig[0].filename }
+    # Full ArgoCD render (app + CRDs) applied server-side: ensures the CRDs land
+    # and converges the app the inlineManifest seeded at boot. Idempotent.
+    command = "kubectl apply --server-side --force-conflicts -f ${local_file.argocd_crds[0].filename}"
+  }
 }
 
 # ---------------------------------------------------------------------------

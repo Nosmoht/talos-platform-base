@@ -202,3 +202,81 @@ variable "worker_config_patches" {
   type        = list(string)
   default     = []
 }
+
+# ---------------------------------------------------------------------------
+# ArgoCD delivery (Layer-1 substrate, C4 layer model). ArgoCD is baked into the
+# controlplane machine config as a Talos cluster.inlineManifest
+# (data.helm_template, rendered locally), so it comes up with the bootstrap.
+# ---------------------------------------------------------------------------
+
+variable "deploy_argocd" {
+  description = <<-EOT
+    Whether the module ships ArgoCD as a Talos inlineManifest. Default true —
+    ArgoCD is part of the Layer-1 base per the platform layer model (C4 Level-2).
+    When true, sops_age_key MUST be set (ksops in the repoServer).
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "sops_age_key" {
+  description = <<-EOT
+    age private key (contents of keys.txt) for the ArgoCD ksops repoServer, so
+    ArgoCD can decrypt SOPS-encrypted manifests (ADR-0023 class B). Created as
+    the sops-age-key Secret (inlineManifest) in the argocd namespace. Required
+    when deploy_argocd = true.
+
+    SECURITY: this is a cross-cutting master key (decrypts ALL SOPS secrets) and
+    lands in plaintext stringData in the controlplane machine config + in the
+    (encrypted) state. Whoever can read a controlplane node's machine config
+    holds it. Incremental over the machine_secrets/PKI already in state, but a
+    larger blast radius — a conscious acceptance. ROTATION: the inlineManifest
+    Secret never reconciles, so rotating the key requires re-applying the
+    machine config (tofu apply with the new key), not just updating the Secret.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "argocd_namespace" {
+  description = "Namespace for the ArgoCD bootstrap install."
+  type        = string
+  default     = "argocd"
+}
+
+variable "argocd_chart_version" {
+  description = <<-EOT
+    Version of the argo-cd Helm chart (argoproj.github.io/argo-helm). This is a
+    SEED knob, not an upgrade knob: Talos applies inlineManifests once at
+    bootstrap and never re-runs them, so bumping this after bootstrap only
+    re-renders the machine config — it does NOT upgrade a running ArgoCD. Steady-
+    state version is owned by ArgoCD self-management (the app reconciles itself
+    from git). VERIFY the exact current chart version at push.
+  EOT
+  type        = string
+  default     = "9.4.5"
+}
+
+variable "argocd_values_override" {
+  description = <<-EOT
+    Optional consumer Helm values, MERGED on top of the shipped
+    helm/argocd-values.yaml (helm merges value files; later wins) — not a
+    wholesale replacement. Empty = just the shipped values (slim, ksops). The
+    steady state (cert-manager cert, RBAC, OIDC) arrives via ArgoCD
+    self-management.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "cluster_health_timeout" {
+  description = <<-EOT
+    Max wait for the freshly bootstrapped cluster to be considered healthy
+    (data.talos_cluster_health: etcd quorum, nodes Ready, apiserver reachable).
+    `tofu apply` blocks until then — only afterwards is the cluster "online".
+    Go duration string, e.g. "10m".
+  EOT
+  type        = string
+  default     = "10m"
+}

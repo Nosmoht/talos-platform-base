@@ -13,5 +13,23 @@ terraform {
       source  = "siderolabs/talos"
       version = ">= 0.7.0, < 1.0.0"
     }
+    # helm provider ONLY for data.helm_template (local rendering of ArgoCD into
+    # a Talos inlineManifest — NO helm_release/apply, no kubeconfig-from-computed
+    # anti-pattern). See var.deploy_argocd + main.tf. Upper bound pinned for the
+    # same hygiene as the talos pin; floor at 2.12 (has data.helm_template).
+    helm = {
+      source  = "hashicorp/helm"
+      version = ">= 2.12, < 3.0.0"
+    }
+    # local + null ONLY for the ArgoCD-CRD kubectl-server-side apply (the CRDs are
+    # too large for the inlineManifest). Both only instantiate when deploy_argocd.
+    local = {
+      source  = "hashicorp/local"
+      version = ">= 2.4"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = ">= 3.2"
+    }
   }
 }

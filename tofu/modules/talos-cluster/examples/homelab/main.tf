@@ -128,4 +128,13 @@ module "homelab" {
       }
     })
   ]
+
+  # ArgoCD ships with the bootstrap (deploy_argocd defaults to true, Layer-1
+  # substrate). It MUST get an age key for the ksops repoServer — here a dummy
+  # non-empty placeholder so `tofu plan`/`validate` exercises the now-core path
+  # (the precondition only requires a non-empty value, not a specific format; an
+  # AGE-SECRET-KEY-shaped literal would trip the gitleaks secret scan).
+  # A real cluster supplies its actual age private key via the caller (SOPS/env);
+  # NEVER commit a real key. Set deploy_argocd = false to opt out.
+  sops_age_key = "dummy-placeholder-supply-real-key-via-tfvar-or-env"
 }

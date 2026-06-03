@@ -20,13 +20,15 @@ In scope:
 - Render controlplane + worker machine configs (k8s/Talos version + caller patches).
 - Resolve a per-class Image-Factory installer image (extensions + architecture + optional SBC overlay).
 - Apply config to each node, bootstrap etcd on the first controlplane.
+- **Wait until the cluster is healthy** (etcd quorum, nodes Ready, apiserver reachable) before returning.
+- **Deliver ArgoCD** as a Talos `cluster.inlineManifest` (Layer-1 substrate, C4 layer model) — opt-out via `deploy_argocd = false`.
 - Output `kubeconfig` and `talosconfig`.
 
 Out of scope (caller / elsewhere):
 
 - Hardware provisioning + PXE boot (DHCP `next-server`, iPXE).
 - Cluster identity (node IPs, endpoint, NTP, install disk, registry mirrors) → caller via variables/patches.
-- Day-2 platform components (Cilium, ArgoCD, …) → ArgoCD GitOps.
+- Day-2 platform components (Cilium, cert-manager, …) and **ArgoCD steady-state** (RBAC, OIDC, TLS cert, app-of-apps) → ArgoCD GitOps self-management. The module only seeds the *bootstrap* ArgoCD install.
 - **Adopting an already-running cluster** — see the warning below.
 
 Precondition: every node in `var.nodes` is reachable on the Talos API port,
@@ -53,6 +55,8 @@ i.e. already booted into Talos maintenance mode.
 | Day-1: apply config to each node | `talos_machine_configuration_apply` (hostname + install.image + class + node patches) |
 | Day-1: etcd bootstrap | `talos_machine_bootstrap` (first controlplane only) |
 | Day-1: kubeconfig + talosconfig | `talos_cluster_kubeconfig` + `data.talos_client_configuration` |
+| Day-1: wait for healthy cluster | `data.talos_cluster_health` (blocks `apply` until etcd quorum + nodes Ready + apiserver reachable; gates the credential outputs) |
+| Day-1: ArgoCD bootstrap | `data.helm_template.argocd` (app, no CRDs) → `cluster.inlineManifests` (namespace → `sops-age-key` Secret for ksops → ArgoCD app); the ~1.8 MB CRDs are applied via `kubectl` server-side post-health-gate (`null_resource`). Opt-out: `deploy_argocd = false`. |
 | **Day-2: Talos OS upgrade** | Bumping `talos_install_version` re-renders the per-class installer image; `talos_machine_configuration_apply` rolls it out. |
 | **Day-2: class changes** | Edit `classes` (extensions/overlay/patches) → schematic ID + installer URL change → `machine_configuration_apply` re-rolls nodes of that class. |
 
@@ -150,6 +154,12 @@ provider "talos" {}
 | `config_patches` | list(string) | `[]` | machine-config patches applied to all nodes |
 | `controlplane_config_patches` | list(string) | `[]` | patches for controlplane nodes only |
 | `worker_config_patches` | list(string) | `[]` | patches for worker nodes only |
+| `cluster_health_timeout` | string | `"10m"` | max wait for `data.talos_cluster_health` (etcd quorum, nodes Ready, apiserver reachable). `apply` blocks until then. |
+| `deploy_argocd` | bool | `true` | deliver ArgoCD as a controlplane `inlineManifest`. Requires `sops_age_key` when true. |
+| `sops_age_key` | string (sensitive) | `""` | age private key (`keys.txt`) for the ArgoCD **ksops** repoServer, seeded as the `sops-age-key` Secret. **Required** when `deploy_argocd = true`. Lands in (encrypted) state. |
+| `argocd_namespace` | string | `"argocd"` | namespace for the bootstrap ArgoCD install |
+| `argocd_chart_version` | string | `"9.4.5"` | `argo-cd` Helm chart version (argoproj.github.io/argo-helm) |
+| `argocd_values_override` | string | `""` | full replacement of the bootstrap Helm values (YAML). Empty = the shipped `helm/argocd-values.yaml` (slim, ksops). |
 
 **Patch precedence — two passes.** *Generation pass* (baked into the machine
 config by `data.talos_machine_configuration`): all-nodes (`config_patches`) then
@@ -176,6 +186,7 @@ gate — enforcing the constraint there is the consumer overlay's job.
 | `schematic_ids` | no | Image-Factory schematic ID per class |
 | `installer_images` | no | resolved `metal-installer` image URL per class |
 | `talos_install_version` | no | effective installer version |
+| `cluster_health` | no | `"healthy (…)"` — references `data.talos_cluster_health`, so any consumer reading it blocks until the cluster is online |
 
 ## Versions: schema-pin vs install-pin (Day-2 pattern)
 
@@ -193,6 +204,66 @@ per class flow through), then a consumer Taskfile target reads `tfplan.json` and
 runs `talosctl upgrade --image …:<version>` idempotently per node, and finally
 `tofu apply` updates state. Tofu owns the declarative state; the consumer
 Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
+
+## ArgoCD delivery + health gate
+
+ArgoCD is **Layer-1 substrate** in the platform's C4 layer model, not a Day-2
+app — so the module seeds it (chart rendered locally into an inlineManifest). There is **no**
+`helm_release`/`kubernetes_*` apply against a computed kubeconfig (that
+chicken-and-egg anti-pattern is avoided): the chart is rendered **locally** with
+`data.helm_template` and baked into the controlplane machine config as
+`cluster.inlineManifests`. Three manifests in apply order:
+
+1. the `argocd` **namespace**,
+2. a `sops-age-key` **Secret** (`stringData."keys.txt" = var.sops_age_key`) so
+   the bootstrap ArgoCD **ksops** repoServer can decrypt SOPS manifests
+   (ADR-0023 class B), and
+3. the rendered **ArgoCD manifest** itself.
+
+Talos applies inlineManifests once at bootstrap and never reconciles them again,
+so the seed is intentionally **minimal** (`helm/argocd-values.yaml`): server
+`ClusterIP` + `insecure`, the ksops initContainer. The steady-state (TLS cert
+via a `ClusterIssuer` that doesn't exist yet at bootstrap, RBAC, OIDC, the
+app-of-apps) is owned by **ArgoCD self-management** in the consumer repo.
+`argocd_values_override` is **merged** on top of the shipped values (not a
+wholesale replace). `argocd_chart_version` is a **seed-only** knob — bumping it
+after bootstrap only re-renders the machine config, it does not upgrade a
+running ArgoCD (that is the self-management's job).
+
+**CRDs are NOT in the inlineManifest.** The three ArgoCD CRDs
+(Application/ApplicationSet/AppProject) render to ~1.8 MB — far over the Talos
+inlineManifest budget (the app render is ~109 KB). So the module applies the
+CRDs via `kubectl apply --server-side` (a `null_resource`, gated on the health
+check) using the module's kubeconfig; server-side apply also avoids the >262 KB
+client-side last-applied-config annotation limit the ApplicationSet CRD trips.
+**This needs `kubectl` on the apply host** (a workstation has it via devbox; a
+Crossplane provider-terraform runner must ship it). The ArgoCD app (in the
+inlineManifest) crash-loops for the few seconds until the CRDs land, then
+recovers.
+
+> The `sops_age_key` lands in Tofu state and in the controlplane machine config
+> — both already sensitive (state holds PKI; machine config is a secret). But it
+> is a **cross-cutting master key** (decrypts *all* SOPS secrets): whoever reads
+> a controlplane node's machine config holds it — a conscious, larger blast
+> radius. **Rotation** requires a machine-config re-apply (`tofu apply` with the
+> new key); the inlineManifest Secret never reconciles on its own. The backend
+> **must** be encrypted. Set `deploy_argocd = false` to wire ArgoCD another way;
+> then `sops_age_key` is not required.
+
+**Health gate.** `data.talos_cluster_health` blocks `tofu apply` after bootstrap
+until etcd has quorum, every node is Ready and the apiserver answers (up to
+`cluster_health_timeout`, default `10m`). It checks **cluster reachability, not
+the ArgoCD rollout** — it exists so the apiserver is up before the CRD apply and
+before credentials are emitted, not to assert ArgoCD is Ready. The
+`kubeconfig`/`talosconfig`/`cluster_health` outputs `depends_on` it, so a
+consumer that writes those into secret storage only ever receives credentials
+for a cluster that is genuinely **online**.
+
+**Roadmap — Cilium convergence.** Under the three-pillars model
+(Talos + Cilium + ArgoCD), Cilium should eventually follow this same
+local-render → inlineManifest pattern. Today Cilium ships via the
+consumer's own config_patches/recipe; the asymmetry is **temporary** and
+tracked.
 
 ## Notes
 

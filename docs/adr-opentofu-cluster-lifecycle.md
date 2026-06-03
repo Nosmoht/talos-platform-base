@@ -144,6 +144,67 @@ substrate-only boundary the base applies to PNI instance enforcement.
   without re-introducing a base-local generator. The first real consumer
   migration (homelab) is the test; the PKI-adoption follow-up is the known gap.
 
+## Amendment — 2026-06-03: ArgoCD bootstrap delivery + cluster-health gate
+
+The original outcome left **all** of Day-2 — including ArgoCD — to GitOps,
+implicitly treating ArgoCD as a Day-2 app. The platform C4 layer model
+(Level-2) instead places **ArgoCD in Layer-1 (substrate)**: it is the GitOps
+engine that delivers every higher layer, so *something* has to seed it before
+any GitOps can run. Two consumer-side options were possible — a Stage-1
+Crossplane/orchestrator step, or the lifecycle module itself. Cleared with the
+base maintainer, the decision is that **the `talos-cluster` module delivers the
+ArgoCD bootstrap install**, because the module is already the one component that
+holds the freshly-bootstrapped cluster's trust material and runs at exactly the
+right moment (right after etcd bootstrap, before anything else exists).
+
+**Mechanism (no new anti-pattern).** ArgoCD is rendered **locally** with
+`data.helm_template` and baked into the controlplane `cluster.inlineManifests`.
+Crucially this avoids the chicken-and-egg of a `helm_release`/`kubernetes_*`
+apply against a kubeconfig that is itself a computed output of the same apply.
+The seed is the namespace → `sops-age-key` Secret for the ksops repoServer →
+the ArgoCD **app** (no CRDs) and is intentionally minimal. The three ArgoCD CRDs
+render to ~1.8 MB — too large for an inlineManifest — so the module applies them
+via `kubectl` **server-side** after the health gate (needs `kubectl` on the
+apply host). The **steady-state** (TLS cert via a not-yet-existing
+`ClusterIssuer`, RBAC, OIDC, the app-of-apps) remains ArgoCD **self-management**
+in the consumer repo.
+
+**Not a boundary move — a correction.** This amendment does **not** move the
+Layer-1/Day-2 line. ArgoCD was always Layer-1 (Talos + Cilium + ArgoCD = three
+co-equal substrate pillars). The v0.7.0 lifecycle cutover over-scoped its
+Talos-only focus and mis-classified the ArgoCD bootstrap as Day-2; this
+amendment corrects that. *Bootstrap seed* is substrate; *everything ArgoCD
+reconciles after that* is GitOps — as it always should have read.
+
+**Substrate-only boundary preserved.** The base still ships **no secrets**: the
+age key is the caller-supplied `sops_age_key` (sensitive, lands only in the
+encrypted state + machine config, both already secret-bearing). `deploy_argocd`
+defaults to `true` but is an **opt-out** — a consumer that seeds ArgoCD via a
+Stage-1 orchestrator sets `deploy_argocd = false` and the module stays
+ArgoCD-agnostic. No cluster identity enters the base.
+
+**Cluster-health gate.** Independently, `data.talos_cluster_health` now blocks
+`tofu apply` after bootstrap until etcd quorum + nodes Ready + apiserver
+reachable (`cluster_health_timeout`, default `10m`). It gates **cluster
+reachability, not the ArgoCD rollout** — its job is to ensure the apiserver is
+up before the CRD `kubectl` apply runs and before credentials are emitted, not
+to assert ArgoCD is Ready. Without it `apply` returned the instant the bootstrap
+call was issued — before the apiserver answered. The credential outputs and the
+new `cluster_health` output `depends_on` it, so downstream tooling only receives
+credentials for a cluster that is genuinely online.
+
+**Roadmap — Cilium convergence.** Under the three-pillars model, Cilium should
+eventually follow the same local-render → inlineManifest pattern (today it ships
+via the consumer's config_patches/recipe). The Cilium/ArgoCD asymmetry is
+**temporary** and tracked, not a standing design choice.
+
+This amendment is wrong if seeding ArgoCD from the lifecycle module forces
+cluster identity or secrets into the base, or if a consumer cannot decline it.
+Both are addressed (`sops_age_key` is caller-supplied; `deploy_argocd = false`
+opts out). The narrower follow-up — whether the bootstrap-vs-steady-state split
+holds once a real consumer self-manages ArgoCD's TLS/RBAC — is validated by the
+first consumer (seeder).
+
 ## Links
 
 - #99 — the generalised pattern this ADR instantiates (prefer maintained declarative tooling over bespoke imperative reinvention).
