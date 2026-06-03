@@ -56,7 +56,7 @@ i.e. already booted into Talos maintenance mode.
 | Day-1: etcd bootstrap | `talos_machine_bootstrap` (first controlplane only) |
 | Day-1: kubeconfig + talosconfig | `talos_cluster_kubeconfig` + `data.talos_client_configuration` |
 | Day-1: wait for healthy cluster | `data.talos_cluster_health` (blocks `apply` until etcd quorum + nodes Ready + apiserver reachable; gates the credential outputs) |
-| Day-1: ArgoCD bootstrap | `data.helm_template.argocd` rendered into `cluster.inlineManifests` (namespace → `sops-age-key` Secret for ksops → ArgoCD manifest). Opt-out: `deploy_argocd = false`. |
+| Day-1: ArgoCD bootstrap | `data.helm_template.argocd` (app, no CRDs) → `cluster.inlineManifests` (namespace → `sops-age-key` Secret for ksops → ArgoCD app); the ~1.8 MB CRDs are applied via `kubectl` server-side post-health-gate (`null_resource`). Opt-out: `deploy_argocd = false`. |
 | **Day-2: Talos OS upgrade** | Bumping `talos_install_version` re-renders the per-class installer image; `talos_machine_configuration_apply` rolls it out. |
 | **Day-2: class changes** | Edit `classes` (extensions/overlay/patches) → schematic ID + installer URL change → `machine_configuration_apply` re-rolls nodes of that class. |
 
@@ -222,25 +222,47 @@ chicken-and-egg anti-pattern is avoided): the chart is rendered **locally** with
 
 Talos applies inlineManifests once at bootstrap and never reconciles them again,
 so the seed is intentionally **minimal** (`helm/argocd-values.yaml`): server
-`ClusterIP` + `insecure`, CRDs install+keep, the ksops initContainer. The
-steady-state (TLS cert via a `ClusterIssuer` that doesn't exist yet at
-bootstrap, RBAC, OIDC, the app-of-apps) is owned by **ArgoCD self-management**
-in the consumer repo. Override the whole values blob with
-`argocd_values_override` if a cluster needs a different bootstrap shape.
+`ClusterIP` + `insecure`, the ksops initContainer. The steady-state (TLS cert
+via a `ClusterIssuer` that doesn't exist yet at bootstrap, RBAC, OIDC, the
+app-of-apps) is owned by **ArgoCD self-management** in the consumer repo.
+`argocd_values_override` is **merged** on top of the shipped values (not a
+wholesale replace). `argocd_chart_version` is a **seed-only** knob — bumping it
+after bootstrap only re-renders the machine config, it does not upgrade a
+running ArgoCD (that is the self-management's job).
+
+**CRDs are NOT in the inlineManifest.** The three ArgoCD CRDs
+(Application/ApplicationSet/AppProject) render to ~1.8 MB — far over the Talos
+inlineManifest budget (the app render is ~109 KB). So the module applies the
+CRDs via `kubectl apply --server-side` (a `null_resource`, gated on the health
+check) using the module's kubeconfig; server-side apply also avoids the >262 KB
+client-side last-applied-config annotation limit the ApplicationSet CRD trips.
+**This needs `kubectl` on the apply host** (a workstation has it via devbox; a
+Crossplane provider-terraform runner must ship it). The ArgoCD app (in the
+inlineManifest) crash-loops for the few seconds until the CRDs land, then
+recovers.
 
 > The `sops_age_key` lands in Tofu state and in the controlplane machine config
-> — both are already sensitive (state holds PKI; machine config is a secret).
-> The chosen backend **must** be encrypted regardless. Set `deploy_argocd =
-> false` for a cluster that wires ArgoCD some other way; then `sops_age_key` is
-> not required.
+> — both already sensitive (state holds PKI; machine config is a secret). But it
+> is a **cross-cutting master key** (decrypts *all* SOPS secrets): whoever reads
+> a controlplane node's machine config holds it — a conscious, larger blast
+> radius. **Rotation** requires a machine-config re-apply (`tofu apply` with the
+> new key); the inlineManifest Secret never reconciles on its own. The backend
+> **must** be encrypted. Set `deploy_argocd = false` to wire ArgoCD another way;
+> then `sops_age_key` is not required.
 
 **Health gate.** `data.talos_cluster_health` blocks `tofu apply` after bootstrap
 until etcd has quorum, every node is Ready and the apiserver answers (up to
-`cluster_health_timeout`, default `10m`). Without it, `apply` would return the
-instant the bootstrap call is *issued* — long before the apiserver is reachable
-or ArgoCD's pods exist. The `kubeconfig`/`talosconfig`/`cluster_health` outputs
-`depends_on` it, so a consumer that writes those into secret storage only ever
-receives credentials for a cluster that is genuinely **online**.
+`cluster_health_timeout`, default `10m`). It checks **cluster reachability, not
+the ArgoCD rollout** — it exists so the apiserver is up before the CRD apply and
+before credentials are emitted, not to assert ArgoCD is Ready. The
+`kubeconfig`/`talosconfig`/`cluster_health` outputs `depends_on` it, so a
+consumer that writes those into secret storage only ever receives credentials
+for a cluster that is genuinely **online**.
+
+**Roadmap — Cilium convergence.** Under the three-pillars model (Talos + Cilium
++ ArgoCD), Cilium should eventually follow this same local-render →
+inlineManifest pattern. Today Cilium ships via the consumer's own
+config_patches/recipe; the asymmetry is **temporary** and tracked.
 
 ## Notes
 
