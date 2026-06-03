@@ -470,12 +470,14 @@ module.
 
 ### Adopting an already-running cluster (no re-bootstrap)
 
-> **Status: operator-validated procedure, not yet proven in this repo.** The
-> import sequence below is derived from the `siderolabs/talos` provider's
-> documented import support; the no-replacement proof (step 5) has **not** been
-> run against a real adopted cluster here. Treat this as a procedure you must
-> dry-run on a throwaway cluster yourself (issue #97 AC) before trusting it
-> against production — not as a pre-proven recipe.
+> **Status: validated against a live, already-bootstrapped cluster** (issue #97
+> AC#2). Proven on a real 9-node cluster (amd64 controlplanes + amd64 workers +
+> a GPU worker + an arm64 Raspberry-Pi worker) with the **v0.7.0** module,
+> provider **siderolabs/talos v0.11.0**, OpenTofu **v1.12.1**: import + `tofu
+> plan` reported `0 to destroy` — neither identity resource is replaced, so no
+> PKI roll and no re-bootstrap. Still **dry-run it on your own cluster** (import
+> + plan only, never apply blind) before trusting it against production —
+> provider defaults and your version pins shape the exact plan (see step 5).
 
 Use this when the cluster is **already running** and its PKI lives in a
 `talosctl gen secrets` bundle (for example a SOPS-encrypted `talos/secrets.yaml`
@@ -511,9 +513,13 @@ the exact, current bundle; verify the diff in step 5 before applying.
 ```bash
 # 0. Author your OpenTofu root (steps 1–4 above) so module + provider + an
 #    ENCRYPTED state backend are wired. Init, but do NOT apply yet.
-#    - var.talos_version MUST match the version your secrets.yaml was generated
-#      for. A mismatch can make the plan want to REPLACE machine_secrets (=PKI
-#      regen) — see step 5; this is a hard stop, not benign "drift".
+#    - `tofu import` of machine_secrets sets talos_version to the PROVIDER
+#      DEFAULT (observed v1.3 with provider v0.11.0) — it is NOT read from the
+#      bundle. So if your var.talos_version is pinned higher, expect an in-place
+#      `update` (talos_version: v1.3 -> <your pin>) on machine_secrets. That is
+#      a metadata reconcile and preserves the PKI bytes (verified, sha256
+#      identical); it is NOT a replacement. See step 5 — only a destroy/create
+#      (replacement) is the stop condition.
 tofu init
 
 # 0a. CONFIRM state encryption is active BEFORE importing — the import writes the
@@ -545,23 +551,30 @@ tofu import 'module.cluster.talos_machine_bootstrap.this' adopted
 #    effort; rotation is the real remedy if the workstation is untrusted).
 rm -f "$SECRETS_PLAINTEXT"
 
-# 5. PROOF the adoption neither regenerated PKI nor scheduled a re-bootstrap:
-tofu plan
-#    REQUIRED — STOP and investigate (do NOT apply) if the plan shows ANY of:
-#      * replacement (destroy/create) of module.cluster.talos_machine_secrets.this
-#        — this is PKI regeneration (often caused by a var.talos_version mismatch)
-#      * replacement (destroy/create) of module.cluster.talos_machine_bootstrap.this
-#        — this is a re-bootstrap. (A benign in-place attribute update is OK.)
-#    EXPECTED to-be-CREATED (these are not importable / are recomputed; benign):
+# 5. PROOF the adoption neither regenerated PKI nor scheduled a re-bootstrap.
+#    Use -refresh=false so the plan reflects imported state, not a live re-read.
+tofu plan -refresh=false
+#    PRIMARY GATE — the plan summary MUST end with "0 to destroy":
+#        Plan: <N> to add, <M> to change, 0 to destroy.
+#      `0 to destroy` == no resource is REPLACED == no PKI roll, no re-bootstrap.
+#      Any non-zero destroy count is a STOP — investigate before applying.
+#    EXPECTED "to change" (in-place update, NOT replacement — both are safe):
+#      * module.cluster.talos_machine_secrets.this    -> update
+#        (talos_version: v1.3 import-default -> your pin; PKI bytes preserved.
+#         The computed machine_secrets/client_configuration show "known after
+#         apply" as a CONSEQUENCE of that metadata change — not a regen.)
+#      * module.cluster.talos_machine_bootstrap.this  -> update  (no re-bootstrap)
+#    EXPECTED "to add" (not importable / recomputed; none re-bootstrap or roll PKI):
 #      * module.cluster.talos_image_factory_schematic.per_class[*]  (factory
 #        compute, no cluster contact)
-#      * module.cluster.talos_machine_configuration_apply.this["<host>"]  (pushes
-#        config — review the rendered diff vs the running nodes first)
+#      * module.cluster.talos_machine_configuration_apply.this["<host>"]  (on a
+#        real apply, pushes config — review the rendered diff vs the running
+#        nodes first; a no-op if it matches, else a rolling reboot)
 #      * module.cluster.talos_cluster_kubeconfig.this  (pulls a kubeconfig from
 #        the first controlplane — a read RPC, harmless on a healthy cluster)
-#    Anything created OUTSIDE this set is unexpected — review before applying.
+#    Anything with a destroy, or a create/change OUTSIDE this set, is a STOP.
 
-# 6. Apply only once the plan matches the above.
+# 6. Apply only once the plan shows "0 to destroy" and matches the above.
 tofu apply
 ```
 
