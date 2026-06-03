@@ -259,10 +259,11 @@ before credentials are emitted, not to assert ArgoCD is Ready. The
 consumer that writes those into secret storage only ever receives credentials
 for a cluster that is genuinely **online**.
 
-**Roadmap — Cilium convergence.** Under the three-pillars model (Talos + Cilium
-+ ArgoCD), Cilium should eventually follow this same local-render →
-inlineManifest pattern. Today Cilium ships via the consumer's own
-config_patches/recipe; the asymmetry is **temporary** and tracked.
+**Roadmap — Cilium convergence.** Under the three-pillars model
+(Talos + Cilium + ArgoCD), Cilium should eventually follow this same
+local-render → inlineManifest pattern. Today Cilium ships via the
+consumer's own config_patches/recipe; the asymmetry is **temporary** and
+tracked.
 
 ## Notes
 
