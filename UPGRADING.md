@@ -476,7 +476,7 @@ module.
 > provider **siderolabs/talos v0.11.0**, OpenTofu **v1.12.1**: import + `tofu
 > plan` reported `0 to destroy` — neither identity resource is replaced, so no
 > PKI roll and no re-bootstrap. Still **dry-run it on your own cluster** (import
-> + plan only, never apply blind) before trusting it against production —
+> and plan only, never apply blind) before trusting it against production —
 > provider defaults and your version pins shape the exact plan (see step 5).
 
 Use this when the cluster is **already running** and its PKI lives in a
