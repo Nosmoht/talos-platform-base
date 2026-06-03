@@ -12,9 +12,16 @@ IPs, secrets, or environment-specific overrides. Those live in consumer
 cluster repos that pin a specific tag of this base.
 
 **Platform layering (base / apps / consumer).** The platform is layered and
-the boundary is binary. `talos-platform-base` is the **substrate** (Talos +
-Cilium + ArgoCD + cert-approver) — the cluster-agnostic floor every cluster
-needs. `talos-platform-apps` is the **central catalog**: every platform
+the boundary is binary. `talos-platform-base` is the **substrate** — the
+cluster-agnostic floor every cluster needs. Its core is three **co-equal
+pillars: Talos + Cilium + ArgoCD**; the GitOps engine (ArgoCD) is as
+constitutive as the OS (Talos) and the CNI (Cilium), **not** a Day-2 app.
+`cert-approver` is the only addition, present solely as Talos boot-necessity
+glue (no CSR auto-approval → no bootable cluster), not a fourth pillar.
+Because ArgoCD is core substrate it is delivered as part of standing the
+cluster up — **opt-out, never an opt-in Day-2 add-on**; classifying
+ArgoCD-bootstrap as Day-2 is a scoping error. `talos-platform-apps` is the
+**central catalog**: every platform
 component that is *not* substrate lives there as independently versioned,
 signed OCI artifacts. Consumer cluster repos **compose** — they pin a base
 tag for the substrate and serve themselves from the apps catalog by
