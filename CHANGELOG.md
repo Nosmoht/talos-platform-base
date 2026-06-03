@@ -5,26 +5,37 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
-### Added
+### Changed — BREAKING
 
-- **`talos-cluster` module delivers ArgoCD as a Talos `inlineManifest`.**
-  ArgoCD is Layer-1 substrate in the C4 layer model, so the module now seeds
-  the bootstrap install by rendering it locally: the `argo-cd` chart is
-  rendered locally via `data.helm_template` (new `hashicorp/helm` provider, used
-  for rendering **only** — no `helm_release`/apply against a computed
-  kubeconfig) and baked into the controlplane `cluster.inlineManifests` as
-  namespace → `sops-age-key` Secret (for the ksops repoServer) → ArgoCD
-  manifest. New inputs: `deploy_argocd` (default `true`), `sops_age_key`
-  (sensitive, required when `deploy_argocd`), `argocd_namespace`,
-  `argocd_chart_version`, `argocd_values_override`. The shipped
-  `helm/argocd-values.yaml` is intentionally minimal (ClusterIP + insecure, CRDs
-  install/keep, ksops initContainer); steady-state (TLS cert, RBAC, OIDC,
-  app-of-apps) is ArgoCD self-management in the consumer repo.
+- **`talos-cluster` module delivers ArgoCD as a Talos `inlineManifest`
+  (`deploy_argocd` defaults to `true`).** ArgoCD is Layer-1 substrate in the C4
+  layer model (Talos + Cilium + ArgoCD = three co-equal substrate pillars), so
+  the module now seeds the bootstrap install: the `argo-cd` chart is rendered
+  locally via `data.helm_template` (new `hashicorp/helm` provider, used for
+  rendering **only** — no `helm_release`/apply against a computed kubeconfig) and
+  baked into the controlplane `cluster.inlineManifests` as namespace →
+  `sops-age-key` Secret (for the ksops repoServer) → ArgoCD app. The three
+  ArgoCD CRDs (~1.8 MB) are too large for an inlineManifest, so the module
+  applies them via `kubectl` server-side after the health gate (new
+  `hashicorp/local` + `hashicorp/null` providers; requires `kubectl` on the
+  apply host). New inputs: `deploy_argocd` (default `true`), `sops_age_key`
+  (sensitive, **required** when `deploy_argocd`), `argocd_namespace`,
+  `argocd_chart_version` (seed-only), `argocd_values_override` (merged, not
+  replaced). Steady state (TLS cert, RBAC, OIDC, app-of-apps) is ArgoCD
+  self-management in the consumer repo.
+
+  **BREAKING — migration:** existing callers must either set
+  `deploy_argocd = false` to keep prior behaviour, or supply `sops_age_key`
+  (else `tofu plan` hard-fails on the precondition). The default-`true` is the
+  correct Vision statement (ArgoCD is constitutive), so this is a deliberate
+  breaking change, not an additive one.
+
 - **Module waits until the cluster is healthy.** `data.talos_cluster_health`
   blocks `tofu apply` after bootstrap until etcd quorum + nodes Ready + apiserver
   reachable (new `cluster_health_timeout`, default `10m`). The
   `kubeconfig`/`talosconfig` outputs and a new `cluster_health` output
-  `depends_on` it, so credentials are only emitted for an online cluster.
+  `depends_on` it, so credentials are only emitted for an online cluster. NOTE:
+  the gate verifies cluster reachability, NOT the ArgoCD rollout.
 
 ## v0.7.0 — 2026-06-02
 

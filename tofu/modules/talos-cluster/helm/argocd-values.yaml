@@ -9,9 +9,15 @@
 #
 # A consumer can replace this wholesale via var.argocd_values_override.
 
+# CRDs are NOT rendered into the inlineManifest: the three ArgoCD CRDs
+# (Application/ApplicationSet/AppProject) are ~1.8 MB and blow the Talos
+# inlineManifest size budget (the app itself is only ~109 KB). The module
+# applies the CRDs separately via kubectl server-side after the health gate
+# (see null_resource.argocd_crds in main.tf). Server-side apply also avoids the
+# >262 KB client-side last-applied-config annotation limit the ApplicationSet
+# CRD trips.
 crds:
-  install: true
-  keep: true
+  install: false
 
 server:
   service:

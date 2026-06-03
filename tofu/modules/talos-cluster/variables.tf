@@ -223,8 +223,16 @@ variable "sops_age_key" {
   description = <<-EOT
     age private key (contents of keys.txt) for the ArgoCD ksops repoServer, so
     ArgoCD can decrypt SOPS-encrypted manifests (ADR-0023 class B). Created as
-    the sops-age-key Secret (inlineManifest) in the argocd namespace. Sensitive
-    — lands in the (encrypted) state. Required when deploy_argocd = true.
+    the sops-age-key Secret (inlineManifest) in the argocd namespace. Required
+    when deploy_argocd = true.
+
+    SECURITY: this is a cross-cutting master key (decrypts ALL SOPS secrets) and
+    lands in plaintext stringData in the controlplane machine config + in the
+    (encrypted) state. Whoever can read a controlplane node's machine config
+    holds it. Incremental over the machine_secrets/PKI already in state, but a
+    larger blast radius — a conscious acceptance. ROTATION: the inlineManifest
+    Secret never reconciles, so rotating the key requires re-applying the
+    machine config (tofu apply with the new key), not just updating the Secret.
   EOT
   type        = string
   default     = ""
@@ -238,16 +246,25 @@ variable "argocd_namespace" {
 }
 
 variable "argocd_chart_version" {
-  description = "Version of the argo-cd Helm chart (argoproj.github.io/argo-helm)."
+  description = <<-EOT
+    Version of the argo-cd Helm chart (argoproj.github.io/argo-helm). This is a
+    SEED knob, not an upgrade knob: Talos applies inlineManifests once at
+    bootstrap and never re-runs them, so bumping this after bootstrap only
+    re-renders the machine config — it does NOT upgrade a running ArgoCD. Steady-
+    state version is owned by ArgoCD self-management (the app reconciles itself
+    from git). VERIFY the exact current chart version at push.
+  EOT
   type        = string
   default     = "9.4.5"
 }
 
 variable "argocd_values_override" {
   description = <<-EOT
-    Optional full replacement of the bootstrap Helm values (YAML string). Empty =
-    the shipped helm/argocd-values.yaml (slim, ksops). The steady state
-    (cert-manager cert, RBAC, OIDC) arrives via ArgoCD self-management.
+    Optional consumer Helm values, MERGED on top of the shipped
+    helm/argocd-values.yaml (helm merges value files; later wins) — not a
+    wholesale replacement. Empty = just the shipped values (slim, ksops). The
+    steady state (cert-manager cert, RBAC, OIDC) arrives via ArgoCD
+    self-management.
   EOT
   type        = string
   default     = ""

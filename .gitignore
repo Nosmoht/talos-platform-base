@@ -47,3 +47,4 @@ logs/security/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+tofu/modules/talos-cluster/.tmp/

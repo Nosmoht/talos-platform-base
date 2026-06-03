@@ -63,11 +63,16 @@ data "helm_template" "argocd" {
   chart        = "argo-cd"
   version      = var.argocd_chart_version
   kube_version = var.kubernetes_version
-  include_crds = true
+  # CRDs are NOT in the inlineManifest (too large for Talos, ~1.8 MB) — applied
+  # separately via kubectl server-side (null_resource.argocd_crds below).
+  include_crds = false
 
-  values = [
-    var.argocd_values_override != "" ? var.argocd_values_override : file("${path.module}/helm/argocd-values.yaml")
-  ]
+  # Shipped base values, then the optional consumer override layered on top
+  # (helm merges value files; later wins) — a merge, not a wholesale replace.
+  values = var.argocd_values_override != "" ? [
+    file("${path.module}/helm/argocd-values.yaml"),
+    var.argocd_values_override,
+  ] : [file("${path.module}/helm/argocd-values.yaml")]
 
   # Hard-fail at plan time (not a check block — that would only be a warning):
   # evaluated only when deploy_argocd (count=1), but it sees var.sops_age_key.
@@ -333,6 +338,72 @@ data "talos_cluster_health" "this" {
 
   timeouts = {
     read = var.cluster_health_timeout
+  }
+}
+
+# ---------------------------------------------------------------------------
+# ArgoCD CRDs — applied via kubectl server-side, NOT in the inlineManifest
+# ---------------------------------------------------------------------------
+# The three ArgoCD CRDs (Application/ApplicationSet/AppProject) render to ~1.8 MB
+# — far too large for a Talos inlineManifest (the app render is only ~109 KB, and
+# Talos inlineManifests must stay minimal). So the inlineManifest carries only
+# the namespace + sops-age-key + the ArgoCD app; the CRDs are applied here, by
+# tofu, via kubectl server-side once the cluster is healthy (the health gate
+# above is the depends_on). Server-side apply also sidesteps the >262 KB
+# client-side last-applied-config annotation limit the ApplicationSet CRD trips.
+#
+# >>> VERIFY: this needs `kubectl` on the machine running tofu. On a workstation
+# >>> (devbox) that holds; in a Crossplane provider-terraform runner kubectl must
+# >>> be in the runner image — confirm before relying on the Stage-1 path. The
+# >>> real boot proof (#2: CP boots, ArgoCD pods Ready once CRDs land) still needs
+# >>> a throwaway-cluster apply.
+
+data "helm_template" "argocd_crds" {
+  count = var.deploy_argocd ? 1 : 0
+
+  name         = "argocd"
+  namespace    = var.argocd_namespace
+  repository   = "https://argoproj.github.io/argo-helm"
+  chart        = "argo-cd"
+  version      = var.argocd_chart_version
+  kube_version = var.kubernetes_version
+  include_crds = true
+  set {
+    name  = "crds.install"
+    value = "true"
+  }
+}
+
+# kubeconfig on disk for the kubectl apply. Written under the module's .tmp/
+# (gitignored); sensitive (admin kubeconfig).
+resource "local_sensitive_file" "kubeconfig" {
+  count           = var.deploy_argocd ? 1 : 0
+  content         = talos_cluster_kubeconfig.this.kubeconfig_raw
+  filename        = "${path.module}/.tmp/${var.cluster_name}.kubeconfig"
+  file_permission = "0600"
+}
+
+resource "local_file" "argocd_crds" {
+  count    = var.deploy_argocd ? 1 : 0
+  content  = data.helm_template.argocd_crds[0].manifest
+  filename = "${path.module}/.tmp/${var.cluster_name}-argocd.yaml"
+}
+
+resource "null_resource" "argocd_crds" {
+  count      = var.deploy_argocd ? 1 : 0
+  depends_on = [data.talos_cluster_health.this]
+
+  # Re-run when the rendered manifest changes (chart/version bump).
+  triggers = {
+    manifest_sha = sha256(data.helm_template.argocd_crds[0].manifest)
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/sh", "-c"]
+    environment = { KUBECONFIG = local_sensitive_file.kubeconfig[0].filename }
+    # Full ArgoCD render (app + CRDs) applied server-side: ensures the CRDs land
+    # and converges the app the inlineManifest seeded at boot. Idempotent.
+    command = "kubectl apply --server-side --force-conflicts -f ${local_file.argocd_crds[0].filename}"
   }
 }
 
