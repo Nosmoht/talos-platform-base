@@ -1,0 +1,56 @@
+# Bootstrap-Helm-Werte für die ArgoCD-Auslieferung via Talos-inlineManifest
+# (data.helm_template.argocd → cluster.inlineManifests, KPS-Cilium-Stil).
+#
+# BEWUSST schlank: nur was ArgoCD beim Cluster-Bootstrap zum Leben + SOPS-
+# Entschlüsseln braucht. Die volle Konfiguration (cert-manager-ClusterIssuer-
+# Cert, RBAC, OIDC/Dex) kommt im Steady-State via ArgoCD-Self-Management
+# (kubernetes/base/infrastructure/argocd). Hier NICHT server.certificate, weil
+# der vault-internal-ClusterIssuer beim Bootstrap noch nicht existiert.
+#
+# Konsument kann via var.argocd_values_override komplett ersetzen.
+
+crds:
+  install: true
+  keep: true
+
+server:
+  service:
+    type: ClusterIP
+
+# ksops im repoServer — damit ArgoCD SOPS-verschlüsselte Manifeste (Runtime-
+# Secrets, ADR-0023 Klasse B) entschlüsseln kann. Der age-Key kommt aus dem
+# sops-age-key-Secret (vom Modul als inlineManifest aus var.sops_age_key
+# erzeugt, gleicher Namespace).
+repoServer:
+  env:
+    - name: SOPS_AGE_KEY_FILE
+      value: /sops-age/keys.txt
+  volumes:
+    - name: custom-tools
+      emptyDir: {}
+    - name: sops-age
+      secret:
+        secretName: sops-age-key
+  volumeMounts:
+    - name: custom-tools
+      mountPath: /usr/local/bin/ksops
+      subPath: ksops
+    - name: sops-age
+      mountPath: /sops-age
+      readOnly: true
+  initContainers:
+    - name: install-ksops
+      image: viaductoss/ksops:v4.3.2
+      command: ["/bin/sh", "-c"]
+      args:
+        - cp /usr/local/bin/ksops /custom-tools/
+      volumeMounts:
+        - name: custom-tools
+          mountPath: /custom-tools
+
+configs:
+  cm:
+    kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
+  params:
+    # Bootstrap-insecure (TLS via Gateway/cert-manager im Steady-State).
+    server.insecure: "true"

@@ -50,6 +50,73 @@ check "node_class_defined" {
 }
 
 # ---------------------------------------------------------------------------
+# ArgoCD-Auslieferung als Talos cluster.inlineManifest (C4-Layer-Model,
+# Schicht 1; KPS-Cilium-Stil: lokales data.helm_template-Rendern, KEIN
+# helm_release/apply). Kommt beim Bootstrap mit dem ersten Controlplane.
+# ---------------------------------------------------------------------------
+data "helm_template" "argocd" {
+  count = var.deploy_argocd ? 1 : 0
+
+  name         = "argocd"
+  namespace    = var.argocd_namespace
+  repository   = "https://argoproj.github.io/argo-helm"
+  chart        = "argo-cd"
+  version      = var.argocd_chart_version
+  kube_version = var.kubernetes_version
+  include_crds = true
+
+  values = [
+    var.argocd_values_override != "" ? var.argocd_values_override : file("${path.module}/helm/argocd-values.yaml")
+  ]
+
+  # Hard-fail beim Plan (kein check-Block — der wäre nur eine Warnung): wird nur
+  # evaluiert wenn deploy_argocd (count=1), sieht aber var.sops_age_key. Ohne Key
+  # könnte der ksops-repoServer keine SOPS-Manifeste entschlüsseln.
+  lifecycle {
+    precondition {
+      condition     = var.sops_age_key != ""
+      error_message = "deploy_argocd = true verlangt sops_age_key (der ArgoCD-ksops-repoServer braucht den age-Key zum Entschlüsseln von SOPS-Manifesten)."
+    }
+  }
+}
+
+locals {
+  # ArgoCD als cluster.inlineManifests, in Apply-Reihenfolge:
+  #   1. argocd-Namespace
+  #   2. sops-age-key-Secret (ksops-repoServer entschlüsselt damit SOPS-Manifeste)
+  #   3. das gerenderte ArgoCD-Manifest
+  # Wird als zusätzlicher controlplane-config_patch eingehängt (nur wenn deploy_argocd).
+  argocd_controlplane_patch = var.deploy_argocd ? [yamlencode({
+    cluster = {
+      inlineManifests = [
+        {
+          name = "argocd-namespace"
+          contents = yamlencode({
+            apiVersion = "v1"
+            kind       = "Namespace"
+            metadata   = { name = var.argocd_namespace }
+          })
+        },
+        {
+          name = "argocd-sops-age-key"
+          contents = yamlencode({
+            apiVersion = "v1"
+            kind       = "Secret"
+            type       = "Opaque"
+            metadata   = { name = "sops-age-key", namespace = var.argocd_namespace }
+            stringData = { "keys.txt" = var.sops_age_key }
+          })
+        },
+        {
+          name     = "argocd"
+          contents = data.helm_template.argocd[0].manifest
+        },
+      ]
+    }
+  })] : []
+}
+
+# ---------------------------------------------------------------------------
 # Image-Factory: per-class custom installer image
 # ---------------------------------------------------------------------------
 # Per class, resolve the extension package names against the Talos Image
@@ -148,7 +215,13 @@ data "talos_machine_configuration" "controlplane" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  config_patches     = concat(var.config_patches, var.controlplane_config_patches)
+  # ArgoCD-inlineManifest (local.argocd_controlplane_patch, leer wenn !deploy_argocd)
+  # ZULETZT, damit es nach Caller-Patches gemerged wird und nicht überschrieben wird.
+  config_patches = concat(
+    var.config_patches,
+    var.controlplane_config_patches,
+    local.argocd_controlplane_patch,
+  )
 }
 
 data "talos_machine_configuration" "worker" {
@@ -237,6 +310,30 @@ data "talos_client_configuration" "this" {
   client_configuration = talos_machine_secrets.this.client_configuration
   endpoints            = [for n in local.controlplanes : n.ip]
   nodes                = [for n in var.nodes : n.ip]
+}
+
+# BLOCK bis das Cluster wirklich gesund ist: etcd-Quorum steht, alle Nodes sind
+# Ready, Kubelet + apiserver antworten. Ohne dies kehrt `tofu apply` direkt nach
+# dem Bootstrap-Call zurück — der apiserver ist dann noch nicht erreichbar und
+# ArgoCD (inlineManifest) hat seine Pods noch nicht ausgerollt. Das Health-
+# data-source pollt bis healthy (oder Timeout), erst danach gilt der Cluster im
+# nachgelagerten Tooling als „online". depends_on auf den kubeconfig-Pull
+# stellt sicher, dass der Bootstrap abgeschlossen ist, bevor wir prüfen.
+data "talos_cluster_health" "this" {
+  depends_on = [
+    talos_machine_configuration_apply.this,
+    talos_machine_bootstrap.this,
+    talos_cluster_kubeconfig.this,
+  ]
+
+  client_configuration = talos_machine_secrets.this.client_configuration
+  control_plane_nodes  = [for n in local.controlplanes : n.ip]
+  worker_nodes         = [for n in var.nodes : n.ip if n.role == "worker"]
+  endpoints            = [for n in local.controlplanes : n.ip]
+
+  timeouts = {
+    read = var.cluster_health_timeout
+  }
 }
 
 # ---------------------------------------------------------------------------

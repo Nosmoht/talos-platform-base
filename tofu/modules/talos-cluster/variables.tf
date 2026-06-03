@@ -202,3 +202,65 @@ variable "worker_config_patches" {
   type        = list(string)
   default     = []
 }
+
+# ---------------------------------------------------------------------------
+# ArgoCD-Auslieferung (Schicht-1-Substrate, C4-Layer-Model). ArgoCD wird als
+# Talos cluster.inlineManifest in die controlplane-machine-config gebacken
+# (data.helm_template → KPS-Cilium-Stil), kommt also beim Bootstrap mit.
+# ---------------------------------------------------------------------------
+
+variable "deploy_argocd" {
+  description = <<-EOT
+    Ob das Modul ArgoCD als Talos-inlineManifest ausliefert. Default true —
+    ArgoCD ist laut Plattform-Layer-Model (C4 Level-2) Teil der Schicht-1-Basis.
+    Wenn true, MUSS sops_age_key gesetzt sein (ksops im repoServer).
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "sops_age_key" {
+  description = <<-EOT
+    age-Private-Key (Inhalt von keys.txt) für den ArgoCD-ksops-repoServer —
+    damit ArgoCD SOPS-verschlüsselte Manifeste (ADR-0023 Klasse B) entschlüsseln
+    kann. Wird als sops-age-key-Secret (inlineManifest) im argocd-Namespace
+    erzeugt. Sensitive — landet im (verschlüsselten) State. Pflicht wenn
+    deploy_argocd = true.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "argocd_namespace" {
+  description = "Namespace für die ArgoCD-Bootstrap-Installation."
+  type        = string
+  default     = "argocd"
+}
+
+variable "argocd_chart_version" {
+  description = "Version des argo-cd-Helm-Charts (argoproj.github.io/argo-helm)."
+  type        = string
+  default     = "9.4.5"
+}
+
+variable "argocd_values_override" {
+  description = <<-EOT
+    Optionaler kompletter Ersatz der Bootstrap-Helm-Werte (YAML-String). Leer =
+    die mitgelieferten helm/argocd-values.yaml (schlank, ksops). Der Steady-
+    State (cert-manager-Cert, RBAC, OIDC) kommt via ArgoCD-Self-Management.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "cluster_health_timeout" {
+  description = <<-EOT
+    Maximale Wartezeit, bis das frisch gebootstrappte Cluster als gesund gilt
+    (data.talos_cluster_health: etcd-Quorum, Nodes Ready, apiserver erreichbar).
+    `tofu apply` blockt bis dahin — erst danach gilt der Cluster als online.
+    Go-Duration-String, z. B. "10m".
+  EOT
+  type        = string
+  default     = "10m"
+}
