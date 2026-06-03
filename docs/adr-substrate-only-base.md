@@ -399,7 +399,7 @@ Binding disposition of the 22 components (tracked per-component in
 | `argocd`, `cert-approver` | STAY substrate | — (base) | this ADR |
 | `platform-network-interface`, `kyverno` | DISSOLVE (not a move) | — | Conftest in apps-CI + Kyverno in consumers (ADR-0018) |
 | `external-secrets`, `cert-manager`, `vault-operator`, `vault-config-operator` | → catalog | `secrets` (existing) | apps epic #40 |
-| `kube-prometheus-stack`, `loki`, `alloy`, `metrics-server` | → catalog | `monitoring` (existing) | apps epic #38 |
+| `kube-prometheus-stack` (catalog ships it split into prometheus / alertmanager / node-exporter / kube-state-metrics — a stack is a composition, not one chart), `loki`, `alloy`, `metrics-server` | → catalog | `observability` (existing; renamed from `monitoring`) | apps epic #38 |
 | `dex` | → catalog | `identity` (new) | apps#16 → Phase 2 |
 | `multus-cni` | → catalog | `network` (new) | apps#16 → Phase 2 |
 | `node-feature-discovery`, `nvidia-device-plugin`, `nvidia-dcgm-exporter`, `kubevirt`, `kubevirt-cdi` | → catalog | `compute` (new) | apps#16 → Phase 2 |
