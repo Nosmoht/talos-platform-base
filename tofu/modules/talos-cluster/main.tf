@@ -352,11 +352,18 @@ data "talos_cluster_health" "this" {
 # above is the depends_on). Server-side apply also sidesteps the >262 KB
 # client-side last-applied-config annotation limit the ApplicationSet CRD trips.
 #
-# >>> VERIFY: this needs `kubectl` on the machine running tofu. On a workstation
-# >>> (devbox) that holds; in a Crossplane provider-terraform runner kubectl must
-# >>> be in the runner image — confirm before relying on the Stage-1 path. The
-# >>> real boot proof (#2: CP boots, ArgoCD pods Ready once CRDs land) still needs
-# >>> a throwaway-cluster apply.
+# DECISION (#104, accepted 2026-06-03): kubectl-via-local-exec is the accepted
+# apply mechanism. A declarative provider apply was considered and rejected — a
+# hashicorp/kubernetes `kubernetes_manifest` needs API access at PLAN time, but
+# the cluster does not exist until this same apply runs (it cannot bootstrap
+# itself); a third-party `kubectl_manifest` provider trades a kubectl binary for a
+# third-party provider dependency + ~1.8 MB of state bloat in a substrate module
+# (worse footprint). Full rationale + alternatives:
+# docs/adr-opentofu-cluster-lifecycle.md (2026-06-03 amendment) and the README.
+# CONTRACT: every apply host MUST ship `kubectl` — a workstation has it via
+# devbox; the Crossplane provider-terraform runner image MUST include it.
+# OPEN: #104 item 2 (boot proof — CP boots, ArgoCD pods Ready once CRDs land)
+# still needs a throwaway-cluster apply.
 
 data "helm_template" "argocd_crds" {
   count = var.deploy_argocd ? 1 : 0

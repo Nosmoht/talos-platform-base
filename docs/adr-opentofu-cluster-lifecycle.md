@@ -169,6 +169,20 @@ apply host). The **steady-state** (TLS cert via a not-yet-existing
 `ClusterIssuer`, RBAC, OIDC, the app-of-apps) remains ArgoCD **self-management**
 in the consumer repo.
 
+**CRD-apply mechanism — decided (#104).** Keeping the CRD apply *in the module*
+via `kubectl` server-side (`null_resource` + `local-exec`) is an accepted,
+deliberate choice over three alternatives. (1) A declarative `hashicorp/kubernetes`
+`kubernetes_manifest` apply is ruled out: it requires API access at **plan** time,
+but on a first apply the cluster does not exist yet — it cannot bootstrap itself.
+(2) A third-party `kubectl_manifest` provider (`gavinbunney`/`alekc`) would work,
+but trades a `kubectl` binary for a third-party provider dependency plus ~1.8 MB
+of CRD state bloat — a worse footprint for a substrate module, not a better one.
+(3) Moving the apply to the consumer's Stage-0 root keeps the module purely
+declarative but scatters the trust-material handling the module already owns at
+exactly the right moment. The accepted cost is a hard **`kubectl` host
+dependency**: every apply host must ship it — a workstation via devbox, and the
+Crossplane provider-terraform runner **image must include `kubectl`**.
+
 **Not a boundary move — a correction.** This amendment does **not** move the
 Layer-1/Day-2 line. ArgoCD was always Layer-1 (Talos + Cilium + ArgoCD = three
 co-equal substrate pillars). The v0.7.0 lifecycle cutover over-scoped its

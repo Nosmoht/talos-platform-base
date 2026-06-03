@@ -241,6 +241,15 @@ Crossplane provider-terraform runner must ship it). The ArgoCD app (in the
 inlineManifest) crash-loops for the few seconds until the CRDs land, then
 recovers.
 
+**Why `kubectl` and not a Terraform provider apply?** (Decided in #104.) A
+`hashicorp/kubernetes` `kubernetes_manifest` apply needs API access at *plan*
+time — but on a first apply the cluster does not exist yet, so it cannot
+bootstrap itself. A third-party `kubectl_manifest` provider works but is a worse
+footprint for a substrate module (third-party provider + ~1.8 MB of state bloat).
+The `kubectl` host dependency is therefore a deliberate, accepted trade — every
+apply host must ship `kubectl`, including the Crossplane provider-terraform runner
+image. See the `adr-opentofu-cluster-lifecycle.md` 2026-06-03 amendment.
+
 > The `sops_age_key` lands in Tofu state and in the controlplane machine config
 > — both already sensitive (state holds PKI; machine config is a secret). But it
 > is a **cross-cutting master key** (decrypts *all* SOPS secrets): whoever reads
