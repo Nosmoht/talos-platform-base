@@ -208,7 +208,7 @@ Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
 ## ArgoCD delivery + health gate
 
 ArgoCD is **Layer-1 substrate** in the platform's C4 layer model, not a Day-2
-app — so the module seeds it, exactly like KPS renders Cilium. There is **no**
+app — so the module seeds it (chart rendered locally into an inlineManifest). There is **no**
 `helm_release`/`kubernetes_*` apply against a computed kubeconfig (that
 chicken-and-egg anti-pattern is avoided): the chart is rendered **locally** with
 `data.helm_template` and baked into the controlplane machine config as

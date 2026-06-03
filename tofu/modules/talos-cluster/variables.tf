@@ -206,7 +206,7 @@ variable "worker_config_patches" {
 # ---------------------------------------------------------------------------
 # ArgoCD delivery (Layer-1 substrate, C4 layer model). ArgoCD is baked into the
 # controlplane machine config as a Talos cluster.inlineManifest
-# (data.helm_template, KPS-Cilium style), so it comes up with the bootstrap.
+# (data.helm_template, rendered locally), so it comes up with the bootstrap.
 # ---------------------------------------------------------------------------
 
 variable "deploy_argocd" {

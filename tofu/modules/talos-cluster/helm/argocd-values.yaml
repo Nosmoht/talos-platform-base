@@ -1,5 +1,5 @@
 # Bootstrap Helm values for delivering ArgoCD via a Talos inlineManifest
-# (data.helm_template.argocd → cluster.inlineManifests, KPS-Cilium style).
+# (data.helm_template.argocd → cluster.inlineManifests, rendered locally).
 #
 # DELIBERATELY slim: only what ArgoCD needs at cluster bootstrap to come alive
 # and decrypt SOPS. The full configuration (cert-manager ClusterIssuer cert,

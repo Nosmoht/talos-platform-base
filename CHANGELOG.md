@@ -9,7 +9,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **`talos-cluster` module delivers ArgoCD as a Talos `inlineManifest`.**
   ArgoCD is Layer-1 substrate in the C4 layer model, so the module now seeds
-  the bootstrap install the same way KPS renders Cilium: the `argo-cd` chart is
+  the bootstrap install by rendering it locally: the `argo-cd` chart is
   rendered locally via `data.helm_template` (new `hashicorp/helm` provider, used
   for rendering **only** — no `helm_release`/apply against a computed
   kubeconfig) and baked into the controlplane `cluster.inlineManifests` as

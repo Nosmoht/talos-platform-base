@@ -51,7 +51,7 @@ check "node_class_defined" {
 
 # ---------------------------------------------------------------------------
 # ArgoCD delivery as a Talos cluster.inlineManifest (C4 layer model, Layer 1;
-# KPS-Cilium style: local data.helm_template render, NO helm_release/apply).
+# local data.helm_template render, NO helm_release/apply).
 # Comes up with the bootstrap on the first controlplane.
 # ---------------------------------------------------------------------------
 data "helm_template" "argocd" {

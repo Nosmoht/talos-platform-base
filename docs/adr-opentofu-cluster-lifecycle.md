@@ -159,7 +159,7 @@ right moment (right after etcd bootstrap, before anything else exists).
 
 **Mechanism (no new anti-pattern).** ArgoCD is rendered **locally** with
 `data.helm_template` and baked into the controlplane `cluster.inlineManifests`
-— the identical pattern KPS uses for Cilium. Crucially this avoids the
+— rendered locally and baked into the controlplane inlineManifests. Crucially this avoids the
 chicken-and-egg of a `helm_release`/`kubernetes_*` apply against a kubeconfig
 that is itself a computed output of the same apply. The seed is three
 inlineManifests (namespace → `sops-age-key` Secret for the ksops repoServer →
