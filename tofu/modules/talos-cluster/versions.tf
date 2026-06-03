@@ -13,9 +13,9 @@ terraform {
       source  = "siderolabs/talos"
       version = ">= 0.7.0, < 1.0.0"
     }
-    # helm-Provider NUR für data.helm_template (lokales Rendern von ArgoCD zu
-    # einem Talos-inlineManifest — KEIN helm_release/apply, kein kubeconfig-
-    # aus-computed-Anti-Pattern). Siehe var.deploy_argocd + main.tf.
+    # helm provider ONLY for data.helm_template (local rendering of ArgoCD into
+    # a Talos inlineManifest — NO helm_release/apply, no kubeconfig-from-computed
+    # anti-pattern). See var.deploy_argocd + main.tf.
     helm = {
       source  = "hashicorp/helm"
       version = ">= 2.12"

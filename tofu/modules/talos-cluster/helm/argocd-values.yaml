@@ -1,13 +1,13 @@
-# Bootstrap-Helm-Werte für die ArgoCD-Auslieferung via Talos-inlineManifest
-# (data.helm_template.argocd → cluster.inlineManifests, KPS-Cilium-Stil).
+# Bootstrap Helm values for delivering ArgoCD via a Talos inlineManifest
+# (data.helm_template.argocd → cluster.inlineManifests, KPS-Cilium style).
 #
-# BEWUSST schlank: nur was ArgoCD beim Cluster-Bootstrap zum Leben + SOPS-
-# Entschlüsseln braucht. Die volle Konfiguration (cert-manager-ClusterIssuer-
-# Cert, RBAC, OIDC/Dex) kommt im Steady-State via ArgoCD-Self-Management
-# (kubernetes/base/infrastructure/argocd). Hier NICHT server.certificate, weil
-# der vault-internal-ClusterIssuer beim Bootstrap noch nicht existiert.
+# DELIBERATELY slim: only what ArgoCD needs at cluster bootstrap to come alive
+# and decrypt SOPS. The full configuration (cert-manager ClusterIssuer cert,
+# RBAC, OIDC/Dex) arrives in the steady state via ArgoCD self-management
+# (kubernetes/base/infrastructure/argocd). NO server.certificate here, because
+# the vault-internal ClusterIssuer does not exist yet at bootstrap.
 #
-# Konsument kann via var.argocd_values_override komplett ersetzen.
+# A consumer can replace this wholesale via var.argocd_values_override.
 
 crds:
   install: true
@@ -17,10 +17,10 @@ server:
   service:
     type: ClusterIP
 
-# ksops im repoServer — damit ArgoCD SOPS-verschlüsselte Manifeste (Runtime-
-# Secrets, ADR-0023 Klasse B) entschlüsseln kann. Der age-Key kommt aus dem
-# sops-age-key-Secret (vom Modul als inlineManifest aus var.sops_age_key
-# erzeugt, gleicher Namespace).
+# ksops in the repoServer — so ArgoCD can decrypt SOPS-encrypted manifests
+# (runtime secrets, ADR-0023 class B). The age key comes from the sops-age-key
+# Secret (created by the module as an inlineManifest from var.sops_age_key,
+# same namespace).
 repoServer:
   env:
     - name: SOPS_AGE_KEY_FILE
@@ -52,5 +52,5 @@ configs:
   cm:
     kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
   params:
-    # Bootstrap-insecure (TLS via Gateway/cert-manager im Steady-State).
+    # Bootstrap-insecure (TLS via Gateway/cert-manager in the steady state).
     server.insecure: "true"

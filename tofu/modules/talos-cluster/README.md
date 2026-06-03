@@ -21,7 +21,7 @@ In scope:
 - Resolve a per-class Image-Factory installer image (extensions + architecture + optional SBC overlay).
 - Apply config to each node, bootstrap etcd on the first controlplane.
 - **Wait until the cluster is healthy** (etcd quorum, nodes Ready, apiserver reachable) before returning.
-- **Deliver ArgoCD** as a Talos `cluster.inlineManifest` (Schicht-1 substrate, C4 layer model) — opt-out via `deploy_argocd = false`.
+- **Deliver ArgoCD** as a Talos `cluster.inlineManifest` (Layer-1 substrate, C4 layer model) — opt-out via `deploy_argocd = false`.
 - Output `kubeconfig` and `talosconfig`.
 
 Out of scope (caller / elsewhere):
@@ -207,7 +207,7 @@ Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
 
 ## ArgoCD delivery + health gate
 
-ArgoCD is **Schicht-1 substrate** in the platform's C4 layer model, not a Day-2
+ArgoCD is **Layer-1 substrate** in the platform's C4 layer model, not a Day-2
 app — so the module seeds it, exactly like KPS renders Cilium. There is **no**
 `helm_release`/`kubernetes_*` apply against a computed kubeconfig (that
 chicken-and-egg anti-pattern is avoided): the chart is rendered **locally** with

@@ -204,16 +204,16 @@ variable "worker_config_patches" {
 }
 
 # ---------------------------------------------------------------------------
-# ArgoCD-Auslieferung (Schicht-1-Substrate, C4-Layer-Model). ArgoCD wird als
-# Talos cluster.inlineManifest in die controlplane-machine-config gebacken
-# (data.helm_template → KPS-Cilium-Stil), kommt also beim Bootstrap mit.
+# ArgoCD delivery (Layer-1 substrate, C4 layer model). ArgoCD is baked into the
+# controlplane machine config as a Talos cluster.inlineManifest
+# (data.helm_template, KPS-Cilium style), so it comes up with the bootstrap.
 # ---------------------------------------------------------------------------
 
 variable "deploy_argocd" {
   description = <<-EOT
-    Ob das Modul ArgoCD als Talos-inlineManifest ausliefert. Default true —
-    ArgoCD ist laut Plattform-Layer-Model (C4 Level-2) Teil der Schicht-1-Basis.
-    Wenn true, MUSS sops_age_key gesetzt sein (ksops im repoServer).
+    Whether the module ships ArgoCD as a Talos inlineManifest. Default true —
+    ArgoCD is part of the Layer-1 base per the platform layer model (C4 Level-2).
+    When true, sops_age_key MUST be set (ksops in the repoServer).
   EOT
   type        = bool
   default     = true
@@ -221,11 +221,10 @@ variable "deploy_argocd" {
 
 variable "sops_age_key" {
   description = <<-EOT
-    age-Private-Key (Inhalt von keys.txt) für den ArgoCD-ksops-repoServer —
-    damit ArgoCD SOPS-verschlüsselte Manifeste (ADR-0023 Klasse B) entschlüsseln
-    kann. Wird als sops-age-key-Secret (inlineManifest) im argocd-Namespace
-    erzeugt. Sensitive — landet im (verschlüsselten) State. Pflicht wenn
-    deploy_argocd = true.
+    age private key (contents of keys.txt) for the ArgoCD ksops repoServer, so
+    ArgoCD can decrypt SOPS-encrypted manifests (ADR-0023 class B). Created as
+    the sops-age-key Secret (inlineManifest) in the argocd namespace. Sensitive
+    — lands in the (encrypted) state. Required when deploy_argocd = true.
   EOT
   type        = string
   default     = ""
@@ -233,22 +232,22 @@ variable "sops_age_key" {
 }
 
 variable "argocd_namespace" {
-  description = "Namespace für die ArgoCD-Bootstrap-Installation."
+  description = "Namespace for the ArgoCD bootstrap install."
   type        = string
   default     = "argocd"
 }
 
 variable "argocd_chart_version" {
-  description = "Version des argo-cd-Helm-Charts (argoproj.github.io/argo-helm)."
+  description = "Version of the argo-cd Helm chart (argoproj.github.io/argo-helm)."
   type        = string
   default     = "9.4.5"
 }
 
 variable "argocd_values_override" {
   description = <<-EOT
-    Optionaler kompletter Ersatz der Bootstrap-Helm-Werte (YAML-String). Leer =
-    die mitgelieferten helm/argocd-values.yaml (schlank, ksops). Der Steady-
-    State (cert-manager-Cert, RBAC, OIDC) kommt via ArgoCD-Self-Management.
+    Optional full replacement of the bootstrap Helm values (YAML string). Empty =
+    the shipped helm/argocd-values.yaml (slim, ksops). The steady state
+    (cert-manager cert, RBAC, OIDC) arrives via ArgoCD self-management.
   EOT
   type        = string
   default     = ""
@@ -256,10 +255,10 @@ variable "argocd_values_override" {
 
 variable "cluster_health_timeout" {
   description = <<-EOT
-    Maximale Wartezeit, bis das frisch gebootstrappte Cluster als gesund gilt
-    (data.talos_cluster_health: etcd-Quorum, Nodes Ready, apiserver erreichbar).
-    `tofu apply` blockt bis dahin — erst danach gilt der Cluster als online.
-    Go-Duration-String, z. B. "10m".
+    Max wait for the freshly bootstrapped cluster to be considered healthy
+    (data.talos_cluster_health: etcd quorum, nodes Ready, apiserver reachable).
+    `tofu apply` blocks until then — only afterwards is the cluster "online".
+    Go duration string, e.g. "10m".
   EOT
   type        = string
   default     = "10m"

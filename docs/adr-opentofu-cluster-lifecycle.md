@@ -148,7 +148,7 @@ substrate-only boundary the base applies to PNI instance enforcement.
 
 The original outcome left **all** of Day-2 — including ArgoCD — to GitOps,
 implicitly treating ArgoCD as a Day-2 app. The platform C4 layer model
-(Level-2) instead places **ArgoCD in Schicht-1 (substrate)**: it is the GitOps
+(Level-2) instead places **ArgoCD in Layer-1 (substrate)**: it is the GitOps
 engine that delivers every higher layer, so *something* has to seed it before
 any GitOps can run. Two consumer-side options were possible — a Stage-1
 Crossplane/orchestrator step, or the lifecycle module itself. Cleared with the
@@ -165,7 +165,7 @@ that is itself a computed output of the same apply. The seed is three
 inlineManifests (namespace → `sops-age-key` Secret for the ksops repoServer →
 rendered ArgoCD manifest) and is intentionally minimal; the **steady-state**
 (TLS cert via a not-yet-existing `ClusterIssuer`, RBAC, OIDC, the app-of-apps)
-remains ArgoCD **self-management** in the consumer repo. The Schicht-1/Day-2
+remains ArgoCD **self-management** in the consumer repo. The Layer-1/Day-2
 boundary therefore moves by exactly one well-defined step: *bootstrap seed* is
 now substrate; *everything ArgoCD reconciles after that* is still GitOps.
 

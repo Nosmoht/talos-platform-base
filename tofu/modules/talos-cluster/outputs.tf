@@ -10,9 +10,9 @@ output "kubeconfig" {
   description = "Admin kubeconfig for the bootstrapped cluster (raw YAML)."
   value       = talos_cluster_kubeconfig.this.kubeconfig_raw
   sensitive   = true
-  # Erst herausgeben, wenn das Cluster gesund ist — ein Konsument, der dieses
-  # Output in eine Secret-Storage schreibt, soll keine kubeconfig für ein noch
-  # nicht erreichbares Cluster bekommen.
+  # Only emit once the cluster is healthy — a consumer that writes this output
+  # into secret storage should not receive a kubeconfig for a cluster that is
+  # not yet reachable.
   depends_on = [data.talos_cluster_health.this]
 }
 
@@ -25,10 +25,10 @@ output "talosconfig" {
 
 output "cluster_health" {
   description = <<-EOT
-    "healthy", sobald data.talos_cluster_health durchgelaufen ist (etcd-Quorum,
-    Nodes Ready, apiserver erreichbar). Da das Output auf die Health-Data-Source
-    referenziert, blockt jeder Konsument, der es liest, bis das Cluster online ist
-    — der explizite „warte bis erreichbar"-Vertrag des Moduls.
+    "healthy" once data.talos_cluster_health has passed (etcd quorum, nodes
+    Ready, apiserver reachable). Because the output references the health data
+    source, any consumer that reads it blocks until the cluster is online — the
+    module's explicit "wait until reachable" contract.
   EOT
   value       = "healthy (${data.talos_cluster_health.this.id})"
 }
