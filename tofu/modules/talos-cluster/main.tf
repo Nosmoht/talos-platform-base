@@ -155,7 +155,12 @@ resource "talos_image_factory_schematic" "per_class" {
     {
       customization = {
         systemExtensions = {
-          officialExtensions = [
+          # An empty class `extensions` list MUST bake NO extensions. The factory
+          # extensions_versions data source returns ALL extensions for an empty
+          # `filters.names` (empty filter = no filter), so guard on the input
+          # length — otherwise `extensions: []` bakes every official extension
+          # (drbd, gvisor, *-guest-agent, iscsi-tools, …) into the installer image.
+          officialExtensions = length(each.value.extensions) == 0 ? [] : [
             for ext in data.talos_image_factory_extensions_versions.per_class[each.key].extensions_info :
             ext.name
           ]
