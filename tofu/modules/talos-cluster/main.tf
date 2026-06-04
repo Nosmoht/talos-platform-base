@@ -244,7 +244,8 @@ data "talos_machine_configuration" "worker" {
 #     (var.config_patches) then role (controlplane/worker_config_patches) are
 #     baked into the base machine config that becomes machine_configuration_input.
 #   Pass 2 (this apply, strategic-merge overlay, later wins): module
-#     hostname + install.image, then class patches, then node patches.
+#     install.image + hostname (HostnameConfig, Talos >= 1.12), then class
+#     patches, then node patches.
 # NOTE: class/node patches run AFTER the module's install.image patch, so a
 # caller patch CAN override machine.install.image. The module selecting
 # urls.installer (never urls.installer_secureboot) guarantees the MODULE itself
@@ -268,11 +269,9 @@ resource "talos_machine_configuration_apply" "this" {
 
   config_patches = concat(
     [
+      # install.image stays v1alpha1 (Hard Constraint: non-secureboot installer).
       yamlencode({
         machine = {
-          network = {
-            hostname = each.value.hostname
-          }
           install = {
             # Explicitly the NON-secureboot installer URL — `urls.installer`,
             # never `urls.installer_secureboot`. This is the code-level Hard
@@ -281,7 +280,20 @@ resource "talos_machine_configuration_apply" "this" {
             image = data.talos_image_factory_urls.per_class[each.value.class].urls.installer
           }
         }
-      })
+      }),
+      # Hostname via the Talos >= 1.12 HostnameConfig document. The legacy
+      # machine.network.hostname (v1alpha1) conflicts with the provider-generated
+      # HostnameConfig{auto: stable} ("static hostname is already set in v1alpha1
+      # config"). Set the static hostname and delete the generated `auto`
+      # (hostname/auto are mutually exclusive). Refs: siderolabs/talos#12541,#12573
+      # (smira: "add auto: off"); siderolabs/terraform-provider-talos#296 ($patch
+      # delete avoids the YAML off->false coercion that bites `auto: off`).
+      yamlencode({
+        apiVersion = "v1alpha1"
+        kind       = "HostnameConfig"
+        hostname   = each.value.hostname
+        auto       = { "$patch" = "delete" }
+      }),
     ],
     var.classes[each.value.class].config_patches,
     each.value.config_patches,
