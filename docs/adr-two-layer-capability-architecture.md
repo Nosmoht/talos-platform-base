@@ -1,6 +1,8 @@
 ---
 status: superseded
-superseded_by: adr-three-layer-capability-architecture.md
+id: base:two-layer-capability-architecture
+superseded_by:
+  - base:three-layer-capability-architecture
 date: 2026-05-18
 date-history:
   - 2026-05-13 proposed

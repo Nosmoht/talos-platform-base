@@ -1,15 +1,16 @@
 ---
 status: accepted
+id: base:opentofu-cluster-lifecycle
 date: 2026-06-02
 deciders:
   - Thomas Krahn
 consulted: []
 informed: []
 supersedes:
-  - docs/adr-shared-render-artifact.md
+  - base:shared-render-artifact
 related:
-  - docs/adr-substrate-only-base.md
-  - docs/adr-multi-repo-platform-split.md
+  - base:substrate-only-base
+  - base:multi-repo-platform-split
 ---
 
 # ADR: OpenTofu module is the sole Talos cluster-lifecycle path

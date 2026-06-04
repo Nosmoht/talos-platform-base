@@ -1,5 +1,6 @@
 ---
 status: accepted
+id: base:substrate-only-base
 date: 2026-05-27
 date-history:
   - 2026-05-26 initial (proposed)
@@ -14,10 +15,10 @@ supersedes:
   - docs/adr-multi-repo-platform-split.md §Component Classification — Consumer-in-Base / Backend-in-Overlay
   - docs/adr-multi-repo-platform-split.md §"Corollary on PNI itself"
 related:
-  - docs/adr-multi-repo-platform-split.md
-  - docs/adr-capability-producer-consumer-symmetry.md
-  - docs/adr-two-layer-capability-architecture.md
-  - docs/adr-three-layer-capability-architecture.md
+  - base:multi-repo-platform-split
+  - base:capability-producer-consumer-symmetry
+  - base:two-layer-capability-architecture
+  - base:three-layer-capability-architecture
 ---
 
 # ADR: Substrate-Only Base + Separate Apps Repository

@@ -1,5 +1,6 @@
 ---
 status: accepted
+id: base:namespace-ownership-rendered-manifests
 date: 2026-05-18
 date-note: choreography amended 2026-05-18 after second incident
 deciders:
@@ -9,8 +10,8 @@ consulted:
   - team-red (post-incident review #2)
 informed: []
 related:
-  - "[Capability Producer/Consumer Symmetry](adr-capability-producer-consumer-symmetry.md)"
-  - "[Multi-Repo Platform Split](adr-multi-repo-platform-split.md)"
+  - base:capability-producer-consumer-symmetry
+  - base:multi-repo-platform-split
 ---
 
 # ADR: Namespace Ownership in the Rendered Manifests Pattern

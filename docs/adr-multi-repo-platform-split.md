@@ -1,5 +1,6 @@
 ---
 status: accepted
+id: base:multi-repo-platform-split
 date: 2026-05-18
 date-history:
   - 2026-04-27 initial

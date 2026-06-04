@@ -1,6 +1,8 @@
 ---
 status: superseded
-superseded-by: docs/adr-opentofu-cluster-lifecycle.md
+id: base:shared-render-artifact
+superseded_by:
+  - base:opentofu-cluster-lifecycle
 date: 2026-05-29
 date-history:
   - 2026-05-29 initial (accepted; base-side renderer merged in PR #87)
@@ -11,9 +13,9 @@ consulted: []
 informed: []
 supersedes: []
 related:
-  - docs/adr-substrate-only-base.md
-  - docs/adr-multi-repo-platform-split.md
-  - docs/adr-opentofu-cluster-lifecycle.md
+  - base:substrate-only-base
+  - base:multi-repo-platform-split
+  - base:opentofu-cluster-lifecycle
 ---
 
 > **Superseded (2026-06-02).** This ADR's premise was *two* per-node config
