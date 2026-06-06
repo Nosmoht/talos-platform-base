@@ -100,8 +100,14 @@ data "helm_template" "argocd" {
   # Without the key the ksops repoServer could not decrypt SOPS manifests.
   lifecycle {
     precondition {
-      condition     = var.sops_age_key != ""
-      error_message = "deploy_argocd = true requires sops_age_key (the ArgoCD ksops repoServer needs the age key to decrypt SOPS manifests)."
+      # A real age private key starts with AGE-SECRET-KEY-1 (a Bech32 body follows).
+      # Prefix check (not full Bech32) is the right altitude: it rejects an empty
+      # value and obvious non-keys at plan time, where the ksops repoServer would
+      # otherwise only fail at runtime. The example root sets NO default for this
+      # variable, so a copied example cannot silently `apply` a non-functional key —
+      # `tofu plan` there requires a real key via TF_VAR_sops_age_key.
+      condition     = startswith(var.sops_age_key, "AGE-SECRET-KEY-1")
+      error_message = "deploy_argocd = true requires a real age private key in sops_age_key (it must start with \"AGE-SECRET-KEY-1\"; supply via TF_VAR_sops_age_key / tfvars / SOPS). The ArgoCD ksops repoServer needs it to decrypt SOPS manifests."
     }
   }
 }
@@ -387,6 +393,34 @@ resource "talos_machine_secrets" "this" {
     precondition {
       condition     = alltrue([for n in var.nodes : contains(keys(var.classes), n.class)])
       error_message = "A node references an undefined class (typo?). Every node.class must be a key in var.classes. Defined: ${join(", ", keys(var.classes))}."
+    }
+    # Talos podSubnets/serviceSubnets carry the FULL pod_cidr/service_cidr lists,
+    # but the Cilium seed enables ipv6 ONLY when var.dual_stack (the `ipv6.enabled`
+    # key downstream). So the IP family of the CIDRs and the dual_stack flag must
+    # agree in BOTH directions, else Talos and Cilium silently disagree:
+    #   dual_stack = true  -> each list MUST carry a v4 AND a v6 entry
+    #   dual_stack = false -> each list MUST be v4-only (a v6 entry needs dual_stack;
+    #                         the module's Cilium seed has no v6-only single-stack path)
+    # ":" marks IPv6, matching local.cilium_pod_v4/v6. The per-variable validation
+    # (length + cidrhost format) cannot see dual_stack — this is the cross-field guard,
+    # bidirectional so neither mismatch direction slips through.
+    # SCOPE (best-effort, like the SecureBoot guard above): this guards the TYPED
+    # inputs only. It does NOT inspect var.config_patches — a caller that overrides
+    # cluster.network.podSubnets via a raw config_patch can still desync Talos from
+    # the Cilium seed; raw-patch correctness is consumer-overlay responsibility
+    # (AGENTS.md "Out of scope for the base"). It also checks family PRESENCE, not
+    # count — Kubernetes/Talos enforce the one-CIDR-per-family dual-stack rule at apply.
+    precondition {
+      condition = var.dual_stack ? (
+        anytrue([for c in var.pod_cidr : !strcontains(c, ":")]) &&
+        anytrue([for c in var.pod_cidr : strcontains(c, ":")]) &&
+        anytrue([for c in var.service_cidr : !strcontains(c, ":")]) &&
+        anytrue([for c in var.service_cidr : strcontains(c, ":")])
+        ) : (
+        !anytrue([for c in var.pod_cidr : strcontains(c, ":")]) &&
+        !anytrue([for c in var.service_cidr : strcontains(c, ":")])
+      )
+      error_message = "pod_cidr/service_cidr IP families must match dual_stack: dual_stack = true requires each to carry both an IPv4 and an IPv6 CIDR; dual_stack = false requires each to be IPv4-only (a \":\"-bearing IPv6 entry needs dual_stack = true; v6-only single-stack is unsupported). Got dual_stack=${var.dual_stack}, pod_cidr=${jsonencode(var.pod_cidr)}, service_cidr=${jsonencode(var.service_cidr)}."
     }
   }
 }

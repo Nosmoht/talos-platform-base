@@ -300,6 +300,11 @@ variable "pod_cidr" {
     condition     = length(var.pod_cidr) >= 1
     error_message = "pod_cidr must contain at least one CIDR."
   }
+
+  validation {
+    condition     = alltrue([for c in var.pod_cidr : can(cidrhost(c, 0))])
+    error_message = "Every pod_cidr entry must be a valid CIDR (e.g. \"10.244.0.0/16\" or \"fd00::/48\")."
+  }
 }
 
 variable "service_cidr" {
@@ -310,6 +315,11 @@ variable "service_cidr" {
   validation {
     condition     = length(var.service_cidr) >= 1
     error_message = "service_cidr must contain at least one CIDR."
+  }
+
+  validation {
+    condition     = alltrue([for c in var.service_cidr : can(cidrhost(c, 0))])
+    error_message = "Every service_cidr entry must be a valid CIDR (e.g. \"10.96.0.0/12\" or \"fd00:1234::/108\")."
   }
 }
 
