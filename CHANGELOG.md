@@ -3,7 +3,7 @@
 This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## v1.0.0 — 2026-06-06
 
 ### Changed — BREAKING
 
@@ -65,6 +65,14 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   all caller `config_patches` (the no-SecureBoot Hard Constraint, in code — a
   consumer's patches escape the repo's `tofu/**` CI grep) and a clear
   undefined-`node.class` failure.
+
+### Fixed
+
+- **OCI release tarball now ships the module `helm/` values dir**
+  (`argocd-values.yaml`, `cilium-values.yaml`). The allowlist previously omitted
+  it, so a consumer using the published OCI artifact as the tofu module source hit
+  a file-not-found at plan time for both ArgoCD and Cilium. The `git::` source path
+  was unaffected.
 
 ## v0.8.0 — 2026-06-03
 
