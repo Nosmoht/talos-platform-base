@@ -8,9 +8,12 @@ variable "sops_age_key" {
   description = "age private key for the ArgoCD ksops repoServer (deploy_argocd). Supply via TF_VAR_sops_age_key / tfvars / SOPS."
   type        = string
   sensitive   = true
-  # Non-empty placeholder: the module precondition only requires non-empty, and an
-  # AGE-SECRET-KEY-shaped literal would trip the gitleaks secret scan.
-  default = "dummy-placeholder-supply-real-key-via-tfvar-or-env"
+  # No default — deliberately. `tofu plan` on this example (deploy_argocd = true)
+  # requires a real age key via TF_VAR_sops_age_key (or tfvars/SOPS); the module's
+  # startswith("AGE-SECRET-KEY-1") precondition then passes. A default placeholder
+  # would let a copied example root silently `apply` a non-functional ksops key —
+  # the exact foot-gun the precondition exists to catch. `tofu validate` (CI) does
+  # not evaluate the precondition, so it stays green without a key.
 }
 
 variable "cilium_ipsec_key" {

@@ -3,6 +3,40 @@
 This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Removed
+
+- **Consumer-side Cilium render path retired.** `scripts/render-cilium-bootstrap.sh`
+  is deleted — the `talos-cluster` module delivers Cilium as a controlplane
+  `inlineManifest` seed (since `v1.0.0`), so the render → `cluster.extraManifests`-URL
+  recipe is obsolete. The deleted script is dropped from the OCI tarball allowlist
+  (`.ci-oci-tarball-{include,expected}.txt`) and the `oci-publish.yml` renderer
+  exec-bit check is removed with it. `kubernetes/bootstrap/cilium/{values,extras}.yaml`
+  stay in the repo **and** in the OCI artifact as the Cilium values / GatewayClass
+  reference (only the dead script leaves the artifact). **Migration:** a consumer that
+  still invoked the renderer adopts the module-delivered Cilium seed (`deploy_cilium`,
+  default `true`); the reference values are unchanged.
+
+### Changed
+
+- **Module plan-time validation hardened.**
+  - `dual_stack` is now guarded **bidirectionally**: `dual_stack = true` requires
+    `pod_cidr` AND `service_cidr` to each carry an IPv4 and an IPv6 CIDR, and
+    `dual_stack = false` requires each to be IPv4-only. Previously a single-family
+    CIDR with `dual_stack = true` — and the reverse, a v6 CIDR with
+    `dual_stack = false` — both silently mismatched Talos (which carries the full
+    subnet list) against the Cilium seed (which enables ipv6 only on the flag).
+  - `pod_cidr`/`service_cidr` entries are now CIDR-format-validated (`cidrhost`),
+    rejecting malformed values at `tofu validate` time.
+  - `sops_age_key` must now start with `AGE-SECRET-KEY-1` (not merely `!= ""`), and
+    the homelab example root drops the `sops_age_key` default so a copied example
+    cannot silently `tofu apply` a non-functional ksops key — it must supply a real
+    key via `TF_VAR_sops_age_key`.
+- **Cilium-delivery docs corrected** to describe the module `inlineManifest` seed
+  (`day-zero-pattern.md` Layer-1, `AGENTS.md`, `kubernetes/AGENTS.md`) instead of the
+  retired render path.
+
 ## v1.0.0 — 2026-06-06
 
 ### Changed — BREAKING

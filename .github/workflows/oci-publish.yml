@@ -77,32 +77,6 @@ jobs:
             echo "::notice::No .ci-oci-tarball-expected.txt fixture present; skipping diff. Run \`mv .work/tarball-contents.txt .ci-oci-tarball-expected.txt\` to lock it in."
           fi
 
-      - name: Verify renderer executable bit preserved
-        # AC4: render-cilium-bootstrap.sh must ship with its OWNER-exec bit
-        # intact so Consumers can invoke it directly after `oras pull`.
-        # GNU stat is available on ubuntu-latest (this workflow only ever
-        # runs on ubuntu-latest); umask 022 preserves the 0111 exec bits.
-        # Extract the whole (tiny) tarball to avoid GNU-tar `--wildcards`
-        # and a multiline `find`; the stored path is the include.txt entry,
-        # which the `Verify tarball contents` step already normalized.
-        shell: bash
-        run: |
-          set -euo pipefail
-          tmp="$(mktemp -d)"
-          tar -xzf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" -C "$tmp"
-          f="$tmp/scripts/render-cilium-bootstrap.sh"
-          [ -f "$f" ] || f="$tmp/./scripts/render-cilium-bootstrap.sh"
-          [ -f "$f" ] || { echo "::error::render-cilium-bootstrap.sh not found in tarball"; exit 1; }
-          mode="$(stat -c '%a' "$f")"
-          echo "render-cilium-bootstrap.sh mode in tarball: $mode"
-          # Owner-exec bit (0100) must be set; 8#$mode is safe for 3- and
-          # 4-digit (special-bit) octal modes, and `set -e` aborts earlier
-          # if `stat` failed (mode never empty here).
-          if (( (8#$mode & 8#100) == 0 )); then
-            echo "::error::render-cilium-bootstrap.sh lost its executable bit in the OCI tarball (mode=$mode)"
-            exit 1
-          fi
-
       - name: Generate checksums
         working-directory: _release
         run: sha256sum *.tar.gz > checksums.txt

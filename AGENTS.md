@@ -34,7 +34,7 @@ platform layer model (`talos-platform-docs` ADR-0009).
 
 - `kubernetes/base/infrastructure/`: base Helm values and namespace/kustomization manifests per infrastructure component.
 - `kubernetes/bootstrap/argocd/`: parameterized bootstrap templates (`*.tmpl`) consumed by `make argocd-bootstrap`.
-- `kubernetes/bootstrap/cilium/`: base Cilium Helm values and `extras.yaml` (rendered cilium.yaml is cluster-side).
+- `kubernetes/bootstrap/cilium/`: reference Cilium Helm values + `extras.yaml` (GatewayClass) for optional Day-2 self-management. Cilium itself is delivered by the `talos-cluster` module as a controlplane `inlineManifest` seed (`deploy_cilium`); the former consumer-side render path is retired.
 - `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-class Image-Factory installer, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root that is a thin `yamldecode` shim over the declarative `cluster.yaml` SoT. See [`docs/adr-opentofu-cluster-lifecycle.md`](docs/adr-opentofu-cluster-lifecycle.md) and [`docs/adr-cluster-yaml-sot.md`](docs/adr-cluster-yaml-sot.md).
 - `policies/`: conftest Rego policies for kustomize-rendered manifests.
 - `scripts/`: cluster-agnostic validation, render and helper scripts.
