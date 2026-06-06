@@ -109,15 +109,23 @@ cleanly). Decisions 2 and 4 are the correction.
 
 ## Implementation status
 
-- **Done (this change):** decisions 1, 2, 5 — `deploy_cilium`, `cni:none` +
-  `proxy.disabled`, `data.helm_template.cilium` controlplane inlineManifest seed,
-  vendored minimal `helm/cilium-values.yaml`, typed `cilium_*` + `pod_cidr`/
-  `service_cidr`/`dual_stack`/`allow_scheduling_on_controlplanes` inputs, IPsec key
-  Secret seeding.
+- **Done (this change):** decisions 1, 2, 4, 5 — `deploy_cilium`, `cni:none`
+  (authoritative, last in the patch order so a stale caller `cni` patch cannot
+  resurrect Flannel) + `proxy.disabled`, `data.helm_template.cilium` controlplane
+  inlineManifest seed, vendored minimal `helm/cilium-values.yaml`, typed `cilium_*`
+  + `pod_cidr`/`service_cidr`/`dual_stack`/`allow_scheduling_on_controlplanes`
+  inputs, IPsec key Secret seeding. **Gateway API delivered** (`cilium_gateway_api`
+  default `true`): the module renders the Cilium gateway controller AND seeds the
+  Gateway API v1.4.1 standard-channel CRDs via `cluster.extraManifests`
+  (`cilium_gateway_api_crds_url`, overridable for air-gap / the experimental
+  channel), applied before the operator-created GatewayClass by Talos' CRD-first
+  sort — so the base satisfies its own "Gateway API only" Hard Constraint out of
+  the box. SecureBoot-installer guard + clear undefined-class failure added as
+  plan-time preconditions (a consumer's patches escape the repo's `tofu/**` CI grep).
 - **Pending follow-on:** decision 3 (the `cluster.yaml` full-SoT migration: schema,
-  thin shim, example rebuild, AGENTS.md correction), Gateway API CRD seeding so
-  `cilium_gateway_api` can default `true` per the base "Gateway API only" Hard
-  Constraint, and the `render-cilium-bootstrap.sh` retirement.
+  thin shim, example rebuild, AGENTS.md correction), the `render-cilium-bootstrap.sh`
+  retirement, and chart/CRD digest pinning (both `cilium_chart_repository` and
+  `cilium_gateway_api_crds_url` are tag/URL-pulled without a digest pin today).
 
 ## Links
 

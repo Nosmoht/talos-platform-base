@@ -468,11 +468,28 @@ variable "cilium_ipsec_key" {
 
 variable "cilium_gateway_api" {
   description = <<-EOT
-    Enable Cilium Gateway API support in the seed. Default false in this delivery
-    increment: turning it on also requires the Gateway API CRDs to be seeded
-    before the GatewayClass (a follow-on step). The base Hard Constraint is
-    "Gateway API only — no Ingress"; once CRD seeding lands this defaults true.
+    Enable Cilium Gateway API support in the seed. Default true — the base Hard
+    Constraint is "Gateway API only — no Ingress". When true the module renders
+    the Cilium gateway controller AND seeds the Gateway API CRDs (from
+    cilium_gateway_api_crds_url) via cluster.extraManifests, applied before the
+    GatewayClass by Talos' CRD-first manifest sort. Cilium 1.19 requires Gateway
+    API v1.4.1 standard channel (TLSRoute is experimental and degrades gracefully
+    if its CRD is absent).
   EOT
   type        = bool
-  default     = false
+  default     = true
+}
+
+variable "cilium_gateway_api_crds_url" {
+  description = <<-EOT
+    URL of the Gateway API CRD manifest seeded via cluster.extraManifests when
+    cilium_gateway_api is true. Default is the v1.4.1 STANDARD channel bundle
+    (matches Cilium 1.19). Talos fetches it at bootstrap (no plan-time call), and
+    retries until it applies. Override for: an air-gapped mirror; or the
+    EXPERIMENTAL channel bundle if you need TLSRoute. NOTE: fetched by URL with no
+    digest pin — point only at a source you trust. Empty = seed no CRDs (you must
+    provide them another way).
+  EOT
+  type        = string
+  default     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml"
 }

@@ -33,6 +33,19 @@ locals {
   # for new clusters; bump talos_install_version for an OS upgrade while
   # keeping talos_version fixed at bootstrap.
   install_version = var.talos_install_version != "" ? var.talos_install_version : var.talos_version
+
+  # All caller-supplied machine-config patch strings, flattened for the SecureBoot
+  # guard. A consumer's own cluster.yaml / patches live outside this repo's
+  # hard-constraints-check grep (tofu/** only), so the no-SecureBoot Hard Constraint
+  # is enforced HERE too — same pattern the CI grep uses.
+  all_caller_patches = concat(
+    var.config_patches,
+    var.controlplane_config_patches,
+    var.worker_config_patches,
+    flatten([for c in var.classes : c.config_patches]),
+    flatten([for n in var.nodes : n.config_patches]),
+  )
+  secureboot_patches = [for p in local.all_caller_patches : p if can(regex("(metal-secureboot|installer-secureboot)", p))]
 }
 
 # Defensive cross-check: every class referenced by a node must be defined in
@@ -154,6 +167,14 @@ locals {
       { network = { cni = { name = "none" } } },
       var.cilium_kube_proxy_replacement ? { proxy = { disabled = true } } : {},
     )
+  })] : []
+
+  # Gateway API CRDs via cluster.extraManifests (controlplane) when Gateway API is
+  # enabled. Talos fetches them at bootstrap and its CRD-first manifest sort applies
+  # them before the Cilium GatewayClass (inlineManifest). CRDs carry no key material,
+  # so the URL form is fine here (unlike Cilium itself). Empty URL = seed none.
+  gateway_api_patch = (var.deploy_cilium && var.cilium_gateway_api && var.cilium_gateway_api_crds_url != "") ? [yamlencode({
+    cluster = { extraManifests = [var.cilium_gateway_api_crds_url] }
   })] : []
 
   # First IPv4 / IPv6 entries of pod_cidr by family (":" marks IPv6), so the
@@ -337,6 +358,22 @@ data "talos_image_factory_urls" "per_class" {
 # current bundle, else mismatched PKI is pushed to live nodes.)
 resource "talos_machine_secrets" "this" {
   talos_version = var.talos_version
+
+  lifecycle {
+    # Hard Constraint (base AGENTS.md): never a SecureBoot installer — it boot-loops.
+    # The module never emits one, but a caller config_patch could; block it here
+    # since a consumer's patches escape the repo's tofu/** CI grep.
+    precondition {
+      condition     = length(local.secureboot_patches) == 0
+      error_message = "A SecureBoot installer (metal-secureboot/installer-secureboot) appears in a config_patch. The base Hard Constraint forbids SecureBoot (boot loops) — remove it."
+    }
+    # Fail clearly on a typo'd node.class before the cryptic installer-URL map-index
+    # error (the existing check block only warns).
+    precondition {
+      condition     = alltrue([for n in var.nodes : contains(keys(var.classes), n.class)])
+      error_message = "A node references an undefined class (typo?). Every node.class must be a key in var.classes. Defined: ${join(", ", keys(var.classes))}."
+    }
+  }
 }
 
 # Base machine configuration per role. Cluster-specific patches are layered on
@@ -356,6 +393,7 @@ data "talos_machine_configuration" "controlplane" {
     var.config_patches,
     var.controlplane_config_patches,
     local.base_cni_patch,
+    local.gateway_api_patch,
     local.argocd_controlplane_patch,
     local.cilium_controlplane_patch,
   )

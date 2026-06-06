@@ -172,7 +172,8 @@ provider "talos" {}
 | `cilium_mtu` | number | `0` | datapath MTU (0 = chart auto). |
 | `cilium_encryption` | object | `{type="none"}` | `type` ∈ {none, wireguard, ipsec}. ipsec requires `cilium_ipsec_key`. |
 | `cilium_ipsec_key` | string (sensitive) | `""` | IPsec PSK seeded as the `cilium-ipsec-keys` Secret; required for `type=ipsec` (wireguard is keyless). Lands in (encrypted) state. |
-| `cilium_gateway_api` | bool | `false` | enable Cilium Gateway API in the seed (defaults `true` once Gateway-API CRD seeding lands). |
+| `cilium_gateway_api` | bool | `true` | enable Cilium Gateway API: renders the gateway controller AND seeds the Gateway API CRDs via `extraManifests`. Satisfies the "Gateway API only" Hard Constraint out of the box. |
+| `cilium_gateway_api_crds_url` | string | GW-API v1.4.1 standard bundle | Gateway API CRD manifest URL seeded via `cluster.extraManifests` (fetched at boot, retried). Override for an air-gap mirror or the experimental channel (TLSRoute). |
 | `deploy_argocd` | bool | `true` | deliver ArgoCD as a controlplane `inlineManifest`. Requires `sops_age_key` when true. |
 | `sops_age_key` | string (sensitive) | `""` | age private key (`keys.txt`) for the ArgoCD **ksops** repoServer, seeded as the `sops-age-key` Secret. **Required** when `deploy_argocd = true`. Lands in (encrypted) state. |
 | `argocd_namespace` | string | `"argocd"` | namespace for the bootstrap ArgoCD install |
