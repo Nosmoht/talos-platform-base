@@ -1,6 +1,11 @@
-# Cilium Helm values for cluster bootstrap manifest (base; consumer overlays may patch).
-# Used by scripts/render-cilium-bootstrap.sh to render
-# kubernetes/bootstrap/cilium/cilium.yaml via helm template.
+# Cilium Helm values — REFERENCE ONLY (base; consumer overlays may patch).
+#
+# The LIVE Cilium seed floor is the talos-cluster module's
+# tofu/modules/talos-cluster/helm/cilium-values.yaml, baked into the
+# controlplane cluster.inlineManifests at bootstrap (deploy_cilium). This file
+# is retained as the reference for optional Day-2 Cilium self-management — the
+# former render path (scripts/render-cilium-bootstrap.sh) was retired with the
+# module-delivered Cilium seed; see docs/adr-cluster-yaml-sot.md.
 #
 # Only non-default values are listed. Chart defaults apply for everything else.
 

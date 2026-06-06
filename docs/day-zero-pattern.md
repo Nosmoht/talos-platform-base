@@ -75,14 +75,21 @@ control plane. Two artifacts in this repo participate in Layer 1:
    define kubelet args, kernel cmdline, install disk, and similar host-level
    inputs. They never touch Kubernetes resources directly.
 
-2. **Cilium bootstrap manifest** (`kubernetes/bootstrap/cilium/`).
-   Source of truth lives as Helm values (`values.yaml`) plus extras
-   (`extras.yaml`, the `GatewayClass`). The rendered output is
-   `cilium.yaml`, produced by `scripts/render-cilium-bootstrap.sh`.
-   Talos appliess this manifest at K8s-bootstrap time via the
-   `cluster.extraManifests` URL configured in the consumer cluster's
-   machine-config — **not** via ArgoCD. The reason is causal: without
-   a CNI no pod can start, including ArgoCD's own pods.
+2. **Cilium CNI seed** (delivered by the `tofu/modules/talos-cluster`
+   call). When `deploy_cilium = true` (the default) the module renders the
+   Cilium chart locally with `data.helm_template` and bakes it into the
+   controlplane `cluster.inlineManifests` as a create-only bootstrap **seed**
+   — the same `data.helm_template` → inlineManifest pattern as the ArgoCD
+   seed. It also injects `cluster.network.cni.name: none` +
+   `cluster.proxy.disabled: true`, so the Talos-default Flannel and kube-proxy
+   never come up. The module's `helm/cilium-values.yaml` is the floor;
+   per-cluster install-time config rides the typed `cilium_*` inputs +
+   `cilium_values_override`. Talos applies the seed at K8s-bootstrap time —
+   **not** via ArgoCD. The reason is causal: without a CNI no pod can start,
+   including ArgoCD's own pods. (`kubernetes/bootstrap/cilium/{values,extras}.yaml`
+   are retained as the reference for optional Day-2 Cilium self-management; the
+   former `cluster.extraManifests`-URL render path —
+   `scripts/render-cilium-bootstrap.sh` — is retired.)
 
 Cilium is **deliberately not present** in
 `kubernetes/base/infrastructure/`. Looking for it there is a category

@@ -2,7 +2,6 @@ docs/platform-hardware-features.yaml
 docs/schemas/hardware-features.schema.json
 kubernetes/bootstrap/cilium/extras.yaml
 kubernetes/bootstrap/cilium/values.yaml
-scripts/render-cilium-bootstrap.sh
 tofu/modules/talos-cluster/README.md
 tofu/modules/talos-cluster/helm/argocd-values.yaml
 tofu/modules/talos-cluster/helm/cilium-values.yaml
