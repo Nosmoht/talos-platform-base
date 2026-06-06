@@ -93,7 +93,15 @@ substrate-only boundary the base applies to PNI instance enforcement.
   module. `cluster.yaml` is slimmed to its ArgoCD-bootstrap identity
   (`cluster.{name,overlay,target_revision}` + `repo.url`); the 5-axis Talos
   sections are gone. NTP (formerly injected from `cluster.yaml`) is now a
-  caller `config_patches` value. The Layer-C hardware-feature *validation*
+  caller `config_patches` value.
+  **[Amended by [base:cluster-yaml-sot](adr-cluster-yaml-sot.md): `cluster.yaml`
+  is re-expanded into the full declarative cluster SoT — identity, versions,
+  endpoint, network, nodes, classes, machine-config patches, substrate. The
+  consumer's OpenTofu root becomes a thin `yamldecode` shim over it; tofu stays
+  the executor, not the SoT. The node/class definitions live in `cluster.yaml`
+  again at the human-edited layer; the module's typed variable interface is the
+  unchanged mechanism the shim maps onto. NTP and the rest of the long tail stay
+  caller `config_patches`, now declared as structured YAML inside `cluster.yaml`.]** The Layer-C hardware-feature *validation*
   that `validate-schematics.sh` performed is dropped (the
   `docs/platform-hardware-features.yaml` catalogue stays — it is PNI
   Layer-C label vocabulary, independent of Talos config generation).

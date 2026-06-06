@@ -32,6 +32,26 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the module-delivered Cilium (drop the extraManifests recipe) or set
   `deploy_cilium = false` to keep the prior behaviour. Next OCI tag is a MAJOR bump.
 
+- **`cluster.yaml` is now the full declarative cluster Source-of-Truth.** It
+  carries the complete cluster definition (identity, Talos/Kubernetes versions,
+  endpoint, pod/service CIDR, dual-stack, scheduling, nodes, classes,
+  machine-config patches, and the `substrate.{cilium,argocd}` config). The
+  consumer's OpenTofu root becomes a thin `yamldecode` shim that maps the file
+  onto the `talos-cluster` module's typed interface — tofu is the executor, not
+  the SoT. Machine-config patches are declared as structured YAML maps (the shim
+  `yamlencode`s them onto the module's `list(string)` interface). Secrets
+  (`sops_age_key`, `cilium_ipsec_key`) have no slot in `cluster.yaml`; they are
+  supplied via tfvar/env. `cluster.yaml.example` and the
+  `tofu/modules/talos-cluster/examples/homelab` root are rebuilt to this shape.
+  Realizes `docs/adr-cluster-yaml-sot.md` decision 3; corrects the OpenTofu-cutover
+  ADR's "node/class definitions live in the consumer's OpenTofu root" stance.
+
+  **BREAKING — migration:** the `cluster.yaml` schema and the consumer
+  OpenTofu-root shape change. A consumer on the post-#82 slim `cluster.yaml`
+  re-expands it to the full schema and replaces its hand-written HCL root with the
+  thin `yamldecode` shim (see the rebuilt homelab example). Next OCI tag is a
+  MAJOR bump.
+
 ### Added
 
 - **Cilium Gateway API controller** enabled by default (`cilium_gateway_api`),
