@@ -112,9 +112,9 @@ cleanly). Decisions 2 and 4 are the correction.
 - **Done (this change):** decisions 1, 2, 4, 5 — `deploy_cilium`, `cni:none`
   (authoritative, last in the patch order so a stale caller `cni` patch cannot
   resurrect Flannel) + `proxy.disabled`, `data.helm_template.cilium` controlplane
-  inlineManifest seed, vendored minimal `helm/cilium-values.yaml`, typed `cilium_*`
-  + `pod_cidr`/`service_cidr`/`dual_stack`/`allow_scheduling_on_controlplanes`
-  inputs, IPsec key Secret seeding. **Gateway API controller** enabled in the seed
+  inlineManifest seed, vendored minimal `helm/cilium-values.yaml`, the typed
+  `cilium_*` / `pod_cidr` / `service_cidr` / `dual_stack` /
+  `allow_scheduling_on_controlplanes` inputs, IPsec key Secret seeding. **Gateway API controller** enabled in the seed
   (`cilium_gateway_api` default `true`); the Cilium operator creates the GatewayClass
   at runtime once the Gateway API CRDs (v1.4.1 standard channel for Cilium 1.19)
   exist. The CRDs are NOT seeded at bootstrap by default — they are a Day-1

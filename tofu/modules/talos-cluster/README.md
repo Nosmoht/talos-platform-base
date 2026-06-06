@@ -166,7 +166,7 @@ provider "talos" {}
 | `cilium_chart_repository` | string | `"https://helm.cilium.io"` | Helm repo for the cilium chart (override for a private mirror / air-gap). |
 | `cilium_namespace` | string | `"kube-system"` | namespace Cilium renders into. |
 | `cilium_values_override` | string | `""` | consumer Helm values merged on the floor + computed values (long tail: Hubble, L2/BGP, bpf). |
-| `cilium_routing_mode` | string | `"tunnel"` | `tunnel` \| `native`. Install-time-fixed. |
+| `cilium_routing_mode` | string | `"tunnel"` | `tunnel` / `native`. Install-time-fixed. |
 | `cilium_native_routing_cidr` | string | `""` | `ipv4NativeRoutingCIDR` for native mode; empty = first `pod_cidr`. |
 | `cilium_kube_proxy_replacement` | bool | `true` | Cilium kube-proxy replacement (also sets Talos `proxy.disabled`). |
 | `cilium_mtu` | number | `0` | datapath MTU (0 = chart auto). |
