@@ -47,4 +47,8 @@ logs/security/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+# tfvars carry caller secrets (sops_age_key, cilium_ipsec_key) — never commit them.
+# A committed template uses a *.tfvars.example name, which these patterns do not match.
+*.tfvars
+*.auto.tfvars
 tofu/modules/talos-cluster/.tmp/

@@ -1,140 +1,88 @@
-# Mixed amd64 + arm64 homelab topology:
-#   - 3 controlplane (amd64, class "standard")
-#   - 4 workers       (amd64, class "kubevirt": drbd + kubevirt host prereqs)
-#   - 1 GPU worker    (amd64, class "gpu": nvidia extensions, own NIC)
-#   - 1 Raspberry Pi  (arm64, class "pi": rpi_generic overlay)
+# Example root for the talos-cluster module — declarative cluster.yaml SoT.
 #
-# Kubernetes roles are ONLY controlplane / worker; GPU and Pi are classes, not
-# roles. The arm64 Pi worker is the case the pre-extension module could not
-# express (amd64 was hardcoded).
+# This demonstrates the platform's Source-of-Truth model: the cluster is
+# DECLARED in cluster.yaml; this root is a THIN yamldecode shim that maps that
+# YAML onto the module's typed, validated variable interface. OpenTofu is the
+# executor, not the SoT — the human-edited truth is cluster.yaml.
 #
-# IPs are RFC5737 documentation addresses (192.0.2.0/24) — validate-only.
+# It is a `tofu validate`/`plan` fixture, NOT a runnable apply: cluster.yaml uses
+# RFC5737 documentation IPs and this root configures no state backend. Secrets
+# (sops_age_key, cilium_ipsec_key) are NOT in cluster.yaml — they are supplied
+# via tfvar/env (see variables.tf), here defaulted to validate-safe placeholders.
 
 locals {
-  # Shared system extensions on every x86 node (drbd storage + gvisor runtime +
-  # intel firmware/microcode). The GPU class adds nvidia on top.
-  base_extensions = [
-    "siderolabs/drbd",
-    "siderolabs/gvisor",
-    "siderolabs/i915",
-    "siderolabs/intel-ucode",
-    "siderolabs/nvme-cli",
-  ]
+  cfg    = yamldecode(file("${path.module}/cluster.yaml"))
+  cilium = try(local.cfg.substrate.cilium, {})
+  argocd = try(local.cfg.substrate.argocd, {})
 
-  # Per-class machine-config patch demonstrating var.classes[*].config_patches:
-  # kubevirt host prerequisites (IOMMU) applied to every node of the class.
-  kubevirt_patch = yamlencode({
-    machine = {
-      install = {
-        extraKernelArgs = ["intel_iommu=on", "iommu=pt"]
-      }
-    }
-  })
-
-  # Per-node patch demonstrating node.config_patches: the GPU node sits on a
-  # different NIC, so its bridge binding is rendered per-node (the value the old
-  # ${NIC_NAME} placeholder used to carry).
-  gpu_nic_patch = yamlencode({
-    machine = {
-      network = {
-        interfaces = [{
-          interface = "enp0s20f0u2"
-          dhcp      = true
-        }]
-      }
-    }
-  })
+  # Talos machine-config patches are DECLARED as structured YAML maps in
+  # cluster.yaml; the module's interface takes YAML strings. yamlencode bridges
+  # the two (Talos accepts strategic-merge maps and RFC6902 lists; yamlencode
+  # emits valid YAML for both).
+  config_patches              = [for p in try(local.cfg.config_patches, []) : yamlencode(p)]
+  controlplane_config_patches = [for p in try(local.cfg.controlplane_config_patches, []) : yamlencode(p)]
+  worker_config_patches       = [for p in try(local.cfg.worker_config_patches, []) : yamlencode(p)]
 }
 
 module "homelab" {
   source = "../../"
 
-  cluster_name = "homelab"
-  # Schema-pin fixed at bootstrap; install-pin bumped for an OS upgrade — the two
-  # differ here to exercise the schema-pin-vs-install-pin split.
-  talos_version         = "v1.12.6"
-  talos_install_version = "v1.12.7"
-  kubernetes_version    = "v1.35.0"
-  cluster_endpoint      = "https://192.0.2.1:6443"
+  # --- Identity / versions ---
+  cluster_name          = local.cfg.cluster.name
+  cluster_endpoint      = local.cfg.cluster.endpoint
+  talos_version         = local.cfg.talos.version
+  talos_install_version = try(local.cfg.talos.install_version, "")
+  kubernetes_version    = local.cfg.kubernetes.version
 
-  nodes = [
-    { hostname = "node-cp-1", ip = "192.0.2.11", role = "controlplane", class = "standard" },
-    { hostname = "node-cp-2", ip = "192.0.2.12", role = "controlplane", class = "standard" },
-    { hostname = "node-cp-3", ip = "192.0.2.13", role = "controlplane", class = "standard" },
-    { hostname = "node-w-1", ip = "192.0.2.21", role = "worker", class = "kubevirt" },
-    { hostname = "node-w-2", ip = "192.0.2.22", role = "worker", class = "kubevirt" },
-    { hostname = "node-w-3", ip = "192.0.2.23", role = "worker", class = "kubevirt" },
-    { hostname = "node-w-4", ip = "192.0.2.24", role = "worker", class = "kubevirt" },
-    {
-      hostname       = "node-gpu-1"
-      ip             = "192.0.2.31"
-      role           = "worker"
-      class          = "gpu"
-      config_patches = [local.gpu_nic_patch] # per-node NIC binding
-    },
-    { hostname = "node-pi-1", ip = "192.0.2.41", role = "worker", class = "pi" },
-  ]
+  # --- Cluster network (install-time-fixed) ---
+  pod_cidr                          = try(local.cfg.cluster.pod_cidr, ["10.244.0.0/16"])
+  service_cidr                      = try(local.cfg.cluster.service_cidr, ["10.96.0.0/12"])
+  dual_stack                        = try(local.cfg.cluster.dual_stack, false)
+  allow_scheduling_on_controlplanes = try(local.cfg.cluster.allow_scheduling_on_controlplanes, false)
 
-  classes = {
-    standard = {
-      architecture = "amd64"
-      extensions   = local.base_extensions
+  # --- Topology (node + class config_patches re-encoded to YAML strings) ---
+  nodes = [for n in local.cfg.nodes : {
+    hostname       = n.hostname
+    ip             = n.ip
+    role           = n.role
+    class          = try(n.class, "standard")
+    config_patches = [for p in try(n.config_patches, []) : yamlencode(p)]
+  }]
+
+  classes = { for name, c in local.cfg.classes : name => {
+    architecture = try(c.architecture, "amd64")
+    extensions   = try(c.extensions, [])
+    overlay = try(c.overlay, null) == null ? null : {
+      name    = c.overlay.name
+      image   = c.overlay.image
+      options = try(c.overlay.options, null)
     }
-    kubevirt = {
-      architecture   = "amd64"
-      extensions     = local.base_extensions
-      config_patches = [local.kubevirt_patch]
-    }
-    gpu = {
-      architecture = "amd64"
-      extensions = concat(local.base_extensions, [
-        "siderolabs/nvidia-container-toolkit-lts",
-        "siderolabs/nvidia-open-gpu-kernel-modules-lts",
-        "siderolabs/realtek-firmware",
-      ])
-    }
-    pi = {
-      architecture = "arm64"
-      extensions   = [] # the RPi schematic carries the board overlay, not extensions
-      overlay = {
-        name  = "rpi_generic"
-        image = "siderolabs/sbc-raspberrypi"
-      }
-    }
-  }
+    config_patches = [for p in try(c.config_patches, []) : yamlencode(p)]
+  } }
 
-  # Cluster-wide patches the caller owns (NTP, registry mirrors, install disk).
-  # NTP is supplied here because the module injects none of its own — the value
-  # the old cluster.yaml .cluster.ntp_servers used to carry.
-  config_patches = [
-    yamlencode({
-      machine = {
-        time = {
-          servers = ["192.0.2.123"]
-        }
-      }
-    })
-  ]
+  # --- Cluster-wide + role patches ---
+  config_patches              = local.config_patches
+  controlplane_config_patches = local.controlplane_config_patches
+  worker_config_patches       = local.worker_config_patches
 
-  # Role tier — applied to controlplane nodes only (exercises the role pass).
-  controlplane_config_patches = [
-    yamlencode({
-      cluster = {
-        apiServer = {
-          extraArgs = {
-            "event-ttl" = "1h0m0s"
-          }
-        }
-      }
-    })
-  ]
+  # --- Substrate: Cilium ---
+  deploy_cilium                 = try(local.cilium.enabled, true)
+  cilium_chart_version          = try(local.cilium.chart_version, "1.19.4")
+  cilium_chart_repository       = try(local.cilium.chart_repository, "https://helm.cilium.io")
+  cilium_routing_mode           = try(local.cilium.routing_mode, "tunnel")
+  cilium_native_routing_cidr    = try(local.cilium.native_routing_cidr, "")
+  cilium_kube_proxy_replacement = try(local.cilium.kube_proxy_replacement, true)
+  cilium_mtu                    = try(local.cilium.mtu, 0)
+  cilium_gateway_api            = try(local.cilium.gateway_api, true)
+  cilium_gateway_api_crds_url   = try(local.cilium.gateway_api_crds_url, "")
+  cilium_encryption             = try(local.cilium.encryption, { type = "none" })
+  cilium_values_override        = try(local.cilium.values_override, "")
+  cilium_ipsec_key              = var.cilium_ipsec_key # secret — tfvar/env, never cluster.yaml
 
-  # ArgoCD ships with the bootstrap (deploy_argocd defaults to true, Layer-1
-  # substrate). It MUST get an age key for the ksops repoServer — here a dummy
-  # non-empty placeholder so `tofu plan`/`validate` exercises the now-core path
-  # (the precondition only requires a non-empty value, not a specific format; an
-  # AGE-SECRET-KEY-shaped literal would trip the gitleaks secret scan).
-  # A real cluster supplies its actual age private key via the caller (SOPS/env);
-  # NEVER commit a real key. Set deploy_argocd = false to opt out.
-  sops_age_key = "dummy-placeholder-supply-real-key-via-tfvar-or-env"
+  # --- Substrate: ArgoCD ---
+  deploy_argocd          = try(local.argocd.enabled, true)
+  argocd_chart_version   = try(local.argocd.chart_version, "9.4.5")
+  argocd_namespace       = try(local.argocd.namespace, "argocd")
+  argocd_values_override = try(local.argocd.values_override, "")
+  sops_age_key           = var.sops_age_key # secret — tfvar/env, never cluster.yaml
 }

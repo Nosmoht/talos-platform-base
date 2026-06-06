@@ -35,14 +35,14 @@ platform layer model (`talos-platform-docs` ADR-0009).
 - `kubernetes/base/infrastructure/`: base Helm values and namespace/kustomization manifests per infrastructure component.
 - `kubernetes/bootstrap/argocd/`: parameterized bootstrap templates (`*.tmpl`) consumed by `make argocd-bootstrap`.
 - `kubernetes/bootstrap/cilium/`: base Cilium Helm values and `extras.yaml` (rendered cilium.yaml is cluster-side).
-- `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-class Image-Factory installer, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root. See [`docs/adr-opentofu-cluster-lifecycle.md`](docs/adr-opentofu-cluster-lifecycle.md).
+- `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-class Image-Factory installer, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root that is a thin `yamldecode` shim over the declarative `cluster.yaml` SoT. See [`docs/adr-opentofu-cluster-lifecycle.md`](docs/adr-opentofu-cluster-lifecycle.md) and [`docs/adr-cluster-yaml-sot.md`](docs/adr-cluster-yaml-sot.md).
 - `policies/`: conftest Rego policies for kustomize-rendered manifests.
 - `scripts/`: cluster-agnostic validation, render and helper scripts.
 - `docs/`: platform-base reference docs. See [`docs/README.md`](docs/README.md) for the navigable map (architecture, contract cookbook, ADRs, workflow refs).
 
 ## Build, Test, and Development Commands
 
-- `make init-cluster-yaml`: copies `cluster.yaml.example` to `cluster.yaml` (gitignored) — the ArgoCD-bootstrap identity (`cluster.{name,overlay,target_revision}` + `repo.url`) consumed by `make argocd-bootstrap`. (Talos node/class definitions live in the consumer's OpenTofu root, not in `cluster.yaml`.)
+- `make init-cluster-yaml`: copies `cluster.yaml.example` to `cluster.yaml` (gitignored) — the declarative cluster Source-of-Truth (identity, versions, endpoint, network, nodes, classes, machine-config patches, substrate). `make argocd-bootstrap` reads only the bootstrap-identity subset (`cluster.{name,overlay,target_revision}` + `repo.url`); the consumer's OpenTofu root is a thin `yamldecode` shim that maps the full file onto the `tofu/modules/talos-cluster` typed interface. tofu is the executor, not the SoT. See [`docs/adr-cluster-yaml-sot.md`](docs/adr-cluster-yaml-sot.md).
 - `make validate-gitops`: kustomize-render + SOPS check + conftest + kubeconform across all rendered manifests.
 - `make validate-kyverno-policies`: server-side validation of base Kyverno ClusterPolicies (PNI contract, reserved-labels, vault-ca-distribution, capability-validation).
 - `make mcp-install` / `make mcp-verify`: install and verify MCP server binaries.
