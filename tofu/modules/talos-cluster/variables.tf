@@ -468,13 +468,14 @@ variable "cilium_ipsec_key" {
 
 variable "cilium_gateway_api" {
   description = <<-EOT
-    Enable Cilium Gateway API support in the seed. Default true — the base Hard
-    Constraint is "Gateway API only — no Ingress". When true the module renders
-    the Cilium gateway controller AND seeds the Gateway API CRDs (from
-    cilium_gateway_api_crds_url) via cluster.extraManifests, applied before the
-    GatewayClass by Talos' CRD-first manifest sort. Cilium 1.19 requires Gateway
-    API v1.4.1 standard channel (TLSRoute is experimental and degrades gracefully
-    if its CRD is absent).
+    Enable the Cilium Gateway API controller in the seed (install-time-fixed).
+    Default true — the base Hard Constraint is "Gateway API only — no Ingress".
+    This renders gatewayAPI.enabled; the Cilium operator creates the GatewayClass
+    at runtime once the Gateway API CRDs exist. The CRDs themselves are NOT seeded
+    by default — apply them via GitOps / the apps catalog (Day-1), or opt into
+    bootstrap seeding via cilium_gateway_api_crds_url. Until the CRDs land the
+    gateway controller errors (harmless to the CNI). Cilium 1.19 needs Gateway API
+    v1.4.1 standard channel (TLSRoute is experimental and degrades gracefully).
   EOT
   type        = bool
   default     = true
@@ -482,14 +483,24 @@ variable "cilium_gateway_api" {
 
 variable "cilium_gateway_api_crds_url" {
   description = <<-EOT
-    URL of the Gateway API CRD manifest seeded via cluster.extraManifests when
-    cilium_gateway_api is true. Default is the v1.4.1 STANDARD channel bundle
-    (matches Cilium 1.19). Talos fetches it at bootstrap (no plan-time call), and
-    retries until it applies. Override for: an air-gapped mirror; or the
-    EXPERIMENTAL channel bundle if you need TLSRoute. NOTE: fetched by URL with no
-    digest pin — point only at a source you trust. Empty = seed no CRDs (you must
-    provide them another way).
+    OPT-IN bootstrap seeding of the Gateway API CRDs. Default EMPTY — the base does
+    NOT fetch CRDs at bootstrap by default: the CRDs are a Day-1 GitOps / apps-catalog
+    concern (apply them via ArgoCD after the cluster is up), which is the
+    substrate/apps boundary and the air-gap-safe path. Cilium's gateway controller
+    (enabled by cilium_gateway_api) tolerates absent CRDs — it errors until they
+    land, but the CNI is unaffected and the cluster bootstraps normally.
+
+    Set this to a CRD manifest URL ONLY if you want Talos to seed it at bootstrap via
+    cluster.extraManifests — appropriate for a CONNECTED cluster that accepts the
+    dependency. Cilium 1.19 needs Gateway API v1.4.1 STANDARD channel:
+    https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml
+    (use the EXPERIMENTAL bundle for TLSRoute). Point only at a source you trust —
+    no digest pin; extraManifests applies WHATEVER the URL returns at the most
+    privileged moment of bootstrap. WARNING: a failed/blocked fetch is NOT graceful —
+    Talos' ExtraManifestController crashloops with backoff and bootstrap does not
+    complete cleanly (verified against Talos v1.10/v1.11 docs). Use an internal
+    mirror for restricted-egress, or leave empty and apply via GitOps.
   EOT
   type        = string
-  default     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml"
+  default     = ""
 }

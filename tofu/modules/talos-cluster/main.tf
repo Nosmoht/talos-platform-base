@@ -35,9 +35,13 @@ locals {
   install_version = var.talos_install_version != "" ? var.talos_install_version : var.talos_version
 
   # All caller-supplied machine-config patch strings, flattened for the SecureBoot
-  # guard. A consumer's own cluster.yaml / patches live outside this repo's
-  # hard-constraints-check grep (tofu/** only), so the no-SecureBoot Hard Constraint
-  # is enforced HERE too — same pattern the CI grep uses.
+  # guard below. NOTE: the guard is a substring HEURISTIC (same lexical pattern as
+  # the repo's tofu/** CI grep), not a complete SecureBoot detector — it catches a
+  # config_patch that literally selects a `*-secureboot` installer URL (the common
+  # copy-paste of the old recipe). It does NOT catch a SecureBoot image selected via
+  # a schematic-level secureboot toggle or a renamed/mirrored/by-digest image whose
+  # string lacks those substrings — that residual stays consumer-overlay
+  # responsibility (same boundary as AGENTS.md §"Out of scope for the base").
   all_caller_patches = concat(
     var.config_patches,
     var.controlplane_config_patches,
@@ -169,10 +173,15 @@ locals {
     )
   })] : []
 
-  # Gateway API CRDs via cluster.extraManifests (controlplane) when Gateway API is
-  # enabled. Talos fetches them at bootstrap and its CRD-first manifest sort applies
-  # them before the Cilium GatewayClass (inlineManifest). CRDs carry no key material,
-  # so the URL form is fine here (unlike Cilium itself). Empty URL = seed none.
+  # OPT-IN bootstrap seeding of the Gateway API CRDs via cluster.extraManifests
+  # (controlplane), only when cilium_gateway_api_crds_url is set non-empty. Default
+  # empty -> the base seeds NO CRDs at bootstrap; CRDs are a Day-1 GitOps/apps-catalog
+  # concern, which is air-gap-safe. The Cilium GatewayClass is operator-created at
+  # runtime (NOT in the helm render), so it reconciles once the CRDs exist regardless
+  # of source — no inline/extra ordering guarantee is relied upon. WARNING: a failed
+  # extraManifests fetch is NOT graceful (Talos ExtraManifestController crashloops and
+  # bootstrap does not complete cleanly) — see cilium_gateway_api_crds_url. CRDs carry
+  # no key material, so the URL form is acceptable for the opt-in case (unlike Cilium).
   gateway_api_patch = (var.deploy_cilium && var.cilium_gateway_api && var.cilium_gateway_api_crds_url != "") ? [yamlencode({
     cluster = { extraManifests = [var.cilium_gateway_api_crds_url] }
   })] : []
@@ -360,12 +369,14 @@ resource "talos_machine_secrets" "this" {
   talos_version = var.talos_version
 
   lifecycle {
-    # Hard Constraint (base AGENTS.md): never a SecureBoot installer — it boot-loops.
-    # The module never emits one, but a caller config_patch could; block it here
-    # since a consumer's patches escape the repo's tofu/** CI grep.
+    # Best-effort substring guard for the no-SecureBoot Hard Constraint (boot loops).
+    # The module never emits a SecureBoot installer; this catches the common case of
+    # a caller config_patch literally selecting one. It is a heuristic, not complete
+    # enforcement (see the local.all_caller_patches note) — schematic-level/renamed
+    # SecureBoot is consumer-overlay responsibility.
     precondition {
       condition     = length(local.secureboot_patches) == 0
-      error_message = "A SecureBoot installer (metal-secureboot/installer-secureboot) appears in a config_patch. The base Hard Constraint forbids SecureBoot (boot loops) — remove it."
+      error_message = "A config_patch literally selects a SecureBoot installer (metal-secureboot/installer-secureboot). The base Hard Constraint forbids SecureBoot (boot loops) — remove it."
     }
     # Fail clearly on a typo'd node.class before the cryptic installer-URL map-index
     # error (the existing check block only warns).
@@ -474,6 +485,14 @@ resource "talos_machine_configuration_apply" "this" {
     ],
     var.classes[each.value.class].config_patches,
     each.value.config_patches,
+    # base_cni_patch re-applied LAST in the apply pass too, so cni:none + proxy
+    # win over a class/node patch as well (not just the all-nodes/role patches of
+    # pass 1). When deploy_cilium is true, Flannel must NOT come up via any patch
+    # vector. install.image is intentionally NOT re-pinned here — per-node installer
+    # override stays allowed, and the SecureBoot guard (a substring heuristic, see
+    # talos_machine_secrets preconditions) covers the common recipe; schematic-level
+    # SecureBoot remains consumer-overlay responsibility.
+    local.base_cni_patch,
   )
 }
 

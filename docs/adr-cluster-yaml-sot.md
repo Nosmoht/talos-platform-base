@@ -114,14 +114,20 @@ cleanly). Decisions 2 and 4 are the correction.
   resurrect Flannel) + `proxy.disabled`, `data.helm_template.cilium` controlplane
   inlineManifest seed, vendored minimal `helm/cilium-values.yaml`, typed `cilium_*`
   + `pod_cidr`/`service_cidr`/`dual_stack`/`allow_scheduling_on_controlplanes`
-  inputs, IPsec key Secret seeding. **Gateway API delivered** (`cilium_gateway_api`
-  default `true`): the module renders the Cilium gateway controller AND seeds the
-  Gateway API v1.4.1 standard-channel CRDs via `cluster.extraManifests`
-  (`cilium_gateway_api_crds_url`, overridable for air-gap / the experimental
-  channel), applied before the operator-created GatewayClass by Talos' CRD-first
-  sort — so the base satisfies its own "Gateway API only" Hard Constraint out of
-  the box. SecureBoot-installer guard + clear undefined-class failure added as
-  plan-time preconditions (a consumer's patches escape the repo's `tofu/**` CI grep).
+  inputs, IPsec key Secret seeding. **Gateway API controller** enabled in the seed
+  (`cilium_gateway_api` default `true`); the Cilium operator creates the GatewayClass
+  at runtime once the Gateway API CRDs (v1.4.1 standard channel for Cilium 1.19)
+  exist. The CRDs are NOT seeded at bootstrap by default — they are a Day-1
+  GitOps / apps-catalog concern (the substrate/apps boundary, and air-gap-safe).
+  Bootstrap seeding via `cluster.extraManifests` is OPT-IN (`cilium_gateway_api_crds_url`),
+  because a failed `extraManifests` fetch is NOT graceful — Talos' ExtraManifestController
+  crashloops and bootstrap does not complete cleanly (T1, Talos v1.10/v1.11 docs), so a
+  github-URL default would make every cluster's bootstrap depend on github reachability.
+  SecureBoot-installer guard (a substring HEURISTIC, not complete enforcement —
+  schematic-level SecureBoot stays consumer-overlay) + clear undefined-class failure
+  added as plan-time preconditions (a consumer's patches escape the repo's `tofu/**`
+  CI grep). `cni:none` is re-applied in BOTH the generation and apply passes so a
+  class/node patch cannot resurrect Flannel.
 - **Pending follow-on:** decision 3 (the `cluster.yaml` full-SoT migration: schema,
   thin shim, example rebuild, AGENTS.md correction), the `render-cilium-bootstrap.sh`
   retirement, and chart/CRD digest pinning (both `cilium_chart_repository` and
