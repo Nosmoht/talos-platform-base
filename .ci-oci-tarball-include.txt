@@ -4,6 +4,8 @@ kubernetes/bootstrap/cilium/extras.yaml
 kubernetes/bootstrap/cilium/values.yaml
 scripts/render-cilium-bootstrap.sh
 tofu/modules/talos-cluster/README.md
+tofu/modules/talos-cluster/helm/argocd-values.yaml
+tofu/modules/talos-cluster/helm/cilium-values.yaml
 tofu/modules/talos-cluster/main.tf
 tofu/modules/talos-cluster/outputs.tf
 tofu/modules/talos-cluster/test/README.md
