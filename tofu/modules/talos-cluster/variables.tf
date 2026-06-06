@@ -280,3 +280,183 @@ variable "cluster_health_timeout" {
   type        = string
   default     = "10m"
 }
+
+# ---------------------------------------------------------------------------
+# Cluster network — pod / service CIDRs (install-time-fixed in Talos)
+# ---------------------------------------------------------------------------
+# These are first-class because a pod CIDR is irreversible at bootstrap AND it
+# couples Talos (cluster.network.{podSubnets,serviceSubnets}) to Cilium
+# (native-routing / masquerade / encryption strict-mode CIDR). Setting it in one
+# place keeps both sides coherent; the defaults match Talos' own defaults, so a
+# caller that does not care gets identical behaviour. Lists carry both families
+# when dual_stack = true.
+
+variable "pod_cidr" {
+  description = "Pod network CIDR(s). Drives Talos cluster.network.podSubnets AND Cilium IPAM/masquerade/native-routing. One entry for single-stack; v4+v6 when dual_stack = true."
+  type        = list(string)
+  default     = ["10.244.0.0/16"]
+
+  validation {
+    condition     = length(var.pod_cidr) >= 1
+    error_message = "pod_cidr must contain at least one CIDR."
+  }
+}
+
+variable "service_cidr" {
+  description = "Service network CIDR(s). Drives Talos cluster.network.serviceSubnets. One entry for single-stack; v4+v6 when dual_stack = true."
+  type        = list(string)
+  default     = ["10.96.0.0/12"]
+
+  validation {
+    condition     = length(var.service_cidr) >= 1
+    error_message = "service_cidr must contain at least one CIDR."
+  }
+}
+
+variable "dual_stack" {
+  description = "Enable IPv4/IPv6 dual-stack. When true, pod_cidr/service_cidr should each carry a v4 and a v6 entry and Cilium ipv6 is enabled."
+  type        = bool
+  default     = false
+}
+
+variable "allow_scheduling_on_controlplanes" {
+  description = "Remove the control-plane taint so workloads schedule on control-plane nodes (single-node / edge clusters). Sets Talos cluster.allowSchedulingOnControlPlanes."
+  type        = bool
+  default     = false
+}
+
+# ---------------------------------------------------------------------------
+# Cilium delivery (Layer-1 substrate). Cilium is rendered locally with
+# data.helm_template and baked into the controlplane cluster.inlineManifests as
+# a bootstrap SEED, so it comes up as the CNI with the bootstrap — the same
+# local-render → inlineManifest pattern as deploy_argocd. The module disables
+# the Talos default CNI (cni.name = none) and kube-proxy when deploy_cilium is
+# true, so Flannel never comes up.
+#
+# inlineManifests are create-only (Talos never edits a resource it created), so
+# this is a SEED, not a reconciled deployment: cilium_chart_version is a SEED
+# knob, not an upgrade knob (parity with argocd_chart_version). Install-time
+# Cilium settings (routing mode, encryption, kube-proxy replacement, MTU) belong
+# in the seed via the typed inputs below + cilium_values_override; runtime-mutable
+# config (Hubble export, L2/BGP announcements) is Day-2 Cilium self-management.
+# ---------------------------------------------------------------------------
+
+variable "deploy_cilium" {
+  description = <<-EOT
+    Whether the module delivers Cilium as a Talos inlineManifest seed AND
+    disables the Talos default CNI (cluster.network.cni.name = none) + kube-proxy.
+    Default true — Cilium is part of the Layer-1 substrate (Talos + Cilium + ArgoCD).
+    Set false to keep the Talos-default CNI (Flannel) or supply a different CNI
+    via the caller's own config_patches/extraManifests.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "cilium_chart_version" {
+  description = <<-EOT
+    Version of the cilium Helm chart (helm.cilium.io). SEED knob, not an upgrade
+    knob: Talos applies inlineManifests once at bootstrap and never re-runs them,
+    so bumping this after bootstrap only re-renders the machine config — it does
+    NOT upgrade a running Cilium. VERIFY the exact current chart version at push.
+  EOT
+  type        = string
+  default     = "1.19.4"
+}
+
+variable "cilium_chart_repository" {
+  description = "Helm repository for the cilium chart. Override for a private mirror / air-gapped registry."
+  type        = string
+  default     = "https://helm.cilium.io"
+}
+
+variable "cilium_namespace" {
+  description = "Namespace Cilium is rendered into (Talos convention: kube-system)."
+  type        = string
+  default     = "kube-system"
+}
+
+variable "cilium_values_override" {
+  description = <<-EOT
+    Optional consumer Helm values, MERGED on top of the shipped
+    helm/cilium-values.yaml AND the module-computed install-time values (helm
+    merges value layers; later wins). Carries the long tail the typed inputs do
+    not name (Hubble, L2/BGP announcements, bpf tuning, VLAN bypass). Empty = the
+    minimal agnostic floor + the typed inputs only.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "cilium_routing_mode" {
+  description = "Cilium datapath routing mode: \"tunnel\" (VXLAN/Geneve overlay) or \"native\" (routed fabric, e.g. BGP). Install-time-fixed."
+  type        = string
+  default     = "tunnel"
+
+  validation {
+    condition     = contains(["tunnel", "native"], var.cilium_routing_mode)
+    error_message = "cilium_routing_mode must be \"tunnel\" or \"native\"."
+  }
+}
+
+variable "cilium_native_routing_cidr" {
+  description = "ipv4NativeRoutingCIDR for routing_mode = native. Empty = derive from the first pod_cidr entry."
+  type        = string
+  default     = ""
+}
+
+variable "cilium_kube_proxy_replacement" {
+  description = "Run Cilium as the kube-proxy replacement (against Talos KubePrism). When true the module also sets Talos cluster.proxy.disabled. Install-time-fixed."
+  type        = bool
+  default     = true
+}
+
+variable "cilium_mtu" {
+  description = "Cilium datapath MTU. 0 = chart auto-detect. Set for jumbo-frame fabrics."
+  type        = number
+  default     = 0
+}
+
+variable "cilium_encryption" {
+  description = <<-EOT
+    Transparent encryption for pod traffic. type one of:
+      - "none"      — no encryption (default)
+      - "wireguard" — keyless (per-node keys generated automatically)
+      - "ipsec"     — requires a pre-shared key in var.cilium_ipsec_key, which the
+                      module seeds as the cilium-ipsec-keys Secret (inlineManifest).
+    Install-time-fixed (changing it later requires re-bootstrapping the CNI).
+  EOT
+  type = object({
+    type = optional(string, "none")
+  })
+  default = { type = "none" }
+
+  validation {
+    condition     = contains(["none", "wireguard", "ipsec"], var.cilium_encryption.type)
+    error_message = "cilium_encryption.type must be \"none\", \"wireguard\", or \"ipsec\"."
+  }
+}
+
+variable "cilium_ipsec_key" {
+  description = <<-EOT
+    IPsec pre-shared key material (the contents of the cilium-ipsec-keys Secret's
+    `keys` entry, e.g. "3 rfc4106(gcm(aes)) <hex> 128"). Required when
+    cilium_encryption.type = "ipsec"; lands in the controlplane machine config +
+    (encrypted) state as a Secret inlineManifest. NEVER commit a real key —
+    supply via tfvar/env/SOPS. wireguard needs no key.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "cilium_gateway_api" {
+  description = <<-EOT
+    Enable Cilium Gateway API support in the seed. Default false in this delivery
+    increment: turning it on also requires the Gateway API CRDs to be seeded
+    before the GatewayClass (a follow-on step). The base Hard Constraint is
+    "Gateway API only — no Ingress"; once CRD seeding lands this defaults true.
+  EOT
+  type        = bool
+  default     = false
+}

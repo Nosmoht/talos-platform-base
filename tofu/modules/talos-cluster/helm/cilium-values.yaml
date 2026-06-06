@@ -1,0 +1,59 @@
+# Minimal, cluster-agnostic Cilium values for the Talos bootstrap inlineManifest
+# seed (data.helm_template.cilium → cluster.inlineManifests, rendered locally).
+#
+# DELIBERATELY a floor: only what makes Cilium the CNI on ANY Talos cluster.
+# Per-cluster, install-time-fixed configuration (routing mode, encryption,
+# pod-CIDR-derived native-routing CIDR, Gateway API, MTU) is layered on TOP of
+# this file by the module from the typed var.cilium_* inputs; the long tail
+# (Hubble, L2/BGP announcements, bpf tuning) arrives via var.cilium_values_override.
+# Helm merges value layers, later wins — so a consumer override replaces any key here.
+#
+# Talos-specific invariants live HERE because they hold for every Talos cluster:
+#   - KubePrism kube-proxy replacement (Talos KubePrism is default-on since 1.6);
+#     the module sets cluster.proxy.disabled to match.
+#   - cgroup auto-mount disabled (Talos manages cgroups).
+#   - SYS_MODULE dropped (Talos forbids kernel-module loading by workloads).
+#   - cni.exclusive: false so multus-cni (base/infrastructure/multus-cni) can chain.
+
+# --- CNI ---
+cni:
+  exclusive: false
+
+# --- IPAM (Kubernetes pod CIDR from Talos cluster.network.podSubnets) ---
+ipam:
+  mode: kubernetes
+
+# --- kube-proxy replacement against Talos KubePrism (localhost:7445) ---
+kubeProxyReplacement: true
+k8sServiceHost: localhost
+k8sServicePort: "7445"
+
+# --- Talos manages cgroups; Cilium must not auto-mount ---
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+# --- Drop SYS_MODULE (Talos rejects kernel-module loading) ---
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+# --- Operator: single-replica floor; HA is a consumer override ---
+operator:
+  replicas: 1

@@ -122,6 +122,104 @@ locals {
 }
 
 # ---------------------------------------------------------------------------
+# Cilium delivery (Layer-1 substrate). Disables the Talos default CNI (Flannel)
+# and kube-proxy, then delivers Cilium as a controlplane cluster.inlineManifest
+# SEED — the same local-render → inlineManifest pattern as ArgoCD. Comes up as
+# the CNI with the bootstrap. inlineManifests are create-only, so this is a SEED
+# (cilium_chart_version is a SEED knob, not an upgrade knob).
+# ---------------------------------------------------------------------------
+locals {
+  # All-nodes base patch: pod/service subnets always (defaults match Talos
+  # defaults, keeps the Cilium coupling coherent); cni:none + proxy.disabled only
+  # when Cilium is delivered. Placed FIRST in config_patches so a caller patch can
+  # still override (Talos strategic-merge, later wins).
+  base_cluster_patch = yamlencode({
+    cluster = merge(
+      {
+        network = merge(
+          {
+            podSubnets     = var.pod_cidr
+            serviceSubnets = var.service_cidr
+          },
+          var.deploy_cilium ? { cni = { name = "none" } } : {},
+        )
+        allowSchedulingOnControlPlanes = var.allow_scheduling_on_controlplanes
+      },
+      (var.deploy_cilium && var.cilium_kube_proxy_replacement) ? { proxy = { disabled = true } } : {},
+    )
+  })
+
+  # Module-computed Cilium values from the typed inputs, layered between the
+  # shipped floor (helm/cilium-values.yaml) and the consumer override.
+  cilium_native_cidr = var.cilium_native_routing_cidr != "" ? var.cilium_native_routing_cidr : var.pod_cidr[0]
+  cilium_computed_values = yamlencode(merge(
+    {
+      routingMode          = var.cilium_routing_mode
+      kubeProxyReplacement = var.cilium_kube_proxy_replacement
+    },
+    var.cilium_routing_mode == "native" ? { ipv4NativeRoutingCIDR = local.cilium_native_cidr } : {},
+    var.dual_stack ? { ipv6 = { enabled = true } } : {},
+    var.cilium_mtu > 0 ? { MTU = var.cilium_mtu } : {},
+    var.cilium_gateway_api ? { gatewayAPI = { enabled = true } } : {},
+    var.cilium_encryption.type == "wireguard" ? { encryption = { enabled = true, type = "wireguard" } } : {},
+    var.cilium_encryption.type == "ipsec" ? { encryption = { enabled = true, type = "ipsec" } } : {},
+  ))
+
+  # Cilium (+ optional IPsec key Secret, applied first via the Namespace→CRD→other
+  # sort) as controlplane inlineManifests, baked after caller patches like ArgoCD.
+  cilium_controlplane_patch = var.deploy_cilium ? [yamlencode({
+    cluster = {
+      inlineManifests = concat(
+        var.cilium_encryption.type == "ipsec" ? [{
+          name = "cilium-ipsec-keys"
+          contents = yamlencode({
+            apiVersion = "v1"
+            kind       = "Secret"
+            type       = "Opaque"
+            metadata   = { name = "cilium-ipsec-keys", namespace = var.cilium_namespace }
+            stringData = { keys = var.cilium_ipsec_key }
+          })
+        }] : [],
+        [{
+          name     = "cilium"
+          contents = data.helm_template.cilium[0].manifest
+        }],
+      )
+    }
+  })] : []
+}
+
+# Cilium chart rendered locally into the inlineManifest (NO helm_release/apply).
+# Floor values + module-computed install-time values + optional consumer override.
+data "helm_template" "cilium" {
+  count = var.deploy_cilium ? 1 : 0
+
+  name         = "cilium"
+  namespace    = var.cilium_namespace
+  repository   = var.cilium_chart_repository
+  chart        = "cilium"
+  version      = var.cilium_chart_version
+  kube_version = var.kubernetes_version
+  # Cilium ships no CRDs that need the separate large-CRD treatment ArgoCD needs;
+  # the chart's own CRDs render inline within the size budget (~66 KB total).
+  include_crds = true
+
+  values = compact([
+    file("${path.module}/helm/cilium-values.yaml"),
+    local.cilium_computed_values,
+    var.cilium_values_override,
+  ])
+
+  # IPsec needs the pre-shared key (wireguard is keyless). Fail at plan time.
+  lifecycle {
+    precondition {
+      condition     = var.cilium_encryption.type != "ipsec" || var.cilium_ipsec_key != ""
+      error_message = "cilium_encryption.type = \"ipsec\" requires cilium_ipsec_key (the cilium-ipsec-keys Secret material)."
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
 # Image-Factory: per-class custom installer image
 # ---------------------------------------------------------------------------
 # Per class, resolve the extension package names against the Talos Image
@@ -225,12 +323,15 @@ data "talos_machine_configuration" "controlplane" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  # ArgoCD inlineManifest (local.argocd_controlplane_patch, empty when !deploy_argocd)
-  # LAST, so it merges after caller patches and is not overridden.
+  # base_cluster_patch FIRST (cni:none + proxy + pod/service subnets + scheduling)
+  # so caller patches can still override; ArgoCD + Cilium inlineManifests LAST so
+  # they merge after caller patches and are not overridden.
   config_patches = concat(
+    [local.base_cluster_patch],
     var.config_patches,
     var.controlplane_config_patches,
     local.argocd_controlplane_patch,
+    local.cilium_controlplane_patch,
   )
 }
 
@@ -241,7 +342,13 @@ data "talos_machine_configuration" "worker" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  config_patches     = concat(var.config_patches, var.worker_config_patches)
+  # base_cluster_patch FIRST so caller patches can override (workers carry no
+  # inlineManifest seeds — those are controlplane-only).
+  config_patches = concat(
+    [local.base_cluster_patch],
+    var.config_patches,
+    var.worker_config_patches,
+  )
 }
 
 # Apply the config to each node. Patches arrive in TWO passes:
