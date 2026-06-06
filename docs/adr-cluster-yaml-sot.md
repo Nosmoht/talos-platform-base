@@ -73,10 +73,18 @@ tail (BGP peering CRs, SR-IOV/Multus device config, per-interface VIP) stays in
 `config_patches` / `cilium_values_override`, which are inside the SoT — just untyped
 (right-altitude: do not type every Talos/Cilium knob).
 
-**5. Secrets never enter `cluster.yaml`.** `sops_age_key` (ArgoCD ksops) and the new
-`cilium_ipsec_key` (only for `encryption.type = ipsec`; wireguard is keyless) are
-supplied via tfvar/env and seeded as Secret inlineManifests. The schema has no slot
-for either — structural, not merely documented.
+**5. The two typed secret fields never enter `cluster.yaml`.** `sops_age_key`
+(ArgoCD ksops) and `cilium_ipsec_key` (only for `encryption.type = ipsec`;
+wireguard is keyless) are supplied via tfvar/env and seeded as Secret
+inlineManifests. The schema has **no slot** for either — that exclusion is
+structural, not merely documented. The free-form escape hatches inside the SoT
+(`config_patches`, `substrate.{cilium,argocd}.values_override`) are a different
+matter: they are unbounded passthrough rendered into the same secret-bearing
+controlplane machine config, so a consumer *could* paste secret material into
+them. That is **operator discipline backed by the `gitleaks` gate**, not a
+structural guarantee — `cluster.yaml` is committed in consumer repos, so never
+put secret material in an escape hatch. Only the two named keys are structurally
+excluded.
 
 ## Validation
 
@@ -109,7 +117,15 @@ cleanly). Decisions 2 and 4 are the correction.
 
 ## Implementation status
 
-- **Done (this change):** decisions 1, 2, 4, 5 — `deploy_cilium`, `cni:none`
+- **Done — decision 3 (the `cluster.yaml` SoT migration), in the follow-on Arc-2
+  commits:** `cluster.yaml.example` is the full declarative schema (identity,
+  versions, endpoint, network, nodes, classes, machine-config patches, substrate);
+  the `examples/homelab` root is a thin `yamldecode` shim mapping it onto the typed
+  interface (machine-config patches declared as structured YAML, `yamlencode`d by
+  the shim); `AGENTS.md` + this ADR's parent (`base:opentofu-cluster-lifecycle`)
+  corrected. Verified by `task ci` (fmt + validate + tflint) and `tofu plan` (19
+  add / 0 error on the homelab example).
+- **Done — decisions 1, 2, 4, 5 (the Cilium-delivery change):** `deploy_cilium`, `cni:none`
   (authoritative, last in the patch order so a stale caller `cni` patch cannot
   resurrect Flannel) + `proxy.disabled`, `data.helm_template.cilium` controlplane
   inlineManifest seed, vendored minimal `helm/cilium-values.yaml`, the typed
@@ -128,10 +144,18 @@ cleanly). Decisions 2 and 4 are the correction.
   added as plan-time preconditions (a consumer's patches escape the repo's `tofu/**`
   CI grep). `cni:none` is re-applied in BOTH the generation and apply passes so a
   class/node patch cannot resurrect Flannel.
-- **Pending follow-on:** decision 3 (the `cluster.yaml` full-SoT migration: schema,
-  thin shim, example rebuild, AGENTS.md correction), the `render-cilium-bootstrap.sh`
-  retirement, and chart/CRD digest pinning (both `cilium_chart_repository` and
-  `cilium_gateway_api_crds_url` are tag/URL-pulled without a digest pin today).
+- **Pending follow-on:** the `render-cilium-bootstrap.sh` retirement + the
+  Cilium-delivery doc accuracy (`bootstrap/cilium` role, `day-zero-pattern.md`
+  Layer-1, the OCI-tarball manifest, which omits the module's `helm/` values dir);
+  chart/CRD digest pinning (both `cilium_chart_repository` and
+  `cilium_gateway_api_crds_url` are tag/URL-pulled without a digest pin today, and
+  both are now reachable from the YAML SoT layer — point only at trusted sources);
+  and module-validation hardening surfaced in Arc-2 review — a cross-field guard
+  that `dual_stack = true` carries a v4+v6 `pod_cidr`/`service_cidr` pair (today
+  only `length >= 1` is enforced, so `dual_stack = true` with a single-family CIDR
+  silently mismatches Talos vs Cilium), and a stronger-than-`!= ""` precondition on
+  `sops_age_key` so a copied-verbatim example root cannot seed the non-functional
+  placeholder key.
 
 ## Links
 

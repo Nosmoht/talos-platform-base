@@ -71,6 +71,9 @@ nodes:
 # --- Machine-config patches (structured YAML maps; the shim yamlencodes them) ---
 # The long tail (registry mirrors, install disk, NTP, kernel args, VIP) lives here
 # as raw Talos patches — inside the SoT, just untyped.
+# QUOTING: values that must reach Talos as STRINGS must be quoted — bare YAML
+# scalars coerce (e.g. `event-ttl: 1h0m0s` stays a string, but `30`/`on`/`no`/
+# `0755` parse as int/bool/octal and re-encode wrong). When in doubt, quote.
 config_patches:
   - machine: { time: { servers: ["pool.ntp.org"] } } # cluster-wide (all nodes)
 controlplane_config_patches: [] # controlplane-only
@@ -79,8 +82,12 @@ worker_config_patches: [] # worker-only
 # --- Substrate (Layer-1: Talos + Cilium + ArgoCD). Secrets are NOT here. ---
 substrate:
   cilium:
+    # namespace is fixed to kube-system by Talos convention (not a settable field).
     enabled: true # false keeps Talos-default Flannel (opt-out)
     chart_version: "1.19.4" # SEED knob (install-time), not an upgrade knob
+    # SECURITY: chart_repository + gateway_api_crds_url below are pulled WITHOUT a
+    # digest pin and baked into the controlplane machine config — point ONLY at a
+    # source you trust (a poisoned repo/URL injects arbitrary bootstrap manifests).
     chart_repository: https://helm.cilium.io # override for a private mirror / air-gap
     routing_mode: tunnel # tunnel | native (native needs native_routing_cidr or pod_cidr)
     kube_proxy_replacement: true # Cilium replaces kube-proxy (Talos cluster.proxy.disabled)
@@ -99,3 +106,7 @@ substrate:
 # --- Secrets (NEVER in this file — the schema has no slot for them) ---
 # sops_age_key     (ArgoCD ksops)         -> TF_VAR_sops_age_key / tfvars / SOPS
 # cilium_ipsec_key (encryption: ipsec)    -> TF_VAR_cilium_ipsec_key / tfvars / SOPS
+# These two are structurally excluded (no schema slot). The free-form escape
+# hatches above (config_patches, substrate.*.values_override) are unbounded
+# passthrough into the controlplane machine config — NEVER paste secret material
+# into them. cluster.yaml is committed in consumer repos; gitleaks is the backstop.
