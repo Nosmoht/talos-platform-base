@@ -8,12 +8,17 @@
 # (Hubble, L2/BGP announcements, bpf tuning) arrives via var.cilium_values_override.
 # Helm merges value layers, later wins — so a consumer override replaces any key here.
 #
+# Merge semantics: Helm DEEP-MERGES value layers per key (later wins). List
+# values are REPLACED wholesale; map values are MERGED — you cannot null-out a
+# nested map key set here from an override, you can only set sibling/child keys.
+#
 # Talos-specific invariants live HERE because they hold for every Talos cluster:
-#   - KubePrism kube-proxy replacement (Talos KubePrism is default-on since 1.6);
-#     the module sets cluster.proxy.disabled to match.
 #   - cgroup auto-mount disabled (Talos manages cgroups).
 #   - SYS_MODULE dropped (Talos forbids kernel-module loading by workloads).
 #   - cni.exclusive: false so multus-cni (base/infrastructure/multus-cni) can chain.
+# kube-proxy replacement + the KubePrism host/port are NOT here — they are emitted
+# by the module's computed layer, gated on var.cilium_kube_proxy_replacement, so
+# the Talos-side cluster.proxy.disabled and the Cilium-side replacement stay in sync.
 
 # --- CNI ---
 cni:
@@ -22,11 +27,6 @@ cni:
 # --- IPAM (Kubernetes pod CIDR from Talos cluster.network.podSubnets) ---
 ipam:
   mode: kubernetes
-
-# --- kube-proxy replacement against Talos KubePrism (localhost:7445) ---
-kubeProxyReplacement: true
-k8sServiceHost: localhost
-k8sServicePort: "7445"
 
 # --- Talos manages cgroups; Cilium must not auto-mount ---
 cgroup:

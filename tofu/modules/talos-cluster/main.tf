@@ -129,35 +129,53 @@ locals {
 # (cilium_chart_version is a SEED knob, not an upgrade knob).
 # ---------------------------------------------------------------------------
 locals {
-  # All-nodes base patch: pod/service subnets always (defaults match Talos
-  # defaults, keeps the Cilium coupling coherent); cni:none + proxy.disabled only
-  # when Cilium is delivered. Placed FIRST in config_patches so a caller patch can
-  # still override (Talos strategic-merge, later wins).
+  # All-nodes OVERRIDABLE base patch (pod/service subnets + scheduling). Placed
+  # FIRST so a caller config_patch can still override it — e.g. a migrating
+  # consumer with custom subnets. Tunnel-mode Cilium reads the real podSubnets via
+  # ipam:kubernetes, so a subnet override does not desync it.
   base_cluster_patch = yamlencode({
-    cluster = merge(
-      {
-        network = merge(
-          {
-            podSubnets     = var.pod_cidr
-            serviceSubnets = var.service_cidr
-          },
-          var.deploy_cilium ? { cni = { name = "none" } } : {},
-        )
-        allowSchedulingOnControlPlanes = var.allow_scheduling_on_controlplanes
-      },
-      (var.deploy_cilium && var.cilium_kube_proxy_replacement) ? { proxy = { disabled = true } } : {},
-    )
+    cluster = {
+      network = {
+        podSubnets     = var.pod_cidr
+        serviceSubnets = var.service_cidr
+      }
+      allowSchedulingOnControlPlanes = var.allow_scheduling_on_controlplanes
+    }
   })
 
+  # All-nodes AUTHORITATIVE patch (cni:none + proxy.disabled), gated on Cilium
+  # delivery. Placed LAST so it wins over any caller config_patch: when
+  # deploy_cilium is true, Flannel must NOT come up, so cni:none is intentionally
+  # NOT caller-overridable (the documented opt-out is deploy_cilium = false). A
+  # stale caller `cni` stanza from the old extraManifests recipe therefore cannot
+  # silently resurrect Flannel. proxy.disabled tracks the kube-proxy toggle.
+  base_cni_patch = var.deploy_cilium ? [yamlencode({
+    cluster = merge(
+      { network = { cni = { name = "none" } } },
+      var.cilium_kube_proxy_replacement ? { proxy = { disabled = true } } : {},
+    )
+  })] : []
+
+  # First IPv4 / IPv6 entries of pod_cidr by family (":" marks IPv6), so the
+  # native-routing CIDRs are family-correct regardless of caller list order.
+  cilium_pod_v4 = [for c in var.pod_cidr : c if !strcontains(c, ":")]
+  cilium_pod_v6 = [for c in var.pod_cidr : c if strcontains(c, ":")]
+  cilium_native_v4 = var.cilium_native_routing_cidr != "" ? var.cilium_native_routing_cidr : (
+    length(local.cilium_pod_v4) > 0 ? local.cilium_pod_v4[0] : var.pod_cidr[0]
+  )
+
   # Module-computed Cilium values from the typed inputs, layered between the
-  # shipped floor (helm/cilium-values.yaml) and the consumer override.
-  cilium_native_cidr = var.cilium_native_routing_cidr != "" ? var.cilium_native_routing_cidr : var.pod_cidr[0]
+  # shipped floor (helm/cilium-values.yaml) and the consumer override. kube-proxy
+  # replacement + the KubePrism host/port are emitted HERE (not the floor), gated
+  # on the toggle, so the Cilium side and Talos proxy.disabled stay in sync.
   cilium_computed_values = yamlencode(merge(
     {
       routingMode          = var.cilium_routing_mode
       kubeProxyReplacement = var.cilium_kube_proxy_replacement
     },
-    var.cilium_routing_mode == "native" ? { ipv4NativeRoutingCIDR = local.cilium_native_cidr } : {},
+    var.cilium_kube_proxy_replacement ? { k8sServiceHost = "localhost", k8sServicePort = "7445" } : {},
+    var.cilium_routing_mode == "native" ? { ipv4NativeRoutingCIDR = local.cilium_native_v4 } : {},
+    (var.cilium_routing_mode == "native" && var.dual_stack && length(local.cilium_pod_v6) > 0) ? { ipv6NativeRoutingCIDR = local.cilium_pod_v6[0] } : {},
     var.dual_stack ? { ipv6 = { enabled = true } } : {},
     var.cilium_mtu > 0 ? { MTU = var.cilium_mtu } : {},
     var.cilium_gateway_api ? { gatewayAPI = { enabled = true } } : {},
@@ -215,6 +233,13 @@ data "helm_template" "cilium" {
     precondition {
       condition     = var.cilium_encryption.type != "ipsec" || var.cilium_ipsec_key != ""
       error_message = "cilium_encryption.type = \"ipsec\" requires cilium_ipsec_key (the cilium-ipsec-keys Secret material)."
+    }
+    # native routing needs an IPv4 CIDR (the ipv4NativeRoutingCIDR field). Reject
+    # native mode with an IPv6-only pod_cidr and no explicit cilium_native_routing_cidr,
+    # rather than silently writing a v6 value into the v4 field.
+    precondition {
+      condition     = var.cilium_routing_mode != "native" || var.cilium_native_routing_cidr != "" || length(local.cilium_pod_v4) > 0
+      error_message = "cilium_routing_mode = \"native\" needs an IPv4 CIDR: set cilium_native_routing_cidr or include an IPv4 entry in pod_cidr."
     }
   }
 }
@@ -323,13 +348,14 @@ data "talos_machine_configuration" "controlplane" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  # base_cluster_patch FIRST (cni:none + proxy + pod/service subnets + scheduling)
-  # so caller patches can still override; ArgoCD + Cilium inlineManifests LAST so
-  # they merge after caller patches and are not overridden.
+  # base_cluster_patch (overridable subnets/scheduling) FIRST so caller patches
+  # can override; base_cni_patch (authoritative cni:none + proxy) + ArgoCD/Cilium
+  # inlineManifests LAST so they merge after caller patches and are not overridden.
   config_patches = concat(
     [local.base_cluster_patch],
     var.config_patches,
     var.controlplane_config_patches,
+    local.base_cni_patch,
     local.argocd_controlplane_patch,
     local.cilium_controlplane_patch,
   )
@@ -342,12 +368,13 @@ data "talos_machine_configuration" "worker" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  # base_cluster_patch FIRST so caller patches can override (workers carry no
-  # inlineManifest seeds — those are controlplane-only).
+  # base_cluster_patch (overridable) FIRST; base_cni_patch (authoritative cni:none
+  # + proxy) LAST. Workers carry no inlineManifest seeds (controlplane-only).
   config_patches = concat(
     [local.base_cluster_patch],
     var.config_patches,
     var.worker_config_patches,
+    local.base_cni_patch,
   )
 }
 

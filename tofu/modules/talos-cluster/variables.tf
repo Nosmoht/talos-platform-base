@@ -365,7 +365,13 @@ variable "cilium_chart_version" {
 }
 
 variable "cilium_chart_repository" {
-  description = "Helm repository for the cilium chart. Override for a private mirror / air-gapped registry."
+  description = <<-EOT
+    Helm repository for the cilium chart. Override for a private mirror /
+    air-gapped registry. NOTE: the chart is pulled by tag with no digest/cosign
+    pin, and its render is baked into the controlplane inlineManifest seed — point
+    this only at a repository you trust (a poisoned repo injects arbitrary
+    bootstrap manifests). Integrity pinning is a tracked follow-on.
+  EOT
   type        = string
   default     = "https://helm.cilium.io"
 }
@@ -380,9 +386,11 @@ variable "cilium_values_override" {
   description = <<-EOT
     Optional consumer Helm values, MERGED on top of the shipped
     helm/cilium-values.yaml AND the module-computed install-time values (helm
-    merges value layers; later wins). Carries the long tail the typed inputs do
-    not name (Hubble, L2/BGP announcements, bpf tuning, VLAN bypass). Empty = the
-    minimal agnostic floor + the typed inputs only.
+    DEEP-merges value layers per key, later wins: list values replace, map values
+    merge — you can set/extend but cannot null-out a nested map key set by the
+    floor). Carries the long tail the typed inputs do not name (Hubble, L2/BGP
+    announcements, bpf tuning, VLAN bypass, secretsNamespaceLabels for the PNI
+    contract). Empty = the minimal agnostic floor + the typed inputs only.
   EOT
   type        = string
   default     = ""
@@ -448,6 +456,14 @@ variable "cilium_ipsec_key" {
   type        = string
   default     = ""
   sensitive   = true
+
+  # Catch an obviously malformed key at plan time rather than as a post-boot CNI
+  # failure. Cilium IPsec keys start with a numeric key id, e.g.
+  # "3 rfc4106(gcm(aes)) <hex> 128". Permissive on purpose (multiple algos).
+  validation {
+    condition     = var.cilium_ipsec_key == "" || can(regex("^[0-9]+ ", var.cilium_ipsec_key))
+    error_message = "cilium_ipsec_key must be empty or a Cilium IPsec key starting with a numeric key id (e.g. \"3 rfc4106(gcm(aes)) <hex> 128\")."
+  }
 }
 
 variable "cilium_gateway_api" {
