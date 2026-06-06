@@ -1,0 +1,96 @@
+# Homelab cluster definition — the declarative SoT consumed by the OpenTofu
+# shim in main.tf (yamldecode). Mixed amd64 + arm64 topology:
+#   3 controlplane (amd64, "standard") · 4 kubevirt workers (amd64) ·
+#   1 GPU worker (amd64) · 1 Raspberry-Pi worker (arm64).
+#
+# Kubernetes roles are ONLY controlplane / worker; GPU and Pi are classes, not
+# roles. The arm64 Pi worker is the case the pre-extension module could not
+# express. IPs are RFC5737 documentation addresses (192.0.2.0/24) — this is a
+# `tofu validate`/`plan` fixture, not a runnable apply.
+
+cluster:
+  name: homelab
+  endpoint: https://192.0.2.1:6443
+  overlay: homelab
+  target_revision: main
+
+repo:
+  url: https://github.com/your-org/homelab.git
+
+talos:
+  version: v1.12.6 # schema pin (fixed at bootstrap)
+  install_version: v1.12.7 # installer tag bumped for an OS upgrade (exercises the split)
+kubernetes:
+  version: v1.35.0
+
+# Shared system extensions on every x86 node (YAML anchor, reused per class):
+# drbd storage + gvisor runtime + intel firmware/microcode + nvme-cli.
+x-base-extensions: &base_extensions
+  - siderolabs/drbd
+  - siderolabs/gvisor
+  - siderolabs/i915
+  - siderolabs/intel-ucode
+  - siderolabs/nvme-cli
+
+classes:
+  standard:
+    architecture: amd64
+    extensions: *base_extensions
+  kubevirt:
+    architecture: amd64
+    extensions: *base_extensions
+    config_patches:
+      # kubevirt host prerequisites (IOMMU) applied to every node of the class
+      - machine: { install: { extraKernelArgs: ["intel_iommu=on", "iommu=pt"] } }
+  gpu:
+    architecture: amd64
+    # base extensions + nvidia stack on top (anchors cannot append, so listed in full)
+    extensions:
+      - siderolabs/drbd
+      - siderolabs/gvisor
+      - siderolabs/i915
+      - siderolabs/intel-ucode
+      - siderolabs/nvme-cli
+      - siderolabs/nvidia-container-toolkit-lts
+      - siderolabs/nvidia-open-gpu-kernel-modules-lts
+      - siderolabs/realtek-firmware
+  pi:
+    architecture: arm64
+    extensions: [] # the RPi schematic carries the board overlay, not extensions
+    overlay:
+      name: rpi_generic
+      image: siderolabs/sbc-raspberrypi
+
+nodes:
+  - { hostname: node-cp-1, ip: 192.0.2.11, role: controlplane, class: standard }
+  - { hostname: node-cp-2, ip: 192.0.2.12, role: controlplane, class: standard }
+  - { hostname: node-cp-3, ip: 192.0.2.13, role: controlplane, class: standard }
+  - { hostname: node-w-1, ip: 192.0.2.21, role: worker, class: kubevirt }
+  - { hostname: node-w-2, ip: 192.0.2.22, role: worker, class: kubevirt }
+  - { hostname: node-w-3, ip: 192.0.2.23, role: worker, class: kubevirt }
+  - { hostname: node-w-4, ip: 192.0.2.24, role: worker, class: kubevirt }
+  - hostname: node-gpu-1
+    ip: 192.0.2.31
+    role: worker
+    class: gpu
+    config_patches:
+      # per-node NIC binding (the value the old ${NIC_NAME} placeholder carried)
+      - machine: { network: { interfaces: [{ interface: enp0s20f0u2, dhcp: true }] } }
+  - { hostname: node-pi-1, ip: 192.0.2.41, role: worker, class: pi }
+
+# Cluster-wide patches the caller owns (NTP here; the module injects none).
+config_patches:
+  - machine: { time: { servers: ["192.0.2.123"] } }
+
+# Role tier — applied to controlplane nodes only (exercises the role pass).
+controlplane_config_patches:
+  - cluster: { apiServer: { extraArgs: { event-ttl: "1h0m0s" } } }
+
+# Substrate: Cilium + ArgoCD delivered by the module (Layer-1 floor). Defaults
+# are shown explicitly; secrets (sops_age_key, cilium_ipsec_key) come from
+# tfvar/env via variables.tf, NEVER from this file.
+substrate:
+  cilium:
+    enabled: true
+  argocd:
+    enabled: true
