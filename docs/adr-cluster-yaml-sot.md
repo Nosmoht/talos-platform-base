@@ -144,18 +144,59 @@ cleanly). Decisions 2 and 4 are the correction.
   added as plan-time preconditions (a consumer's patches escape the repo's `tofu/**`
   CI grep). `cni:none` is re-applied in BOTH the generation and apply passes so a
   class/node patch cannot resurrect Flannel.
-- **Pending follow-on:** the `render-cilium-bootstrap.sh` retirement + the
-  Cilium-delivery doc accuracy (`bootstrap/cilium` role, `day-zero-pattern.md`
-  Layer-1, the OCI-tarball manifest, which omits the module's `helm/` values dir);
-  chart/CRD digest pinning (both `cilium_chart_repository` and
-  `cilium_gateway_api_crds_url` are tag/URL-pulled without a digest pin today, and
-  both are now reachable from the YAML SoT layer — point only at trusted sources);
-  and module-validation hardening surfaced in Arc-2 review — a cross-field guard
-  that `dual_stack = true` carries a v4+v6 `pod_cidr`/`service_cidr` pair (today
-  only `length >= 1` is enforced, so `dual_stack = true` with a single-family CIDR
-  silently mismatches Talos vs Cilium), and a stronger-than-`!= ""` precondition on
-  `sops_age_key` so a copied-verbatim example root cannot seed the non-functional
-  placeholder key.
+- **Done — Arc-3 residuals (this follow-on):** the obsolete
+  `scripts/render-cilium-bootstrap.sh` render path is retired (the module's
+  inlineManifest seed replaces it); the deleted script is dropped from the OCI
+  tarball allowlist (`.ci-oci-tarball-{include,expected}.txt`) and its
+  `oci-publish.yml` exec-bit check removed. `kubernetes/bootstrap/cilium/{values,extras}.yaml`
+  stay BOTH in-repo AND in the OCI artifact as the Cilium values / GatewayClass
+  reference (only the dead script leaves the artifact — no consumer-facing
+  contract removal). The OCI tarball ships the module's `helm/` values dir (added
+  in `v1.0.0`, commit `44ff918`). Cilium-delivery doc accuracy fixed
+  (`day-zero-pattern.md` Layer-1, `AGENTS.md`, `kubernetes/AGENTS.md`).
+  Module-validation hardening landed: (a) a **bidirectional** `dual_stack` ⟺
+  CIDR-family cross-field precondition — `dual_stack = true` requires each of
+  `pod_cidr`/`service_cidr` to carry a v4 AND a v6 entry, `dual_stack = false`
+  requires each to be v4-only — so neither mismatch direction slips through (the
+  Talos podSubnets carry the full list while the Cilium seed enables ipv6 only on
+  the flag); (b) per-variable `cidrhost`-based CIDR-format validation on
+  `pod_cidr`/`service_cidr` (rejects malformed entries at validate time, so the
+  `":"`-marks-v6 family heuristic cannot misclassify garbage); (c) a
+  `startswith("AGE-SECRET-KEY-1")` precondition on `sops_age_key`, AND the example
+  root drops the `sops_age_key` default — a copied example must supply a real key
+  via `TF_VAR_sops_age_key` (`tofu plan` requires it), so it cannot silently apply
+  a non-functional ksops key. `tofu validate` (CI) does not evaluate preconditions,
+  so it stays green without a key.
+- **Known limitations of the Arc-3 guards (best-effort, by design — surfaced in
+  Arc-3 review):** (a) the `dual_stack` guard inspects only the **typed** inputs;
+  a raw `config_patches` override of `cluster.network.podSubnets` can still desync
+  Talos from the Cilium seed — raw-patch correctness is consumer-overlay
+  responsibility (parity with the SecureBoot substring guard; AGENTS.md "Out of
+  scope for the base", ADR decision 4). (b) The guard checks IP-family **presence**,
+  not count, so it does not enforce the Kubernetes one-CIDR-per-family dual-stack
+  rule (Kubernetes/Talos reject a multi-same-family list at apply). (c) **IPv6-only
+  single-stack is unsupported** and now hard-rejected at plan time (the Cilium seed
+  couples `ipv6.enabled` to `dual_stack`); fail-fast replaces the previously-silent
+  broken plan — adding a v6-only path is a separate feature, not a regression.
+  (d) Module preconditions are **plan-time**, so the validate-only CI gate
+  (`task ci`) does not exercise them — they protect `tofu plan`/`apply`, not
+  `tofu validate` (a property shared by all of the module's preconditions).
+- **Deferred — chart/CRD integrity pinning (a delivery-mechanism change, not a
+  precondition).** Verified 2026-06: the Helm provider's `data.helm_template`
+  exposes only `verify`/`keyring` (GPG provenance via `.prov` files), no
+  sha256/digest argument; SHA256 digest pinning is OCI-registry-only and
+  unavailable for a classic HTTP repo like `helm.cilium.io`. And `helm.cilium.io`
+  publishes no provenance files (`cilium-1.19.4.prov` → HTTP 404), so even GPG
+  `verify` is blocked at the source. Pinning chart integrity therefore requires
+  consuming the chart from an OCI registry by digest (or self-mirroring with
+  provenance) — beyond a module precondition. The building blocks already exist
+  in-repo: `cilium_chart_repository` accepts a private OCI mirror, and the
+  `oci-publish.yml` pipeline already captures, cosign-signs, and SLSA-attests the
+  base artifact *by digest* — so the deferred work is "mirror the chart into an OCI
+  registry and reference it by digest", not net-new infrastructure.
+  `cilium_gateway_api_crds_url` is likewise an unpinned URL fetched by Talos
+  `extraManifests` (no checksum verification in Talos). Both stay "point only at a
+  trusted source" until a digest-capable delivery path is adopted.
 
 ## Links
 
