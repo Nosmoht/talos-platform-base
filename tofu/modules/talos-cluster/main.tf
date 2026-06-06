@@ -33,6 +33,27 @@ locals {
   # for new clusters; bump talos_install_version for an OS upgrade while
   # keeping talos_version fixed at bootstrap.
   install_version = var.talos_install_version != "" ? var.talos_install_version : var.talos_version
+
+  # All caller-supplied machine-config patch strings, flattened for the SecureBoot
+  # guard below. NOTE: the guard is a substring HEURISTIC (same lexical pattern as
+  # the repo's tofu/** CI grep), not a complete SecureBoot detector — it catches a
+  # config_patch that literally selects a `*-secureboot` installer URL (the common
+  # copy-paste of the old recipe). It does NOT catch a SecureBoot image selected via
+  # a schematic-level secureboot toggle or a renamed/mirrored/by-digest image whose
+  # string lacks those substrings — that residual stays consumer-overlay
+  # responsibility (same boundary as AGENTS.md §"Out of scope for the base").
+  all_caller_patches = concat(
+    var.config_patches,
+    var.controlplane_config_patches,
+    var.worker_config_patches,
+    flatten([for c in var.classes : c.config_patches]),
+    flatten([for n in var.nodes : n.config_patches]),
+  )
+  # Match the hyphenated SecureBoot installer forms (metal / installer / metal-installer
+  # all share the `-secureboot` URL fragment). The full prefixed literals are
+  # deliberately NOT written here — they would trip the repo's own
+  # hard-constraints-check grep, which cannot tell a guard from a usage.
+  secureboot_patches = [for p in local.all_caller_patches : p if can(regex("-secureboot", p))]
 }
 
 # Defensive cross-check: every class referenced by a node must be defined in
@@ -119,6 +140,142 @@ locals {
       ]
     }
   })] : []
+}
+
+# ---------------------------------------------------------------------------
+# Cilium delivery (Layer-1 substrate). Disables the Talos default CNI (Flannel)
+# and kube-proxy, then delivers Cilium as a controlplane cluster.inlineManifest
+# SEED — the same local-render → inlineManifest pattern as ArgoCD. Comes up as
+# the CNI with the bootstrap. inlineManifests are create-only, so this is a SEED
+# (cilium_chart_version is a SEED knob, not an upgrade knob).
+# ---------------------------------------------------------------------------
+locals {
+  # All-nodes OVERRIDABLE base patch (pod/service subnets + scheduling). Placed
+  # FIRST so a caller config_patch can still override it — e.g. a migrating
+  # consumer with custom subnets. Tunnel-mode Cilium reads the real podSubnets via
+  # ipam:kubernetes, so a subnet override does not desync it.
+  base_cluster_patch = yamlencode({
+    cluster = {
+      network = {
+        podSubnets     = var.pod_cidr
+        serviceSubnets = var.service_cidr
+      }
+      allowSchedulingOnControlPlanes = var.allow_scheduling_on_controlplanes
+    }
+  })
+
+  # All-nodes AUTHORITATIVE patch (cni:none + proxy.disabled), gated on Cilium
+  # delivery. Placed LAST so it wins over any caller config_patch: when
+  # deploy_cilium is true, Flannel must NOT come up, so cni:none is intentionally
+  # NOT caller-overridable (the documented opt-out is deploy_cilium = false). A
+  # stale caller `cni` stanza from the old extraManifests recipe therefore cannot
+  # silently resurrect Flannel. proxy.disabled tracks the kube-proxy toggle.
+  base_cni_patch = var.deploy_cilium ? [yamlencode({
+    cluster = merge(
+      { network = { cni = { name = "none" } } },
+      var.cilium_kube_proxy_replacement ? { proxy = { disabled = true } } : {},
+    )
+  })] : []
+
+  # OPT-IN bootstrap seeding of the Gateway API CRDs via cluster.extraManifests
+  # (controlplane), only when cilium_gateway_api_crds_url is set non-empty. Default
+  # empty -> the base seeds NO CRDs at bootstrap; CRDs are a Day-1 GitOps/apps-catalog
+  # concern, which is air-gap-safe. The Cilium GatewayClass is operator-created at
+  # runtime (NOT in the helm render), so it reconciles once the CRDs exist regardless
+  # of source — no inline/extra ordering guarantee is relied upon. WARNING: a failed
+  # extraManifests fetch is NOT graceful (Talos ExtraManifestController crashloops and
+  # bootstrap does not complete cleanly) — see cilium_gateway_api_crds_url. CRDs carry
+  # no key material, so the URL form is acceptable for the opt-in case (unlike Cilium).
+  gateway_api_patch = (var.deploy_cilium && var.cilium_gateway_api && var.cilium_gateway_api_crds_url != "") ? [yamlencode({
+    cluster = { extraManifests = [var.cilium_gateway_api_crds_url] }
+  })] : []
+
+  # First IPv4 / IPv6 entries of pod_cidr by family (":" marks IPv6), so the
+  # native-routing CIDRs are family-correct regardless of caller list order.
+  cilium_pod_v4 = [for c in var.pod_cidr : c if !strcontains(c, ":")]
+  cilium_pod_v6 = [for c in var.pod_cidr : c if strcontains(c, ":")]
+  cilium_native_v4 = var.cilium_native_routing_cidr != "" ? var.cilium_native_routing_cidr : (
+    length(local.cilium_pod_v4) > 0 ? local.cilium_pod_v4[0] : var.pod_cidr[0]
+  )
+
+  # Module-computed Cilium values from the typed inputs, layered between the
+  # shipped floor (helm/cilium-values.yaml) and the consumer override. kube-proxy
+  # replacement + the KubePrism host/port are emitted HERE (not the floor), gated
+  # on the toggle, so the Cilium side and Talos proxy.disabled stay in sync.
+  cilium_computed_values = yamlencode(merge(
+    {
+      routingMode          = var.cilium_routing_mode
+      kubeProxyReplacement = var.cilium_kube_proxy_replacement
+    },
+    var.cilium_kube_proxy_replacement ? { k8sServiceHost = "localhost", k8sServicePort = "7445" } : {},
+    var.cilium_routing_mode == "native" ? { ipv4NativeRoutingCIDR = local.cilium_native_v4 } : {},
+    (var.cilium_routing_mode == "native" && var.dual_stack && length(local.cilium_pod_v6) > 0) ? { ipv6NativeRoutingCIDR = local.cilium_pod_v6[0] } : {},
+    var.dual_stack ? { ipv6 = { enabled = true } } : {},
+    var.cilium_mtu > 0 ? { MTU = var.cilium_mtu } : {},
+    var.cilium_gateway_api ? { gatewayAPI = { enabled = true } } : {},
+    var.cilium_encryption.type == "wireguard" ? { encryption = { enabled = true, type = "wireguard" } } : {},
+    var.cilium_encryption.type == "ipsec" ? { encryption = { enabled = true, type = "ipsec" } } : {},
+  ))
+
+  # Cilium (+ optional IPsec key Secret, applied first via the Namespace→CRD→other
+  # sort) as controlplane inlineManifests, baked after caller patches like ArgoCD.
+  cilium_controlplane_patch = var.deploy_cilium ? [yamlencode({
+    cluster = {
+      inlineManifests = concat(
+        var.cilium_encryption.type == "ipsec" ? [{
+          name = "cilium-ipsec-keys"
+          contents = yamlencode({
+            apiVersion = "v1"
+            kind       = "Secret"
+            type       = "Opaque"
+            metadata   = { name = "cilium-ipsec-keys", namespace = var.cilium_namespace }
+            stringData = { keys = var.cilium_ipsec_key }
+          })
+        }] : [],
+        [{
+          name     = "cilium"
+          contents = data.helm_template.cilium[0].manifest
+        }],
+      )
+    }
+  })] : []
+}
+
+# Cilium chart rendered locally into the inlineManifest (NO helm_release/apply).
+# Floor values + module-computed install-time values + optional consumer override.
+data "helm_template" "cilium" {
+  count = var.deploy_cilium ? 1 : 0
+
+  name         = "cilium"
+  namespace    = var.cilium_namespace
+  repository   = var.cilium_chart_repository
+  chart        = "cilium"
+  version      = var.cilium_chart_version
+  kube_version = var.kubernetes_version
+  # Cilium ships no CRDs that need the separate large-CRD treatment ArgoCD needs;
+  # the chart's own CRDs render inline within the size budget (~66 KB total).
+  include_crds = true
+
+  values = compact([
+    file("${path.module}/helm/cilium-values.yaml"),
+    local.cilium_computed_values,
+    var.cilium_values_override,
+  ])
+
+  # IPsec needs the pre-shared key (wireguard is keyless). Fail at plan time.
+  lifecycle {
+    precondition {
+      condition     = var.cilium_encryption.type != "ipsec" || var.cilium_ipsec_key != ""
+      error_message = "cilium_encryption.type = \"ipsec\" requires cilium_ipsec_key (the cilium-ipsec-keys Secret material)."
+    }
+    # native routing needs an IPv4 CIDR (the ipv4NativeRoutingCIDR field). Reject
+    # native mode with an IPv6-only pod_cidr and no explicit cilium_native_routing_cidr,
+    # rather than silently writing a v6 value into the v4 field.
+    precondition {
+      condition     = var.cilium_routing_mode != "native" || var.cilium_native_routing_cidr != "" || length(local.cilium_pod_v4) > 0
+      error_message = "cilium_routing_mode = \"native\" needs an IPv4 CIDR: set cilium_native_routing_cidr or include an IPv4 entry in pod_cidr."
+    }
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -214,6 +371,24 @@ data "talos_image_factory_urls" "per_class" {
 # current bundle, else mismatched PKI is pushed to live nodes.)
 resource "talos_machine_secrets" "this" {
   talos_version = var.talos_version
+
+  lifecycle {
+    # Best-effort substring guard for the no-SecureBoot Hard Constraint (boot loops).
+    # The module never emits a SecureBoot installer; this catches the common case of
+    # a caller config_patch literally selecting one. It is a heuristic, not complete
+    # enforcement (see the local.all_caller_patches note) — schematic-level/renamed
+    # SecureBoot is consumer-overlay responsibility.
+    precondition {
+      condition     = length(local.secureboot_patches) == 0
+      error_message = "A config_patch selects a SecureBoot installer image (a *-secureboot reference). The base Hard Constraint forbids SecureBoot (boot loops) — use the non-secureboot installer."
+    }
+    # Fail clearly on a typo'd node.class before the cryptic installer-URL map-index
+    # error (the existing check block only warns).
+    precondition {
+      condition     = alltrue([for n in var.nodes : contains(keys(var.classes), n.class)])
+      error_message = "A node references an undefined class (typo?). Every node.class must be a key in var.classes. Defined: ${join(", ", keys(var.classes))}."
+    }
+  }
 }
 
 # Base machine configuration per role. Cluster-specific patches are layered on
@@ -225,12 +400,17 @@ data "talos_machine_configuration" "controlplane" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  # ArgoCD inlineManifest (local.argocd_controlplane_patch, empty when !deploy_argocd)
-  # LAST, so it merges after caller patches and is not overridden.
+  # base_cluster_patch (overridable subnets/scheduling) FIRST so caller patches
+  # can override; base_cni_patch (authoritative cni:none + proxy) + ArgoCD/Cilium
+  # inlineManifests LAST so they merge after caller patches and are not overridden.
   config_patches = concat(
+    [local.base_cluster_patch],
     var.config_patches,
     var.controlplane_config_patches,
+    local.base_cni_patch,
+    local.gateway_api_patch,
     local.argocd_controlplane_patch,
+    local.cilium_controlplane_patch,
   )
 }
 
@@ -241,7 +421,14 @@ data "talos_machine_configuration" "worker" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  config_patches     = concat(var.config_patches, var.worker_config_patches)
+  # base_cluster_patch (overridable) FIRST; base_cni_patch (authoritative cni:none
+  # + proxy) LAST. Workers carry no inlineManifest seeds (controlplane-only).
+  config_patches = concat(
+    [local.base_cluster_patch],
+    var.config_patches,
+    var.worker_config_patches,
+    local.base_cni_patch,
+  )
 }
 
 # Apply the config to each node. Patches arrive in TWO passes:
@@ -302,6 +489,14 @@ resource "talos_machine_configuration_apply" "this" {
     ],
     var.classes[each.value.class].config_patches,
     each.value.config_patches,
+    # base_cni_patch re-applied LAST in the apply pass too, so cni:none + proxy
+    # win over a class/node patch as well (not just the all-nodes/role patches of
+    # pass 1). When deploy_cilium is true, Flannel must NOT come up via any patch
+    # vector. install.image is intentionally NOT re-pinned here — per-node installer
+    # override stays allowed, and the SecureBoot guard (a substring heuristic, see
+    # talos_machine_secrets preconditions) covers the common recipe; schematic-level
+    # SecureBoot remains consumer-overlay responsibility.
+    local.base_cni_patch,
   )
 }
 

@@ -21,6 +21,7 @@ In scope:
 - Resolve a per-class Image-Factory installer image (extensions + architecture + optional SBC overlay).
 - Apply config to each node, bootstrap etcd on the first controlplane.
 - **Wait until the cluster is healthy** (etcd quorum, nodes Ready, apiserver reachable) before returning.
+- **Deliver Cilium** as the CNI: disable the Talos default CNI (`cni.name: none`) + kube-proxy, then bake a locally-rendered Cilium chart into the controlplane `cluster.inlineManifests` as a bootstrap seed (Layer-1 substrate) — opt-out via `deploy_cilium = false`. So a fresh cluster comes up on Cilium, **not Flannel**.
 - **Deliver ArgoCD** as a Talos `cluster.inlineManifest` (Layer-1 substrate, C4 layer model) — opt-out via `deploy_argocd = false`.
 - Output `kubeconfig` and `talosconfig`.
 
@@ -28,7 +29,7 @@ Out of scope (caller / elsewhere):
 
 - Hardware provisioning + PXE boot (DHCP `next-server`, iPXE).
 - Cluster identity (node IPs, endpoint, NTP, install disk, registry mirrors) → caller via variables/patches.
-- Day-2 platform components (Cilium, cert-manager, …) and **ArgoCD steady-state** (RBAC, OIDC, TLS cert, app-of-apps) → ArgoCD GitOps self-management. The module only seeds the *bootstrap* ArgoCD install.
+- Day-2 platform components (cert-manager, …), **Cilium steady-state** (Hubble export, L2/BGP announcements — Cilium inlineManifests are create-only seeds), and **ArgoCD steady-state** (RBAC, OIDC, TLS cert, app-of-apps) → ArgoCD GitOps self-management. The module only seeds the *bootstrap* Cilium + ArgoCD installs.
 - **Adopting an already-running cluster** — see the warning below.
 
 Precondition: every node in `var.nodes` is reachable on the Talos API port,
@@ -56,6 +57,7 @@ i.e. already booted into Talos maintenance mode.
 | Day-1: etcd bootstrap | `talos_machine_bootstrap` (first controlplane only) |
 | Day-1: kubeconfig + talosconfig | `talos_cluster_kubeconfig` + `data.talos_client_configuration` |
 | Day-1: wait for healthy cluster | `data.talos_cluster_health` (blocks `apply` until etcd quorum + nodes Ready + apiserver reachable; gates the credential outputs) |
+| Day-1: CNI + Cilium bootstrap | base machine config sets `cluster.network.cni.name: none` + `cluster.proxy.disabled: true` + pod/service subnets; `data.helm_template.cilium` (floor `helm/cilium-values.yaml` + typed `cilium_*` inputs + `cilium_values_override`) → controlplane `cluster.inlineManifests` seed (+ `cilium-ipsec-keys` Secret when `cilium_encryption.type = ipsec`). Opt-out: `deploy_cilium = false`. |
 | Day-1: ArgoCD bootstrap | `data.helm_template.argocd` (app, no CRDs) → `cluster.inlineManifests` (namespace → `sops-age-key` Secret for ksops → ArgoCD app); the ~1.8 MB CRDs are applied via `kubectl` server-side post-health-gate (`null_resource`). Opt-out: `deploy_argocd = false`. |
 | **Day-2: Talos OS upgrade** | Bumping `talos_install_version` re-renders the per-class installer image; `talos_machine_configuration_apply` rolls it out. |
 | **Day-2: class changes** | Edit `classes` (extensions/overlay/patches) → schematic ID + installer URL change → `machine_configuration_apply` re-rolls nodes of that class. |
@@ -155,6 +157,23 @@ provider "talos" {}
 | `controlplane_config_patches` | list(string) | `[]` | patches for controlplane nodes only |
 | `worker_config_patches` | list(string) | `[]` | patches for worker nodes only |
 | `cluster_health_timeout` | string | `"10m"` | max wait for `data.talos_cluster_health` (etcd quorum, nodes Ready, apiserver reachable). `apply` blocks until then. |
+| `pod_cidr` | list(string) | Talos default `/16` | pod CIDR(s) → Talos `podSubnets` AND Cilium IPAM/masquerade/native-routing. v4+v6 when `dual_stack`. |
+| `service_cidr` | list(string) | Talos default `/12` | service CIDR(s) → Talos `serviceSubnets`. |
+| `dual_stack` | bool | `false` | IPv4/IPv6 dual-stack (enables Cilium `ipv6`). |
+| `allow_scheduling_on_controlplanes` | bool | `false` | remove the control-plane taint (single-node / edge). |
+| `deploy_cilium` | bool | `true` | deliver Cilium as a controlplane `inlineManifest` seed AND disable the Talos default CNI (`cni.name: none`) + kube-proxy. Opt-out keeps Flannel / a caller-supplied CNI. |
+| `cilium_chart_version` | string | `"1.19.4"` | cilium Helm chart version. **SEED knob** (inlineManifests are create-only), not an upgrade knob. |
+| `cilium_chart_repository` | string | `"https://helm.cilium.io"` | Helm repo for the cilium chart (override for a private mirror / air-gap). |
+| `cilium_namespace` | string | `"kube-system"` | namespace Cilium renders into. |
+| `cilium_values_override` | string | `""` | consumer Helm values merged on the floor + computed values (long tail: Hubble, L2/BGP, bpf). |
+| `cilium_routing_mode` | string | `"tunnel"` | `tunnel` / `native`. Install-time-fixed. |
+| `cilium_native_routing_cidr` | string | `""` | `ipv4NativeRoutingCIDR` for native mode; empty = first `pod_cidr`. |
+| `cilium_kube_proxy_replacement` | bool | `true` | Cilium kube-proxy replacement (also sets Talos `proxy.disabled`). |
+| `cilium_mtu` | number | `0` | datapath MTU (0 = chart auto). |
+| `cilium_encryption` | object | `{type="none"}` | `type` ∈ {none, wireguard, ipsec}. ipsec requires `cilium_ipsec_key`. |
+| `cilium_ipsec_key` | string (sensitive) | `""` | IPsec PSK seeded as the `cilium-ipsec-keys` Secret; required for `type=ipsec` (wireguard is keyless). Lands in (encrypted) state. |
+| `cilium_gateway_api` | bool | `true` | enable the Cilium **gateway controller** (operator creates the GatewayClass once CRDs exist). The CRDs are NOT seeded by default — apply them via GitOps (Day-1), or opt into bootstrap seeding below. Controller errors harmlessly until CRDs land; CNI unaffected. |
+| `cilium_gateway_api_crds_url` | string | `""` (no boot seed) | **OPT-IN** bootstrap seeding of the Gateway API CRDs via `cluster.extraManifests`. Empty = CRDs are a Day-1 GitOps concern (air-gap-safe). Set to the GW-API **v1.4.1 standard** bundle URL (or an internal mirror) for a connected cluster. ⚠️ a failed fetch crashloops Talos' ExtraManifestController and blocks clean bootstrap. |
 | `deploy_argocd` | bool | `true` | deliver ArgoCD as a controlplane `inlineManifest`. Requires `sops_age_key` when true. |
 | `sops_age_key` | string (sensitive) | `""` | age private key (`keys.txt`) for the ArgoCD **ksops** repoServer, seeded as the `sops-age-key` Secret. **Required** when `deploy_argocd = true`. Lands in (encrypted) state. |
 | `argocd_namespace` | string | `"argocd"` | namespace for the bootstrap ArgoCD install |
@@ -268,11 +287,15 @@ before credentials are emitted, not to assert ArgoCD is Ready. The
 consumer that writes those into secret storage only ever receives credentials
 for a cluster that is genuinely **online**.
 
-**Roadmap — Cilium convergence.** Under the three-pillars model
-(Talos + Cilium + ArgoCD), Cilium should eventually follow this same
-local-render → inlineManifest pattern. Today Cilium ships via the
-consumer's own config_patches/recipe; the asymmetry is **temporary** and
-tracked.
+**Cilium convergence — done.** Under the three-pillars model
+(Talos + Cilium + ArgoCD), Cilium now follows the same local-render →
+inlineManifest pattern as ArgoCD (`deploy_cilium`, default true): the module
+disables the Talos default CNI + kube-proxy and bakes a locally-rendered Cilium
+chart into the controlplane `cluster.inlineManifests` as a create-only SEED. The
+former consumer-side `cluster.extraManifests`-URL recipe is obsolete. See
+[`docs/adr-cluster-yaml-sot.md`](../../../docs/adr-cluster-yaml-sot.md). Install-time
+Cilium config rides the typed `cilium_*` inputs + `cilium_values_override`;
+runtime-mutable config (Hubble, L2/BGP) is Day-2 Cilium self-management.
 
 ## Notes
 
