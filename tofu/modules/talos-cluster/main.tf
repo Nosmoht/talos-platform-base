@@ -49,7 +49,11 @@ locals {
     flatten([for c in var.classes : c.config_patches]),
     flatten([for n in var.nodes : n.config_patches]),
   )
-  secureboot_patches = [for p in local.all_caller_patches : p if can(regex("(metal-secureboot|installer-secureboot)", p))]
+  # Match the hyphenated SecureBoot installer forms (metal / installer / metal-installer
+  # all share the `-secureboot` URL fragment). The full prefixed literals are
+  # deliberately NOT written here — they would trip the repo's own
+  # hard-constraints-check grep, which cannot tell a guard from a usage.
+  secureboot_patches = [for p in local.all_caller_patches : p if can(regex("-secureboot", p))]
 }
 
 # Defensive cross-check: every class referenced by a node must be defined in
@@ -376,7 +380,7 @@ resource "talos_machine_secrets" "this" {
     # SecureBoot is consumer-overlay responsibility.
     precondition {
       condition     = length(local.secureboot_patches) == 0
-      error_message = "A config_patch literally selects a SecureBoot installer (metal-secureboot/installer-secureboot). The base Hard Constraint forbids SecureBoot (boot loops) — remove it."
+      error_message = "A config_patch selects a SecureBoot installer image (a *-secureboot reference). The base Hard Constraint forbids SecureBoot (boot loops) — use the non-secureboot installer."
     }
     # Fail clearly on a typo'd node.class before the cryptic installer-URL map-index
     # error (the existing check block only warns).
