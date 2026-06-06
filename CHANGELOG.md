@@ -3,6 +3,49 @@
 This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed — BREAKING
+
+- **`talos-cluster` module delivers Cilium as the CNI and disables the Talos
+  default Flannel (`deploy_cilium` defaults to `true`).** Cilium is Layer-1
+  substrate (Talos + Cilium + ArgoCD); the module now disables the bundled CNI
+  (`cluster.network.cni.name: none`) + kube-proxy and bakes a locally-rendered
+  Cilium chart into the controlplane `cluster.inlineManifests` as a create-only
+  bootstrap **seed** — the same `data.helm_template` → inlineManifest pattern as
+  ArgoCD (`cilium_chart_version` is a SEED knob, not an upgrade knob). A fresh
+  cluster therefore comes up on Cilium, **not Flannel**. `cni:none` is applied in
+  both the config-generation and per-node apply passes, so a caller patch cannot
+  resurrect Flannel. New inputs: `deploy_cilium`, `cilium_chart_version`,
+  `cilium_chart_repository`, `cilium_namespace`, `cilium_values_override`,
+  `cilium_routing_mode`, `cilium_native_routing_cidr`, `cilium_kube_proxy_replacement`,
+  `cilium_mtu`, `cilium_encryption` (`none|wireguard|ipsec`), `cilium_ipsec_key`
+  (sensitive), `cilium_gateway_api`, `cilium_gateway_api_crds_url`, plus first-class
+  `pod_cidr`, `service_cidr` (fed to BOTH Talos subnets AND Cilium), `dual_stack`,
+  and `allow_scheduling_on_controlplanes`. The base ships a minimal,
+  cluster-agnostic Cilium floor (`helm/cilium-values.yaml`); per-cluster install-time
+  config rides the typed inputs + `cilium_values_override`. Decision + validation:
+  `docs/adr-cluster-yaml-sot.md`.
+
+  **BREAKING — migration:** a caller that previously relied on the Talos-default
+  Flannel plus its own `cluster.extraManifests`-URL Cilium recipe must either adopt
+  the module-delivered Cilium (drop the extraManifests recipe) or set
+  `deploy_cilium = false` to keep the prior behaviour. Next OCI tag is a MAJOR bump.
+
+### Added
+
+- **Cilium Gateway API controller** enabled by default (`cilium_gateway_api`),
+  satisfying the "Gateway API only" Hard Constraint at the mechanism layer. The
+  Gateway API CRDs (Cilium 1.19 → Gateway API v1.4.1 standard channel) are a Day-1
+  GitOps / apps-catalog concern by default; bootstrap seeding via
+  `cluster.extraManifests` is **opt-in** (`cilium_gateway_api_crds_url`), because a
+  failed `extraManifests` fetch is not graceful (it crashloops Talos'
+  ExtraManifestController and blocks clean bootstrap).
+- **Plan-time guards** in the module: a SecureBoot-installer substring guard over
+  all caller `config_patches` (the no-SecureBoot Hard Constraint, in code — a
+  consumer's patches escape the repo's `tofu/**` CI grep) and a clear
+  undefined-`node.class` failure.
+
 ## v0.8.0 — 2026-06-03
 
 ### Changed — BREAKING
