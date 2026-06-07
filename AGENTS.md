@@ -47,6 +47,7 @@ platform layer model (`talos-platform-docs` ADR-0009).
 - `make validate-kyverno-policies`: server-side validation of base Kyverno ClusterPolicies (PNI contract, reserved-labels, vault-ca-distribution, capability-validation).
 - `make mcp-install` / `make mcp-verify`: install and verify MCP server binaries.
 - `task ci` (devbox): `tofu fmt -check` + `tofu validate` + `tflint` over the `tofu/` cluster-lifecycle module and its examples.
+- **The `make` ↔ `task` split is intentional — do not migrate `make`→`task`.** `task` (devbox) covers `tofu/`; `make` covers GitOps / Kyverno / bootstrap / MCP. Per [`docs/adr-task-runner-consolidation.md`](docs/adr-task-runner-consolidation.md) the `Makefile` dissolves *with* the substrate-only split (`docs/adr-substrate-only-base.md`): its component / Kyverno / bootstrap targets exit with their components at Phase-3 ablation, and the surviving targets fold into the Taskfile then. (devbox declares `go-task`, not `gnumake`; a `gnumake` bridge for the still-live `make` targets is tracked in #113.)
 
 This base is consumed by cluster repos via OCI artifact (`oras pull
 ghcr.io/nosmoht/talos-platform-base:<tag>`) into a gitignored `vendor/base/`
