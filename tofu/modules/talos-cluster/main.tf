@@ -323,9 +323,14 @@ resource "talos_image_factory_schematic" "per_class" {
           # `filters.names` (empty filter = no filter), so guard on the input
           # length — otherwise `extensions: []` bakes every official extension
           # (drbd, gvisor, *-guest-agent, iscsi-tools, …) into the installer image.
+          # `filters.names` matches by substring/prefix, NOT exact name: a filter
+          # of `siderolabs/gvisor` also resolves `siderolabs/gvisor-debug`. Without
+          # the `contains` guard the schematic silently gains unrequested extensions,
+          # which changes its content-addressed ID and the installed extension set.
+          # Intersect the resolved names with the declared set for an exact match.
           officialExtensions = length(each.value.extensions) == 0 ? [] : [
             for ext in data.talos_image_factory_extensions_versions.per_class[each.key].extensions_info :
-            ext.name
+            ext.name if contains(each.value.extensions, ext.name)
           ]
         }
       }
