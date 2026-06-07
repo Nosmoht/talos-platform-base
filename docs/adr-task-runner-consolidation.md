@@ -8,137 +8,140 @@ consulted: []
 informed: []
 supersedes: []
 related:
+  - base:substrate-only-base
   - base:opentofu-cluster-lifecycle
-  - base:multi-repo-platform-split
 ---
 
-# ADR: Consolidate the developer workflow on go-task + devbox (retire the Makefile)
+# ADR: No wholesale Make→go-task migration — the Makefile dissolves with substrate-only
 
 ## Context and Problem Statement
 
 The OpenTofu cutover (`#82`, ADR `base:opentofu-cluster-lifecycle`) moved
-the Talos cluster-lifecycle out of the `Makefile` into the
-`tofu/modules/talos-cluster` module and introduced a `Taskfile.yml` +
-`devbox.json` for that subtree. That migration was **partial**: the
-`Taskfile` header explicitly scopes itself to `tofu/` and leaves the
-kustomize/Kyverno/bootstrap/MCP world in the `Makefile`.
+the Talos cluster-lifecycle into `tofu/modules/talos-cluster` and added a
+`Taskfile.yml` + `devbox.json` scoped to that subtree. The `Makefile`
+still owns the kustomize/Kyverno/bootstrap/MCP targets, and `devbox.json`
+declares `go-task` but **not `gnumake`**, so the `make validate-gitops` /
+`make argocd-bootstrap` path `AGENTS.md` names is not runnable from the
+declared `devbox shell` — a real seam today.
 
-The result is a split developer interface that has a real seam:
+The first cut of this ADR proposed a **wholesale migration of every
+Makefile target to go-task**. That was wrong-scoped. Per the **binding
+component disposition** in ADR `base:substrate-only-base` (§Amendment
+2026-06-03), the 22 infrastructure components split **18 → catalog
+(`talos-platform-apps`), 2 → dissolve (`platform-network-interface`,
+`kyverno`), 2 → substrate (`argocd`, `cert-approver`)**. Most Makefile
+targets serve components that are **leaving the base**, so migrating them
+into a new tool would churn targets that Phase-3 ablation deletes.
 
-- `devbox.json` declares `go-task` (and the tofu toolchain) but **not
-  `gnumake`**, and its `init_hook` directs the user to `task --list`. So
-  inside `devbox shell`, the `make validate-gitops` / `make argocd-bootstrap`
-  targets that `AGENTS.md` names as the primary validation path are not
-  runnable from the declared environment.
-- The `Taskfile` header states it "mirrors talos-platform-apps" — the
-  sibling apps repo runs its full workflow through `go-task`, so the base
-  is the outlier.
-- The `Makefile` still owns ~18 targets: `init-cluster-yaml`,
-  `argocd-install`/`argocd-bootstrap`/`argocd-password`, `validate-gitops`,
-  `validate-kyverno-policies`, `render-component`/`render-all`/`verify-rendered`/`chart-pull`,
-  `grafana-dashboards-check`, `oci-allowlist-check`, `install-pre-commit`,
-  `verify-tools`, `mcp-install`/`mcp-verify`/`mcp-uninstall`. Most are thin
-  wrappers over `scripts/`.
+Per-target reality:
 
-A latent correctness bug rides on the same seam: since `#102`
-(`deploy_argocd` defaults to `true`) the module seeds ArgoCD as a Talos
-`inlineManifest` at `tofu apply`, yet `make argocd-bootstrap` still depends
-on `make argocd-install` (`helm upgrade --install argocd …`). The documented
-day-zero recipe (`tofu apply` then `make argocd-bootstrap`) therefore
-**installs ArgoCD twice** on the default path.
+| Target(s) | Operates on | Fate |
+|---|---|---|
+| `render-component`/`render-all`/`verify-rendered`/`chart-pull`, `validate-gitops`, `grafana-dashboards-check` | the 22 `kubernetes/base/infrastructure/` components | **EXIT** with the 18 catalog-bound components (Phase-3 ablation) — not migrate |
+| `validate-kyverno-policies` (+ PNI policies) | base Kyverno `ClusterPolicy` set | **DISSOLVE** — Conftest moves to apps-CI, Kyverno to consumers (ADR-0018) |
+| `argocd-install`, `argocd-bootstrap` (helm path) | ArgoCD bootstrap | **already dead** — the module seeds ArgoCD as a Talos `inlineManifest` since `#102` (`deploy_argocd=true`); `make argocd-bootstrap` re-installs it (double-install) |
+| `oci-allowlist-check`, `init-cluster-yaml`, `mcp-install`/`mcp-verify`/`mcp-uninstall`, `verify-tools`, `install-pre-commit` | supply-chain / lifecycle / agent / dev-hygiene | **stay** (small substrate + dev residue) |
+| `tofu fmt`/`validate`/`lint` | `tofu/` | already in `Taskfile.yml` (`task ci`) |
 
 ## Decision Drivers
 
-- Single coherent developer entry point (`devbox shell` → `task`) instead of
-  two runners with an environment that only ships one of them.
-- Consistency with the sibling `talos-platform-apps` repo (already full
+- Avoid investing migration effort in targets that substrate-only ablation
+  will delete.
+- The devbox-without-make seam is real **today** and blocks contributor
+  onboarding, even though the affected targets are temporary.
+- The ArgoCD double-install is a correctness bug independent of tooling.
+- Convergence on `go-task` remains the direction for what *survives*
+  (the tofu subtree already is go-task; `talos-platform-apps` is full
   go-task).
-- The devbox-without-make seam makes the documented validation commands
-  unrunnable from the declared environment — a contributor-onboarding defect.
-- Opportunity to fix the ArgoCD double-install during the migration rather
-  than preserving it in a retired tool.
 
 ## Considered Options
 
-1. **Full consolidation on go-task + devbox** — migrate every Makefile
-   target to a `task` target, expand `devbox.json` with the packages those
-   tasks need, retire the `Makefile` (or leave a thin delegating shim), fix
-   the ArgoCD bootstrap during the move, and rewrite the docs.
-2. **Keep the split, close the seam** — add `gnumake` to `devbox.json` and
-   document the Make=manifests / Task=tofu split as intentional; fix the
-   ArgoCD bug in the Makefile.
-3. **Status quo + point-fix** — only fix the ArgoCD double-install in the
-   Makefile; leave the two-runner split and the seam.
+1. **Wholesale Make→go-task migration now** — migrate all ~18 targets.
+2. **No wholesale migration; let the Makefile dissolve with substrate-only,
+   bridge the seam cheaply, fix the bug now** (this decision).
+3. **Status quo + ArgoCD point-fix only** — ignore the devbox seam.
 
 ## Decision Outcome
 
-Chosen option: **Full consolidation on go-task + devbox** (Option 1),
-because the declared dev environment is already go-task-centric (no make in
-`devbox.json`), the sibling apps repo sets the convention, and a single
-`devbox shell` + `task` entry point removes the onboarding seam while giving
-a natural home to fix the ArgoCD bootstrap bug.
+Chosen option: **Option 2 — no wholesale migration.** Concretely:
+
+1. **Do not migrate** the component-validation, Kyverno, and ArgoCD-bootstrap
+   targets. They **exit** with their components under `base:substrate-only-base`
+   Phase-3 ablation (component-validation + PNI/Kyverno) or are **removed**
+   outright (the dead ArgoCD helm path).
+2. **Fix the ArgoCD double-install now** — remove or `deploy_argocd=false`-gate
+   the `make argocd-install` helm path; the module delivers ArgoCD. Rewrite
+   `docs/day-zero-pattern.md` Layer-2 to match (the rewrite deferred from
+   PR #112).
+3. **Bridge the seam cheaply** — add `gnumake` to `devbox.json` so the
+   still-live `make` targets run inside `devbox shell` until ablation. This
+   is a one-package bridge, not a tool migration.
+4. **Converge at ablation, not before** — once Phase-3 lands and the
+   surviving target set is final and small (`oci-allowlist-check`,
+   `init-cluster-yaml`, `mcp-*`, dev-hygiene), fold the survivors into the
+   existing `Taskfile.yml` and retire the `Makefile`. Doing it now is
+   premature: the survivor set is not yet fixed.
+
+because most targets leave with the substrate split, so the Makefile is
+dissolved *by* `base:substrate-only-base` rather than by a separate
+migration project; the only standalone work is the real bug + the cheap
+seam bridge.
 
 ### Consequences
 
-- Positive: one runner, one declared environment; `devbox shell` + `task`
-  runs everything; parity with `talos-platform-apps`; the ArgoCD
-  double-install is fixed as part of the move.
-- Negative: **breaking change to the contributor interface** — every
-  `make <target>` in docs, CI, and muscle memory becomes `task <target>`.
-  `devbox.json` grows to declare the manifest/bootstrap toolchain (`kubectl`,
-  `helm`, `conftest`, `kubeconform`, `kyverno`, `oras`, `cosign`, `syft`,
-  `yq`, `gettext`/`envsubst`, `gh`, `uv`).
-- Follow-up: tracked migration issue (see Links) carries the per-target
-  mapping + testable ACs; this also resolves the deferred
-  `docs/day-zero-pattern.md` Layer-2 rewrite (PR #112) and should reconcile
-  the `.tool-versions`/asdf vs `devbox.json` version-pin duplication
-  (`verify-tools` reads `.tool-versions`).
+- Positive: no churn on soon-deleted targets; the devbox seam is closed
+  with one package; the ArgoCD bug is fixed; the surviving tool home (go-task)
+  is decided once the set is final.
+- Negative: `make` and `task` coexist until Phase-3 ablation (the bridge is
+  explicitly temporary). `devbox.json` carries `gnumake` in the interim.
+- Follow-up: tracking issue #113 (rescoped to the bug fix + Layer-2 rewrite +
+  devbox bridge). The Makefile retirement itself is folded into the
+  `base:substrate-only-base` Phase-3 ablation checklist, not tracked
+  separately.
 
 ## Pros and Cons of the Options
 
-### Option 1 — Full consolidation on go-task + devbox
+### Option 1 — Wholesale Make→go-task migration now
 
-- Pro: single entry point; environment/runner parity; matches the sibling
-  repo; fixes the ArgoCD bug in-flight; removes the devbox-no-make seam.
-- Con: largest blast radius (docs + CI + contributor interface); devbox
-  package list grows; one migration arc before the repo is consistent again.
+- Pro: single runner immediately.
+- Con: migrates ~16 targets that ablation deletes; large doc/CI blast radius
+  for temporary artifacts; ignores the substrate-only disposition.
 
-### Option 2 — Keep the split, close the seam
+### Option 2 — Dissolve with substrate-only; bridge + bug-fix (chosen)
 
-- Pro: smallest change; preserves existing muscle memory.
-- Con: cements two runners and a dual toolchain declaration permanently;
-  diverges from the apps repo; the "why two runners" question recurs for
-  every new contributor.
+- Pro: minimal, correctly-scoped; closes the seam; fixes the bug; aligns the
+  Makefile retirement with the split that already removes most of it.
+- Con: two runners coexist temporarily.
 
-### Option 3 — Status quo + point-fix
+### Option 3 — Status quo + ArgoCD point-fix only
 
-- Pro: minimal.
-- Con: leaves the seam and the directional inconsistency unresolved; the
-  ArgoCD fix lands in a tool the project is drifting away from.
+- Pro: smallest.
+- Con: leaves the devbox-no-make seam open for every contributor until ablation.
 
 ## Validation
 
 The decision is **correct** when:
 
-- `task --list` exposes an equivalent for every former `make` target, and the
-  `Makefile` is removed or is a thin `task`-delegating shim.
-- `devbox shell -- task validate-gitops` (and the other migrated tasks) run
-  with no "command not found" — i.e. `devbox.json` declares the full
-  toolchain.
-- `grep -rIn '\bmake ' README.md AGENTS.md CONTRIBUTING.md docs/` returns
-  only intentional historical references.
-- The default bootstrap path contains no second `helm upgrade --install
-  argocd` (ArgoCD double-install fixed).
-- CI is green after workflows are repointed to `task`.
+- `devbox shell -- make validate-gitops` runs (no `make: command not found`)
+  — i.e. `gnumake` is in `devbox.json`.
+- The default bootstrap path has no second `helm upgrade --install argocd`
+  (double-install fixed); `docs/day-zero-pattern.md` Layer-2 describes the
+  module `inlineManifest` delivery.
+- The `base:substrate-only-base` Phase-3 ablation checklist names "retire the
+  Makefile / fold survivors into Taskfile" as a step — no separate migration
+  project exists.
 
-The decision is **wrong** if a third workflow runner is introduced, or if
-the migrated tasks cannot be expressed without re-introducing make-specific
-constructs.
+The decision is **wrong** if the substrate-only split stalls indefinitely
+(then the temporary coexistence becomes permanent and a deliberate migration
+is warranted after all).
 
 ## Links
 
-- ADR `base:opentofu-cluster-lifecycle` — the partial migration this completes.
-- `Taskfile.yml` header — the documented `tofu/`-only scope + apps-repo mirror note.
-- PR #112 — the v1.0.0 doc sync that deferred the `day-zero-pattern.md`
-  Layer-2 rewrite to this decision.
-- Tracking issue #113 — the per-target migration plan + ArgoCD-fix ACs.
+- ADR `base:substrate-only-base` §Amendment 2026-06-03 — the binding 18/2/2
+  component disposition that drives this decision.
+- ADR `base:opentofu-cluster-lifecycle` (#82) — the partial tooling migration.
+- `tofu/modules/talos-cluster/README.md` §"ArgoCD delivery + health gate", #102
+  — the module-delivered ArgoCD that makes `make argocd-install` redundant.
+- PR #112 — the v1.0.0 doc sync that deferred the day-zero Layer-2 rewrite here.
+- Tracking issue #113 — ArgoCD double-install fix + Layer-2 rewrite + devbox
+  bridge (rescoped from the withdrawn wholesale-migration plan).
