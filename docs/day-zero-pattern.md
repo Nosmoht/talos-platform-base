@@ -13,13 +13,16 @@ section of the tutorial.
 
 ## The design intent in one sentence
 
-> `talos-platform-base` ships **Talos plus the minimum** needed so
-> that everything else can be installed by ArgoCD.
+> `talos-platform-base` provisions **Talos plus its substrate floor —
+> Cilium (CNI) and ArgoCD** — through the `tofu/modules/talos-cluster`
+> module, so that everything above the substrate can be reconciled by
+> ArgoCD.
 
-That sentence is the load-bearing invariant. Every artifact in this
-repo sits in exactly one of three layers below; the layer dictates
-whether the artifact may be `kubectl apply`-ed directly or must be
-reconciled by ArgoCD.
+That sentence is the load-bearing invariant. The substrate pillars
+(Talos + Cilium + ArgoCD) are seeded by the OpenTofu module at bootstrap
+as Talos `inlineManifests`; every other artifact in this repo sits in
+exactly one of the three layers below, and the layer dictates whether it
+may be `kubectl apply`-ed directly or must be reconciled by ArgoCD.
 
 ## The three layers
 
@@ -30,7 +33,7 @@ flowchart TB
     direction LR
     talos["Talos OS<br/>(immutable, machine-config)"]
     k8s["Bundled Kubernetes<br/>(control-plane + kubelet)"]
-    cilium["Cilium CNI<br/>(via Talos extraManifests URL)"]
+    cilium["Cilium CNI<br/>(tofu inlineManifest seed)"]
     talos --> k8s --> cilium
   end
 
@@ -183,10 +186,12 @@ Layer 3 (day-two):       git push → ArgoCD reconciles  ← from here, NEVER ku
 > let ArgoCD sync; only exception: one-time bootstrap AppProjects
 > (`kubernetes/bootstrap/`).
 
-Concretely, "bootstrap exception" means the five invocations of
-Layer 2 above, plus the Talos `extraManifests`-driven Cilium apply at
-Layer 1. **Nothing else** in this repo should ever appear in a
-`kubectl apply` command.
+Concretely, "bootstrap exception" means the invocations of Layer 2
+above. The Layer-1 Cilium and ArgoCD substrate is delivered by the
+OpenTofu module as Talos `inlineManifests` — not by a consumer
+`kubectl apply` (the ArgoCD CRDs alone are applied by the module via
+`kubectl --server-side`, gated on the health check). **Nothing else**
+in this repo should ever appear in a `kubectl apply` command.
 
 ## End-to-end command sequence (consumer-side reference)
 

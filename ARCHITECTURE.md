@@ -197,9 +197,9 @@ sequenceDiagram
   participant Consumer as Consumer repo CI
   participant Cluster as Live cluster ArgoCD
 
-  Maintainer->>GitHub: git tag v0.2.0 && git push --tags
+  Maintainer->>GitHub: git tag v1.0.0 && git push --tags
   GitHub->>CI: trigger
-  CI->>GHCR: push :v0.2.0 (immutable)
+  CI->>GHCR: push :v1.0.0 (immutable)
   CI->>Sigstore: cosign sign + attest provenance
   Consumer->>GHCR: cosign verify + oras pull → vendor/base/
   Consumer->>Cluster: Multi-Source Application sees new tag
@@ -280,7 +280,7 @@ this list grow silently.
 | **Single maintainer.** Bus factor = 1; review coverage on changes is human + automated gates, not multi-reviewer. | medium | OpenSSF Scorecard `Code-Review` check will score low by design; mitigated by aggressive CI gating and adversarial reviewer subagent dispatch on risky diffs |
 | **Two further PNI policies still need the v0.5.0-style name/behaviour cleanup.** | low | Closed by #48 — done |
 | **`kubernetes/base/` tree duplicated in consumer repo (homelab) is a Phase-1.5 migration leftover.** | low | Tracked consumer-side; not a base-repo concern |
-| **Vale prose linter not yet configured.** Style consistency relies on individual contributor judgement. | low | Tracked in the docs-standards adoption sweep (#56) |
+| **Vale prose linter** for prose-style consistency. | low | Done — configured in #57 (`.vale.ini` + `vale.yml` CI workflow) |
 
 ## 12. Glossary
 
