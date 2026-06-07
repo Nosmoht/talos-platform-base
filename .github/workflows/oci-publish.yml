@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write       # gh release create (GitHub Release object + assets)
   packages: write
   id-token: write       # cosign keyless OIDC
   attestations: write   # actions/attest-build-provenance
@@ -169,3 +169,62 @@ jobs:
           oras tag \
             "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
             latest
+
+      - name: Create GitHub Release
+        # Closes the gap where tag pushes published the OCI artifact but
+        # left no GitHub Release object (the Releases page lagged behind the
+        # actual published tags). Notes come from the matching CHANGELOG
+        # section when present; otherwise `gh` auto-generates them from the
+        # commit range. Hyphenated SemVer tags are marked pre-release,
+        # consistent with the `:latest` skip above. Idempotent: re-runs of an
+        # already-released tag re-upload assets with --clobber instead of
+        # failing. Artifacts attached here mirror the OCI layers — ghcr.io
+        # remains the authoritative, signed consumption path.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          mkdir -p .work
+          NOTES_FILE=".work/release-notes.md"
+
+          # Extract the CHANGELOG section for this tag. Header form:
+          # "## <tag> — <date>"; the body runs until the next "## " heading.
+          # index($0,p)==1 is an exact prefix match (no regex, so dots in the
+          # version are literal).
+          awk -v p="## ${TAG} " '
+            index($0, p) == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > "$NOTES_FILE" || true
+
+          notes_args=()
+          if [ -s "$NOTES_FILE" ]; then
+            echo "Using CHANGELOG section for ${TAG}"
+            notes_args=(--notes-file "$NOTES_FILE")
+          else
+            echo "No CHANGELOG section for ${TAG}; auto-generating release notes"
+            notes_args=(--generate-notes)
+          fi
+
+          prerelease_args=()
+          case "$TAG" in
+            *-*) prerelease_args=(--prerelease) ;;
+          esac
+
+          assets=(
+            "_release/talos-platform-base-${TAG}.tar.gz"
+            "_release/checksums.txt"
+            "_release/talos-platform-base-${TAG}.cdx.json"
+          )
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; re-uploading assets"
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              "${notes_args[@]}" \
+              "${prerelease_args[@]}" \
+              "${assets[@]}"
+          fi
