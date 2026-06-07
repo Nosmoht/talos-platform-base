@@ -89,11 +89,13 @@ seam bridge.
 
 ### Consequences
 
-- Positive: no churn on soon-deleted targets; the devbox seam is closed
-  with one package; the ArgoCD bug is fixed; the surviving tool home (go-task)
-  is decided once the set is final.
+- Positive: no churn on soon-deleted targets; the devbox seam **will be
+  closed** with one package (#113); the ArgoCD bug **will be fixed** (#113);
+  the surviving tool home (go-task) is decided once the set is final. (This
+  ADR is decision-only — the changes land in #113, not here.)
 - Negative: `make` and `task` coexist until Phase-3 ablation (the bridge is
-  explicitly temporary). `devbox.json` carries `gnumake` in the interim.
+  explicitly temporary). `devbox.json` **will carry** `gnumake` in the interim
+  (added by #113).
 - Follow-up: tracking issue #113 (rescoped to the bug fix + Layer-2 rewrite +
   devbox bridge). The Makefile retirement itself is folded into the
   `base:substrate-only-base` Phase-3 ablation checklist, not tracked
