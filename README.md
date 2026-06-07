@@ -23,10 +23,14 @@ Three problems recur in homelab-to-fleet Kubernetes operation:
 
 This base is the answer to those three problems, in order.
 
-The base ships **Talos plus the minimum** needed for ArgoCD to take
-over; everything else is GitOps-reconciled. See
-[`docs/day-zero-pattern.md`](docs/day-zero-pattern.md) for the three
-layers and the documented bootstrap exceptions.
+The base provisions **Talos plus its three co-equal substrate pillars
+— Talos + Cilium + ArgoCD** — through one OpenTofu module
+(`tofu/modules/talos-cluster`), the sole cluster-lifecycle path. The
+module disables the Talos-default Flannel and seeds Cilium (CNI) and
+ArgoCD as Talos `inlineManifest`s at bootstrap; everything above the
+substrate is GitOps-reconciled. See
+[`docs/day-zero-pattern.md`](docs/day-zero-pattern.md) for the layered
+bring-up and the documented bootstrap exceptions.
 
 ## The idea
 
@@ -56,10 +60,12 @@ for the full explanation;
 flowchart LR
   PR[Contributor PR + git tag] --> Base[talos-platform-base<br/>this repo]
   Base -->|oci-publish.yml| GHCR[(ghcr.io/.../talos-platform-base<br/>cosign + SLSA + SBOM)]
-  GHCR -->|oras pull + verify| Consumer[consumer cluster repo<br/>per-cluster overlays + identity]
+  GHCR -->|oras pull + verify| Consumer[consumer cluster repo<br/>cluster.yaml SoT + overlays + identity]
+  Consumer -->|yamldecode shim| Tofu[tofu/modules/talos-cluster<br/>OpenTofu lifecycle]
+  Tofu -->|provision + seed Cilium/ArgoCD| Talos[Talos Linux nodes]
   Consumer -->|Multi-Source Application| Argo[ArgoCD in cluster]
   Base -->|Multi-Source source| Argo
-  Argo -->|reconciles| Talos[Talos Linux nodes]
+  Argo -->|reconciles apps| Talos
 ```
 
 Full system context and container view: [`ARCHITECTURE.md`](ARCHITECTURE.md)
@@ -70,19 +76,36 @@ Full system context and container view: [`ARCHITECTURE.md`](ARCHITECTURE.md)
 A consumer that pulls `ghcr.io/<owner>/talos-platform-base:<tag>`
 receives a frozen tree containing:
 
+- **The OpenTofu cluster-lifecycle module** (`tofu/modules/talos-cluster`)
+  — the sole Talos provisioning path: per-class Image-Factory installer,
+  machine-config generation, config apply, bootstrap, kubeconfig, plus the
+  create-only Cilium (CNI) and ArgoCD `inlineManifest` seeds. Ships its
+  `helm/` values floor (`cilium-values.yaml`, `argocd-values.yaml`) and a
+  worked `examples/homelab` `yamldecode` shim.
+- **`cluster.yaml.example`** — the declarative cluster Source-of-Truth
+  template (identity, Talos/Kubernetes versions, endpoint, pod/service
+  CIDR, dual-stack, node classes, machine-config patches, substrate
+  config). `make init-cluster-yaml` copies it to a `cluster.yaml` the
+  consumer fills in.
 - **22 standalone-renderable infrastructure components** under
   `kubernetes/base/infrastructure/`. 15 are Helm-based (chart + values
   pinned via `chart.lock.yaml`, rendered manifests committed alongside);
   7 ship plain Kubernetes resources (`cert-approver`, `kubevirt`,
   `kubevirt-cdi`, `local-path-provisioner`, `multus-cni`,
-  `piraeus-operator`, `platform-network-interface`).
+  `piraeus-operator`, `platform-network-interface`). The accepted
+  substrate-only direction migrates the non-substrate components to the
+  separate `talos-platform-apps` catalog; that migration is in flight, so
+  they still ship here today (see
+  [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md)).
 - **Platform Network Interface (PNI)** Kyverno policies and Cilium
   cluster-wide network policies that enforce the capability contract.
-- **Talos machine-config patches** (common, control-plane without
-  `extraManifests`, DRBD, worker variants for GPU / gVisor / KubeVirt /
-  Raspberry-Pi).
+- **Per-class Talos machine-config**, derived by the module from the
+  `cluster.yaml` classes (architecture, system extensions, optional
+  ARM/SBC overlay, per-class and per-node patches) — `cni:none` is forced
+  in both the config-generation and per-node apply passes so a caller
+  patch cannot resurrect Flannel.
 - **Parameterised ArgoCD bootstrap templates** (`*.tmpl`, rendered by
-  the consumer at install time).
+  the consumer at install time via `make argocd-bootstrap`).
 - **The validation pipeline** itself (`make validate-gitops`, conftest
   Rego, kubeconform, kyverno-cli, capability-index linter) so consumers
   can re-render the base inside their own CI and catch divergence.
@@ -93,11 +116,10 @@ manifests. Those live in the consumer cluster repo.
 
 ## Consume
 
-Day-0 — vendor the base into a consumer cluster repo:
+Day-0 — vendor, define, and provision a consumer cluster:
 
 ```bash
-TAG=v0.6.0
-OWNER=<your-github-owner>   # owner of the consumer repo
+TAG=v1.0.0
 
 # 1. Verify before pulling — see "Verify" section below for the full
 #    end-to-end signature, provenance, and SBOM check.
@@ -109,7 +131,27 @@ cosign verify \
 
 # 2. Pull into the consumer repo's gitignored vendor tree.
 oras pull ghcr.io/Nosmoht/talos-platform-base:${TAG} --output vendor/base/
+
+# 3. Create the declarative cluster Source-of-Truth and fill it in
+#    (identity, versions, endpoint, CIDRs, node classes, substrate).
+make init-cluster-yaml          # cluster.yaml.example -> cluster.yaml
+$EDITOR cluster.yaml
 ```
+
+The consumer's OpenTofu root is a thin `yamldecode` shim over
+`cluster.yaml` that maps it onto the `tofu/modules/talos-cluster` typed
+interface (worked example:
+`tofu/modules/talos-cluster/examples/homelab/`). `tofu apply` provisions
+Talos, installs Cilium as the CNI, and seeds ArgoCD (namespace + app +
+CRDs). The remaining step is wiring ArgoCD to your cluster repo via the
+root App-of-Apps — see
+[`docs/day-zero-pattern.md`](docs/day-zero-pattern.md) for the bootstrap
+detail. (Heads-up: with the module-default `deploy_argocd = true`, the
+current `make argocd-bootstrap` still re-runs the legacy `make
+argocd-install` Helm step on top of the module-seeded ArgoCD — that
+double-install cleanup is tracked in #113.) Secrets (`sops_age_key`,
+`cilium_ipsec_key`) are supplied via `TF_VAR_*`/env, never via
+`cluster.yaml`.
 
 Day-2 — reference both repos from a single ArgoCD Application:
 
@@ -119,7 +161,7 @@ kind: Application
 spec:
   sources:
     - repoURL: https://github.com/Nosmoht/talos-platform-base.git
-      targetRevision: v0.6.0
+      targetRevision: v1.0.0
       ref: base
     - repoURL: https://github.com/<owner>/<consumer-cluster-repo>.git
       targetRevision: main
@@ -158,8 +200,10 @@ do not vendor.
 - **One maintainer** ([@nosmoht](https://github.com/nosmoht)).
   Single-bus-factor — mitigated by aggressive CI gating and
   adversarial-reviewer dispatch, not by multi-maintainer review.
-- **Pre-1.0.** `v0.5.0` is the first GitHub Release; SemVer applies but
-  breaking changes are allowed in MINOR bumps per SemVer §4.
+- **`v1.0.0` released** (2026-06-06); `v0.5.0` was the first GitHub
+  Release. Post-1.0 SemVer now applies in full: a breaking change to
+  base Helm values or to the `cluster.yaml` / `talos-cluster` module
+  interface requires a MAJOR bump.
 - **First consumer exists** ([`talos-homelab-cluster`](https://github.com/Nosmoht/talos-homelab-cluster));
   second-consumer validation is desk-only at the moment
   (issue [#32](https://github.com/Nosmoht/talos-platform-base/issues/32)).
