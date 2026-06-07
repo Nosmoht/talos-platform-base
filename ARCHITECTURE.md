@@ -150,7 +150,7 @@ flowchart LR
     direction TB
     Make[Makefile<br/>validate-gitops<br/>validate-kyverno-policies]
     Boot["kubernetes/bootstrap/<br/>(parameterized templates)"]
-    Infra["kubernetes/base/infrastructure/<br/>22 standalone-renderable components<br/>(12 Helm-based, 10 resources-only)"]
+    Infra["kubernetes/base/infrastructure/<br/>22 standalone-renderable components<br/>(15 Helm-based, 7 resources-only)"]
     Talos["tofu/modules/talos-cluster/<br/>OpenTofu cluster-lifecycle module<br/>(per-class Image-Factory + bootstrap)"]
     Pol["policies/<br/>conftest Rego"]
     Scripts["scripts/<br/>render + lint helpers"]

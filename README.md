@@ -142,12 +142,16 @@ The consumer's OpenTofu root is a thin `yamldecode` shim over
 `cluster.yaml` that maps it onto the `tofu/modules/talos-cluster` typed
 interface (worked example:
 `tofu/modules/talos-cluster/examples/homelab/`). `tofu apply` provisions
-Talos, installs Cilium as the CNI, and seeds ArgoCD; then
-`make argocd-bootstrap` applies the ArgoCD root Application / AppProject
-(the App-of-Apps entry) so ArgoCD reconciles everything above the
-substrate. Secrets (`sops_age_key`, `cilium_ipsec_key`) are supplied via
-`TF_VAR_*`/env, never via `cluster.yaml`. The full layered bring-up is in
-[`docs/day-zero-pattern.md`](docs/day-zero-pattern.md).
+Talos, installs Cilium as the CNI, and seeds ArgoCD (namespace + app +
+CRDs). The remaining step is wiring ArgoCD to your cluster repo via the
+root App-of-Apps — see
+[`docs/day-zero-pattern.md`](docs/day-zero-pattern.md) for the bootstrap
+detail. (Heads-up: with the module-default `deploy_argocd = true`, the
+current `make argocd-bootstrap` still re-runs the legacy `make
+argocd-install` Helm step on top of the module-seeded ArgoCD — that
+double-install cleanup is tracked in #113.) Secrets (`sops_age_key`,
+`cilium_ipsec_key`) are supplied via `TF_VAR_*`/env, never via
+`cluster.yaml`.
 
 Day-2 — reference both repos from a single ArgoCD Application:
 

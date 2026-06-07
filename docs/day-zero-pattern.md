@@ -189,9 +189,10 @@ Layer 3 (day-two):       git push → ArgoCD reconciles  ← from here, NEVER ku
 Concretely, "bootstrap exception" means the invocations of Layer 2
 above. The Layer-1 Cilium and ArgoCD substrate is delivered by the
 OpenTofu module as Talos `inlineManifests` — not by a consumer
-`kubectl apply` (the ArgoCD CRDs alone are applied by the module via
-`kubectl --server-side`, gated on the health check). **Nothing else**
-in this repo should ever appear in a `kubectl apply` command.
+`kubectl apply` (the module itself applies the full ArgoCD render — app +
+CRDs — via `kubectl --server-side`, gated on the health check, converging
+the app the inlineManifest seeded at boot). **Nothing else** in this repo
+should ever appear in a `kubectl apply` command.
 
 ## End-to-end command sequence (consumer-side reference)
 
@@ -222,12 +223,8 @@ kubectl -n argocd get applications --watch           # ArgoCD reconciles all 22 
 
 The pattern is structurally complete and verified across the 22
 infrastructure components — none of them violate the Layer-3-only
-rule. Two surfaces remain unevenly polished:
+rule. One surface remains unevenly polished:
 
-- **README headline.** `README.md` does not state the Day-Zero pattern
-  prominently; a reader must reconstruct it from `ARCHITECTURE.md`,
-  `AGENTS.md`, and the `Makefile`. This file addresses that gap by
-  centralizing the explanation.
 - **Cilium-specific coupling in PNI policies.** The 16 CCNP/CNP files
   in `kubernetes/base/infrastructure/platform-network-interface/`
   bind PNI to Cilium-specific CRDs. The substrate-layer "Talos +
