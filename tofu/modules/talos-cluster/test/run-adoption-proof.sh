@@ -117,9 +117,10 @@ if grep -REqs '^[[:space:]]*cloud[[:space:]]*\{' "$WORKDIR"/*.tf 2>/dev/null; th
   exit 1
 fi
 
-# Expand the (possibly empty) pass-through array safely on bash 3.2 too.
-PT=(); [ "${#PASSTHRU[@]}" -gt 0 ] && PT=("${PASSTHRU[@]}")
-
+# Pass-through tofu flags (-var/-var-file after `--`) are forwarded with the
+# ${PASSTHRU[@]+"${PASSTHRU[@]}"} idiom: it expands to nothing when the array is
+# empty and to the quoted elements otherwise — safe under `set -u` on bash 3.2
+# (macOS default), where a bare "${PASSTHRU[@]}" on an empty array aborts.
 tofu_q() { tofu -chdir="$WORKDIR" "$@"; }
 
 # -backend=false is the isolation guarantee: the consumer's real backend is
@@ -137,10 +138,10 @@ SECRETS_ADDR="${MODULE_ADDR}.talos_machine_secrets.this"
 BOOTSTRAP_ADDR="${MODULE_ADDR}.talos_machine_bootstrap.this"
 
 echo "  importing ${SECRETS_ADDR}  <- ${BUNDLE}"
-tofu_q import -input=false "${PT[@]}" "$SECRETS_ADDR" "$BUNDLE" >/dev/null
+tofu_q import -input=false ${PASSTHRU[@]+"${PASSTHRU[@]}"} "$SECRETS_ADDR" "$BUNDLE" >/dev/null
 
 echo "  importing ${BOOTSTRAP_ADDR} (mark already-bootstrapped)"
-tofu_q import -input=false "${PT[@]}" "$BOOTSTRAP_ADDR" adopted >/dev/null
+tofu_q import -input=false ${PASSTHRU[@]+"${PASSTHRU[@]}"} "$BOOTSTRAP_ADDR" adopted >/dev/null
 
 # Runbook step-3 gate: BOTH identity resources MUST be in state. A missing
 # bootstrap import would otherwise plan as "to add" (a re-bootstrap on apply)
@@ -155,7 +156,7 @@ echo "  both identity resources present in state"
 echo "  planning (-refresh=false, -no-color; reads Image-Factory, no cluster refresh)"
 PLAN_OUT="$WORKDIR/plan.txt"
 # Critical flags LAST so a stray pass-through cannot override them.
-tofu_q plan -input=false "${PT[@]}" -refresh=false -no-color > "$PLAN_OUT"
+tofu_q plan -input=false ${PASSTHRU[@]+"${PASSTHRU[@]}"} -refresh=false -no-color > "$PLAN_OUT"
 
 # Verdict from the LAST `Plan:` summary line only. For adoption we EXPECT
 # "to add" resources, so a bare "No changes." is unexpected (empty/degenerate
