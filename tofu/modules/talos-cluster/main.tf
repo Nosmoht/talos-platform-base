@@ -309,8 +309,34 @@ data "talos_image_factory_extensions_versions" "per_class" {
   }
 }
 
+locals {
+  # Exact-match the provider's substring-matching extension resolution back to
+  # the declared set: `filters.names` matches by substring, so a filter of
+  # `siderolabs/gvisor` also resolves `siderolabs/gvisor-debug`. Intersecting
+  # with the declared names bakes exactly what each class asked for. An empty
+  # class `extensions` list yields [] (contains over an empty set is always
+  # false), so no explicit length guard is needed.
+  official_extensions_by_class = {
+    for k, c in var.classes : k => [
+      for ext in data.talos_image_factory_extensions_versions.per_class[k].extensions_info :
+      ext.name if contains(c.extensions, ext.name)
+    ]
+  }
+}
+
 resource "talos_image_factory_schematic" "per_class" {
   for_each = var.classes
+
+  # A declared extension that does not resolve to an exactly-matching canonical
+  # Image Factory package — a typo, or a non-canonical short name like `gvisor`
+  # that the substring filter expands but the exact intersection drops — would
+  # otherwise silently bake an empty/partial extension set. Fail loudly instead.
+  lifecycle {
+    precondition {
+      condition     = length(distinct(each.value.extensions)) == length(local.official_extensions_by_class[each.key])
+      error_message = "class '${each.key}': not all declared extensions resolved to canonical Image Factory packages for Talos ${local.install_version}. Declared ${jsonencode(distinct(each.value.extensions))}, resolved ${jsonencode(local.official_extensions_by_class[each.key])}. Use canonical names such as 'siderolabs/gvisor'."
+    }
+  }
 
   # systemExtensions for every class; overlay block only for classes that
   # declare one (SBC boards such as Raspberry Pi).
@@ -318,20 +344,11 @@ resource "talos_image_factory_schematic" "per_class" {
     {
       customization = {
         systemExtensions = {
-          # An empty class `extensions` list MUST bake NO extensions. The factory
-          # extensions_versions data source returns ALL extensions for an empty
-          # `filters.names` (empty filter = no filter), so guard on the input
-          # length — otherwise `extensions: []` bakes every official extension
-          # (drbd, gvisor, *-guest-agent, iscsi-tools, …) into the installer image.
-          # `filters.names` matches by substring/prefix, NOT exact name: a filter
-          # of `siderolabs/gvisor` also resolves `siderolabs/gvisor-debug`. Without
-          # the `contains` guard the schematic silently gains unrequested extensions,
-          # which changes its content-addressed ID and the installed extension set.
-          # Intersect the resolved names with the declared set for an exact match.
-          officialExtensions = length(each.value.extensions) == 0 ? [] : [
-            for ext in data.talos_image_factory_extensions_versions.per_class[each.key].extensions_info :
-            ext.name if contains(each.value.extensions, ext.name)
-          ]
+          # Resolved + exact-matched in local.official_extensions_by_class (see
+          # the locals block above): the provider's filters.names substring match
+          # would otherwise pull in unrequested extensions such as gvisor-debug.
+          # An empty class `extensions` list yields [] (bakes no extensions).
+          officialExtensions = local.official_extensions_by_class[each.key]
         }
       }
     },
