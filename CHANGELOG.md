@@ -5,6 +5,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## v1.1.0 — 2026-06-07
+
 ### Removed
 
 - **Consumer-side Cilium render path retired.** `scripts/render-cilium-bootstrap.sh`
@@ -36,6 +38,26 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Cilium-delivery docs corrected** to describe the module `inlineManifest` seed
   (`day-zero-pattern.md` Layer-1, `AGENTS.md`, `kubernetes/AGENTS.md`) instead of the
   retired render path.
+
+### Fixed
+
+- **`talos-cluster` bakes the exact declared extension set (#119).** The
+  `officialExtensions` comprehension resolved names from the
+  `talos_image_factory_extensions_versions` data source, whose `filters.names`
+  matches by **substring/prefix** — so a class declaring `siderolabs/gvisor`
+  also pulled in `siderolabs/gvisor-debug`. Resolved names are now intersected
+  with the declared set, and a `precondition` fails loudly when a declared
+  extension does not resolve **exactly** (non-canonical / typo input), instead
+  of silently baking a partial or empty set. Because the Image Factory schematic
+  ID is a SHA256 over the whole schematic, the prior behaviour silently changed
+  the content-addressed ID and the installed extension set on every gvisor-class
+  node. Closes #118.
+- **Adoption-proof harness runs on bash 3.2 (#117).**
+  `test/run-adoption-proof.sh` aborted under `set -u` on macOS's default
+  `/bin/bash` (3.2) before the first import, because a bare `"${PT[@]}"` over an
+  empty array is an unbound-variable error pre-bash-4.4. The pass-through tofu
+  flags now use the empty-safe `${PASSTHRU[@]+"${PASSTHRU[@]}"}` idiom at all
+  three call sites; the dead `PT` mirror is removed. Closes #116.
 
 ## v1.0.0 — 2026-06-06
 
