@@ -5,6 +5,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## v1.2.0 — 2026-06-11
+
 ### Changed
 
 - **Cilium seed: Hubble disabled by default (`hubble.enabled: false`).** The
