@@ -5,6 +5,23 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Changed
+
+- **Cilium seed: Hubble disabled by default (`hubble.enabled: false`).** The
+  Cilium chart's default `hubble.tls.auto.method=helm` regenerates the Hubble CA
+  + server TLS on every `helm template` render, making the Cilium inlineManifest
+  seed — and thus the rendered Talos machineConfig — non-deterministic: every
+  `tofu plan` produced a new `machine_configuration` hash, so every apply / in-
+  cluster Crossplane reconcile re-pushed machineConfig to the node. **BREAKING**
+  for consumers who relied on seed-default Hubble: Hubble is now Day-2 — re-enable
+  via `cilium_values_override` (`hubble.enabled: true`; prefer
+  `tls.auto.method=cronJob` to keep the render deterministic) or Cilium ArgoCD
+  self-management. **Partial fix (Refs #121, default trigger only):** the
+  structural coupling — a live `data.helm_template` consumed by
+  `talos_machine_configuration_apply` with no `lifecycle { ignore_changes }`,
+  affecting both the Cilium and ArgoCD renders — is unaddressed; a future chart
+  bump / override can reproduce the drift. Tracked in #123.
+
 ## v1.1.0 — 2026-06-07
 
 ### Removed
