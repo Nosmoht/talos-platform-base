@@ -635,7 +635,11 @@ Before the sunset date:
 
 ## Template for future MAJOR/MINOR sections
 
-When a new release ships, add a section in the format below:
+Releases are now tagged automatically by semantic-release (see
+[`docs/release-automation.md`](docs/release-automation.md)), which does **not**
+write this file. Migration sections here are curated by a maintainer
+retroactively — typically alongside the release for a MAJOR/MINOR with consumer
+impact — using the format below:
 
 ```markdown
 ### `vX.Y.Z` (YYYY-MM-DD) — <one-line summary>

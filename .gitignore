@@ -52,3 +52,8 @@ logs/security/
 *.tfvars
 *.auto.tfvars
 tofu/modules/talos-cluster/.tmp/
+
+# Release toolchain (semantic-release) install dir. package.json + package-lock.json
+# are committed and pinned; node_modules is never committed (CI installs it via
+# `npm ci --ignore-scripts`). See docs/release-automation.md.
+node_modules/

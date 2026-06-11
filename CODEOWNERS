@@ -26,5 +26,16 @@
 /.github/workflows/oci-publish.yml               @nosmoht
 /docs/oci-artifact-verification.md               @nosmoht
 
+# Release automation surface — supply-chain critical. These files decide what
+# gets versioned, packaged, and signed; a change here can ship/sign content
+# automatically, so they require explicit owner review.
+/.github/workflows/release.yml                   @nosmoht
+/.github/workflows/commitlint.yml                @nosmoht
+/.releaserc.json                                 @nosmoht
+/package.json                                    @nosmoht
+/package-lock.json                               @nosmoht
+/.ci-oci-tarball-include.txt                     @nosmoht
+/.ci-oci-tarball-expected.txt                    @nosmoht
+
 # Talos machine-config patches — boot-loop risk.
 /talos/                                          @nosmoht

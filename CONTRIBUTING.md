@@ -56,13 +56,22 @@ Subject line:
 type(scope): short imperative summary
 ```
 
-`type` ∈ {`feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`}.
+`type` ∈ {`feat`, `fix`, `perf`, `chore`, `docs`, `test`, `refactor`, `ci`}.
 `scope` ∈ component or subsystem (for example `pni`, `talos`, `cilium`,
 `kyverno`, `loki`, …).
 
 Body MUST explain the *why* and stay readable without an issue tracker.
 Cross-link with `Closes:`, `Refs:`, `Fixes:` trailers using public URLs;
 bare opaque IDs (`NOS-123`) are forbidden.
+
+Releases are computed from these commits by semantic-release, so the
+*type* and breaking markers drive the version bump (`feat` → MINOR,
+`fix`/`perf` → PATCH). **A MAJOR bump requires a real `BREAKING CHANGE:`
+footer or a `type!:` marker** — a prose `**BREAKING**` line in the body is
+*not* recognised by the release tool. This matters for the AGENTS.md Hard
+Constraint that a breaking change to base Helm values bumps MAJOR: add the
+footer, or the change ships as a non-breaking release. See
+[`docs/release-automation.md`](docs/release-automation.md).
 
 ## PR expectations
 

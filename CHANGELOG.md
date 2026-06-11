@@ -5,6 +5,18 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Changed
+
+- **Releases are now conventional-commit-driven (semantic-release + approval
+  gate).** A push to `main` computes the next version from the commit history
+  and, on one manual approval in the `release` GitHub Environment, tags it; the
+  existing signed-OCI publish (`oci-publish.yml`) runs unchanged on the tag push.
+  A commit-lint check gates PR titles. **Contributor impact:** a MAJOR bump now
+  requires a real `BREAKING CHANGE:` footer (or `type!:`) — prose `**BREAKING**`
+  in a body is not recognised. `CHANGELOG.md` stays human-curated; the
+  auto-generated GitHub Release notes are the canonical per-release record. See
+  [`docs/release-automation.md`](docs/release-automation.md).
+
 ## v1.2.0 — 2026-06-11
 
 ### Changed

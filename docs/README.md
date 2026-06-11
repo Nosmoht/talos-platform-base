@@ -18,6 +18,7 @@ tutorial / how-to / reference / explanation.
 - [`oci-artifact-verification.md`](oci-artifact-verification.md) — cosign + SLSA verification recipe.
 - [`mcp-setup.md`](mcp-setup.md) — install + verify MCP server binaries.
 - [`issue-workflow.md`](issue-workflow.md) — GitHub issue lifecycle, state-machine, and `bin/issue-state.sh` adapter.
+- [`release-automation.md`](release-automation.md) — conventional-commit-driven releases (semantic-release + approval gate), one-time GitHub App + Environment setup.
 
 ## Reference — look-up material (factual, dry)
 
