@@ -109,6 +109,31 @@ data "helm_template" "argocd" {
       condition     = startswith(var.sops_age_key, "AGE-SECRET-KEY-1")
       error_message = "deploy_argocd = true requires a real age private key in sops_age_key (it must start with \"AGE-SECRET-KEY-1\"; supply via TF_VAR_sops_age_key / tfvars / SOPS). The ArgoCD ksops repoServer needs it to decrypt SOPS manifests."
     }
+    postcondition {
+      # The render is frozen by terraform_data.argocd_render (ignore_changes), so an
+      # empty/partial render would be captured once and NEVER self-healed by tofu
+      # (recovery needs -replace). Fail at plan time instead of bootstrapping an
+      # ArgoCD-less seed. Refs #123.
+      condition     = self.manifest != ""
+      error_message = "data.helm_template.argocd rendered an EMPTY manifest — refusing to freeze an empty ArgoCD seed. Check argocd_chart_version / repository / argocd_values_override."
+    }
+  }
+}
+
+# Freeze the ArgoCD seed render in state (decouple the live render from the apply).
+# data.helm_template.argocd is re-evaluated every plan and the helm provider does not
+# render byte-stable manifests; consumed directly, every plan / Crossplane reconcile
+# re-pushed a fresh machineConfig (#121/#123). The inlineManifest is a create-only
+# SEED (Talos applies it only at bootstrap; Day-2 ArgoCD is self-management), so the
+# render bytes matter only at creation: capture once, ignore subsequent drift. A fresh
+# cluster (new state) captures its current render; an existing cluster never re-pushes
+# from render drift. NO triggers_replace — re-capture on a live cluster is inert for a
+# create-only seed and would re-introduce the churn. Deliberate re-seed = `-replace`.
+resource "terraform_data" "argocd_render" {
+  count = var.deploy_argocd ? 1 : 0
+  input = data.helm_template.argocd[0].manifest
+  lifecycle {
+    ignore_changes = [input]
   }
 }
 
@@ -141,7 +166,7 @@ locals {
         },
         {
           name     = "argocd"
-          contents = data.helm_template.argocd[0].manifest
+          contents = terraform_data.argocd_render[0].output
         },
       ]
     }
@@ -240,7 +265,7 @@ locals {
         }] : [],
         [{
           name     = "cilium"
-          contents = data.helm_template.cilium[0].manifest
+          contents = terraform_data.cilium_render[0].output
         }],
       )
     }
@@ -281,6 +306,27 @@ data "helm_template" "cilium" {
       condition     = var.cilium_routing_mode != "native" || var.cilium_native_routing_cidr != "" || length(local.cilium_pod_v4) > 0
       error_message = "cilium_routing_mode = \"native\" needs an IPv4 CIDR: set cilium_native_routing_cidr or include an IPv4 entry in pod_cidr."
     }
+    postcondition {
+      # The render is frozen by terraform_data.cilium_render (ignore_changes), so an
+      # empty/partial render would be captured once and NEVER self-healed by tofu
+      # (recovery needs -replace) — a CNI-less control plane. Fail at plan time. #123.
+      condition     = self.manifest != ""
+      error_message = "data.helm_template.cilium rendered an EMPTY manifest — refusing to freeze an empty Cilium seed (would bootstrap a CNI-less cluster). Check cilium_chart_version / cilium_chart_repository / values."
+    }
+  }
+}
+
+# Freeze the Cilium seed render in state — same rationale as terraform_data.argocd_render
+# (create-only inlineManifest seed; the helm render is not byte-stable; #121/#123). The
+# Cilium chart additionally carries off-by-default Sprig genCA paths (clustermesh-apiserver
+# TLS auto, SPIRE mutual-auth) that a consumer override could enable — freezing the consumed
+# render fences those at the apply boundary too, regardless of override values. NO
+# triggers_replace (create-only seed). Deliberate re-seed = `-replace`.
+resource "terraform_data" "cilium_render" {
+  count = var.deploy_cilium ? 1 : 0
+  input = data.helm_template.cilium[0].manifest
+  lifecycle {
+    ignore_changes = [input]
   }
 }
 
@@ -647,6 +693,42 @@ data "helm_template" "argocd_crds" {
     name  = "crds.install"
     value = "true"
   }
+
+  lifecycle {
+    postcondition {
+      # Frozen by terraform_data.argocd_crds_render — an empty CRD render would be
+      # kubectl-applied as nothing and frozen until -replace. Fail at plan time. #123.
+      condition     = self.manifest != ""
+      error_message = "data.helm_template.argocd_crds rendered an EMPTY manifest — refusing to freeze empty ArgoCD CRDs. Check argocd_chart_version / repository."
+    }
+  }
+}
+
+# Freeze the ArgoCD CRD render — same decoupling as the seed renders, BUT this path is
+# NOT create-only: the null_resource below is a deliberate Day-2 convergence that
+# kubectl-applies the CRDs and SHOULD re-run on an intended chart/version bump. So unlike
+# the seed freezes, this one carries triggers_replace.
+#
+# INVARIANT: triggers_replace MUST mirror EVERY render-affecting input of
+# data.helm_template.argocd_crds, or an intended bump silently won't re-apply (the
+# ignore_changes swallows the render delta). Today that data source reads only
+# argocd_chart_version, argocd_namespace, kubernetes_version (no values block — unlike
+# the argocd *seed*, which also layers argocd_values_override). Keep this list in sync
+# if an input is ever added. check-render-determinism.sh asserts triggers_replace is
+# PRESENT, not COMPLETE; this comment is the completeness binding. Result: re-capture +
+# re-apply on an intended bump; no re-apply / local_file churn from pure render drift
+# at identical inputs (#123).
+resource "terraform_data" "argocd_crds_render" {
+  count = var.deploy_argocd ? 1 : 0
+  input = data.helm_template.argocd_crds[0].manifest
+  triggers_replace = [
+    var.argocd_chart_version,
+    var.argocd_namespace,
+    var.kubernetes_version,
+  ]
+  lifecycle {
+    ignore_changes = [input]
+  }
 }
 
 # kubeconfig on disk for the kubectl apply. Written under the module's .tmp/
@@ -660,7 +742,7 @@ resource "local_sensitive_file" "kubeconfig" {
 
 resource "local_file" "argocd_crds" {
   count    = var.deploy_argocd ? 1 : 0
-  content  = data.helm_template.argocd_crds[0].manifest
+  content  = terraform_data.argocd_crds_render[0].output
   filename = "${path.module}/.tmp/${var.cluster_name}-argocd.yaml"
 }
 
@@ -668,9 +750,10 @@ resource "null_resource" "argocd_crds" {
   count      = var.deploy_argocd ? 1 : 0
   depends_on = [data.talos_cluster_health.this]
 
-  # Re-run when the rendered manifest changes (chart/version bump).
+  # Re-run on an intended chart/version/namespace bump (the frozen render's
+  # triggers_replace inputs), NOT on non-deterministic helm render drift (#123).
   triggers = {
-    manifest_sha = sha256(data.helm_template.argocd_crds[0].manifest)
+    manifest_sha = sha256(terraform_data.argocd_crds_render[0].output)
   }
 
   provisioner "local-exec" {

@@ -73,12 +73,19 @@ operator:
 # here for a deterministic seed render, and bring Hubble up Day-2 via
 # cilium_values_override / Cilium ArgoCD self-management.
 #
-# SCOPE: this fences the DEFAULT render only. A consumer override
-# (hubble.enabled: true, or other off-by-default Sprig genCA paths such as
-# clustermesh-apiserver / SPIRE TLS auto) re-introduces the non-determinism by
-# design — prefer hubble.tls.auto.method=cronJob in such overrides to keep the
-# render byte-stable. The structural coupling (live data.helm_template consumed
-# by talos_machine_configuration_apply with no ignore_changes, Cilium AND
-# ArgoCD) is NOT addressed here — Refs #121 (default trigger only).
+# SCOPE: this disables the one DEFAULT-on cert-gen path. Off-by-default Sprig
+# genCA paths a consumer override could enable — hubble.enabled: true,
+# clustermesh-apiserver TLS auto (clustermesh.apiserver.tls.auto.method=helm),
+# SPIRE mutual-auth (authentication.mutual.spire) — regenerate cert material on
+# every `helm template` the same way. As of #123 these no longer cause a
+# machineConfig re-push: the structural coupling is fixed — data.helm_template.cilium
+# is consumed through terraform_data.cilium_render (lifecycle ignore_changes), so the
+# render is frozen in state at first capture regardless of per-render cert churn
+# (Cilium AND ArgoCD; see main.tf). The helm-provider render-ordering-instability
+# hypothesis (#123 item 4) is moot for the apply for the same reason — a single
+# capture is frozen as-is, so intra-render ordering cannot drift the machineConfig.
+# Still prefer tls.auto.method=cronJob (or pre-provisioned certs) in such overrides
+# if you need byte-stable in-render material for OTHER reasons — e.g. self-managed
+# Day-2 GitOps that diffs the rendered manifest.
 hubble:
   enabled: false

@@ -62,9 +62,14 @@ tasks:
       yamllint -d relaxed tofu/ 2>/dev/null || true
       markdownlint 'tofu/**/*.md' || true
 
+  check:render-determinism:
+    desc: "#123 fence — Cilium/ArgoCD/CRD helm renders must be consumed only via the frozen terraform_data (ignore_changes), never the live data.helm_template"
+    cmd: scripts/check-render-determinism.sh
+
   ci:
-    desc: Full local tofu validation (fmt-check + validate + lint) — mirrors CI
+    desc: Full local tofu validation (fmt-check + validate + lint + render-determinism fence) — mirrors CI
     cmds:
       - task: fmt:check
       - task: validate
       - task: lint
+      - task: check:render-determinism
