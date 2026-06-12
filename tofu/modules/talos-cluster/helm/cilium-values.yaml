@@ -58,3 +58,34 @@ securityContext:
 # --- Operator: single-replica floor; HA is a consumer override ---
 operator:
   replicas: 1
+
+# --- Hubble: OFF in the seed (deterministic render; Hubble is Day-2) ---
+# The Cilium chart enables Hubble by default with hubble.tls.auto.method=helm,
+# which generates a FRESH CA + server TLS keypair on EVERY `helm template`
+# render (Sprig genCA/genSignedCert at template time). Baked into a create-only
+# Talos inlineManifest via data.helm_template.cilium, that makes the rendered
+# machineConfig NON-DETERMINISTIC: every `tofu plan` yields a new
+# machine_configuration hash, so every apply — and every in-cluster Crossplane
+# Workspace reconcile — re-pushes machineConfig to the node (churn +
+# self-eviction risk on single-node control planes). Hubble is runtime-mutable
+# Day-2 config (see variables.tf header + README "Cilium steady-state → ArgoCD
+# self-management"), so it does not belong in the create-only seed: disable it
+# here for a deterministic seed render, and bring Hubble up Day-2 via
+# cilium_values_override / Cilium ArgoCD self-management.
+#
+# SCOPE: this disables the one DEFAULT-on cert-gen path. Off-by-default Sprig
+# genCA paths a consumer override could enable — hubble.enabled: true,
+# clustermesh-apiserver TLS auto (clustermesh.apiserver.tls.auto.method=helm),
+# SPIRE mutual-auth (authentication.mutual.spire) — regenerate cert material on
+# every `helm template` the same way. As of #123 these no longer cause a
+# machineConfig re-push: the structural coupling is fixed — data.helm_template.cilium
+# is consumed through terraform_data.cilium_render (lifecycle ignore_changes), so the
+# render is frozen in state at first capture regardless of per-render cert churn
+# (Cilium AND ArgoCD; see main.tf). The helm-provider render-ordering-instability
+# hypothesis (#123 item 4) is moot for the apply for the same reason — a single
+# capture is frozen as-is, so intra-render ordering cannot drift the machineConfig.
+# Still prefer tls.auto.method=cronJob (or pre-provisioned certs) in such overrides
+# if you need byte-stable in-render material for OTHER reasons — e.g. self-managed
+# Day-2 GitOps that diffs the rendered manifest.
+hubble:
+  enabled: false

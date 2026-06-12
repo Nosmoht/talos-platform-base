@@ -5,6 +5,46 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Fixed
+
+- **talos-cluster: inlineManifest + ArgoCD-CRD renders frozen in state, decoupled from
+  `talos_machine_configuration_apply` (#123).** `data.helm_template.{cilium,argocd,argocd_crds}`
+  are re-evaluated every plan and are not byte-stable (Sprig `genCA` at template time;
+  helm-provider ordering). Consumed directly, every `tofu plan` / Crossplane reconcile
+  re-pushed a fresh machineConfig — constant drift plus a self-eviction risk on single-node
+  control planes. Each render is now captured once via `terraform_data` with
+  `lifecycle { ignore_changes = [input] }`; the ArgoCD-CRD render additionally carries
+  `triggers_replace` (a Day-2 kubectl convergence that must re-apply on an intended chart/
+  version bump). Completes the structural half #122/v1.2.0 left open (which fixed only the
+  Hubble default trigger). No interface change; empty-render postconditions added so a
+  partial render is not frozen.
+
+### Added
+
+- **Render-determinism regression fence (`scripts/check-render-determinism.sh`, wired into
+  `task ci`).** Derives every helm render from the module and asserts each is consumed only
+  via its frozen `terraform_data` (per-resource `ignore_changes`), and that CRD renders
+  carry `triggers_replace` — so the #123 decoupling cannot silently regress.
+
+## v1.2.0 — 2026-06-11
+
+### Changed
+
+- **Cilium seed: Hubble disabled by default (`hubble.enabled: false`).** The
+  Cilium chart's default `hubble.tls.auto.method=helm` regenerates the Hubble CA
+  + server TLS on every `helm template` render, making the Cilium inlineManifest
+  seed — and thus the rendered Talos machineConfig — non-deterministic: every
+  `tofu plan` produced a new `machine_configuration` hash, so every apply / in-
+  cluster Crossplane reconcile re-pushed machineConfig to the node. **BREAKING**
+  for consumers who relied on seed-default Hubble: Hubble is now Day-2 — re-enable
+  via `cilium_values_override` (`hubble.enabled: true`; prefer
+  `tls.auto.method=cronJob` to keep the render deterministic) or Cilium ArgoCD
+  self-management. **Partial fix (Refs #121, default trigger only):** the
+  structural coupling — a live `data.helm_template` consumed by
+  `talos_machine_configuration_apply` with no `lifecycle { ignore_changes }`,
+  affecting both the Cilium and ArgoCD renders — is unaddressed; a future chart
+  bump / override can reproduce the drift. Tracked in #123.
+
 ## v1.1.0 — 2026-06-07
 
 ### Removed
