@@ -59,15 +59,19 @@ i.e. already booted into Talos maintenance mode.
 | Day-1: wait for healthy cluster | `data.talos_cluster_health` (blocks `apply` until etcd quorum + nodes Ready + apiserver reachable; gates the credential outputs) |
 | Day-1: CNI + Cilium bootstrap | base machine config sets `cluster.network.cni.name: none` + `cluster.proxy.disabled: true` + pod/service subnets; `data.helm_template.cilium` (floor `helm/cilium-values.yaml` + typed `cilium_*` inputs + `cilium_values_override`) → controlplane `cluster.inlineManifests` seed (+ `cilium-ipsec-keys` Secret when `cilium_encryption.type = ipsec`). Opt-out: `deploy_cilium = false`. |
 | Day-1: ArgoCD bootstrap | `data.helm_template.argocd` (app, no CRDs) → `cluster.inlineManifests` (namespace → `sops-age-key` Secret for ksops → ArgoCD app); the ~1.8 MB CRDs are applied via `kubectl` server-side post-health-gate (`null_resource`). Opt-out: `deploy_argocd = false`. |
-| **Day-2: Talos OS upgrade** | Bumping `talos_install_version` re-renders the per-class installer image; `talos_machine_configuration_apply` rolls it out. |
-| **Day-2: class changes** | Edit `classes` (extensions/overlay/patches) → schematic ID + installer URL change → `machine_configuration_apply` re-rolls nodes of that class. |
+| **Day-2: Talos OS upgrade** | Bumping `talos_install_version` re-renders the per-class installer image and `talos_machine_configuration_apply` writes the new `install.image`, but `apply-config` alone does not re-image a node — the actual roll-out is out-of-band `talosctl upgrade` (see below). |
+| **Day-2: class changes** | Edit `classes` (extensions/overlay/patches) → schematic ID + installer URL change → `machine_configuration_apply` writes the new `install.image`; the same out-of-band `talosctl upgrade` re-images nodes of that class. |
 
-**One Day-2 op stays out-of-band**: Kubernetes version upgrades. The
-`siderolabs/talos` provider ships no `talos_cluster_kubernetes_upgrade`
-resource, so K8s bumps run with `talosctl upgrade-k8s --to <version>` against
-the cluster. Bumping `kubernetes_version` keeps the machine-config in sync; the
-rolling upgrade is the talosctl command. Tracked follow-up for when the provider
-exposes it as a resource.
+**Two Day-2 ops stay out-of-band** — the `siderolabs/talos` provider ships no
+OS- or Kubernetes-upgrade resource, so both are imperative `talosctl` commands
+the consumer Taskfile drives. The **OS upgrade** is `talosctl upgrade --image
+…:<version>` (bump `talos_install_version`; tofu renders the new installer URL
+into tfplan JSON, the Taskfile rolls each node — see §"Versions: schema-pin vs
+install-pin"). The **Kubernetes upgrade** is `talosctl upgrade-k8s --to
+<version>` (bump `kubernetes_version` to keep the machine-config in sync). In
+both cases tofu owns the declarative state and the talosctl command performs the
+rolling upgrade. Tracked follow-up for when the provider exposes these as
+resources.
 
 ## Node roles vs classes
 
