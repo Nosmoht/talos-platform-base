@@ -5,6 +5,25 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Added
+
+- **Render-determinism regression fence (`scripts/check-render-determinism.sh`, wired into
+  `task ci`).** Derives every helm render from the module and asserts each is consumed only
+  via its frozen `terraform_data` (per-resource `ignore_changes`), and that CRD renders
+  carry `triggers_replace` — so the #123 decoupling cannot silently regress.
+
+### Changed
+
+- **Releases are now conventional-commit-driven (semantic-release + approval
+  gate).** A push to `main` computes the next version from the commit history
+  and, on one manual approval in the `release` GitHub Environment, tags it; the
+  existing signed-OCI publish (`oci-publish.yml`) runs unchanged on the tag push.
+  A commit-lint check gates PR titles. **Contributor impact:** a MAJOR bump now
+  requires a real `BREAKING CHANGE:` footer (or `type!:`) — prose `**BREAKING**`
+  in a body is not recognised. `CHANGELOG.md` stays human-curated; the
+  auto-generated GitHub Release notes are the canonical per-release record. See
+  [`docs/release-automation.md`](docs/release-automation.md).
+
 ### Fixed
 
 - **talos-cluster: inlineManifest + ArgoCD-CRD renders frozen in state, decoupled from
@@ -18,13 +37,6 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   version bump). Completes the structural half #122/v1.2.0 left open (which fixed only the
   Hubble default trigger). No interface change; empty-render postconditions added so a
   partial render is not frozen.
-
-### Added
-
-- **Render-determinism regression fence (`scripts/check-render-determinism.sh`, wired into
-  `task ci`).** Derives every helm render from the module and asserts each is consumed only
-  via its frozen `terraform_data` (per-resource `ignore_changes`), and that CRD renders
-  carry `triggers_replace` — so the #123 decoupling cannot silently regress.
 
 ## v1.2.0 — 2026-06-11
 

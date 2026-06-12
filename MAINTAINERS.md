@@ -1,8 +1,14 @@
 # Maintainers
 
-This file lists the people authorised to merge, tag, and publish OCI
-artifacts for `talos-platform-base`. Maintainer set is intentionally
-small for a single-owner platform base.
+This file lists the people authorised to merge and approve releases for
+`talos-platform-base`. Maintainer set is intentionally small for a
+single-owner platform base.
+
+Releases are tagged and published automatically by semantic-release from
+the conventional-commit history; a maintainer's role is to **approve the
+release** in the `release` GitHub Environment (the gate before anything is
+signed and `:latest` advances). The manual hand-tag path remains as the
+fallback. See [`docs/release-automation.md`](docs/release-automation.md).
 
 ## Active maintainers
 

@@ -129,11 +129,13 @@ consumer-repo CI should match the oldest pinned `.base-version`.
 
 ## Placeholder substitution
 
-The literal token `OWNER` in this document is a placeholder. The
-CHANGELOG entry for each release includes a fully-rendered version of
-the verify command with `OWNER` substituted to the actual owner at
-release time, so users copy-pasting from CHANGELOG get a working
-command without manual substitution.
+The literal token `OWNER` in this document is a placeholder — substitute
+the GitHub owner of this repository (`nosmoht`) before running the
+command. This document is the source of truth for the verification
+recipe; do not expect the per-release GitHub Release notes or
+`CHANGELOG.md` to carry a pre-rendered copy (release notes are
+auto-generated from commits — see
+[`release-automation.md`](release-automation.md)).
 
 ## Operational requirements (release-side)
 

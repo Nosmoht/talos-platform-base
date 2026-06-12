@@ -1,0 +1,11 @@
+{
+  "name": "talos-platform-base-release-tooling",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Release toolchain ONLY (semantic-release + conventionalcommits preset). This repo is NOT a Node project; this manifest exists solely to pin the release toolchain reproducibly. It is excluded from the OCI artifact (see .ci-oci-tarball-include.txt) and installed in CI via `npm ci --ignore-scripts`. See docs/release-automation.md.",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "conventional-changelog-conventionalcommits": "9.3.1",
+    "semantic-release": "25.0.5"
+  }
+}

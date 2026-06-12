@@ -28,14 +28,16 @@ Include:
 Only the most recent **MINOR** tag receives security backports. Older
 MINORs are unsupported once a successor MINOR is published. Patch
 upgrades within a MINOR are non-breaking; consumers should adopt them
-promptly.
+promptly. Releases are cut from the conventional-commit history (see
+[`docs/release-automation.md`](docs/release-automation.md)), so the MINOR
+cadence tracks `feat`-typed changes rather than a fixed schedule; the
+"most recent MINOR" rule is unchanged.
 
 | Tag stream | Status |
 |---|---|
-| `v0.5.x` (current) | supported |
-| `v0.2.x` – `v0.4.x` | unsupported — pre-release internal markers, no GitHub Releases |
-| `v0.1.x` | unsupported — superseded |
-| pre-`v0.1.0` | unsupported — historical only |
+| `v1.2.x` (current) | supported |
+| `v1.0.x` – `v1.1.x` | unsupported — superseded by a later MINOR |
+| `v0.x` | unsupported — pre-`v1.0.0`, historical only |
 
 ## Supply chain
 
