@@ -768,18 +768,26 @@ resource "null_resource" "argocd_crds" {
 # ---------------------------------------------------------------------------
 # Day-2 reconciliation — what the module handles and what stays out-of-band
 # ---------------------------------------------------------------------------
-# - Talos OS upgrade (var.talos_version bump): the new version flows into
-#   data.talos_machine_configuration AND into the per-class installer image
-#   from the Image Factory. talos_machine_configuration_apply re-renders the
-#   per-node config (including install.image) and applies it rolling — Talos
-#   takes care of the actual upgrade.
+# - Talos OS upgrade (talos_install_version bump — NOT talos_version, which is
+#   the bootstrap schema-pin and stays fixed for the cluster's lifetime): the
+#   new version flows through local.install_version into the per-class
+#   Image-Factory installer URL and the machine.install.image patch. tofu
+#   RENDERS the new installer URL and writes install.image into the machine
+#   config, but apply-config alone does NOT re-image a node. The actual rolling
+#   OS upgrade is out-of-band: the consumer's `task talos:upgrade:cluster` reads
+#   the new installer URL + version from tfplan JSON (outputs installer_images +
+#   talos_install_version) and runs `talosctl upgrade --image …:<version>`
+#   idempotently per node; Talos rolls each node (cordon/drain + reboot). The
+#   siderolabs/talos provider ships no OS-upgrade resource (same as k8s below).
+#   See README §"Versions: schema-pin vs install-pin".
 # - Image-Factory extension/overlay changes (var.classes edits): schematic_id
-#   changes, installer_image URL changes, machine_configuration_apply re-rolls
-#   nodes of the affected class.
+#   and the installer_image URL change; apply-config writes the new
+#   install.image, and the same out-of-band `talosctl upgrade` step re-images
+#   the affected class's nodes (apply-config alone does not).
 # - System-extension version pinning: data.talos_image_factory_extensions_versions
-#   is re-evaluated on every apply; new official versions become available
-#   when var.talos_version changes (the factory pins extension versions to a
-#   Talos release).
+#   is re-evaluated on every apply against local.install_version; new official
+#   versions become available when talos_install_version changes (the factory
+#   pins extension versions to a Talos release).
 #
 # OUT OF SCOPE for now: Kubernetes version upgrade. The siderolabs/talos
 # Terraform provider does NOT ship a `talos_cluster_kubernetes_upgrade`
