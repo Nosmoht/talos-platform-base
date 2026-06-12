@@ -109,6 +109,14 @@ data "helm_template" "argocd" {
       condition     = startswith(var.sops_age_key, "AGE-SECRET-KEY-1")
       error_message = "deploy_argocd = true requires a real age private key in sops_age_key (it must start with \"AGE-SECRET-KEY-1\"; supply via TF_VAR_sops_age_key / tfvars / SOPS). The ArgoCD ksops repoServer needs it to decrypt SOPS manifests."
     }
+    postcondition {
+      # The render is frozen by terraform_data.argocd_render (ignore_changes), so an
+      # empty/partial render would be captured once and NEVER self-healed by tofu
+      # (recovery needs -replace). Fail at plan time instead of bootstrapping an
+      # ArgoCD-less seed. Refs #123.
+      condition     = self.manifest != ""
+      error_message = "data.helm_template.argocd rendered an EMPTY manifest — refusing to freeze an empty ArgoCD seed. Check argocd_chart_version / repository / argocd_values_override."
+    }
   }
 }
 
@@ -297,6 +305,13 @@ data "helm_template" "cilium" {
     precondition {
       condition     = var.cilium_routing_mode != "native" || var.cilium_native_routing_cidr != "" || length(local.cilium_pod_v4) > 0
       error_message = "cilium_routing_mode = \"native\" needs an IPv4 CIDR: set cilium_native_routing_cidr or include an IPv4 entry in pod_cidr."
+    }
+    postcondition {
+      # The render is frozen by terraform_data.cilium_render (ignore_changes), so an
+      # empty/partial render would be captured once and NEVER self-healed by tofu
+      # (recovery needs -replace) — a CNI-less control plane. Fail at plan time. #123.
+      condition     = self.manifest != ""
+      error_message = "data.helm_template.cilium rendered an EMPTY manifest — refusing to freeze an empty Cilium seed (would bootstrap a CNI-less cluster). Check cilium_chart_version / cilium_chart_repository / values."
     }
   }
 }
@@ -678,15 +693,31 @@ data "helm_template" "argocd_crds" {
     name  = "crds.install"
     value = "true"
   }
+
+  lifecycle {
+    postcondition {
+      # Frozen by terraform_data.argocd_crds_render — an empty CRD render would be
+      # kubectl-applied as nothing and frozen until -replace. Fail at plan time. #123.
+      condition     = self.manifest != ""
+      error_message = "data.helm_template.argocd_crds rendered an EMPTY manifest — refusing to freeze empty ArgoCD CRDs. Check argocd_chart_version / repository."
+    }
+  }
 }
 
 # Freeze the ArgoCD CRD render — same decoupling as the seed renders, BUT this path is
 # NOT create-only: the null_resource below is a deliberate Day-2 convergence that
 # kubectl-applies the CRDs and SHOULD re-run on an intended chart/version bump. So unlike
-# the seed freezes, this one carries triggers_replace on the render's intended inputs
-# (argocd_chart_version, argocd_namespace, kubernetes_version — the only inputs of the
-# argocd_crds render). Result: re-capture + re-apply on an intended bump; NO re-apply
-# (and no local_file churn) from pure helm render drift at identical inputs (#123).
+# the seed freezes, this one carries triggers_replace.
+#
+# INVARIANT: triggers_replace MUST mirror EVERY render-affecting input of
+# data.helm_template.argocd_crds, or an intended bump silently won't re-apply (the
+# ignore_changes swallows the render delta). Today that data source reads only
+# argocd_chart_version, argocd_namespace, kubernetes_version (no values block — unlike
+# the argocd *seed*, which also layers argocd_values_override). Keep this list in sync
+# if an input is ever added. check-render-determinism.sh asserts triggers_replace is
+# PRESENT, not COMPLETE; this comment is the completeness binding. Result: re-capture +
+# re-apply on an intended bump; no re-apply / local_file churn from pure render drift
+# at identical inputs (#123).
 resource "terraform_data" "argocd_crds_render" {
   count = var.deploy_argocd ? 1 : 0
   input = data.helm_template.argocd_crds[0].manifest
