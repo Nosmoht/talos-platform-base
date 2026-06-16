@@ -262,3 +262,11 @@ See `docs/issue-workflow.md` for the full issue lifecycle.
 2. **No auto-subagent dispatch**: Subagents (when shipped via the harness plugin) run only on explicit request.
 3. **No `paths:` rule auto-loading**: read the relevant rule file from the harness plugin (or consumer repo's `.claude/rules/`) on demand.
 4. **`--no-verify` bypass is possible locally**: Required PR checks (`gitleaks` CLI in `gitops-validate.yml`, `hard-constraints-check`) block merge server-side.
+
+## ADR-Abdeckung
+
+Operative decisions an agent here must honor that the sections above do not yet spell out:
+
+- **Namespace ownership** ([`docs/adr-namespace-ownership-rendered-manifests.md`](docs/adr-namespace-ownership-rendered-manifests.md)) — one Application owns each namespace (the component itself); a consumer `root` Application MUST NOT track platform (vendor-shipped) namespaces, and no `Prune=false` is set on a platform namespace. `argocd` is the only chicken-and-egg exception.
+- **Signed-OCI producer obligation** (`talos-platform-docs` ADR-0009) — the base OCI artifact is cosign-signed (keyless OIDC), carries SLSA build provenance and a CycloneDX SBOM attestation, produced on every tag push by [`.github/workflows/oci-publish.yml`](.github/workflows/oci-publish.yml). Consumer-side verification is documented in [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md). (The layer-model reference under §Repository Purpose covers *what* base produces; this is the supply-chain *how*.)
+- **Policy-stack role split** (`talos-platform-docs` ADR-0018) — base ships the `pni-reserved-labels-enforce` Kyverno ClusterPolicy (validated by `make validate-kyverno-policies`); the Conftest-in-CI counterpart lives in `talos-platform-apps`, not here. The `policies/` Conftest in this repo is base-scoped.
