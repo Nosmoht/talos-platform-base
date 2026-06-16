@@ -16,12 +16,19 @@ terraform {
   required_providers {
     talos = {
       source = "siderolabs/talos"
-      # >= 0.12.0: the talos_machine resource (native in-place OS upgrade via the
-      # `image` argument + drain_on_upgrade) lands in 0.12.x; 0.11.x has only the
-      # retired talos_machine_configuration_apply (config-only, no upgrade).
+      # The talos_machine resource (native in-place OS upgrade via the `image`
+      # argument + drain_on_upgrade) lands in 0.12.x; 0.11.x has only the retired
+      # talos_machine_configuration_apply (config-only, no upgrade).
+      #
       # >>> GATE: 0.12.0 STABLE is not released yet — only v0.12.0-alpha.N exist
-      # (latest alpha.4, 2026-06-12). DO NOT merge / pin a consumer to this until a
-      # stable 0.12.x ships. Tracked in the PR that introduces this constraint.
+      # (latest alpha.4, 2026-06-12). This means `task ci` / `tofu validate` CANNOT
+      # pass on this branch yet, BY DESIGN: the OpenTofu registry
+      # (registry.opentofu.org) does not surface provider PRE-RELEASES at all, so
+      # neither `>= 0.12.0` nor a `>= 0.12.0-alpha.N` pin resolves under tofu (the
+      # alpha lives only on the Terraform registry). The tofu-validate check stays
+      # red until a STABLE 0.12.x is published to the OpenTofu registry — that
+      # release is itself the un-block. DO NOT merge / pin a consumer until then.
+      # See #129.
       version = ">= 0.12.0, < 1.0.0"
     }
     # helm provider ONLY for data.helm_template (local rendering of ArgoCD into
