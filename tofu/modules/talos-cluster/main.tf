@@ -439,10 +439,10 @@ data "talos_image_factory_urls" "per_class" {
 # apply blind — import this resource (and talos_machine_bootstrap.this) from the
 # existing secrets first: `tofu import module.<name>.talos_machine_secrets.this
 # <path-to-secrets.yaml>`. Full runbook: UPGRADING.md §"Adopting an
-# already-running cluster". (talos_machine_configuration_apply is not importable;
-# on the first post-import apply it re-pushes the rendered machine config, which
-# EMBEDS this PKI — so the imported secrets.yaml MUST be the cluster's real
-# current bundle, else mismatched PKI is pushed to live nodes.)
+# already-running cluster". (talos_machine is not importable; on the first
+# post-import apply it re-pushes the rendered machine config, which EMBEDS this
+# PKI — so the imported secrets.yaml MUST be the cluster's real current bundle,
+# else mismatched PKI is pushed to live nodes.)
 resource "talos_machine_secrets" "this" {
   talos_version = var.talos_version
 
@@ -493,84 +493,52 @@ resource "talos_machine_secrets" "this" {
   }
 }
 
-# Base machine configuration per role. Cluster-specific patches are layered on
-# by the caller via var.config_patches (all) and the role-specific lists.
-data "talos_machine_configuration" "controlplane" {
-  cluster_name       = var.cluster_name
-  cluster_endpoint   = var.cluster_endpoint
-  machine_type       = "controlplane"
-  machine_secrets    = talos_machine_secrets.this.machine_secrets
-  kubernetes_version = var.kubernetes_version
-  talos_version      = var.talos_version
-  # base_cluster_patch (overridable subnets/scheduling) FIRST so caller patches
-  # can override; base_cni_patch (authoritative cni:none + proxy) + ArgoCD/Cilium
-  # inlineManifests LAST so they merge after caller patches and are not overridden.
-  config_patches = concat(
-    [local.base_cluster_patch],
-    var.config_patches,
-    var.controlplane_config_patches,
-    local.base_cni_patch,
-    local.gateway_api_patch,
-    local.argocd_controlplane_patch,
-    local.cilium_controlplane_patch,
-  )
+locals {
+  # Drain only makes sense with more than one node: you cannot drain the sole
+  # node of a single-node cluster and keep it healthy. So auto-upgrade clusters
+  # with >1 node drain+uncordon each node around the reboot; single-node clusters
+  # (e.g. the seeder) upgrade in place without drain. Gated on auto_os_upgrade so
+  # the ephemeral kubeconfig below only materialises when tofu drives upgrades.
+  drain_on_upgrade = var.auto_os_upgrade && length(var.nodes) > 1
 }
 
-data "talos_machine_configuration" "worker" {
-  cluster_name       = var.cluster_name
-  cluster_endpoint   = var.cluster_endpoint
-  machine_type       = "worker"
-  machine_secrets    = talos_machine_secrets.this.machine_secrets
-  kubernetes_version = var.kubernetes_version
-  talos_version      = var.talos_version
-  # base_cluster_patch (overridable) FIRST; base_cni_patch (authoritative cni:none
-  # + proxy) LAST. Workers carry no inlineManifest seeds (controlplane-only).
-  config_patches = concat(
-    [local.base_cluster_patch],
-    var.config_patches,
-    var.worker_config_patches,
-    local.base_cni_patch,
-  )
-}
-
-# Apply the config to each node. Patches arrive in TWO passes:
-#   Pass 1 (config generation — data.talos_machine_configuration above): all-nodes
-#     (var.config_patches) then role (controlplane/worker_config_patches) are
-#     baked into the base machine config that becomes machine_configuration_input.
-#   Pass 2 (this apply, strategic-merge overlay, later wins): module
-#     install.image + hostname (HostnameConfig, Talos >= 1.12), then class
-#     patches, then node patches.
-# NOTE: class/node patches run AFTER the module's install.image patch, so a
-# caller patch CAN override machine.install.image. The module selecting
-# urls.installer (never urls.installer_secureboot) guarantees the MODULE itself
-# never emits a SecureBoot installer. Caller-supplied patch CONTENT is the
-# caller's responsibility: within this base repo, a SecureBoot installer string
-# in any tofu/** file is caught by hard-constraints-check; a CONSUMER's own root
-# and patch files live outside this repo's gate, and enforcing no-SecureBoot
-# (incl. schematic-level secureboot toggles the URL grep cannot see) there is the
-# consumer overlay's job — same substrate-only boundary as AGENTS.md
-# §"Out of scope for the base".
-resource "talos_machine_configuration_apply" "this" {
+# Per-node machine configuration. The talos_machine resource (provider >= 0.12)
+# consumes the FULLY-RENDERED machine_configuration and has no config_patches of
+# its own — unlike the retired talos_machine_configuration_apply. So the former
+# TWO-PASS layering (one role-level data source + a per-node apply patch pass)
+# COLLAPSES into this single per-node render: role/all-node patches AND the
+# per-node install.image + HostnameConfig + class/node patches are folded into
+# one config_patches list. Strategic-merge order is preserved from the two-pass
+# era — base_cluster FIRST (caller-overridable), then caller all-node + role
+# patches, then the module install.image, then class then node patches (so a
+# class/node patch can still override install.image, as before), then the
+# controlplane-only inlineManifest seeds, and base_cni_patch LAST so the
+# authoritative cni:none + proxy always win over any class/node patch.
+data "talos_machine_configuration" "per_node" {
   for_each = local.nodes_by_hostname
 
-  client_configuration = talos_machine_secrets.this.client_configuration
-  machine_configuration_input = (
-    each.value.role == "controlplane"
-    ? data.talos_machine_configuration.controlplane.machine_configuration
-    : data.talos_machine_configuration.worker.machine_configuration
-  )
-  node = each.value.ip
+  cluster_name       = var.cluster_name
+  cluster_endpoint   = var.cluster_endpoint
+  machine_type       = each.value.role
+  machine_secrets    = talos_machine_secrets.this.machine_secrets
+  kubernetes_version = var.kubernetes_version
+  talos_version      = var.talos_version
 
   config_patches = concat(
+    [local.base_cluster_patch],
+    var.config_patches,
+    each.value.role == "controlplane" ? var.controlplane_config_patches : var.worker_config_patches,
     [
       # install.image stays v1alpha1 (Hard Constraint: non-secureboot installer).
+      # Explicitly the NON-secureboot installer URL — `urls.installer`, never
+      # `urls.installer_secureboot`. This is the code-level Hard Constraint
+      # enforcement (AGENTS.md: no SecureBoot installer image); the module cannot
+      # emit a SecureBoot installer through this path. This is what Talos uses at
+      # install time regardless of auto_os_upgrade; the talos_machine `image`
+      # argument below governs only the in-place UPGRADE on a version bump.
       yamlencode({
         machine = {
           install = {
-            # Explicitly the NON-secureboot installer URL — `urls.installer`,
-            # never `urls.installer_secureboot`. This is the code-level Hard
-            # Constraint enforcement (AGENTS.md: no SecureBoot installer image);
-            # the module cannot emit a SecureBoot installer through this path.
             image = data.talos_image_factory_urls.per_class[each.value.class].urls.installer
           }
         }
@@ -591,21 +559,70 @@ resource "talos_machine_configuration_apply" "this" {
     ],
     var.classes[each.value.class].config_patches,
     each.value.config_patches,
-    # base_cni_patch re-applied LAST in the apply pass too, so cni:none + proxy
-    # win over a class/node patch as well (not just the all-nodes/role patches of
-    # pass 1). When deploy_cilium is true, Flannel must NOT come up via any patch
-    # vector. install.image is intentionally NOT re-pinned here — per-node installer
-    # override stays allowed, and the SecureBoot guard (a substring heuristic, see
-    # talos_machine_secrets preconditions) covers the common recipe; schematic-level
-    # SecureBoot remains consumer-overlay responsibility.
+    # Controlplane-only inlineManifest seeds (Gateway API CRDs + ArgoCD + Cilium).
+    # Workers carry none. These merge after caller patches and are not overridden.
+    each.value.role == "controlplane" ? concat(
+      local.gateway_api_patch,
+      local.argocd_controlplane_patch,
+      local.cilium_controlplane_patch,
+    ) : [],
+    # base_cni_patch LAST so cni:none + proxy win over any class/node patch (when
+    # deploy_cilium is true, Flannel must NOT come up via any patch vector).
     local.base_cni_patch,
   )
+}
+
+# Apply the config to each node AND keep the OS version in sync. talos_machine
+# (provider >= 0.12) replaces talos_machine_configuration_apply: on every refresh
+# it reads the running Talos version + active config hash from the node and, on
+# the next apply, reconciles drift — re-applying config or upgrading the OS.
+resource "talos_machine" "this" {
+  for_each = local.nodes_by_hostname
+
+  node                  = each.value.ip
+  endpoint              = each.value.ip
+  client_configuration  = talos_machine_secrets.this.client_configuration
+  machine_configuration = data.talos_machine_configuration.per_node[each.key].machine_configuration
+
+  # OS-version management is OPT-IN (var.auto_os_upgrade):
+  #   false (default) → image omitted → talos_machine does NOT manage the OS
+  #     version. Initial install still uses machine.install.image from the config
+  #     above; OS upgrades stay the consumer's controlled `task talos:upgrade:
+  #     cluster` (laptop/TeamCity) path — unchanged from the apply era.
+  #   true → image = the per-class non-secureboot installer → bumping
+  #     talos_install_version drives an in-place OS upgrade on the next apply
+  #     (fully GitOps/Crossplane-driven; no talosctl, no manual reboot).
+  image = var.auto_os_upgrade ? data.talos_image_factory_urls.per_class[each.value.class].urls.installer : null
+
+  # Multi-node: drain + uncordon around the reboot (needs a kubeconfig). The
+  # ephemeral kubeconfig below is derived from machine_secrets WITHOUT depending
+  # on the running cluster, so it breaks the bootstrap cycle (talos_cluster_
+  # kubeconfig.this depends on bootstrap depends on talos_machine). Single-node:
+  # drain disabled, no kubeconfig needed.
+  drain_on_upgrade = local.drain_on_upgrade
+  kubeconfig_wo    = local.drain_on_upgrade ? ephemeral.talos_cluster_kubeconfig.drain[0].kubeconfig_raw : null
+
+  # NOTE: multi-node parallel upgrades risk losing etcd quorum. talos_machine is
+  # for_each'd here (no inter-node depends_on chain), so multi-node consumers must
+  # run upgrades with `-parallelism=1`, or a future revision adds explicit
+  # sequencing. Single-node (seeder) is unaffected. See PR discussion.
+}
+
+# Ephemeral kubeconfig for the drain path only (multi-node auto-upgrade). Derived
+# from machine_secrets, so it exists before the cluster is up and avoids a cycle.
+# Write-only (kubeconfig_wo) + ephemeral both require OpenTofu >= 1.11.
+ephemeral "talos_cluster_kubeconfig" "drain" {
+  count = local.drain_on_upgrade ? 1 : 0
+
+  machine_secrets = talos_machine_secrets.this.machine_secrets
+  cluster_name    = var.cluster_name
+  endpoint        = local.first_controlplane.ip
 }
 
 # Bootstrap etcd on the first controlplane only. Must run after the config is
 # applied; bootstrapping more than one node would split-brain etcd.
 resource "talos_machine_bootstrap" "this" {
-  depends_on = [talos_machine_configuration_apply.this]
+  depends_on = [talos_machine.this]
 
   node                 = local.first_controlplane.ip
   endpoint             = local.first_controlplane.ip
@@ -640,7 +657,7 @@ data "talos_client_configuration" "this" {
 # completed before we check.
 data "talos_cluster_health" "this" {
   depends_on = [
-    talos_machine_configuration_apply.this,
+    talos_machine.this,
     talos_machine_bootstrap.this,
     talos_cluster_kubeconfig.this,
   ]
