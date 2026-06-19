@@ -256,7 +256,14 @@ locals {
     (var.cilium_routing_mode == "native" && var.dual_stack && length(local.cilium_pod_v6) > 0) ? { ipv6NativeRoutingCIDR = local.cilium_pod_v6[0] } : {},
     var.dual_stack ? { ipv6 = { enabled = true } } : {},
     var.cilium_mtu > 0 ? { MTU = var.cilium_mtu } : {},
-    var.cilium_gateway_api ? { gatewayAPI = { enabled = true } } : {},
+    # enableAppProtocol: Cilium routes a backend over h2c (HTTP/2 cleartext) only
+    # when the Service port declares `appProtocol: kubernetes.io/h2c` AND this is on.
+    # Without it the Gateway's envoy de-frames grpc-web into native gRPC over HTTP/1.1,
+    # which gRPC backends (e.g. argocd-server's CLI/UI API) answer with 404 — gRPC
+    # unreachable through the Gateway (#132). It is a Gateway-API setting (GEP-1911),
+    # so it lives in this computed layer gated on cilium_gateway_api, NOT the floor
+    # (base#133 review H1). No-op until a Service opts in via appProtocol.
+    var.cilium_gateway_api ? { gatewayAPI = { enabled = true, enableAppProtocol = true } } : {},
     var.cilium_encryption.type == "wireguard" ? { encryption = { enabled = true, type = "wireguard" } } : {},
     var.cilium_encryption.type == "ipsec" ? { encryption = { enabled = true, type = "ipsec" } } : {},
   ))
