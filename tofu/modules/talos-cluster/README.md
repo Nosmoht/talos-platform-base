@@ -62,6 +62,15 @@ i.e. already booted into Talos maintenance mode.
 | **Day-2: Talos OS upgrade** | Bumping `talos_install_version` re-renders the affected per-node installer images and `talos_machine_configuration_apply` writes the new `install.image`, but `apply-config` alone does not re-image a node — the actual roll-out is out-of-band `talosctl upgrade` (see below). |
 | **Day-2: image / capability changes** | Edit `images` (baseline extensions/overlay), `hardware_capabilities`, or the base provisioning-profile catalog → an affected node's composed schematic ID + installer URL change → `machine_configuration_apply` writes the new `install.image`; the same out-of-band `talosctl upgrade` re-images affected nodes. |
 
+> **Re-image blast-radius — diff the hashes before adopting a change.** A node
+> re-images only when its composed schematic hash changes. `tofu plan` does not
+> warn which nodes that is, so before applying a base-tag bump, a
+> `hardware_capabilities` edit, or a profile-catalog change, capture
+> `tofu output node_schematic_hashes` (and `distinct_schematic_count`) before and
+> after and diff them: every changed hash is a node that will re-image on the next
+> out-of-band `talosctl upgrade`. Nodes with an unchanged hash keep their installer
+> and do NOT re-image.
+
 **Two Day-2 ops stay out-of-band** — the `siderolabs/talos` provider ships no
 OS- or Kubernetes-upgrade resource, so both are imperative `talosctl` commands
 the consumer Taskfile drives. The **OS upgrade** is `talosctl upgrade --image

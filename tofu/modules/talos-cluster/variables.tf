@@ -193,7 +193,12 @@ variable "hardware_capabilities" {
       - emits_label: the node label set when a node holds this capability. MUST be
         in the platform.io/hardware-capability.* namespace; the reserved Layer-C
         platform.io/hardware-feature.* labels are emitted only from a profile's
-        base-controlled `provides`, never from here (closes label forgery).
+        base-controlled `provides`, never from here. This closes forgery via the
+        TYPED path only — a raw per-node `config_patches` string can still set
+        machine.nodeLabels directly (the module does not parse patch content), so
+        a forged reserved hardware-feature.* label there is the downstream-Kyverno
+        boundary (reserved-layer-c-hardware-labels rule), the same residual as the
+        raw-patch SecureBoot/podSubnets vectors. See the ADR for the threat model.
   EOT
   type = map(object({
     requires_features     = optional(list(string), [])

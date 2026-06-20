@@ -228,7 +228,10 @@ hardware-capabilities:
     requires_features: [vt-x-or-amd-v, kvm-kernel-module, iommu-enabled]
     provisioning_profiles: [iommu]                    # iommu provides iommu-enabled -> it IS in requires_features (symmetry)
     emits_label: platform.io/hardware-capability.compute-virt-passthrough
-  compute-gpu-nvidia:
+  compute-gpu-nvidia:                                 # PASSTHROUGH-GPU (vfio) variant shown here to exercise the symmetry
+                                                      # rule. The shipped examples/homelab fixture instead models a PLAIN
+                                                      # device-plugin GPU: requires_features [nvidia-gpu], profiles
+                                                      # [nvidia-lts], NO iommu (a non-passthrough GPU needs no IOMMU).
     requires_features: [nvidia-gpu, iommu-enabled]    # nvidia-gpu NFD-detected; iommu-enabled provisioned by the iommu profile
     provisioning_profiles: [nvidia-lts, iommu]        # -> iommu-enabled MUST be declared (symmetry); matches three-layer ADR
     emits_label: platform.io/hardware-capability.compute-gpu-nvidia

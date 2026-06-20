@@ -72,7 +72,9 @@ Boot kernel args now bake into the Image Factory schematic
   whose baseline extensions are preserved in its `image`) keeps a stable
   schematic hash and does **not** re-image. Verify with `tofu plan` before the
   MAJOR-tag adoption; the re-image rolls out via the usual out-of-band
-  `talosctl upgrade`.
+  `talosctl upgrade`. To see *exactly which* nodes re-image, diff
+  `tofu output node_schematic_hashes` before and after — every changed hash is a
+  re-imaging node (see the module README "Re-image blast-radius").
 
 A worked migration is the `tofu/modules/talos-cluster/examples/homelab/`
 fixture (its `kubevirt` IOMMU is the live no-op this fixes) and the module README

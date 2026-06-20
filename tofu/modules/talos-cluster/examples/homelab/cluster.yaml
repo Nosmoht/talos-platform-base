@@ -63,11 +63,15 @@ hardware-capabilities:
     provisioning_profiles: [drbd]
     emits_label: platform.io/hardware-capability.storage-replicated
   compute-virt-passthrough: # KubeVirt + PCI passthrough; IOMMU now actually bakes (the v1.10+ fix)
+    # vt-x-or-amd-v and kvm-kernel-module are NFD-DETECTED atoms (no profile): KVM
+    # is in-kernel and auto-loads on VMX/SVM-capable hardware, so only iommu-enabled
+    # is provisioned here. They stay in requires_features for scheduling/labels.
     requires_features: [vt-x-or-amd-v, kvm-kernel-module, iommu-enabled]
     provisioning_profiles: [iommu] # provides iommu-enabled (symmetry); vendor-resolved to intel_iommu via the image cpu_vendor
     emits_label: platform.io/hardware-capability.compute-virt-passthrough
-  compute-gpu-nvidia:
-    requires_features: [nvidia-gpu]
+  compute-gpu-nvidia: # plain device-plugin GPU (NOT passthrough): no iommu. A vfio
+    # passthrough GPU would additionally list iommu-enabled + the iommu profile.
+    requires_features: [nvidia-gpu] # NFD-detected presence atom (no profile provisions it)
     provisioning_profiles: [nvidia-lts]
     emits_label: platform.io/hardware-capability.compute-gpu-nvidia
 
