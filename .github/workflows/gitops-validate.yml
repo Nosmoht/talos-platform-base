@@ -541,6 +541,9 @@ jobs:
       - name: Check cross-references (Layer A + Layer C resolution + orphan-infra-dir advisory)
         run: scripts/check-capability-index-refs.sh
 
+      - name: Check provisioning-catalog provides == registry talos-machine-config atoms (γ' composition)
+        run: scripts/check-provisioning-catalog-refs.sh
+
       - name: Verify rendered Markdown is up-to-date (Layer A + Layer C)
         run: scripts/render-capability-index.sh --check
 

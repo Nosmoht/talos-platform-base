@@ -50,13 +50,23 @@ output "controlplane_ips" {
 }
 
 output "schematic_ids" {
-  description = "Image-Factory schematic IDs per node class (for auditing / debugging which extensions ended up baked into the installer)."
-  value       = { for k, s in talos_image_factory_schematic.per_class : k => s.id }
+  description = "Image-Factory schematic IDs per DISTINCT content-hash (auditing which extensions / kernel-args ended up baked). Identical nodes share a hash; the key is the module's dedup hash, not a class name."
+  value       = { for k, s in talos_image_factory_schematic.this : k => s.id }
 }
 
 output "installer_images" {
-  description = "Resolved (non-secureboot) metal-installer image URL per node class. Echoed for tfplan-JSON consumption by the consumer's `talos:upgrade:cluster` task."
-  value       = { for k, u in data.talos_image_factory_urls.per_class : k => u.urls.installer }
+  description = "Resolved (non-secureboot) metal-installer image URL per node HOSTNAME. Echoed for tfplan-JSON consumption by the consumer's `talos:upgrade:cluster` task (keyed by hostname now that `class` is gone)."
+  value       = { for hostname, key in local.node_install_key : hostname => data.talos_image_factory_urls.this[key].urls.installer }
+}
+
+output "node_schematic_hashes" {
+  description = "Per-node content-hash of the composed schematic (audit / dedup debugging). Known at plan time; identical effective provisioning -> identical hash."
+  value       = local.node_hash
+}
+
+output "distinct_schematic_count" {
+  description = "Number of distinct schematics after content-hash dedup (<= node count). Known at plan time."
+  value       = length(local.schematics)
 }
 
 output "talos_install_version" {

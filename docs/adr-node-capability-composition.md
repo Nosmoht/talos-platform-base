@@ -334,7 +334,12 @@ Per node, the module computes:
   `platform.io/hardware-feature.*` labels are emitted ONLY from a selected
   profile's base-controlled `provides` — never from a consumer-supplied
   `emits_label` — so a consumer cannot launder a forged reserved label through
-  `machine.nodeLabels` (plan-time validated).
+  the **typed** paths (plan-time validated). Boundary: a raw `config_patches`
+  string can still set `machine.nodeLabels` directly (the module does not parse
+  raw patch content), so the raw-patch forgery vector is closed **downstream** by
+  the Kyverno `reserved-layer-c-hardware-labels` rule, not by this module — the
+  same consumer-overlay boundary as the SecureBoot / podSubnets raw-patch
+  residuals.
 - **Base-catalog authority + the residual supply-chain vector.** The
   provisioning catalog is base-owned; a consumer selects profiles but cannot
   redefine a profile's bundle (closes the *consumer-redefine* vector). It does
@@ -345,14 +350,18 @@ Per node, the module computes:
   does not claim to close it. NOTE: the D2 change routes boot-time kernel args
   through this same unpinned path, so the residual's blast radius now includes the
   kernel command line, not only extensions.
-- **γ'-generated fields vs raw `config_patches` precedence.** Per the current
-  apply ordering (`main.tf` ~536–542), node/class `config_patches` apply
-  **last** and can override γ'-generated `machine.kernel.modules` / sysctls /
-  labels. This stays the documented per-node escape hatch (presence composes;
-  per-node *parameters* — SR-IOV VF count, hugepages, PCI allowlist, a NIC
-  interface name — live in `config_patches`). The implementation surfaces a
-  plan-time warning when a raw patch overrides a generated field, so the
-  override is never silent.
+- **γ'-generated fields vs raw `config_patches` precedence.** Per the apply
+  ordering, a node's raw `config_patches` apply **after** the module-generated
+  patch (and `base_cni_patch` strictly last), so a raw patch can override a
+  γ'-generated `machine.kernel.modules` / sysctls / nodeLabels value. This stays
+  the documented per-node escape hatch (presence composes; per-node *parameters*
+  — SR-IOV VF count, hugepages, PCI allowlist, a NIC interface name — live in
+  `config_patches`). The override is **silent**: Talos strategic-merge applies
+  the raw patch last and the module does not parse raw patch content, so a
+  plan-time overlap warning is a documented **follow-up** (not yet implemented).
+  Known caveat: a raw patch that drops a generated kernel module while the node
+  keeps its provisioning label is drift the inverse-symmetry check does not cover
+  (it guards only the generated path).
 - **Overlay is a per-image axis.** Talos allows one overlay per schematic;
   `overlay` lives on `images`, not on profiles (a profile `overlay` key is a
   schema error). A feature needing a board overlay is expressed by choosing

@@ -77,21 +77,27 @@ variable "nodes" {
     the hardware or boot the nodes.
 
     Kubernetes node roles are ONLY `controlplane` or `worker`. Hardware
-    specialisation (GPU, single-board-computer, storage) is NOT a role — it
-    is expressed via `class`, which selects an Image-Factory + patch profile
-    from var.classes.
+    specialisation (GPU, single-board-computer, storage) is NOT a role — it is
+    expressed as a SET of `hardware_capabilities` (composed independently) plus
+    the base `image` (architecture + CPU vendor + baseline extensions + overlay).
 
-    `class` (optional, default "standard") must exist as a key in var.classes.
-    `config_patches` (optional) are machine-config patches applied to THIS
-    node only — use it for genuinely per-node values such as a NIC-specific
-    bridge config; the caller renders the concrete value into the YAML string.
+    `image` (required) must exist as a key in var.images.
+    `hardware_capabilities` (optional, default []) is the set of capability ids
+    (keys in var.hardware_capabilities) the node holds — a node can hold any set
+    (storage + compute + GPU) without a hand-authored class.
+    `config_patches` (optional) are machine-config patches applied to THIS node
+    only — use it for genuinely per-node values such as a NIC-specific bridge
+    config; the caller renders the concrete value into the YAML string. They
+    apply AFTER the module-generated capability patch, so a raw patch can still
+    override a generated machine.kernel.modules / sysctls / nodeLabels value.
   EOT
   type = list(object({
-    hostname       = string
-    ip             = string
-    role           = string                       # "controlplane" | "worker"
-    class          = optional(string, "standard") # must exist as key in var.classes
-    config_patches = optional(list(string), [])   # per-node patches (e.g. NIC binding)
+    hostname              = string
+    ip                    = string
+    role                  = string                     # "controlplane" | "worker"
+    image                 = string                     # must exist as key in var.images
+    hardware_capabilities = optional(list(string), []) # keys in var.hardware_capabilities
+    config_patches        = optional(list(string), []) # per-node patches (e.g. NIC binding)
   }))
 
   validation {
@@ -118,50 +124,85 @@ variable "nodes" {
   }
 }
 
-variable "classes" {
+variable "images" {
   description = <<-EOT
-    Per node-class Image-Factory + machine-config-patch profile. Key = class
-    name (matching `node.class`). The "standard" class is mandatory; add more
-    (e.g. "gpu", "pi") as the cluster needs. Each class carries:
+    Per node-IMAGE base-installer profile. Key = image id (matching node.image).
+    The non-composable base axis a node sits on. Each image carries:
 
-      - architecture: "amd64" | "arm64" — installer-image architecture for
-        nodes of this class. This is what unblocks ARM single-board computers
-        (e.g. a Raspberry Pi worker uses architecture = "arm64").
-      - extensions: Image-Factory system-extension package names (e.g.
-        "siderolabs/drbd", "siderolabs/nvidia-container-toolkit-lts"). Empty
-        list = default installer with no system extensions for that class.
-      - overlay: optional SBC/board overlay for ARM single-board computers.
-        When set, the schematic is built with the board overlay (e.g.
-        name = "rpi_generic", image = "siderolabs/sbc-raspberrypi" for a
-        Raspberry Pi). Leave null for ordinary x86/metal nodes.
-      - config_patches: machine-config patches applied to EVERY node of this
-        class, on top of the all-nodes (var.config_patches) and role patches.
+      - architecture: "amd64" | "arm64" — installer-image architecture. This is
+        what unblocks ARM single-board computers (a Raspberry Pi worker uses an
+        image with architecture = "arm64").
+      - cpu_vendor: "intel" | "amd" | "arm" — resolves a provisioning profile's
+        vendor variants (e.g. the iommu profile's intel_iommu vs amd_iommu).
+      - extensions: Image-Factory system extensions baked on EVERY node of this
+        image regardless of capabilities — baseline content that is NOT a
+        capability (CPU microcode, NIC/GPU firmware, base tooling, a default
+        runtime sandbox). The node's effective extension set is this baseline
+        UNION the selected provisioning profiles' extensions. Capability-specific
+        extensions (drbd, nvidia) come from the base provisioning-profile catalog
+        via a composite, NOT from here.
+      - overlay: optional SBC/board overlay for ARM single-board computers (e.g.
+        name = "rpi_generic", image = "siderolabs/sbc-raspberrypi"). Leave null
+        for ordinary x86/metal nodes.
 
-    The installer image is always the non-SecureBoot metal installer (NEVER
-    the SecureBoot variant, per the base AGENTS.md Hard Constraint).
+    The installer image is always the non-SecureBoot metal installer (NEVER the
+    SecureBoot variant, per the base AGENTS.md Hard Constraint).
   EOT
   type = map(object({
     architecture = optional(string, "amd64")
+    cpu_vendor   = optional(string, "intel")
     extensions   = optional(list(string), [])
     overlay = optional(object({
       name    = string
       image   = string
       options = optional(map(string), null)
     }), null)
-    config_patches = optional(list(string), [])
   }))
-  default = {
-    standard = { architecture = "amd64" }
+
+  validation {
+    condition     = length(var.images) >= 1
+    error_message = "At least one image must be defined (node.image references it)."
   }
 
   validation {
-    condition     = contains(keys(var.classes), "standard")
-    error_message = "classes must define a 'standard' class — node.class defaults to it."
+    condition     = alltrue([for img in var.images : contains(["amd64", "arm64"], img.architecture)])
+    error_message = "Each image.architecture must be \"amd64\" or \"arm64\"."
   }
 
   validation {
-    condition     = alltrue([for c in var.classes : contains(["amd64", "arm64"], c.architecture)])
-    error_message = "Each class.architecture must be \"amd64\" or \"arm64\"."
+    condition     = alltrue([for img in var.images : contains(["intel", "amd", "arm"], img.cpu_vendor)])
+    error_message = "Each image.cpu_vendor must be \"intel\", \"amd\", or \"arm\"."
+  }
+}
+
+variable "hardware_capabilities" {
+  description = <<-EOT
+    Consumer-defined composite hardware-capabilities. Key = capability id
+    (matching an entry in node.hardware_capabilities). Tool-agnostic, swappable:
+    a node declares "storage-replicated", not "drbd". Each carries two SEPARATE
+    lists plus a label (provisioning is DECOUPLED from detection):
+
+      - requires_features: Layer-C atom ids for scheduling / labels (three-layer
+        ADR convention). A PROVISIONED atom here (one a base catalog profile
+        `provides`) MUST be satisfied by a listed provisioning_profile, and every
+        listed profile's provided atom MUST appear here (symmetry, both ways).
+      - provisioning_profiles: ids of base catalog profiles to apply. EXPLICIT —
+        never inferred from requires_features. Unknown id → hard plan error.
+      - emits_label: the node label set when a node holds this capability. MUST be
+        in the platform.io/hardware-capability.* namespace; the reserved Layer-C
+        platform.io/hardware-feature.* labels are emitted only from a profile's
+        base-controlled `provides`, never from here (closes label forgery).
+  EOT
+  type = map(object({
+    requires_features     = optional(list(string), [])
+    provisioning_profiles = optional(list(string), [])
+    emits_label           = string
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for c in var.hardware_capabilities : startswith(c.emits_label, "platform.io/hardware-capability.")])
+    error_message = "Each hardware_capabilities entry's emits_label must be in the platform.io/hardware-capability.* namespace (reserved hardware-feature.* labels come only from a profile's `provides`)."
   }
 }
 
