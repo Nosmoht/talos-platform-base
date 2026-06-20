@@ -52,7 +52,7 @@ module "homelab" {
 
   images = { for name, img in local.cfg.images : name => {
     architecture = try(img.architecture, "amd64")
-    cpu_vendor   = try(img.cpu_vendor, "intel")
+    cpu_vendor   = img.cpu_vendor
     extensions   = try(img.extensions, [])
     overlay = try(img.overlay, null) == null ? null : {
       name    = img.overlay.name
@@ -61,7 +61,7 @@ module "homelab" {
     }
   } }
 
-  hardware_capabilities = { for name, c in try(local.cfg.hardware_capabilities, {}) : name => {
+  hardware_capabilities = { for name, c in try(local.cfg["hardware-capabilities"], {}) : name => {
     requires_features     = try(c.requires_features, [])
     provisioning_profiles = try(c.provisioning_profiles, [])
     emits_label           = c.emits_label

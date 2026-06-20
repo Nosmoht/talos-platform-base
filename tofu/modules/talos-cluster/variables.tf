@@ -134,6 +134,8 @@ variable "images" {
         image with architecture = "arm64").
       - cpu_vendor: "intel" | "amd" | "arm" — resolves a provisioning profile's
         vendor variants (e.g. the iommu profile's intel_iommu vs amd_iommu).
+        REQUIRED, no default: a defaulted vendor would silently bake the wrong
+        IOMMU kernel arg on a mismatched CPU.
       - extensions: Image-Factory system extensions baked on EVERY node of this
         image regardless of capabilities — baseline content that is NOT a
         capability (CPU microcode, NIC/GPU firmware, base tooling, a default
@@ -150,7 +152,7 @@ variable "images" {
   EOT
   type = map(object({
     architecture = optional(string, "amd64")
-    cpu_vendor   = optional(string, "intel")
+    cpu_vendor   = string
     extensions   = optional(list(string), [])
     overlay = optional(object({
       name    = string
