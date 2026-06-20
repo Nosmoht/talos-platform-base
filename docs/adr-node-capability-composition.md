@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 id: base:node-capability-composition
 date: 2026-06-20
 deciders:
@@ -19,7 +19,7 @@ implementation-tracking-issue: "not yet filed (the P2 γ' issue referenced by ba
 
 # ADR: Node Capability Composition (γ') — composable per-node features over monolithic classes
 
-> **Status: proposed.** This is the γ' design that
+> **Status: accepted.** This is the γ' design that
 > [issue #61](https://github.com/Nosmoht/talos-platform-base/issues/61)
 > names as the *"in-flight γ' Talos-OCI-ification proposal (P2 issue, not
 > yet filed): γ' models hardware as multi-membership per-node features."*
