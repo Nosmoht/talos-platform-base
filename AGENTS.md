@@ -223,10 +223,9 @@ their own SOPS gate via pre-commit.
 
 ## Domain Rules — On-Demand Reference
 
-This base ships no `.claude/rules/`. Domain rules are part of the
-`kube-agent-harness` Claude Code plugin. Consumer cluster repos either install
-the plugin or copy the relevant rules into their own `.claude/rules/`
-directory. See the harness repo for the rule catalogue.
+This base ships no `.claude/rules/` and depends on none. Any domain rules come
+from an external harness that an operator or consumer repo installs — verify a
+rule file is present in the working repo before relying on it.
 
 ## MCP Server Configuration
 
@@ -259,8 +258,8 @@ See `docs/issue-workflow.md` for the full issue lifecycle.
 ## Deltas vs Claude Code (For Codex CLI Users)
 
 1. **No PreToolUse interception**: Tool-agnostic safety begins at `git commit` (pre-commit framework).
-2. **No auto-subagent dispatch**: Subagents (when shipped via the harness plugin) run only on explicit request.
-3. **No `paths:` rule auto-loading**: read the relevant rule file from the harness plugin (or consumer repo's `.claude/rules/`) on demand.
+2. **No auto-subagent dispatch**: any subagents come from an externally installed harness (not this base) and run only on explicit request.
+3. **No `paths:` rule auto-loading**: if an external harness or consumer repo provides rule files, read the relevant one on demand.
 4. **`--no-verify` bypass is possible locally**: Required PR checks (`gitleaks` CLI in `gitops-validate.yml`, `hard-constraints-check`) block merge server-side.
 
 ## ADR-Abdeckung
