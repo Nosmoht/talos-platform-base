@@ -52,3 +52,37 @@ jobs:
 
       - name: task ci (fmt-check + validate + lint)
         run: task ci
+
+  tofu-test:
+    name: tofu-test (composition guard-regression suite)
+    runs-on: ubuntu-latest
+    # ADVISORY by default: this job calls the live Talos Image Factory, so an
+    # upstream outage can red it independently of the diff. Do NOT add it to
+    # branch-protection *required* checks unless you accept that a factory.talos.dev
+    # outage will block all tofu/** merges. timeout-minutes bounds a hung connect.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: '1.12.1'
+          tofu_wrapper: false
+
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # NETWORK: `tofu test` resolves the live Talos Image Factory (schematic
+      # dedup proof), so it is deliberately excluded from the offline `task ci`.
+      # This dedicated job is the CI enforcement of the node-capability
+      # composition guard-regression suite — the ADR §"Falsification criteria"
+      # (each hard-error guard fires red-green, dedup determinism holds). Without
+      # it those guards can regress silently with `task ci` still green.
+      # An Image-Factory outage (factory.talos.dev unreachable) can red this job
+      # independently of the diff — re-run on transient infra blips.
+      - name: task test (hard-error guards + dedup determinism — live Image Factory)
+        run: task test
