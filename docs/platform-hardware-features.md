@@ -177,16 +177,22 @@ observation scope.
 
 **Presence predicate:**
 
-Talos machine config carries `intel_iommu=on` (or `amd_iommu=on`)
-in `machine.install.extraKernelArgs` AND the BIOS has IOMMU
-enabled. The platform.io label is the consumer's assertion that
-both conditions hold; there is no upstream NFD label that asserts
-the BIOS half of the predicate.
+The node's Image Factory schematic carries `intel_iommu=on` (Intel)
+or `amd_iommu=on` (AMD) in `customization.extraKernelArgs` AND the
+BIOS has IOMMU enabled. NOTE: Talos v1.10+ boots via UKI/systemd-boot
+on UEFI (Secure Boot and non-Secure-Boot alike), so
+`machine.install.extraKernelArgs` is a no-op — boot-time kernel args
+MUST be baked into the schematic, not the machine config. The
+vendor-specific kernel arg (intel_iommu vs amd_iommu) is a
+PROVISIONING detail; this Layer-C atom stays a single vendor-agnostic
+DETECTION predicate (the `platform.io/hardware-feature.iommu-enabled`
+label is identical for Intel and AMD, so scheduling selectors match
+one key). There is no upstream NFD label that asserts the BIOS half.
 
 **References:**
 
 - <https://docs.kernel.org/x86/intel-iommu.html>
-- <https://www.talos.dev/v1.7/reference/configuration/v1alpha1/config/#Config.machine.install>
+- <https://www.talos.dev/v1.10/talos-guides/install/boot-assets/>
 
 ### `ebpf-capable-kernel`
 
