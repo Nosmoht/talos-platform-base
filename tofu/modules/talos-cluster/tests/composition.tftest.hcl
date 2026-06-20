@@ -3,7 +3,7 @@
 # Proves the γ' composition + its hard-error invariants. command = plan (no
 # apply). The valid run resolves the live Image Factory (network) for schematic
 # dedup; the expect_failures runs lock in each guard (red-green: revert the guard
-# and the matching run stops failing). NETWORK REQUIRED — run via `task tofu:test`,
+# and the matching run stops failing). NETWORK REQUIRED — run via `task test`,
 # NOT part of the offline `task ci`.
 #
 # Not covered (no triggerable input via the real base catalog — the shipped
@@ -81,6 +81,25 @@ run "symmetry_inverse_violation" {
       bad = { requires_features = [], provisioning_profiles = ["drbd"], emits_label = "platform.io/hardware-capability.bad" }
     }
     nodes = [{ hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["bad"] }]
+  }
+  expect_failures = [terraform_data.composition_guards]
+}
+
+# Per-CAPABILITY symmetry (ADR §step-3 "both directions"): two individually
+# malformed capabilities that COMPENSATE in the per-node union — a forward
+# violator (requires a provisioned atom, no profile) + an inverse violator
+# (a profile providing that atom, not in requires) — on ONE node must STILL be
+# rejected. Under the prior per-node-union check this pair PASSED (Codex review
+# finding). Red-green: revert composition.tf to the per-node-union symmetry and
+# this run stops failing.
+run "symmetry_per_capability_not_masked_by_union" {
+  command = plan
+  variables {
+    hardware_capabilities = {
+      label_only     = { requires_features = ["drbd-kernel-module"], provisioning_profiles = [], emits_label = "platform.io/hardware-capability.label-only" }
+      provision_only = { requires_features = [], provisioning_profiles = ["drbd"], emits_label = "platform.io/hardware-capability.provision-only" }
+    }
+    nodes = [{ hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["label_only", "provision_only"] }]
   }
   expect_failures = [terraform_data.composition_guards]
 }

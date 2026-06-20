@@ -25,11 +25,6 @@ locals {
       for c in n.hardware_capabilities : try(var.hardware_capabilities[c].provisioning_profiles, [])
     ]))
   }
-  node_required_features = {
-    for n in var.nodes : n.hostname => distinct(flatten([
-      for c in n.hardware_capabilities : try(var.hardware_capabilities[c].requires_features, [])
-    ]))
-  }
 
   # --- 2. RESOLVE variants by the node image's cpu_vendor -------------------
   # Skip profiles not in the catalog (undefined_profiles precondition reports
@@ -179,17 +174,28 @@ locals {
       && !contains(keys(local.provisioning_profiles[pname].variants), try(var.images[n.image].cpu_vendor, ""))
     ]
   }
-  # symmetry forward: a PROVISIONED required-feature with no profile providing it
-  symmetry_forward_violations = {
-    for n in var.nodes : n.hostname => [
-      for f in local.node_required_features[n.hostname] : f
-      if contains(local.provisioned_atoms, f) && !contains(local.node_provided_atoms[n.hostname], f)
+  # Per-CAPABILITY symmetry (independent of node composition): validate each
+  # var.hardware_capabilities entry against its OWN provisioning_profiles. This
+  # is strictly stronger than a per-node-union check: a malformed capability can
+  # no longer be masked by a sibling capability that compensates it in the union
+  # (Codex review finding — the union-scope hole). It also validates capabilities
+  # that no node currently uses.
+  capability_provided_atoms = {
+    for cname, c in var.hardware_capabilities : cname => distinct(flatten([
+      for pname in c.provisioning_profiles : try(local.provisioning_profiles[pname].provides, [])
+    ]))
+  }
+  # forward: a PROVISIONED required-feature the capability's own profiles do not provide
+  capability_forward_violations = {
+    for cname, c in var.hardware_capabilities : cname => [
+      for f in c.requires_features : f
+      if contains(local.provisioned_atoms, f) && !contains(local.capability_provided_atoms[cname], f)
     ]
   }
-  # symmetry inverse: a provided atom not declared in requires_features
-  symmetry_inverse_violations = {
-    for n in var.nodes : n.hostname => [
-      for a in local.node_provided_atoms[n.hostname] : a if !contains(local.node_required_features[n.hostname], a)
+  # inverse: a profile-provided atom the capability omits from requires_features
+  capability_inverse_violations = {
+    for cname, c in var.hardware_capabilities : cname => [
+      for a in local.capability_provided_atoms[cname] : a if !contains(c.requires_features, a)
     ]
   }
   # conflicts (M3): same-name modules differing params; same-key sysctls/kargs differing value
@@ -214,8 +220,16 @@ locals {
       element(split("=", a), 0) => (a == element(split("=", a), 0) ? "" : trimprefix(a, "${element(split("=", a), 0)}="))...
     }
   }
+  # Kernel-arg keys that legitimately carry multiple distinct values on one
+  # cmdline (multi-value): two profiles contributing different values is NOT a
+  # conflict for these. Single-value keys (intel_iommu, iommu, …) still trip the
+  # guard. Keeps the union correct for console=/blacklist= without false errors.
+  _karg_multivalue_keys = ["console", "module_blacklist", "initcall_blacklist", "blacklist"]
   karg_conflicts = {
-    for n in var.nodes : n.hostname => [for k, vs in local._karg_by_key[n.hostname] : k if length(distinct(vs)) > 1]
+    for n in var.nodes : n.hostname => [
+      for k, vs in local._karg_by_key[n.hostname] : k
+      if length(distinct(vs)) > 1 && !contains(local._karg_multivalue_keys, k)
+    ]
   }
 }
 
@@ -243,12 +257,12 @@ resource "terraform_data" "composition_guards" {
       error_message = "A selected profile has variants but no entry for the node image's cpu_vendor. Offending (node => profiles): ${jsonencode({ for h, v in local.variant_mismatches : h => v if length(v) > 0 })}."
     }
     precondition {
-      condition     = length([for h, v in local.symmetry_forward_violations : h if length(v) > 0]) == 0
-      error_message = "A composite requires a PROVISIONED feature with no profile providing it (label without provisioning). Offending (node => atoms): ${jsonencode({ for h, v in local.symmetry_forward_violations : h => v if length(v) > 0 })}."
+      condition     = length([for c, v in local.capability_forward_violations : c if length(v) > 0]) == 0
+      error_message = "A hardware capability requires a PROVISIONED feature its own provisioning_profiles do not provide (label without provisioning; checked per-capability, not per-node-union). Offending (capability => atoms): ${jsonencode({ for c, v in local.capability_forward_violations : c => v if length(v) > 0 })}."
     }
     precondition {
-      condition     = length([for h, v in local.symmetry_inverse_violations : h if length(v) > 0]) == 0
-      error_message = "A selected profile provides an atom the composite omits from requires_features (provisioned but unlabeled). Offending (node => atoms): ${jsonencode({ for h, v in local.symmetry_inverse_violations : h => v if length(v) > 0 })}."
+      condition     = length([for c, v in local.capability_inverse_violations : c if length(v) > 0]) == 0
+      error_message = "A hardware capability's provisioning_profiles provide an atom it omits from requires_features (provisioned but unlabeled; per-capability). Offending (capability => atoms): ${jsonencode({ for c, v in local.capability_inverse_violations : c => v if length(v) > 0 })}."
     }
     precondition {
       condition     = length([for h, v in local.module_conflicts : h if length(v) > 0]) == 0
