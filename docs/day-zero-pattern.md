@@ -74,7 +74,8 @@ Talos ships an immutable Linux node image with a bundled Kubernetes
 control plane. Two artifacts in this repo participate in Layer 1:
 
 1. **Talos machine-config patches** (the consumer's `tofu/modules/talos-cluster`
-   call — `config_patches` plus per-class/per-node `config_patches`). These
+   call — `config_patches` plus per-node `config_patches`, including the ones
+   the module composes from each node's `image` + `hardware_capabilities`). These
    define kubelet args, kernel cmdline, install disk, and similar host-level
    inputs. They never touch Kubernetes resources directly.
 
@@ -205,7 +206,7 @@ context of its own cluster.
 # Layer 1 — Talos (OpenTofu cluster-lifecycle module; run from the consumer's
 # OpenTofu root that calls tofu/modules/talos-cluster — see the module README)
 tofu init                                            # provider + encrypted backend
-tofu apply                                           # PKI, per-class installer, config apply, etcd bootstrap
+tofu apply                                           # PKI, per-node installer, config apply, etcd bootstrap
 tofu output -raw kubeconfig   > kubeconfig           # admin kubeconfig
 tofu output -raw talosconfig  > talosconfig          # talosctl client config
 

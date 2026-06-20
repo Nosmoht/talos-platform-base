@@ -35,14 +35,14 @@ platform layer model (`talos-platform-docs` ADR-0009).
 - `kubernetes/base/infrastructure/`: base Helm values and namespace/kustomization manifests per infrastructure component.
 - `kubernetes/bootstrap/argocd/`: parameterized bootstrap templates (`*.tmpl`) consumed by `make argocd-bootstrap`.
 - `kubernetes/bootstrap/cilium/`: reference Cilium Helm values + `extras.yaml` (GatewayClass) for optional Day-2 self-management. Cilium itself is delivered by the `talos-cluster` module as a controlplane `inlineManifest` seed (`deploy_cilium`); the former consumer-side render path is retired.
-- `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-class Image-Factory installer, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root that is a thin `yamldecode` shim over the declarative `cluster.yaml` SoT. See [`docs/adr-opentofu-cluster-lifecycle.md`](docs/adr-opentofu-cluster-lifecycle.md) and [`docs/adr-cluster-yaml-sot.md`](docs/adr-cluster-yaml-sot.md).
+- `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-node composed Image-Factory installer — content-hash-deduped, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root that is a thin `yamldecode` shim over the declarative `cluster.yaml` SoT. See [`docs/adr-opentofu-cluster-lifecycle.md`](docs/adr-opentofu-cluster-lifecycle.md) and [`docs/adr-cluster-yaml-sot.md`](docs/adr-cluster-yaml-sot.md).
 - `policies/`: conftest Rego policies for kustomize-rendered manifests.
 - `scripts/`: cluster-agnostic validation, render and helper scripts.
 - `docs/`: platform-base reference docs. See [`docs/README.md`](docs/README.md) for the navigable map (architecture, contract cookbook, ADRs, workflow refs).
 
 ## Build, Test, and Development Commands
 
-- `make init-cluster-yaml`: copies `cluster.yaml.example` to `cluster.yaml` (gitignored) — the declarative cluster Source-of-Truth (identity, versions, endpoint, network, nodes, classes, machine-config patches, substrate). `make argocd-bootstrap` reads only the bootstrap-identity subset (`cluster.{name,overlay,target_revision}` + `repo.url`); the consumer's OpenTofu root is a thin `yamldecode` shim that maps the full file onto the `tofu/modules/talos-cluster` typed interface. tofu is the executor, not the SoT. See [`docs/adr-cluster-yaml-sot.md`](docs/adr-cluster-yaml-sot.md).
+- `make init-cluster-yaml`: copies `cluster.yaml.example` to `cluster.yaml` (gitignored) — the declarative cluster Source-of-Truth (identity, versions, endpoint, network, nodes, images, hardware-capabilities, machine-config patches, substrate). `make argocd-bootstrap` reads only the bootstrap-identity subset (`cluster.{name,overlay,target_revision}` + `repo.url`); the consumer's OpenTofu root is a thin `yamldecode` shim that maps the full file onto the `tofu/modules/talos-cluster` typed interface. tofu is the executor, not the SoT. See [`docs/adr-cluster-yaml-sot.md`](docs/adr-cluster-yaml-sot.md).
 - `make validate-gitops`: kustomize-render + SOPS check + conftest + kubeconform across all rendered manifests.
 - `make validate-kyverno-policies`: server-side validation of base Kyverno ClusterPolicies (PNI contract, reserved-labels, vault-ca-distribution, capability-validation).
 - `make mcp-install` / `make mcp-verify`: install and verify MCP server binaries.
@@ -203,7 +203,7 @@ this list.
 - **Namespace-anchored trust** — `capability-provider.<cap>` on a pod is valid iff its namespace carries `provide.<cap>: "true"`. No central tool-signature whitelist.
 - **AppProject** — ArgoCD RBAC boundary scoping repos/namespaces an Application can deploy to.
 - **Sync-wave** — ArgoCD annotation for deploy order: `-1` (AppProjects) → `0` (infra) → `1` (apps).
-- **Schematic** — Talos Image Factory spec embedding system extensions (and optional SBC overlay) into installer images. Derived per node `class` by the `tofu/modules/talos-cluster` module from the class `extensions` + `overlay` + `architecture`.
+- **Schematic** — Talos Image Factory spec embedding system extensions (and optional SBC overlay) into installer images. Derived per node by the `tofu/modules/talos-cluster` module: the node's `image` (baseline `extensions` + `overlay` + `architecture`) unioned with the `extensions` + `extraKernelArgs` of the provisioning profiles its `hardware_capabilities` resolve to; content-hash-deduped so identical nodes share one schematic.
 - **CCNP/CNP** — CiliumClusterwideNetworkPolicy / CiliumNetworkPolicy. Named `ccnp-*.yaml` / `cnp-*.yaml`.
 - **DRBD** — Distributed Replicated Block Device — LINSTOR replication layer for persistent storage.
 - **Multi-Source Application** — ArgoCD Application with `spec.sources[base, cluster]` consuming this base alongside consumer cluster manifests.
