@@ -31,15 +31,21 @@ command -v yq >/dev/null 2>&1 || { echo "ERROR: yq (mikefarah v4+) required" >&2
 # Registry: atom ids with discovery_source == talos-machine-config (= provisioned).
 registry_atoms="$(yq -r '.hardware_features[] | select(.discovery_source == "talos-machine-config") | .id' "$REGISTRY" | sort -u)"
 
+# Flatten newlines first so a multi-line `provides = [ ... ]` list is still
+# matched as a single bracket body (grep -oE is line-oriented; without this a
+# multi-line list silently drops atoms and fails closed with a confusing set
+# mismatch instead of comparing the real set).
+profiles_flat="$(tr '\n' ' ' < "$PROFILES")"
+
 # Catalog: atoms appearing inside any profile `provides = [ ... ]` list. The grep
 # extracts the bracket body, then the quoted kebab-case ids within it.
-catalog_atoms="$(grep -oE 'provides[[:space:]]*=[[:space:]]*\[[^]]*\]' "$PROFILES" \
+catalog_atoms="$(printf '%s' "$profiles_flat" | grep -oE 'provides[[:space:]]*=[[:space:]]*\[[^]]*\]' \
   | grep -oE '"[a-z0-9-]+"' | tr -d '"' | sort -u)"
 
 # Kebab-case guard: any provided token that is NOT kebab-case would have been
 # dropped by the extraction above, so a malformed token surfaces as a set
 # mismatch. Additionally flag a literal non-kebab provides entry for a clear msg.
-malformed="$(grep -oE 'provides[[:space:]]*=[[:space:]]*\[[^]]*\]' "$PROFILES" \
+malformed="$(printf '%s' "$profiles_flat" | grep -oE 'provides[[:space:]]*=[[:space:]]*\[[^]]*\]' \
   | grep -oE '"[^"]*"' | tr -d '"' | grep -vE '^[a-z0-9-]+$' || true)"
 if [ -n "$malformed" ]; then
   echo "FAIL: non-kebab-case provided atom id(s) in $PROFILES:" >&2
