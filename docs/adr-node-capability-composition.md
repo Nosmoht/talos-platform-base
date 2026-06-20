@@ -159,10 +159,13 @@ tool-capability ids (`storage-replicated` ≠ the Layer-A `block-storage-replica
 ### Provisioned vs detected (resolution invariant)
 
 - **Provisioned atoms** — `discovery_source: talos-machine-config`
-  (`drbd-kernel-module`, `iommu-enabled`). If a composite lists such an atom
-  in `requires_features`, the same composite **MUST** include a
-  `provisioning_profile` whose provisions satisfy it, else **hard plan-time
-  error** (no label without provisioning). γ' emits the
+  (`drbd-kernel-module`, `iommu-enabled`). The module identifies these
+  self-contained as the union of all catalog profiles' `provides` — it does NOT
+  read the registry at plan time; that set equals the registry's
+  `talos-machine-config` atoms by construction, guarded by a CI cross-reference
+  gate. If a composite lists such an atom in `requires_features`, the same
+  composite **MUST** include a `provisioning_profile` whose provisions satisfy
+  it, else **hard plan-time error** (no label without provisioning). γ' emits the
   `platform.io/hardware-feature.<atom>` label for these.
 - **Detected atoms** — `discovery_source: nfd | device-plugin`
   (`vt-x-or-amd-v`, `kvm-kernel-module`, `nvidia-gpu`, `local-nvme-block-device`,
@@ -179,13 +182,17 @@ capability that *does* provision IOMMU.
 ### cluster.yaml shape
 
 ```yaml
-# BASE-OWNED provisioning-profile catalog. This block is MODULE-EMBEDDED (a
-# typed module input under tofu/, like var.classes) — NOT a consumer cluster.yaml
-# field. Consumers reference profiles by id from a composite's
+# BASE-OWNED provisioning-profile catalog. This is a MODULE-LOCAL constant (a
+# `local` in tofu/modules/talos-cluster, with a documented shape validated at
+# plan time by `check` blocks) — NOT a consumer field and NOT a `var` a consumer
+# could override. Consumers reference profiles by id from a composite's
 # provisioning_profiles; they cannot author or redefine a profile (closes the
-# consumer-redefine vector mechanically). Shown here for reference. `provides`
-# names the provisioned (talos-machine-config) atom a profile satisfies — used
-# for label emission + the symmetry check, NOT for selection.
+# consumer-redefine vector mechanically; the catalog also lives in tofu/** so the
+# hard-constraints-check greps cover it). `provides` names the provisioned atom a
+# profile satisfies — used for label emission + the symmetry check, NOT for
+# selection. An atom is "provisioned" iff some catalog profile `provides` it
+# (self-contained; equal by construction to the registry's
+# discovery_source: talos-machine-config set — a CI gate guards the equivalence).
 provisioning_profiles:
   drbd:
     provides: [drbd-kernel-module]
@@ -198,12 +205,16 @@ provisioning_profiles:
       intel: {kernel_args: [intel_iommu=on, iommu=pt]}
       amd:   {kernel_args: [amd_iommu=on, iommu=pt]}
   nvidia-lts:                            # no `provides`: nvidia-gpu is NFD-detected presence,
-    extensions: [siderolabs/nonfree-kmod-nvidia-lts, siderolabs/nvidia-container-toolkit-lts]  # not a provisioned atom
+    extensions: [siderolabs/nvidia-open-gpu-kernel-modules-lts, siderolabs/nvidia-container-toolkit-lts]  # not a provisioned atom; name MUST match the device-plugin nodeAffinity selector
     kernel_modules: [{name: nvidia}, {name: nvidia_uvm}, {name: nvidia_drm}, {name: nvidia_modeset}]
     sysctls: {net.core.bpf_jit_harden: "1"}
 
 # CONSUMER-DEFINED composites: requires_features (label/scheduling) AND
-# provisioning_profiles (explicit) are SEPARATE lists.
+# provisioning_profiles (explicit) are SEPARATE lists. `emits_label` MUST be in
+# the platform.io/hardware-capability.* namespace — the reserved Layer-C
+# platform.io/hardware-feature.* labels are emitted ONLY from a selected profile's
+# base-controlled `provides`, never from a consumer emits_label (closes the
+# reserved-label-forgery vector; plan-time validated).
 hardware-capabilities:
   storage-replicated:
     requires_features: [drbd-kernel-module]          # provisioned atom -> profile required
@@ -222,11 +233,17 @@ hardware-capabilities:
     provisioning_profiles: [nvidia-lts, iommu]        # -> iommu-enabled MUST be declared (symmetry); matches three-layer ADR
     emits_label: platform.io/hardware-capability.compute-gpu-nvidia
 
-# non-composable base-image axis: arch + CPU vendor (+ optional SBC overlay).
+# non-composable base-image axis: arch + CPU vendor + image-baseline extensions
+# (+ optional SBC overlay). `extensions` here are baked on EVERY node of the image
+# regardless of capabilities — baseline content that is NOT a capability (CPU
+# microcode, NIC/GPU firmware, base tooling, a default runtime sandbox). The
+# node's effective extension set = image.extensions ∪ selected-profile extensions,
+# so a plain controlplane (no capabilities) still gets microcode/firmware and
+# baseline content stays out of the 2^N capability matrix.
 images:
-  intel-amd64: {architecture: amd64, cpu_vendor: intel}
-  amd-amd64:   {architecture: amd64, cpu_vendor: amd}
-  rpi:         {architecture: arm64, cpu_vendor: arm, overlay: {name: rpi_generic, image: siderolabs/sbc-raspberrypi}}
+  intel-amd64: {architecture: amd64, cpu_vendor: intel, extensions: [siderolabs/intel-ucode, siderolabs/i915, siderolabs/nvme-cli, siderolabs/gvisor]}
+  amd-amd64:   {architecture: amd64, cpu_vendor: amd,   extensions: [siderolabs/amd-ucode, siderolabs/nvme-cli, siderolabs/gvisor]}
+  rpi:         {architecture: arm64, cpu_vendor: arm,   extensions: [], overlay: {name: rpi_generic, image: siderolabs/sbc-raspberrypi}}
 
 nodes:
   - {hostname: hci-1, role: worker, image: intel-amd64, hardware_capabilities: [storage-replicated, compute-virt-passthrough]}
@@ -255,7 +272,8 @@ Per node, the module computes:
 4. **Union into two sinks**:
    - **Image Factory schematic** (drives the installer image; a change is a
      Day-2 `talosctl upgrade` re-image): `customization.systemExtensions.officialExtensions`
-     (∪ `extensions`), `customization.extraKernelArgs` (∪ `kernel_args`),
+     (the node's `images.<id>.extensions` baseline ∪ each selected profile's
+     `extensions`), `customization.extraKernelArgs` (∪ `kernel_args`),
      top-level `overlay` (from the image — profiles cannot set an overlay).
    - **Machine config** (apply-config; no re-image for labels/sysctls):
      `machine.kernel.modules` (∪ `kernel_modules`), `machine.sysctls`
@@ -304,6 +322,19 @@ Per node, the module computes:
   remains the operator's assertion — no runtime probe (matches the registry
   predicate framing). Documented limitation. (x86-only today; an arm64 SMMU
   passthrough profile is a future catalog addition, not a model change.)
+- **Image-baseline vs capability extensions.** `images.<id>.extensions` carry
+  baseline image content that is NOT a capability (CPU microcode, NIC/GPU
+  firmware, base tooling, a default runtime sandbox) and is baked on every node
+  of the image; capability-driven extensions come from selected profiles, and the
+  effective set is the union. This keeps a plain controlplane from silently losing
+  baseline content (e.g. CPU microcode — a security regression) just because it
+  declares no capabilities, and keeps baseline content out of the 2^N matrix.
+- **emits_label is namespace-constrained.** A consumer composite's `emits_label`
+  MUST be `platform.io/hardware-capability.*`. The reserved Layer-C
+  `platform.io/hardware-feature.*` labels are emitted ONLY from a selected
+  profile's base-controlled `provides` — never from a consumer-supplied
+  `emits_label` — so a consumer cannot launder a forged reserved label through
+  `machine.nodeLabels` (plan-time validated).
 - **Base-catalog authority + the residual supply-chain vector.** The
   provisioning catalog is base-owned; a consumer selects profiles but cannot
   redefine a profile's bundle (closes the *consumer-redefine* vector). It does
@@ -311,7 +342,9 @@ Per node, the module computes:
   resolved through the same digest-unpinned Image Factory path the module
   already documents as a residual for the Cilium chart
   (`variables.tf` ~382–384). Same residual, tracked with that one — this ADR
-  does not claim to close it.
+  does not claim to close it. NOTE: the D2 change routes boot-time kernel args
+  through this same unpinned path, so the residual's blast radius now includes the
+  kernel command line, not only extensions.
 - **γ'-generated fields vs raw `config_patches` precedence.** Per the current
   apply ordering (`main.tf` ~536–542), node/class `config_patches` apply
   **last** and can override γ'-generated `machine.kernel.modules` / sysctls /
@@ -382,7 +415,8 @@ Per node, the module computes:
 |---|---|
 | `class.architecture` | `images.<id>.architecture` |
 | `class.overlay` | `images.<id>.overlay` |
-| `class.extensions` | a `provisioning_profile.extensions` selected via a composite |
+| `class.extensions` baseline (microcode/firmware/tooling/runtime — e.g. intel-ucode, i915, nvme-cli, gvisor) | `images.<id>.extensions` (image baseline, baked on every node of the image) |
+| `class.extensions` capability-specific (drbd, nvidia) | a `provisioning_profile.extensions` selected via a composite |
 | `class.config_patches` IOMMU/boot kernel args | a profile's `kernel_args` (→ schematic) |
 | `class.config_patches` `machine.kernel.modules` (forward-looking — no live consumer has this today) | a profile's `kernel_modules` |
 | `class.config_patches` other | all-nodes / role / node `config_patches` (unchanged) |
@@ -453,8 +487,41 @@ Round 2 → Round 3 (final adversarial pass) → this revision:
 - **debugfs grep placement self-contradiction** → the catalog is pinned
   `tofu/`-embedded, within the existing grep scope; the contradiction is
   removed.
-- **Catalog-ownership ambiguity** → stated module-embedded (a typed module
-  input, not a consumer `cluster.yaml` field).
+- **Catalog-ownership ambiguity** → stated module-local constant (not a consumer
+  `cluster.yaml` field; see Round 4 for the typing reconciliation).
+
+Round 3 → Round 4 (implementation-plan review: reviewer + team-red) → this revision:
+
+- **Baseline non-capability extensions had no model home (CRITICAL, verified):**
+  every x86 node today carries gvisor / i915 / intel-ucode / nvme-cli as baseline;
+  the capability-only extension model dropped them on migration (a silent
+  CPU-microcode security regression) and broke the "no re-image for an unchanged
+  controlplane" claim (its extension set would change). Fixed by adding
+  `images.<id>.extensions` (image baseline); effective extensions = image baseline
+  ∪ profile extensions.
+- **Catalog NVIDIA package name was wrong (CRITICAL, verified):** the example used
+  `siderolabs/nonfree-kmod-nvidia-lts`, but this repo's device-plugin / dcgm
+  nodeAffinity select `extensions.talos.dev/nvidia-open-gpu-kernel-modules-lts`
+  (and `nonfree-kmod-nvidia` appears nowhere). Corrected — a name mismatch leaves
+  GPUs unadvertised and workloads Pending.
+- **emits_label forgery (HIGH):** consumer `emits_label` is now namespace-constrained
+  to `platform.io/hardware-capability.*`; reserved Layer-C `hardware-feature.*`
+  labels come only from base-controlled profile `provides`.
+- **Catalog typing (HIGH):** the catalog is a module-local constant with a
+  plan-time-validated documented shape (recovering the type checks a bare `local`
+  would otherwise lose), reconciling the earlier "typed module input" wording.
+- **Provisioned-atom definition (MEDIUM):** defined self-contained as "provided by
+  some catalog profile," equal to the registry's `talos-machine-config` set by
+  construction and guarded by a cross-reference gate — the module does not read the
+  registry at plan time.
+- **HCL feasibility / determinism (MEDIUM):** the schematic/installer `for_each`
+  keys on the content-hash map (plan-time-known), reading `schematic[hash].id` as a
+  value, never as a `for_each` key (avoids the resource-attribute-as-key plan
+  error); conflict detection runs before dedup; nested `parameters` lists are
+  sorted; kernel args parse on the first `=`. These are implementation ACs with
+  determinism + hard-error tests.
+- **Supply-chain residual widened:** kernel args now ride the unpinned
+  Image-Factory path; the residual note covers the cmdline, not only extensions.
 
 ## Pros and Cons of the Options
 
@@ -516,9 +583,12 @@ not provision (step-3 invariant broken); a composite's listed profile fails to
 resolve a variant for the node's `cpu_vendor` without a hard error
 (step-2 broken); a node is provisioned for an atom (a selected profile's
 `provides`) that the composite omits from `requires_features` (symmetry
-invariant broken); or a node with unchanged effective provisioning re-images
-on the MAJOR-tag adoption (migration criterion). Each is a mechanical check in
-the implementation issue.
+invariant broken); a node loses a baseline image extension
+(microcode/firmware/tooling) on migration (extension-set-preservation broken); a
+GPU node bakes an NVIDIA extension whose Talos label does not match the
+device-plugin nodeAffinity selector (capability dead-on-arrival); or a node with
+unchanged effective provisioning re-images on the MAJOR-tag adoption (migration
+criterion). Each is a mechanical check in the implementation issue.
 
 ## Links
 
