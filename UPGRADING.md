@@ -56,8 +56,8 @@ Boot kernel args now bake into the Image Factory schematic
 
 - **`var.classes` and `node.class` are removed.** Map your `cluster.yaml`:
   - `class.architecture` / `class.overlay` → `images.<id>.architecture` / `.overlay`
-  - `class.extensions` **baseline** (microcode/firmware/tooling/runtime, e.g.
-    `intel-ucode`/`i915`/`nvme-cli`/`gvisor`) → `images.<id>.extensions`
+  - `class.extensions` **baseline** (microcode/firmware/tooling/runtime — for
+    example `intel-ucode`/`i915`/`nvme-cli`/`gvisor`) → `images.<id>.extensions`
   - `class.extensions` **capability-specific** (drbd, nvidia) → a base
     provisioning profile selected via a `hardware_capabilities` composite
   - `class.config_patches` IOMMU/boot kernel args → the `iommu` profile (now
@@ -66,8 +66,9 @@ Boot kernel args now bake into the Image Factory schematic
 - **`installer_images` output is now keyed by node hostname** (was per class).
   Update any consumer `talos:upgrade:cluster` task that reads it from tfplan JSON.
 - **One-time re-image is expected** for nodes whose kernel-arg provisioning is
-  corrected (e.g. the kubevirt IOMMU that was a no-op now actually applies). A
-  node whose *effective provisioning is unchanged* (e.g. a plain controlplane
+  corrected (for example, the kubevirt IOMMU that was a no-op now actually
+  applies). A node whose *effective provisioning is unchanged* (for example, a
+  plain controlplane
   whose baseline extensions are preserved in its `image`) keeps a stable
   schematic hash and does **not** re-image. Verify with `tofu plan` before the
   MAJOR-tag adoption; the re-image rolls out via the usual out-of-band

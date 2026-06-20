@@ -325,10 +325,10 @@ runtime-mutable config (Hubble, L2/BGP) is Day-2 Cilium self-management.
 - Per-node module-injected config is the hostname, the composed installer image,
   and the generated capability patch (kernel modules / sysctls / nodeLabels).
   Everything else cluster-specific comes from the caller's patches.
-- The installer image is always `metal-installer` (NEVER
-  `metal-installer-secureboot`, per the base `AGENTS.md` Hard Constraint). ARM
-  SBC images use `architecture = "arm64"` + an `overlay`; the platform stays
-  `metal`.
+- The installer image is always the non-SecureBoot `metal-installer` (the
+  SecureBoot installer variant is forbidden per the base `AGENTS.md` Hard
+  Constraint — boot loops). ARM SBC images use `architecture = "arm64"` + an
+  `overlay`; the platform stays `metal`.
 - **Greenfield by default; adopting a running cluster needs `tofu import`.**
   The module *generates* `talos_machine_secrets`, so a naive apply against a
   live cluster would regenerate PKI and re-bootstrap etcd. To adopt an

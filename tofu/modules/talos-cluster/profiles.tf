@@ -3,7 +3,7 @@
 # MODULE-LOCAL constant — NOT a `var`, so a consumer can select profiles by id
 # from a composite's `provisioning_profiles` but cannot author or redefine one
 # (closes the consumer-redefine vector mechanically). It lives in tofu/** so the
-# hard-constraints-check greps (SecureBoot, debugfs=off) cover any kernel_args it
+# hard-constraints-check greps (SecureBoot, debugfs) cover any kernel_args it
 # carries. A profile binds the parts of a PROVISIONED hardware feature so they
 # cannot drift:
 #
