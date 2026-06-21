@@ -83,7 +83,7 @@ release.)
   is enforced in module code (installer-URL selection + the `secureboot_patches`
   precondition) AND CI. D2 and D3 are enforced by `hard-constraints-check.yml`:
   the `debugfs=off` step (over `kubernetes/**`+`tofu/**`) and the forbidden-kinds
-  step (`^kind:\s*(Ingress|Endpoints)\b` over `kubernetes/**`). There is no
+  step (`^kind:[[:space:]]*(Ingress|Endpoints)\b` over `kubernetes/**`). There is no
   CI-gating follow-up to do.
 
 ## Validation
@@ -95,7 +95,7 @@ stays correct?
   three gate steps red-on-violation — (D1) SecureBoot step greps
   `(metal-secureboot|installer-secureboot)` over `tofu/**`; (D2) kernel-parameter
   step greps `debugfs=off` over `kubernetes/**`+`tofu/**`; (D3) forbidden-kinds
-  step greps `^kind:\s*(Ingress|Endpoints)\b` over `kubernetes/**`. The module
+  step greps `^kind:[[:space:]]*(Ingress|Endpoints)\b` over `kubernetes/**`. The module
   `secureboot_patches` precondition rejects a `-secureboot` `config_patch` at
   plan time. The three `AGENTS.md §Hard Constraints` back-links resolve to this
   file.

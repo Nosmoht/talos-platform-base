@@ -177,9 +177,9 @@ These are universal cluster invariants. CLAUDE.md imports this file via
 without repo-maintainer approval.
 
 - **No SecureBoot** — `metal-installer-secureboot`, the bare `metal-secureboot`, and the Image-Factory `installer-secureboot` URL form all cause boot loops; always use the non-secureboot installer. The `tofu/modules/talos-cluster` module enforces this in code (selects `urls.installer`, never `urls.installer_secureboot`). CI gate: `hard-constraints-check.yml` greps `(metal-secureboot|installer-secureboot)` over `tofu/**`. Decision: [`docs/adr-substrate-hard-constraints.md`](docs/adr-substrate-hard-constraints.md).
-- **No `debugfs=off`** — causes "failed to create root filesystem" boot loop in Talos. Decision: [`docs/adr-substrate-hard-constraints.md`](docs/adr-substrate-hard-constraints.md).
+- **No `debugfs=off`** — causes "failed to create root filesystem" boot loop in Talos (with Cilium). Decision: [`docs/adr-substrate-hard-constraints.md`](docs/adr-substrate-hard-constraints.md).
 - **Gateway API only** — no `kind: Ingress` or Ingress controllers; use HTTPRoute/TLSRoute
-- **EndpointSlices only** — `kind: Endpoints` deprecated since Kubernetes v1.33.0; use `EndpointSlice`. Decision: [`docs/adr-substrate-hard-constraints.md`](docs/adr-substrate-hard-constraints.md).
+- **EndpointSlices only** — `kind: Endpoints` deprecated since Kubernetes v1.33.0; use `EndpointSlice` (GA since v1.21). Decision: [`docs/adr-substrate-hard-constraints.md`](docs/adr-substrate-hard-constraints.md).
 - **Commit and push every successful tested change immediately** — do not batch at end of session
 - **NEVER `kubectl apply` ArgoCD-managed resources** — commit to git, push, let ArgoCD sync; only exception: one-time bootstrap AppProjects (`kubernetes/bootstrap/`)
 - **Kubernetes recommended labels on all resources** — `app.kubernetes.io/{name,instance,version,component,part-of,managed-by}`
