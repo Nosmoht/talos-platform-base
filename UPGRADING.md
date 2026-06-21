@@ -42,6 +42,46 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
+## Next MAJOR (forthcoming) — node-capability composition (breaking)
+
+The `tofu/modules/talos-cluster` interface changes: the monolithic per-node
+`class` is replaced by a composable `image` + a SET of `hardware_capabilities`.
+Boot kernel args now bake into the Image Factory schematic
+(`customization.extraKernelArgs`) — the v1.10+ UKI correctness fix; the old
+`machine.install.extraKernelArgs` path was a silent no-op. See
+[`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md)
+(the §Migration table is authoritative).
+
+### Breaking changes (consumer action required)
+
+- **`var.classes` and `node.class` are removed.** Map your `cluster.yaml`:
+  - `class.architecture` / `class.overlay` → `images.<id>.architecture` / `.overlay`
+  - `class.extensions` **baseline** (microcode/firmware/tooling/runtime — for
+    example `intel-ucode`/`i915`/`nvme-cli`/`gvisor`) → `images.<id>.extensions`
+  - `class.extensions` **capability-specific** (drbd, nvidia) → a base
+    provisioning profile selected via a `hardware_capabilities` composite
+  - `class.config_patches` IOMMU/boot kernel args → the `iommu` profile (now
+    actually bakes); other `class.config_patches` → role / node `config_patches`
+  - `node.class` → `node.image` + `node.hardware_capabilities: [...]`
+- **`installer_images` output is now keyed by node hostname** (was per class).
+  Update any consumer `talos:upgrade:cluster` task that reads it from tfplan JSON.
+- **One-time re-image is expected** for nodes whose kernel-arg provisioning is
+  corrected (for example, the kubevirt IOMMU that was a no-op now actually
+  applies). A node whose *effective provisioning is unchanged* (for example, a
+  plain controlplane
+  whose baseline extensions are preserved in its `image`) keeps a stable
+  schematic hash and does **not** re-image. Verify with `tofu plan` before the
+  MAJOR-tag adoption; the re-image rolls out via the usual out-of-band
+  `talosctl upgrade`. To see *exactly which* nodes re-image, diff
+  `tofu output node_schematic_hashes` before and after — every changed hash is a
+  re-imaging node (see the module README "Re-image blast-radius").
+
+A worked migration is the `tofu/modules/talos-cluster/examples/homelab/`
+fixture (its `kubevirt` IOMMU is the live no-op this fixes) and the module README
+Usage block.
+
+---
+
 ## Pre-`v0.2.0` MINOR releases
 
 ### `v0.1.0` (2026-03-XX) — initial public release

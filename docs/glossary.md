@@ -82,14 +82,18 @@ agent-context loading and links back here for the full definition.
 
 - **Schematic** — Talos Image Factory spec embedding system extensions
   (and an optional SBC board overlay) into an installer image. Derived per
-  node `class` by the `tofu/modules/talos-cluster` module from the class
-  `extensions` + `overlay` + `architecture`; resolved schematic IDs are
-  exposed via the module's `schematic_ids` output.
+  node by the `tofu/modules/talos-cluster` module from the node's `image`
+  (baseline `extensions` + `overlay` + `architecture`) unioned with the
+  `extensions` + `extraKernelArgs` of the provisioning profiles its
+  `hardware_capabilities` resolve to; identical nodes are content-hash-deduped
+  to one schematic, and resolved schematic IDs are exposed via the module's
+  `schematic_ids` output.
 
 - **DRBD** — Distributed Replicated Block Device. LINSTOR's replication
-  layer for persistent storage. Provisioned as a Talos system extension on
-  the relevant node `class` (e.g. `siderolabs/drbd` in
-  `classes[*].extensions`).
+  layer for persistent storage. Provisioned as a Talos system extension via
+  the base `drbd` provisioning profile, selected by a node's
+  `storage-replicated` hardware capability (the profile contributes
+  `siderolabs/drbd` to the node's schematic extensions).
 
 ## Two-layer capability vocabulary (proposed)
 

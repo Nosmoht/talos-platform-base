@@ -40,24 +40,31 @@ module "homelab" {
   dual_stack                        = try(local.cfg.cluster.dual_stack, false)
   allow_scheduling_on_controlplanes = try(local.cfg.cluster.allow_scheduling_on_controlplanes, false)
 
-  # --- Topology (node + class config_patches re-encoded to YAML strings) ---
+  # --- Topology (node config_patches re-encoded to YAML strings) ---
   nodes = [for n in local.cfg.nodes : {
-    hostname       = n.hostname
-    ip             = n.ip
-    role           = n.role
-    class          = try(n.class, "standard")
-    config_patches = [for p in try(n.config_patches, []) : yamlencode(p)]
+    hostname              = n.hostname
+    ip                    = n.ip
+    role                  = n.role
+    image                 = n.image
+    hardware_capabilities = try(n.hardware_capabilities, [])
+    config_patches        = [for p in try(n.config_patches, []) : yamlencode(p)]
   }]
 
-  classes = { for name, c in local.cfg.classes : name => {
-    architecture = try(c.architecture, "amd64")
-    extensions   = try(c.extensions, [])
-    overlay = try(c.overlay, null) == null ? null : {
-      name    = c.overlay.name
-      image   = c.overlay.image
-      options = try(c.overlay.options, null)
+  images = { for name, img in local.cfg.images : name => {
+    architecture = try(img.architecture, "amd64")
+    cpu_vendor   = img.cpu_vendor
+    extensions   = try(img.extensions, [])
+    overlay = try(img.overlay, null) == null ? null : {
+      name    = img.overlay.name
+      image   = img.overlay.image
+      options = try(img.overlay.options, null)
     }
-    config_patches = [for p in try(c.config_patches, []) : yamlencode(p)]
+  } }
+
+  hardware_capabilities = { for name, c in try(local.cfg["hardware-capabilities"], {}) : name => {
+    requires_features     = try(c.requires_features, [])
+    provisioning_profiles = try(c.provisioning_profiles, [])
+    emits_label           = c.emits_label
   } }
 
   # --- Cluster-wide + role patches ---

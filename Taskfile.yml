@@ -66,6 +66,11 @@ tasks:
     desc: "#123 fence — Cilium/ArgoCD/CRD helm renders must be consumed only via the frozen terraform_data (ignore_changes), never the live data.helm_template"
     cmd: scripts/check-render-determinism.sh
 
+  test:
+    desc: "tofu test — node-capability composition regression suite (dedup/determinism + hard-error guards). NETWORK: resolves the live Image Factory, so it is NOT part of ci (which stays offline)."
+    cmd: |
+      cd tofu/modules/talos-cluster && tofu init -input=false >/dev/null && tofu test
+
   ci:
     desc: Full local tofu validation (fmt-check + validate + lint + render-determinism fence) — mirrors CI
     cmds:

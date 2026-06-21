@@ -4,7 +4,7 @@
 # out of scope (see lifecycle/ipxe + the DHCP/next-server setup).
 #
 # Flow:
-#   image-factory per class (extensions -> schematic -> installer URL)
+#   image-factory per distinct schematic (extensions+kargs -> schematic -> installer URL)
 #     -> machine_secrets (PKI)
 #       -> machine_configuration (per machine_type, with k8s/talos version + patches)
 #         -> configuration_apply (per node, with hostname + install.image patch)
@@ -25,10 +25,6 @@ locals {
 
   nodes_by_hostname = { for n in var.nodes : n.hostname => n }
 
-  # Node classes actually referenced by var.nodes. Used to verify each class
-  # has a matching entry in var.classes before installer URLs are looked up.
-  used_classes = distinct([for n in var.nodes : n.class])
-
   # OS version running on the nodes. Defaults to talos_version (= schema-pin)
   # for new clusters; bump talos_install_version for an OS upgrade while
   # keeping talos_version fixed at bootstrap.
@@ -46,7 +42,6 @@ locals {
     var.config_patches,
     var.controlplane_config_patches,
     var.worker_config_patches,
-    flatten([for c in var.classes : c.config_patches]),
     flatten([for n in var.nodes : n.config_patches]),
   )
   # Match the hyphenated SecureBoot installer forms (metal / installer / metal-installer
@@ -54,20 +49,6 @@ locals {
   # deliberately NOT written here — they would trip the repo's own
   # hard-constraints-check grep, which cannot tell a guard from a usage.
   secureboot_patches = [for p in local.all_caller_patches : p if can(regex("-secureboot", p))]
-}
-
-# Defensive cross-check: every class referenced by a node must be defined in
-# var.classes. Failing here gives a clearer error than a missing map key.
-check "node_class_defined" {
-  assert {
-    condition = alltrue([
-      for c in local.used_classes : contains(keys(var.classes), c)
-    ])
-    error_message = format(
-      "Every node.class must be a key in var.classes. Used by nodes: %v. Defined in classes: %v.",
-      local.used_classes, keys(var.classes),
-    )
-  }
 }
 
 # ---------------------------------------------------------------------------
@@ -331,21 +312,24 @@ resource "terraform_data" "cilium_render" {
 }
 
 # ---------------------------------------------------------------------------
-# Image-Factory: per-class custom installer image
+# Image-Factory: per distinct-schematic custom installer image
 # ---------------------------------------------------------------------------
-# Per class, resolve the extension package names against the Talos Image
-# Factory (gets concrete versions for var.talos_version), commit them to a
-# schematic (with an optional SBC board overlay), and derive the
-# metal-installer URL at the class's architecture. Empty extension lists yield
-# the default Talos installer (no system extensions) for that class.
+# Per distinct composed schematic (content-hashed in composition.tf), resolve the
+# extension package names against the Talos Image Factory (concrete versions for
+# the install version), commit them to a schematic (extensions + extraKernelArgs +
+# optional SBC overlay), and derive the metal-installer URL per (schematic, arch).
+# Empty extension sets yield the default Talos installer (no system extensions).
 #
 # Hard Constraint (base AGENTS.md): never use the SecureBoot installer image.
 # secure_boot defaults to false in talos_image_factory_urls — we keep it that
 # way. ARM single-board computers (e.g. Raspberry Pi) use architecture =
 # "arm64" plus an overlay; the platform stays "metal".
 
-data "talos_image_factory_extensions_versions" "per_class" {
-  for_each = var.classes
+# Per DISTINCT schematic (content-hash from local.schematics, composition.tf), not
+# per class: identical nodes share one schematic + installer (auto-dedup), unique
+# nodes get unique images — no 2^N hand-authored classes.
+data "talos_image_factory_extensions_versions" "per_schematic" {
+  for_each = local.schematics
 
   # Use the OS version actually being installed — extension package versions
   # are pinned per Talos release in the factory.
@@ -357,46 +341,55 @@ data "talos_image_factory_extensions_versions" "per_class" {
 
 locals {
   # Exact-match the provider's substring-matching extension resolution back to
-  # the declared set: `filters.names` matches by substring, so a filter of
-  # `siderolabs/gvisor` also resolves `siderolabs/gvisor-debug`. Intersecting
-  # with the declared names bakes exactly what each class asked for. An empty
-  # class `extensions` list yields [] (contains over an empty set is always
-  # false), so no explicit length guard is needed.
-  official_extensions_by_class = {
-    for k, c in var.classes : k => [
-      for ext in data.talos_image_factory_extensions_versions.per_class[k].extensions_info :
-      ext.name if contains(c.extensions, ext.name)
+  # the declared (unioned) set: `filters.names` matches by substring, so a filter
+  # of `siderolabs/gvisor` also resolves `siderolabs/gvisor-debug`. Intersecting
+  # with the declared names bakes exactly what the union asked for. An empty
+  # extension set yields [] (contains over an empty set is always false).
+  official_extensions_by_schematic = {
+    for h, s in local.schematics : h => [
+      for ext in data.talos_image_factory_extensions_versions.per_schematic[h].extensions_info :
+      ext.name if contains(s.extensions, ext.name)
     ]
   }
 }
 
-resource "talos_image_factory_schematic" "per_class" {
-  for_each = var.classes
+resource "talos_image_factory_schematic" "this" {
+  for_each = local.schematics
 
-  # A declared extension that does not resolve to an exactly-matching canonical
+  # A unioned extension that does not resolve to an exactly-matching canonical
   # Image Factory package — a typo, or a non-canonical short name like `gvisor`
   # that the substring filter expands but the exact intersection drops — would
   # otherwise silently bake an empty/partial extension set. Fail loudly instead.
   lifecycle {
     precondition {
-      condition     = length(distinct(each.value.extensions)) == length(local.official_extensions_by_class[each.key])
-      error_message = "class '${each.key}': not all declared extensions resolved to canonical Image Factory packages for Talos ${local.install_version}. Declared ${jsonencode(distinct(each.value.extensions))}, resolved ${jsonencode(local.official_extensions_by_class[each.key])}. Use canonical names such as 'siderolabs/gvisor'."
+      # Set-equality (not just count): declared is already distinct, the resolver
+      # filters to declared (resolved ⊆ declared), so count-match PLUS resolved
+      # having no duplicates ⟹ resolved set == declared set. The no-dup clause
+      # closes the team-red hole where a duplicate canonical name balances the
+      # count while a declared extension is silently dropped.
+      condition = (
+        length(distinct(each.value.extensions)) == length(local.official_extensions_by_schematic[each.key]) &&
+        length(local.official_extensions_by_schematic[each.key]) == length(distinct(local.official_extensions_by_schematic[each.key]))
+      )
+      error_message = "schematic '${each.key}': not all unioned extensions resolved to canonical Image Factory packages for Talos ${local.install_version}. Declared ${jsonencode(distinct(each.value.extensions))}, resolved ${jsonencode(local.official_extensions_by_schematic[each.key])}. Use canonical names such as 'siderolabs/gvisor'."
     }
   }
 
-  # systemExtensions for every class; overlay block only for classes that
-  # declare one (SBC boards such as Raspberry Pi).
+  # systemExtensions (resolved exact-match) + extraKernelArgs (the v1.10+
+  # UKI-correct boot-arg sink, only when non-empty) + overlay (only when present).
   schematic = yamlencode(merge(
     {
-      customization = {
-        systemExtensions = {
-          # Resolved + exact-matched in local.official_extensions_by_class (see
-          # the locals block above): the provider's filters.names substring match
-          # would otherwise pull in unrequested extensions such as gvisor-debug.
-          # An empty class `extensions` list yields [] (bakes no extensions).
-          officialExtensions = local.official_extensions_by_class[each.key]
-        }
-      }
+      customization = merge(
+        {
+          systemExtensions = {
+            # Resolved + exact-matched in local.official_extensions_by_schematic:
+            # the provider's filters.names substring match would otherwise pull in
+            # unrequested extensions such as gvisor-debug. Empty set bakes nothing.
+            officialExtensions = local.official_extensions_by_schematic[each.key]
+          }
+        },
+        length(each.value.kernel_args) > 0 ? { extraKernelArgs = each.value.kernel_args } : {},
+      )
     },
     each.value.overlay == null ? {} : {
       overlay = merge(
@@ -410,16 +403,17 @@ resource "talos_image_factory_schematic" "per_class" {
   ))
 }
 
-data "talos_image_factory_urls" "per_class" {
-  for_each = var.classes
+data "talos_image_factory_urls" "this" {
+  for_each = local.installers
 
   # Installer image tag = the OS version we want running. Schema-version
-  # `talos_version` stays out of this URL on purpose. Architecture is per-class
-  # so amd64 and arm64 (SBC) classes coexist in one cluster.
+  # `talos_version` stays out of this URL on purpose. One installer per
+  # (schematic-hash, architecture); schematic_id is read as a VALUE, never as the
+  # for_each key (which would be an unknown-at-plan resource attribute).
   talos_version = local.install_version
-  schematic_id  = talos_image_factory_schematic.per_class[each.key].id
+  schematic_id  = talos_image_factory_schematic.this[each.value.hash].id
   platform      = "metal"
-  architecture  = each.value.architecture
+  architecture  = each.value.arch
 
   # `tofu validate` does not resolve this data source, so an arch/overlay/
   # extension combination the Image Factory does not produce a metal installer
@@ -428,7 +422,7 @@ data "talos_image_factory_urls" "per_class" {
   lifecycle {
     postcondition {
       condition     = self.urls.installer != ""
-      error_message = "Image Factory returned no metal installer URL for class '${each.key}' (architecture ${each.value.architecture}). Check the schematic extensions / SBC overlay coordinates."
+      error_message = "Image Factory returned no metal installer URL for schematic ${each.value.hash} (architecture ${each.value.arch}). Check the schematic extensions / SBC overlay coordinates."
     }
   }
 }
@@ -455,12 +449,6 @@ resource "talos_machine_secrets" "this" {
     precondition {
       condition     = length(local.secureboot_patches) == 0
       error_message = "A config_patch selects a SecureBoot installer image (a *-secureboot reference). The base Hard Constraint forbids SecureBoot (boot loops) — use the non-secureboot installer."
-    }
-    # Fail clearly on a typo'd node.class before the cryptic installer-URL map-index
-    # error (the existing check block only warns).
-    precondition {
-      condition     = alltrue([for n in var.nodes : contains(keys(var.classes), n.class)])
-      error_message = "A node references an undefined class (typo?). Every node.class must be a key in var.classes. Defined: ${join(", ", keys(var.classes))}."
     }
     # Talos podSubnets/serviceSubnets carry the FULL pod_cidr/service_cidr lists,
     # but the Cilium seed enables ipv6 ONLY when var.dual_stack (the `ipv6.enabled`
@@ -538,9 +526,9 @@ data "talos_machine_configuration" "worker" {
 #     (var.config_patches) then role (controlplane/worker_config_patches) are
 #     baked into the base machine config that becomes machine_configuration_input.
 #   Pass 2 (this apply, strategic-merge overlay, later wins): module
-#     install.image + hostname (HostnameConfig, Talos >= 1.12), then class
-#     patches, then node patches.
-# NOTE: class/node patches run AFTER the module's install.image patch, so a
+#     install.image + hostname (HostnameConfig, Talos >= 1.12), then the
+#     module-generated capability patch, then node patches.
+# NOTE: generated/node patches run AFTER the module's install.image patch, so a
 # caller patch CAN override machine.install.image. The module selecting
 # urls.installer (never urls.installer_secureboot) guarantees the MODULE itself
 # never emits a SecureBoot installer. Caller-supplied patch CONTENT is the
@@ -571,7 +559,7 @@ resource "talos_machine_configuration_apply" "this" {
             # never `urls.installer_secureboot`. This is the code-level Hard
             # Constraint enforcement (AGENTS.md: no SecureBoot installer image);
             # the module cannot emit a SecureBoot installer through this path.
-            image = data.talos_image_factory_urls.per_class[each.value.class].urls.installer
+            image = data.talos_image_factory_urls.this[local.node_install_key[each.value.hostname]].urls.installer
           }
         }
       }),
@@ -589,10 +577,14 @@ resource "talos_machine_configuration_apply" "this" {
         auto       = { "$patch" = "delete" }
       }),
     ],
-    var.classes[each.value.class].config_patches,
+    # Module-generated capability patch (machine.kernel.modules / sysctls /
+    # nodeLabels from the node's hardware_capabilities). BEFORE node patches so a
+    # raw per-node patch can still override a generated value (documented escape
+    # hatch); base_cni_patch stays strictly last.
+    local.node_generated_patches[each.value.hostname],
     each.value.config_patches,
     # base_cni_patch re-applied LAST in the apply pass too, so cni:none + proxy
-    # win over a class/node patch as well (not just the all-nodes/role patches of
+    # win over a generated/node patch as well (not just the all-nodes/role patches of
     # pass 1). When deploy_cilium is true, Flannel must NOT come up via any patch
     # vector. install.image is intentionally NOT re-pinned here — per-node installer
     # override stays allowed, and the SecureBoot guard (a substring heuristic, see
@@ -770,7 +762,7 @@ resource "null_resource" "argocd_crds" {
 # ---------------------------------------------------------------------------
 # - Talos OS upgrade (talos_install_version bump — NOT talos_version, which is
 #   the bootstrap schema-pin and stays fixed for the cluster's lifetime): the
-#   new version flows through local.install_version into the per-class
+#   new version flows through local.install_version into the per-node composed
 #   Image-Factory installer URL and the machine.install.image patch. tofu
 #   RENDERS the new installer URL and writes install.image into the machine
 #   config, but apply-config alone does NOT re-image a node. The actual rolling
@@ -780,10 +772,10 @@ resource "null_resource" "argocd_crds" {
 #   idempotently per node; Talos rolls each node (cordon/drain + reboot). The
 #   siderolabs/talos provider ships no OS-upgrade resource (same as k8s below).
 #   See README §"Versions: schema-pin vs install-pin".
-# - Image-Factory extension/overlay changes (var.classes edits): schematic_id
-#   and the installer_image URL change; apply-config writes the new
-#   install.image, and the same out-of-band `talosctl upgrade` step re-images
-#   the affected class's nodes (apply-config alone does not).
+# - Image-Factory extension/overlay changes (images / hardware_capabilities /
+#   profile-catalog edits): schematic_id and the installer_image URL change;
+#   apply-config writes the new install.image, and the same out-of-band
+#   `talosctl upgrade` step re-images the affected nodes (apply-config alone does not).
 # - System-extension version pinning: data.talos_image_factory_extensions_versions
 #   is re-evaluated on every apply against local.install_version; new official
 #   versions become available when talos_install_version changes (the factory

@@ -43,28 +43,40 @@ talos:
 kubernetes:
   version: v1.35.0
 
-# --- Node classes: per-class Image-Factory installer + machine-config profile ---
-# Key = class name (referenced by node.class). The "standard" class is mandatory.
-classes:
+# --- Base images: the non-composable per-image installer base ---
+# Key = image id (referenced by node.image). architecture + cpu_vendor + baseline
+# extensions (baked on EVERY node of the image — CPU microcode, firmware, base
+# tooling, default runtime sandbox) + optional SBC overlay. Capability-specific
+# extensions (drbd, nvidia) come from a hardware_capability, NOT from here.
+images:
   standard:
     architecture: amd64 # amd64 | arm64 (arm64 unblocks ARM single-board computers)
-    extensions: [] # Image-Factory system-extension package names (e.g. siderolabs/drbd)
+    cpu_vendor: intel # intel | amd | arm — resolves a profile's vendor variants (e.g. iommu)
+    extensions: [] # baseline extensions for every node of this image (e.g. siderolabs/intel-ucode)
     # overlay:                       # ARM SBC board overlay only (omit for x86/metal)
     #   name: rpi_generic
     #   image: siderolabs/sbc-raspberrypi
-    # config_patches:                # structured Talos patches for every node of the class
-    #   - machine: { install: { extraKernelArgs: ["intel_iommu=on"] } }
+
+# --- Hardware capabilities: composable, tool-agnostic node functions ---
+# Key = capability id (referenced by node.hardware_capabilities). A node holds a
+# SET (storage + compute + GPU) without a hand-authored class. requires_features
+# (scheduling/labels) and provisioning_profiles (what the base catalog bakes) are
+# SEPARATE lists; emits_label MUST be platform.io/hardware-capability.*. Base
+# catalog profiles: drbd, iommu, nvidia-lts. See the homelab example for usage.
+hardware-capabilities: {} # e.g. { storage-replicated: { requires_features: [drbd-kernel-module], provisioning_profiles: [drbd], emits_label: platform.io/hardware-capability.storage-replicated } }
 
 # --- Nodes: bare-metal members (must be PXE-booted into Talos maintenance mode) ---
-# role is ONLY controlplane | worker. Hardware specialisation = class, not role.
+# role is ONLY controlplane | worker. Hardware specialisation = image + the SET of
+# hardware_capabilities, not role.
 nodes:
-  - { hostname: cp-1, ip: 192.0.2.11, role: controlplane, class: standard }
-  - { hostname: w-1, ip: 192.0.2.21, role: worker, class: standard }
+  - { hostname: cp-1, ip: 192.0.2.11, role: controlplane, image: standard, hardware_capabilities: [] }
+  - { hostname: w-1, ip: 192.0.2.21, role: worker, image: standard, hardware_capabilities: [] }
   # Per-node patches (e.g. a NIC-specific bridge) are structured YAML maps:
   # - hostname: gpu-1
   #   ip: 192.0.2.31
   #   role: worker
-  #   class: gpu
+  #   image: standard
+  #   hardware_capabilities: [compute-gpu-nvidia]
   #   config_patches:
   #     - machine: { network: { interfaces: [{ interface: enp0s20f0u2, dhcp: true }] } }
 

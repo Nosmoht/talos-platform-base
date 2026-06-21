@@ -18,7 +18,7 @@ In scope:
 
 - Generate cluster PKI / machine secrets.
 - Render controlplane + worker machine configs (k8s/Talos version + caller patches).
-- Resolve a per-class Image-Factory installer image (extensions + architecture + optional SBC overlay).
+- Resolve a per-node Image-Factory installer image by composing the node's base `image` (architecture + CPU vendor + baseline extensions + optional SBC overlay) with its `hardware_capabilities` (extensions + boot kernel args), content-hash-deduped so identical nodes share one schematic/installer.
 - Apply config to each node, bootstrap etcd on the first controlplane.
 - **Wait until the cluster is healthy** (etcd quorum, nodes Ready, apiserver reachable) before returning.
 - **Deliver Cilium** as the CNI: disable the Talos default CNI (`cni.name: none`) + kube-proxy, then bake a locally-rendered Cilium chart into the controlplane `cluster.inlineManifests` as a bootstrap seed (Layer-1 substrate) — opt-out via `deploy_cilium = false`. So a fresh cluster comes up on Cilium, **not Flannel**.
@@ -52,15 +52,24 @@ i.e. already booted into Talos maintenance mode.
 |---|---|
 | Day-1: cluster PKI | `talos_machine_secrets` |
 | Day-1: machine config (per role) | `data.talos_machine_configuration` |
-| Day-1: per-class installer image | `talos_image_factory_extensions_versions` → `talos_image_factory_schematic` → `talos_image_factory_urls` (per-class `architecture` + optional `overlay`) |
-| Day-1: apply config to each node | `talos_machine_configuration_apply` (hostname + install.image + class + node patches) |
+| Day-1: per-node installer image (content-hash deduped) | `talos_image_factory_extensions_versions` → `talos_image_factory_schematic` → `talos_image_factory_urls` (one schematic per distinct extensions+kernel-args+overlay; one installer per `(schematic-hash, architecture)`) |
+| Day-1: apply config to each node | `talos_machine_configuration_apply` (hostname + install.image + module-generated capability patch [`machine.kernel.modules`/`sysctls`/`nodeLabels`] + node patches) |
 | Day-1: etcd bootstrap | `talos_machine_bootstrap` (first controlplane only) |
 | Day-1: kubeconfig + talosconfig | `talos_cluster_kubeconfig` + `data.talos_client_configuration` |
 | Day-1: wait for healthy cluster | `data.talos_cluster_health` (blocks `apply` until etcd quorum + nodes Ready + apiserver reachable; gates the credential outputs) |
 | Day-1: CNI + Cilium bootstrap | base machine config sets `cluster.network.cni.name: none` + `cluster.proxy.disabled: true` + pod/service subnets; `data.helm_template.cilium` (floor `helm/cilium-values.yaml` + typed `cilium_*` inputs + `cilium_values_override`) → controlplane `cluster.inlineManifests` seed (+ `cilium-ipsec-keys` Secret when `cilium_encryption.type = ipsec`). Opt-out: `deploy_cilium = false`. |
 | Day-1: ArgoCD bootstrap | `data.helm_template.argocd` (app, no CRDs) → `cluster.inlineManifests` (namespace → `sops-age-key` Secret for ksops → ArgoCD app); the ~1.8 MB CRDs are applied via `kubectl` server-side post-health-gate (`null_resource`). Opt-out: `deploy_argocd = false`. |
-| **Day-2: Talos OS upgrade** | Bumping `talos_install_version` re-renders the per-class installer image and `talos_machine_configuration_apply` writes the new `install.image`, but `apply-config` alone does not re-image a node — the actual roll-out is out-of-band `talosctl upgrade` (see below). |
-| **Day-2: class changes** | Edit `classes` (extensions/overlay/patches) → schematic ID + installer URL change → `machine_configuration_apply` writes the new `install.image`; the same out-of-band `talosctl upgrade` re-images nodes of that class. |
+| **Day-2: Talos OS upgrade** | Bumping `talos_install_version` re-renders the affected per-node installer images and `talos_machine_configuration_apply` writes the new `install.image`, but `apply-config` alone does not re-image a node — the actual roll-out is out-of-band `talosctl upgrade` (see below). |
+| **Day-2: image / capability changes** | Edit `images` (baseline extensions/overlay), `hardware_capabilities`, or the base provisioning-profile catalog → an affected node's composed schematic ID + installer URL change → `machine_configuration_apply` writes the new `install.image`; the same out-of-band `talosctl upgrade` re-images affected nodes. |
+
+> **Re-image blast-radius — diff the hashes before adopting a change.** A node
+> re-images only when its composed schematic hash changes. `tofu plan` does not
+> warn which nodes that is, so before applying a base-tag bump, a
+> `hardware_capabilities` edit, or a profile-catalog change, capture
+> `tofu output node_schematic_hashes` (and `distinct_schematic_count`) before and
+> after and diff them: every changed hash is a node that will re-image on the next
+> out-of-band `talosctl upgrade`. Nodes with an unchanged hash keep their installer
+> and do NOT re-image.
 
 **Two Day-2 ops stay out-of-band** — the `siderolabs/talos` provider ships no
 OS- or Kubernetes-upgrade resource, so both are imperative `talosctl` commands
@@ -73,13 +82,18 @@ both cases tofu owns the declarative state and the talosctl command performs the
 rolling upgrade. Tracked follow-up for when the provider exposes these as
 resources.
 
-## Node roles vs classes
+## Node roles vs images + capabilities
 
 Kubernetes node **roles** are ONLY `controlplane` and `worker`. Hardware
-specialisation — GPU, single-board-computer, storage — is **not** a role. It is
-expressed via a node's **`class`**, which selects an Image-Factory + patch
-profile from `var.classes`. This is what makes a heterogeneous, multi-arch
-cluster (amd64 servers + an arm64 Raspberry Pi worker) expressible in one apply.
+specialisation — GPU, single-board-computer, storage — is **not** a role. A node
+sits on one base **`image`** (architecture + CPU vendor + baseline extensions +
+optional SBC overlay) and holds a **SET** of **`hardware_capabilities`** that
+compose independently. So a node can be storage + compute + GPU at once without a
+hand-authored class, and a heterogeneous multi-arch cluster (amd64 servers + an
+arm64 Raspberry Pi worker) is expressible in one apply. Capability names are
+tool-agnostic — a node declares `storage-replicated`, not `drbd`; the base
+provisioning-profile catalog maps each to extensions / kernel args / modules. See
+[`docs/adr-node-capability-composition.md`](../../../docs/adr-node-capability-composition.md).
 
 ## Usage
 
@@ -92,31 +106,33 @@ module "homelab" {
   kubernetes_version = "v1.35.0"
   cluster_endpoint   = "https://api.example:6443"
 
-  nodes = [
-    { hostname = "node-cp-1", ip = "192.0.2.11", role = "controlplane", class = "standard" },
-    { hostname = "node-w-1", ip = "192.0.2.21", role = "worker", class = "kubevirt" },
-    { hostname = "node-gpu-1", ip = "192.0.2.31", role = "worker", class = "gpu",
-      config_patches = [file("${path.module}/patches/gpu-nic.yaml")] }, # per-node NIC binding
-    { hostname = "node-pi-1", ip = "192.0.2.41", role = "worker", class = "pi" }, # arm64
-  ]
+  images = {
+    intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucode", "siderolabs/nvme-cli"] } # baseline (every node of the image)
+    pi    = { architecture = "arm64", cpu_vendor = "arm", extensions = [], overlay = { name = "rpi_generic", image = "siderolabs/sbc-raspberrypi" } }
+  }
 
-  classes = {
-    standard = { architecture = "amd64", extensions = ["siderolabs/drbd"] }
-    kubevirt = {
-      architecture   = "amd64"
-      extensions     = ["siderolabs/drbd"]
-      config_patches = [file("${path.module}/patches/kubevirt.yaml")] # whole class
+  # Consumer composites (tool-agnostic). requires_features (scheduling/labels) and
+  # provisioning_profiles (what the base catalog bakes) are SEPARATE lists;
+  # emits_label MUST be platform.io/hardware-capability.*.
+  hardware_capabilities = {
+    storage-replicated = {
+      requires_features     = ["drbd-kernel-module"]
+      provisioning_profiles = ["drbd"]
+      emits_label           = "platform.io/hardware-capability.storage-replicated"
     }
-    gpu = {
-      architecture = "amd64"
-      extensions   = ["siderolabs/drbd", "siderolabs/nvidia-container-toolkit-lts"]
-    }
-    pi = {
-      architecture = "arm64"
-      extensions   = []
-      overlay      = { name = "rpi_generic", image = "siderolabs/sbc-raspberrypi" }
+    compute-gpu-nvidia = {
+      requires_features     = ["nvidia-gpu"]
+      provisioning_profiles = ["nvidia-lts"]
+      emits_label           = "platform.io/hardware-capability.compute-gpu-nvidia"
     }
   }
+
+  nodes = [
+    { hostname = "node-cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["storage-replicated"] },
+    { hostname = "node-gpu-1", ip = "192.0.2.31", role = "worker", image = "intel", hardware_capabilities = ["storage-replicated", "compute-gpu-nvidia"],
+      config_patches = [file("${path.module}/patches/gpu-nic.yaml")] }, # per-node NIC binding
+    { hostname = "node-pi-1", ip = "192.0.2.41", role = "worker", image = "pi", hardware_capabilities = [] }, # arm64
+  ]
 
   # Cluster-wide patches the caller owns (NTP, registry mirrors, install disk).
   config_patches = [file("${path.module}/patches/cluster-common.yaml")]
@@ -155,8 +171,9 @@ provider "talos" {}
 | `talos_install_version` | string | `""` | **OS-version pin** — what's installed on the nodes. Defaults to `talos_version`. Bump for OS upgrades. |
 | `kubernetes_version` | string | — | v-prefixed semver. Bump triggers out-of-band `talosctl upgrade-k8s`. |
 | `cluster_endpoint` | string | — | `https://…:6443` API endpoint / VIP |
-| `nodes` | list(object) | — | `{hostname, ip, role, class?, config_patches?}`; role ∈ {controlplane, worker}; `class` defaults to `"standard"` and must be a key in `classes`; `config_patches` are per-node (highest precedence). |
-| `classes` | map(object) | `{ standard = { architecture = "amd64" } }` | Per-class profile: `{architecture("amd64"\|"arm64"), extensions, overlay?, config_patches}`. The `"standard"` class is mandatory. |
+| `nodes` | list(object) | — | `{hostname, ip, role, image, hardware_capabilities?, config_patches?}`; role ∈ {controlplane, worker}; `image` must be a key in `images`; `hardware_capabilities` (default `[]`) are keys in `hardware_capabilities`; `config_patches` are per-node, applied AFTER the module-generated capability patch (so a raw patch overrides a generated `machine.kernel.modules`/`sysctls`/`nodeLabels` value — and its *content* is not parsed, so reserved-label enforcement on that vector is the downstream Kyverno rule, not tofu). |
+| `images` | map(object) | — | Per base-image: `{architecture("amd64"\|"arm64"), cpu_vendor("intel"\|"amd"\|"arm"), extensions(baseline — every node of the image), overlay?}`. At least one image required. |
+| `hardware_capabilities` | map(object) | `{}` | Consumer composites: `{requires_features, provisioning_profiles, emits_label}`. `emits_label` MUST be `platform.io/hardware-capability.*`. A provisioned `requires_features` atom must be satisfied by a listed profile and vice-versa (symmetry, both directions, plan-time-checked). |
 | `config_patches` | list(string) | `[]` | machine-config patches applied to all nodes |
 | `controlplane_config_patches` | list(string) | `[]` | patches for controlplane nodes only |
 | `worker_config_patches` | list(string) | `[]` | patches for worker nodes only |
@@ -187,15 +204,21 @@ provider "talos" {}
 **Patch precedence — two passes.** *Generation pass* (baked into the machine
 config by `data.talos_machine_configuration`): all-nodes (`config_patches`) then
 role (`controlplane`/`worker_config_patches`). *Apply pass* (strategic-merge
-overlay, later wins): module hostname + install.image, then class
-(`classes[class].config_patches`), then node (`node.config_patches`). A
-class/node patch in the apply pass can override `machine.install.image` — the
-module always selects the non-secureboot `urls.installer`, so the module itself
-never emits a SecureBoot installer. Patch *content* is the caller's
-responsibility: a SecureBoot string in this repo's `tofu/**` is caught by
-`hard-constraints-check`, but a consumer's own root/patch files (and
-schematic-level secureboot toggles the URL grep cannot see) are outside the base
-gate — enforcing the constraint there is the consumer overlay's job.
+overlay, later wins): module hostname + install.image, then the
+**module-generated capability patch** (`machine.kernel.modules`/`sysctls`/`nodeLabels`
+composed from the node's `hardware_capabilities`), then node
+(`node.config_patches`), then `base_cni_patch` strictly last. So a raw node patch
+overrides a generated field (Talos applies it later) — this override is **silent**
+(the module does not parse raw patch content; a plan-time overlap warning is a
+documented follow-up, so a raw patch that drops a generated kernel module while
+the node keeps its provisioning label is a known caveat). A node/raw patch can
+also override `machine.install.image` — the module always selects the
+non-secureboot `urls.installer`, so the module itself never emits a SecureBoot
+installer. Patch *content* is the caller's responsibility: a SecureBoot string in
+this repo's `tofu/**` is caught by `hard-constraints-check`, but a consumer's own
+root/patch files (and schematic-level secureboot toggles the URL grep cannot see)
+are outside the base gate — enforcing the constraint there is the consumer
+overlay's job.
 
 ## Outputs
 
@@ -206,8 +229,10 @@ gate — enforcing the constraint there is the consumer overlay's job.
 | `client_configuration` | yes | Talos client cert bundle for chaining |
 | `cluster_endpoint` | no | echoed API endpoint |
 | `controlplane_ips` | no | controlplane node IPs |
-| `schematic_ids` | no | Image-Factory schematic ID per class |
-| `installer_images` | no | resolved `metal-installer` image URL per class |
+| `schematic_ids` | no | Image-Factory schematic ID per distinct content-hash (identical nodes share one) |
+| `installer_images` | no | resolved `metal-installer` image URL per node hostname (was per-class; the upgrade task reads it from tfplan JSON) |
+| `node_schematic_hashes` | no | per-node content-hash of the composed schematic (dedup audit) |
+| `distinct_schematic_count` | no | number of distinct schematics after content-hash dedup |
 | `talos_install_version` | no | effective installer version |
 | `cluster_health` | no | `"healthy (…)"` — references `data.talos_cluster_health`, so any consumer reading it blocks until the cluster is online |
 
@@ -223,7 +248,7 @@ Two distinct versions:
 
 For an OS upgrade: bump `talos_install_version`, `tofu plan -out tfplan.bin &&
 tofu show -json tfplan.bin > tfplan.json` (new installer URL + `schematic_id`
-per class flow through), then a consumer Taskfile target reads `tfplan.json` and
+per node flow through), then a consumer Taskfile target reads `tfplan.json` and
 runs `talosctl upgrade --image …:<version>` idempotently per node, and finally
 `tofu apply` updates state. Tofu owns the declarative state; the consumer
 Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
@@ -306,12 +331,13 @@ runtime-mutable config (Hubble, L2/BGP) is Day-2 Cilium self-management.
 - etcd is bootstrapped on exactly one controlplane: the one with the
   **lowest hostname** (`sort()` over controlplane hostnames). This is a stable
   key — reordering `nodes` after bootstrap does not move the bootstrap target.
-- Per-node module-injected config is the hostname + class installer image.
+- Per-node module-injected config is the hostname, the composed installer image,
+  and the generated capability patch (kernel modules / sysctls / nodeLabels).
   Everything else cluster-specific comes from the caller's patches.
-- The installer image is always `metal-installer` (NEVER
-  `metal-installer-secureboot`, per the base `AGENTS.md` Hard Constraint). ARM
-  SBC classes use `architecture = "arm64"` + an `overlay`; the platform stays
-  `metal`.
+- The installer image is always the non-SecureBoot `metal-installer` (the
+  SecureBoot installer variant is forbidden per the base `AGENTS.md` Hard
+  Constraint — boot loops). ARM SBC images use `architecture = "arm64"` + an
+  `overlay`; the platform stays `metal`.
 - **Greenfield by default; adopting a running cluster needs `tofu import`.**
   The module *generates* `talos_machine_secrets`, so a naive apply against a
   live cluster would regenerate PKI and re-bootstrap etcd. To adopt an

@@ -11,9 +11,18 @@ supersedes:
 related:
   - base:substrate-only-base
   - base:multi-repo-platform-split
+  - base:node-capability-composition
 ---
 
 # ADR: OpenTofu module is the sole Talos cluster-lifecycle path
+
+> **Amendment (2026-06-20):** the per-*class* node model described below
+> (per-class installer + per-class patches) is superseded by
+> [base:node-capability-composition](adr-node-capability-composition.md): a node
+> now sits on a per-node `image` and composes a *set* of `hardware_capabilities`
+> (content-hash-deduped schematics), and boot kernel args move into the Image
+> Factory schematic. The lifecycle decision in this ADR — OpenTofu as the sole
+> path — stands unchanged; only the class→capability node model is amended.
 
 ## Context and Problem Statement
 
