@@ -5,6 +5,26 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Added
+
+- **Cilium Gateway API honors Service `appProtocol: kubernetes.io/h2c` (#132, #133).**
+  `gatewayAPI.enableAppProtocol: true` is now set in the computed Gateway-API
+  Helm layer, gated on `var.cilium_gateway_api`, and the rendered `argocd-server`
+  Service advertises `appProtocol: kubernetes.io/h2c` on its http (80) port (the
+  https/443 port is untouched). This lets the Cilium Gateway route argocd's gRPC
+  (CLI/UI API) over h2c instead of de-framing it to HTTP/1.1 — which argocd
+  answers with 404. **Versioning: this is a MINOR, not a MAJOR, change.** It is
+  additive and gated: `enableAppProtocol` is a no-op until a Service opts in via
+  `appProtocol`, and post-v2.0.0 only `argocd` renders a Service in the substrate,
+  so there is no base-side blast radius beyond argocd.
+- **Existing-cluster caveat (Day-2).** The Cilium config is delivered by a frozen
+  `terraform_data.cilium_render` seed (`lifecycle.ignore_changes`), so on an
+  already-seeded cluster `tofu plan` shows **no diff** for it — a merge looks live
+  while Cilium's behavior is unchanged until a forced re-render/re-seed. Confirm
+  the running state with
+  `kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.enable-gateway-api-app-protocol}'`
+  (expect `"true"`). See UPGRADING.md.
+
 ### Changed — BREAKING
 
 - **Day-zero bootstrap decoupled from the ArgoCD helm double-install (#113).**
