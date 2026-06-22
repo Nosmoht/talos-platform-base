@@ -5,6 +5,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## v2.0.0 — 2026-06-22
+
 ### Changed — BREAKING
 
 - **Substrate-only base (next MAJOR / v2.0.0).** All non-substrate components
