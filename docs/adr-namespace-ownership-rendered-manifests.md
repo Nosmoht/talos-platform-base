@@ -100,14 +100,28 @@ base does not ship a vendor `namespace.yaml` for.
 |---|---|---|---|
 | Platform (vendor-shipped) | per-component Application | vendor `namespace.yaml` in `_rendered/manifests.yaml` | NO |
 | Tenant (consumer-only) | consumer root Application | consumer `namespaces-psa.yaml` | yes |
-| `argocd` itself (special) | bootstrap (initial) → argocd Application (steady-state) | `make argocd-install` then vendor namespace.yaml SSA-merge | NO |
+| `argocd` itself (special) | Talos inlineManifest seed (initial) → argocd Application (steady-state) | module inlineManifest namespace then vendor namespace.yaml SSA-merge | NO |
 
-The `argocd` namespace is the only chicken-and-egg case. It is
-created by direct `kubectl apply` during `make argocd-install`
-(before any Application exists). Once ArgoCD is up, the `argocd`
-Application syncs its `_rendered/manifests.yaml`, which includes
-vendor `namespace.yaml`. SSA-merge of labels onto the live namespace
-transfers steady-state ownership to the `argocd` Application.
+The `argocd` namespace is the only chicken-and-egg case. It is created
+by the **Talos inlineManifest seed** that the `tofu/modules/talos-cluster`
+module bakes into the controlplane machine-config (`deploy_argocd = true`),
+before any Application — or even the apiserver's ArgoCD CRDs — exists. The
+create-only seed carries the full PSA floor (`enforce: baseline`) + the
+recommended labels itself, so the namespace is never delivered
+PSA-unenforced (the former `make argocd-install` /
+`kubernetes/bootstrap/argocd/namespace.yaml` path is retired). Once ArgoCD
+is up, the `argocd` Application syncs its `_rendered/manifests.yaml`, which
+includes vendor `namespace.yaml`; SSA-merge of labels onto the live
+namespace transfers steady-state ownership to the `argocd` Application.
+
+The two writers do not conflict on the security-relevant field: the seed
+and the steady-state vendor `namespace.yaml` assert the **same** PSA floor
+(`enforce: baseline`, `audit`/`warn: restricted`), so the ownership
+transfer carries no PSA gap or flip. The recommended-label sets differ
+deliberately — the seed marks `app.kubernetes.io/managed-by: opentofu` (it
+created the namespace), the Application's SSA re-marks `managed-by: argocd`
+(it now owns it) — the create→steady-state ownership transfer made visible,
+not drift.
 
 ## Implications for consumer onboarding (new cluster)
 

@@ -73,3 +73,13 @@ output "talos_install_version" {
   description = "Effective Talos OS installer version (= var.talos_install_version, or var.talos_version if unset). The upgrade task reads this from tfplan JSON for `talosctl upgrade --image …:<version>`."
   value       = local.install_version
 }
+
+output "argocd_namespace_labels" {
+  description = <<-EOT
+    Labels seeded onto the module-delivered argocd namespace (PSA floor +
+    recommended labels), or {} when deploy_argocd = false. Audit surface (which
+    PSA level / labels the create-only seed bakes) and the binding point for the
+    composition test's PSA assertion. Non-sensitive (labels carry no secret).
+  EOT
+  value       = var.deploy_argocd ? local.argocd_namespace_labels : {}
+}

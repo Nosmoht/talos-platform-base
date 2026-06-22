@@ -119,6 +119,30 @@ resource "terraform_data" "argocd_render" {
 }
 
 locals {
+  # Recommended labels + PSA floor for the module-seeded argocd namespace.
+  # The module is the SOLE creator of this namespace (the former bootstrap
+  # kubernetes/bootstrap/argocd/namespace.yaml is retired with the make
+  # argocd-install path), so the create-only seed carries the full PSA floor +
+  # the six recommended labels itself — never delivered label-less / PSA-
+  # unenforced (AGENTS.md §Hard Constraints). version = the argo-cd CHART version
+  # (the only version the seed knows); steady-state ownership transfers to the
+  # argocd Application via SSA-merge. Exposed via output.argocd_namespace_labels
+  # for audit + the composition test's PSA assertion (red-green binding).
+  argocd_namespace_labels = {
+    "app.kubernetes.io/name"                     = "argocd"
+    "app.kubernetes.io/instance"                 = "argocd"
+    "app.kubernetes.io/version"                  = var.argocd_chart_version
+    "app.kubernetes.io/component"                = "bootstrap"
+    "app.kubernetes.io/part-of"                  = "gitops"
+    "app.kubernetes.io/managed-by"               = "opentofu"
+    "pod-security.kubernetes.io/enforce"         = "baseline"
+    "pod-security.kubernetes.io/enforce-version" = "latest"
+    "pod-security.kubernetes.io/audit"           = "restricted"
+    "pod-security.kubernetes.io/audit-version"   = "latest"
+    "pod-security.kubernetes.io/warn"            = "restricted"
+    "pod-security.kubernetes.io/warn-version"    = "latest"
+  }
+
   # ArgoCD as cluster.inlineManifests, in apply order:
   #   1. argocd namespace
   #   2. sops-age-key Secret (the ksops repoServer decrypts SOPS manifests with it)
@@ -132,7 +156,15 @@ locals {
           contents = yamlencode({
             apiVersion = "v1"
             kind       = "Namespace"
-            metadata   = { name = var.argocd_namespace }
+            metadata = {
+              name = var.argocd_namespace
+              # MUST stay `local.argocd_namespace_labels` (the SAME local that
+              # output.argocd_namespace_labels exposes) — that shared source is
+              # what binds the composition test's PSA assertion to the bytes this
+              # inlineManifest actually seeds. Adding labels here directly would
+              # fork the two and silently un-bind the test.
+              labels = local.argocd_namespace_labels
+            }
           })
         },
         {

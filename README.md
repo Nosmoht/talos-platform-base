@@ -140,12 +140,12 @@ Talos, installs Cilium as the CNI, and seeds ArgoCD (namespace + app +
 CRDs). The remaining step is wiring ArgoCD to your cluster repo via the
 root App-of-Apps — see
 [`docs/day-zero-pattern.md`](docs/day-zero-pattern.md) for the bootstrap
-detail. (Heads-up: with the module-default `deploy_argocd = true`, the
-current `make argocd-bootstrap` still re-runs the legacy `make
-argocd-install` Helm step on top of the module-seeded ArgoCD — that
-double-install cleanup is tracked in #113.) Secrets (`sops_age_key`,
-`cilium_ipsec_key`) are supplied via `TF_VAR_*`/env, never via
-`cluster.yaml`.
+detail. (`make argocd-bootstrap` only seeds the consumer-identity
+App-of-Apps root — the root AppProject + Application — after waiting on
+the module-seeded ArgoCD CRDs + server; the former `make argocd-install`
+Helm step is gone, because the module already delivers ArgoCD.) Secrets
+(`sops_age_key`, `cilium_ipsec_key`) are supplied via `TF_VAR_*`/env,
+never via `cluster.yaml`.
 
 Day-2 — reference both repos from a single ArgoCD Application:
 

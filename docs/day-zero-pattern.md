@@ -29,22 +29,20 @@ may be `kubectl apply`-ed directly or must be reconciled by ArgoCD.
 ```mermaid
 %%{init: { "theme": "neutral" } }%%
 flowchart TB
-  subgraph L1["Layer 1 — Talos delivers the minimum"]
+  subgraph L1["Layer 1 — Talos seeds the substrate floor (tofu inlineManifests)"]
     direction LR
     talos["Talos OS<br/>(immutable, machine-config)"]
     k8s["Bundled Kubernetes<br/>(control-plane + kubelet)"]
     cilium["Cilium CNI<br/>(tofu inlineManifest seed)"]
-    talos --> k8s --> cilium
+    argoseed["ArgoCD controller + argocd ns + sops-age-key Secret<br/>(tofu inlineManifest seed; CRDs via kubectl --server-side)"]
+    talos --> k8s --> cilium --> argoseed
   end
 
-  subgraph L2["Layer 2 — ArgoCD self-bootstrap (one-time, kubectl apply)"]
+  subgraph L2["Layer 2 — App-of-Apps root (one-time, make argocd-bootstrap; NOT module-delivered)"]
     direction LR
-    ns["argocd Namespace<br/>(bootstrap/argocd/namespace.yaml)"]
-    helm["argocd Helm install<br/>(make argocd-install)"]
-    sops["sops-age-key Secret<br/>(chicken-and-egg)"]
     appproj["root AppProject<br/>(sync-wave -1)"]
-    rootapp["root Application<br/>(App-of-Apps entry)"]
-    ns --> helm --> sops --> appproj --> rootapp
+    rootapp["root Application<br/>(App-of-Apps entry → consumer overlay)"]
+    appproj --> rootapp
   end
 
   subgraph L3["Layer 3 — ArgoCD reconciles everything else"]
@@ -64,7 +62,7 @@ mechanism**:
 | Layer | Lifecycle owner | Change mechanism | Reconciliation |
 |---|---|---|---|
 | 1 — Talos + bundled K8s + CNI | Talos / Sidero Labs | `talosctl apply-config` + `talosctl upgrade-k8s` | none in-cluster |
-| 2 — ArgoCD self-bootstrap | this repo's `Makefile` | `make argocd-bootstrap` (one-time) | none until Layer 3 |
+| 2 — App-of-Apps root (NOT module-delivered) | this repo's `Makefile` | `make argocd-bootstrap` (one-time) | none until Layer 3 |
 | 3 — everything else | this repo's `kubernetes/base/infrastructure/` + consumer overlay | git commit + push | ArgoCD continuous reconciliation |
 
 ## Layer 1 — what Talos delivers
@@ -99,53 +97,87 @@ Cilium is **deliberately not present** in
 error; it lives in `bootstrap/` precisely because it must exist
 before ArgoCD can run.
 
-## Layer 2 — ArgoCD self-bootstrap
+## Layer 2 — the App-of-Apps root (still required; NOT module-delivered)
 
-ArgoCD cannot reconcile itself before it exists. The bootstrap break
-of GitOps purity is contained to exactly five `kubectl apply` /
-`helm` invocations, all documented as exceptions in
-[`AGENTS.md`](../AGENTS.md) §"Hard Constraints":
+ArgoCD the *controller* is a **Layer-1 substrate seed**: the
+`tofu/modules/talos-cluster` module renders the argo-cd chart locally
+and bakes it — together with the `argocd` namespace and the
+`sops-age-key` Secret — into the controlplane `cluster.inlineManifests`
+(`deploy_argocd = true`, the default); the ArgoCD CRDs are applied
+server-side by the module's `kubectl --server-side` step, gated on the
+cluster health check. So ArgoCD comes up *with the bootstrap*, the same
+way Cilium does.
+
+What the module does **not** deliver is the **App-of-Apps root** — the
+consumer-identity `root` AppProject + `root` Application that point
+ArgoCD at *this consumer's* git repo and overlay. They are parameterized
+by the consumer's `repo.url` / `overlay` (see
+`kubernetes/bootstrap/argocd/*.tmpl`) and therefore cannot live in the
+cluster-agnostic module. Seeding them is the **one** remaining bootstrap
+step, and it is **mandatory**: without it ArgoCD runs but reconciles
+nothing — a healthy-looking, functionally inert cluster.
+
+The bootstrap break of GitOps purity is therefore contained to exactly
+**two** `kubectl apply` invocations, both behind `make argocd-bootstrap`
+and both documented as exceptions in [`AGENTS.md`](../AGENTS.md)
+§"Hard Constraints":
 
 ```bash
-# Three invocations triggered by `make argocd-install`:
-kubectl apply -f kubernetes/bootstrap/argocd/namespace.yaml
-helm upgrade --install argocd argo/argo-cd \
-  --version '<pinned>' \
-  --namespace argocd \
-  -f kubernetes/base/infrastructure/argocd/values.yaml
-kubectl create secret generic sops-age-key \
-  --namespace argocd \
-  --from-file=keys.txt=$SOPS_AGE_KEY_FILE \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# Two invocations triggered by `make argocd-bootstrap`:
+# make argocd-bootstrap — requires deploy_argocd=true AND a completed `tofu apply`
+# (which seeds ArgoCD + applies its CRDs). It first waits out the cross-context
+# ordering barrier: BOTH root CRDs (Application + AppProject), polling for
+# existence so a not-yet-created CRD does not fail-fast, then the server:
+for crd in applications.argoproj.io appprojects.argoproj.io; do
+  until kubectl get crd "$crd" >/dev/null 2>&1; do sleep 2; done
+  kubectl wait --for=condition=established "crd/$crd" --timeout=120s
+done
+kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
+# then applies the App-of-Apps root (the only consumer-identity bootstrap state):
 kubectl apply -f kubernetes/bootstrap/argocd/_out/root-project.yaml
 kubectl apply -f kubernetes/bootstrap/argocd/_out/root-application.yaml
 ```
 
+The waits matter: the `Application` and `AppProject` kinds require their
+respective ArgoCD CRDs (`applications.argoproj.io`,
+`appprojects.argoproj.io`), which `tofu apply` installs in a **different
+execution context** than `make argocd-bootstrap`. The target polls each
+CRD for existence *before* waiting on its `established` condition, so a
+bootstrap launched before `tofu apply` finished — or in a split-CI
+topology where the two run on separate runners — **blocks** rather than
+failing fast on `no matches for kind "Application"`. If `tofu apply`
+never ran its CRD step at all (the poll keeps timing out), re-apply the
+CRDs with `tofu apply -replace=null_resource.argocd_crds[0]` (the
+`manifest_sha` trigger makes a plain re-apply a no-op when the render is
+unchanged).
+
 Each exception has a documented reason:
 
-- **`namespace.yaml`** — ArgoCD must exist somewhere before it can
-  reconcile its own namespace.
-- **`helm install argocd`** — the same pod cannot install itself.
-  Re-runs of `make argocd-install` are idempotent (`helm upgrade
-  --install`) and ArgoCD's own `Application` for itself
-  (`base/infrastructure/argocd/`) then takes over self-reconciliation
-  from this seed.
-- **`sops-age-key` Secret** — ArgoCD needs the age private key to
-  decrypt SOPS-encrypted secrets shipped via git. The key itself
-  cannot be SOPS-encrypted (chicken-and-egg). The Secret is **only**
-  the age key, never application secrets.
 - **`root-project` AppProject** — defines the RBAC boundary inside
   which the root Application is allowed to operate; sync-wave `-1`.
 - **`root-application` Application** — the App-of-Apps entry that
-  causes ArgoCD to discover and reconcile every other
-  `Application` defined under `kubernetes/overlays/<env>/`.
+  causes ArgoCD to discover and reconcile every other `Application`
+  defined under `kubernetes/overlays/<env>/`.
 
-After `make argocd-bootstrap` succeeds, the boundary moves: any
-further `kubectl apply` to ArgoCD-managed resources is now a hard
-constraint violation, enforced by `AGENTS.md` and the
-`hard-constraints-check` CI job in consumer repos.
+The `argocd` namespace, the `sops-age-key` Secret, and the ArgoCD
+controller are **Layer 1** now (module-seeded inlineManifests, no
+consumer `kubectl apply`):
+
+- **`argocd` namespace** — the module seed carries its PSA floor
+  (`enforce: baseline`) + the recommended labels; steady-state label
+  ownership transfers to the argocd Application via SSA-merge (the PSA
+  floor is identical on both sides, so the transfer carries no PSA gap).
+- **`sops-age-key` Secret** — ArgoCD needs the age private key to
+  decrypt SOPS-encrypted secrets shipped via git; the key itself cannot
+  be SOPS-encrypted (chicken-and-egg). It is sourced from
+  `TF_VAR_sops_age_key` at `tofu apply` and lands in the controlplane
+  machine-config, so the OpenTofu **state backend MUST be encrypted at
+  rest** and key rotation is a `tofu apply` (re-seed), not a `kubectl`
+  secret edit. The Secret is **only** the age key, never app secrets.
+
+After `make argocd-bootstrap` succeeds, the boundary moves: any further
+`kubectl apply` to ArgoCD-managed resources is now a hard constraint
+violation, enforced by `AGENTS.md` and the `hard-constraints-check` CI
+job in consumer repos.
 
 ## Layer 3 — ArgoCD-reconciled day-two
 
@@ -162,17 +194,17 @@ them by sync-wave:
 ```
 
 ArgoCD itself is in sync-wave 0 — `kubernetes/base/infrastructure/argocd/`
-contains the full reconciled definition. The seed Helm install from
-Layer 2 is converged onto by the Application; mid-version drift
-between seed and Application is corrected on the next reconciliation
-loop.
+contains the full reconciled definition. The Layer-1 inlineManifest
+seed is converged onto by this Application; mid-version drift between
+the create-only seed and the Application is corrected on the next
+reconciliation loop.
 
 This is the **only** "kubectl apply boundary" in the repo:
 
 ```text
 Layer 1 (Talos):         talosctl apply-config
                          ─────────────────────────
-Layer 2 (one-time seed): kubectl apply / helm install (5 invocations)
+Layer 2 (one-time seed): kubectl apply (2 invocations: root project + app)
                          ─────────────────────────
 Layer 3 (day-two):       git push → ArgoCD reconciles  ← from here, NEVER kubectl apply
 ```
@@ -185,13 +217,15 @@ Layer 3 (day-two):       git push → ArgoCD reconciles  ← from here, NEVER ku
 > let ArgoCD sync; only exception: one-time bootstrap AppProjects
 > (`kubernetes/bootstrap/`).
 
-Concretely, "bootstrap exception" means the invocations of Layer 2
-above. The Layer-1 Cilium and ArgoCD substrate is delivered by the
-OpenTofu module as Talos `inlineManifests` — not by a consumer
-`kubectl apply` (the module itself applies the full ArgoCD render — app +
-CRDs — via `kubectl --server-side`, gated on the health check, converging
-the app the inlineManifest seeded at boot). **Nothing else** in this repo
-should ever appear in a `kubectl apply` command.
+Concretely, "bootstrap exception" means the two App-of-Apps root
+invocations of Layer 2 above. The Layer-1 Cilium and ArgoCD substrate is
+delivered by the OpenTofu module as Talos `inlineManifests` — not by a
+consumer `kubectl apply`. The ArgoCD **app** comes up from the
+inlineManifest seed at boot; its **CRDs** — too large for an
+inlineManifest — are applied by the module via `kubectl --server-side`
+(gated on the health check), which also converges the app render.
+**Nothing else** in this repo should ever appear in a `kubectl apply`
+command.
 
 ## End-to-end command sequence (consumer-side reference)
 
@@ -203,13 +237,14 @@ context of its own cluster.
 ```bash
 # Layer 1 — Talos (OpenTofu cluster-lifecycle module; run from the consumer's
 # OpenTofu root that calls tofu/modules/talos-cluster — see the module README)
-tofu init                                            # provider + encrypted backend
-tofu apply                                           # PKI, per-node installer, config apply, etcd bootstrap
+tofu init                                            # provider + ENCRYPTED state backend (holds the sops-age master key)
+export TF_VAR_sops_age_key="$(cat $SOPS_AGE_KEY_FILE)" # seeded into the argocd sops-age-key inlineManifest
+tofu apply                                           # PKI, installer, config apply, etcd bootstrap + Cilium & ArgoCD seeds + ArgoCD CRDs
 tofu output -raw kubeconfig   > kubeconfig           # admin kubeconfig
 tofu output -raw talosconfig  > talosconfig          # talosctl client config
 
-# Layer 2 — ArgoCD self-bootstrap (one-time)
-make argocd-bootstrap ENV=cluster.yaml               # reads the slim cluster.yaml bootstrap identity
+# Layer 2 — App-of-Apps root (one-time; ArgoCD itself is already up from Layer 1)
+make argocd-bootstrap ENV=cluster.yaml               # waits for ArgoCD CRDs+server, then seeds the root project + app
 make argocd-password                                 # initial admin password (rotate after first login)
 
 # Layer 3 — wait, then git push

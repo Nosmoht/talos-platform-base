@@ -5,6 +5,35 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Changed — BREAKING
+
+- **Day-zero bootstrap decoupled from the ArgoCD helm double-install (#113).**
+  ArgoCD is delivered as a Talos `inlineManifest` seed by the
+  `tofu/modules/talos-cluster` module (`deploy_argocd`, default true) since
+  #102, but `make argocd-install` still helm-installed it on top — a
+  double-install. `make argocd-install` is **removed**; `tofu apply` seeds the
+  ArgoCD controller, namespace, and CRDs, and the consumer day-zero runs only
+  `make argocd-bootstrap` to apply the consumer-identity App-of-Apps root
+  (root-project + root-application), which the module does **not** deliver.
+  Skipping `argocd-bootstrap` yields a healthy-looking but inert cluster.
+  `make argocd-bootstrap` now waits for both root CRDs (`applications`,
+  `appprojects`) to establish and for argocd-server to become available before
+  applying the root, restoring the cross-exec-context ordering barrier the
+  removed target provided. **Consumer impact:** day-zero procedures that called
+  `make argocd-install` must drop it. See [`docs/day-zero-pattern.md`](docs/day-zero-pattern.md)
+  and UPGRADING.md.
+
+### Fixed
+
+- **Module-seeded `argocd` namespace now carries the PSA floor + recommended
+  labels itself (#113).** With `kubernetes/bootstrap/argocd/namespace.yaml`
+  retired, the module is the sole creator of the `argocd` namespace; the
+  create-only `inlineManifest` seed now sets `pod-security.kubernetes.io/enforce:
+  baseline` (+ audit/warn restricted) and the six `app.kubernetes.io/*`
+  recommended labels (AGENTS.md §Hard Constraints), so the namespace is never
+  delivered PSA-unenforced. A `tofu test` run asserts the floor + labels
+  (red-green bound to the seed bytes).
+
 ## v2.0.0 — 2026-06-22
 
 ### Changed — BREAKING
