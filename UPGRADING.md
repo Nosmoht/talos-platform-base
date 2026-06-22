@@ -16,7 +16,7 @@ For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 
 ```bash
 # 1. Verify
-TAG=v2.0.0; OWNER=nosmoht   # set TAG to your target base tag
+TAG=v2.0.0; OWNER=Nosmoht   # TAG = your target tag; OWNER is case-sensitive in the identity regexp below (must match the owner's exact GitHub casing)
 cosign verify \
   --certificate-identity-regexp \
     "^https://github.com/${OWNER}/talos-platform-base/\.github/workflows/oci-publish\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" \
