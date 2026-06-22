@@ -39,12 +39,21 @@ init-cluster-yaml: cluster.yaml.example
 # by tofu/modules/talos-cluster as a Talos inlineManifest SEED (deploy_argocd=true)
 # + kubectl server-side CRDs -- NOT by this target. This target only seeds the
 # consumer-identity App-of-Apps root (root-project + root-application), which the
-# module does NOT deliver. Precondition: a completed `tofu apply` (CRDs + controller).
-# The two waits restore the cross-context ordering barrier the removed
-# `make argocd-install` kubectl-wait used to provide (CRD established + server ready
-# before the root Application is applied).
+# module does NOT deliver.
+#
+# Preconditions: deploy_argocd=true AND a completed `tofu apply` (it seeds ArgoCD
+# and applies its CRDs server-side). The waits restore the cross-context ordering
+# barrier the removed `make argocd-install` kubectl-wait gave: BOTH ArgoCD CRDs
+# (Application + AppProject -- the two root kinds) established + the server ready
+# before the root manifests are applied. `kubectl wait` errors NotFound on an absent
+# object, so existence is polled first; a persistent NotFound means `tofu apply` did
+# not finish its CRD step -- recover with `tofu apply -replace=null_resource.argocd_crds[0]`.
 argocd-bootstrap: .argocd-bootstrap-render
-	kubectl wait --for=condition=established crd/applications.argoproj.io --timeout=120s
+	@for crd in applications.argoproj.io appprojects.argoproj.io; do \
+	  echo "waiting for CRD $$crd to exist + establish ..."; \
+	  for i in $$(seq 1 60); do kubectl get crd "$$crd" >/dev/null 2>&1 && break; sleep 2; done; \
+	  kubectl wait --for=condition=established "crd/$$crd" --timeout=120s; \
+	done
 	kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
 	kubectl apply -f kubernetes/bootstrap/argocd/_out/root-project.yaml
 	kubectl apply -f kubernetes/bootstrap/argocd/_out/root-application.yaml

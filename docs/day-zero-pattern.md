@@ -123,24 +123,32 @@ and both documented as exceptions in [`AGENTS.md`](../AGENTS.md)
 §"Hard Constraints":
 
 ```bash
-# make argocd-bootstrap — runs AFTER `tofu apply` has seeded ArgoCD + its CRDs.
-# It first waits out the cross-context ordering barrier:
-kubectl wait --for=condition=established crd/applications.argoproj.io --timeout=120s
+# make argocd-bootstrap — requires deploy_argocd=true AND a completed `tofu apply`
+# (which seeds ArgoCD + applies its CRDs). It first waits out the cross-context
+# ordering barrier: BOTH root CRDs (Application + AppProject), polling for
+# existence so a not-yet-created CRD does not fail-fast, then the server:
+for crd in applications.argoproj.io appprojects.argoproj.io; do
+  until kubectl get crd "$crd" >/dev/null 2>&1; do sleep 2; done
+  kubectl wait --for=condition=established "crd/$crd" --timeout=120s
+done
 kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
 # then applies the App-of-Apps root (the only consumer-identity bootstrap state):
 kubectl apply -f kubernetes/bootstrap/argocd/_out/root-project.yaml
 kubectl apply -f kubernetes/bootstrap/argocd/_out/root-application.yaml
 ```
 
-The two waits matter: the `Application` / `AppProject` kinds require the
-ArgoCD CRDs, which `tofu apply` installs in a **different execution
-context** than `make argocd-bootstrap`. Running the bootstrap before
-`tofu apply` finished — or in a split-CI topology where the two run on
-separate runners — would otherwise fail with `no matches for kind
-"Application"`. If `tofu apply` exited after seeding ArgoCD but before
-its CRD step completed, re-apply the CRDs with
-`tofu apply -replace=null_resource.argocd_crds[0]` (the `manifest_sha`
-trigger makes a plain re-apply a no-op when the render is unchanged).
+The waits matter: the `Application` and `AppProject` kinds require their
+respective ArgoCD CRDs (`applications.argoproj.io`,
+`appprojects.argoproj.io`), which `tofu apply` installs in a **different
+execution context** than `make argocd-bootstrap`. The target polls each
+CRD for existence *before* waiting on its `established` condition, so a
+bootstrap launched before `tofu apply` finished — or in a split-CI
+topology where the two run on separate runners — **blocks** rather than
+failing fast on `no matches for kind "Application"`. If `tofu apply`
+never ran its CRD step at all (the poll keeps timing out), re-apply the
+CRDs with `tofu apply -replace=null_resource.argocd_crds[0]` (the
+`manifest_sha` trigger makes a plain re-apply a no-op when the render is
+unchanged).
 
 Each exception has a documented reason:
 

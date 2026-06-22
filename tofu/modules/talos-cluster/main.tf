@@ -157,7 +157,12 @@ locals {
             apiVersion = "v1"
             kind       = "Namespace"
             metadata = {
-              name   = var.argocd_namespace
+              name = var.argocd_namespace
+              # MUST stay `local.argocd_namespace_labels` (the SAME local that
+              # output.argocd_namespace_labels exposes) — that shared source is
+              # what binds the composition test's PSA assertion to the bytes this
+              # inlineManifest actually seeds. Adding labels here directly would
+              # fork the two and silently un-bind the test.
               labels = local.argocd_namespace_labels
             }
           })
