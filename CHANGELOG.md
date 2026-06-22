@@ -5,6 +5,37 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Changed — BREAKING
+
+- **Substrate-only base (next MAJOR / v2.0.0).** All non-substrate components
+  were removed from `kubernetes/base/infrastructure/` — it now ships only
+  `argocd` + `cert-approver`. The PNI / capability-first network-trust contract
+  dissolved from the base (per [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md))
+  into apps-CI Conftest + consumer-cluster Kyverno. Every other platform
+  component (monitoring, vault, cert-manager, nvidia, kubevirt, loki, dex,
+  multus, piraeus, tetragon, external-secrets, …) now lives in the
+  `talos-platform-apps` catalog as signed OCI artifacts; consumers re-source
+  them from there via a Multi-Source Application. `make validate-kyverno-policies`,
+  the Layer-A capability-index scripts/docs, and the PNI ADRs were removed. The
+  Layer-C hardware-features registry + node-capability composition stay (the
+  `tofu/modules/talos-cluster` module depends on them). See UPGRADING.md.
+- **ArgoCD `server.certificate` disabled by default (substrate self-containment).**
+  The substrate `argocd` no longer renders a `cert-manager.io/v1 Certificate`
+  (`server.certificate.enabled: false`) — with cert-manager removed from the base
+  it would otherwise render against an absent CRD/issuer. argocd-server already
+  runs `server.insecure=true` (serves plaintext at the pod; terminate TLS at your
+  gateway/ingress). Consumers fronting ArgoCD with cert-manager-issued TLS
+  re-enable `server.certificate` in a values overlay and provide the issuer
+  (and set `server.insecure=false` for pod-served TLS). See UPGRADING.md.
+- **talos-cluster: `var.classes` / `node.class` removed (#135).** Use
+  `var.images` + `var.hardware_capabilities` and `node.image` +
+  `node.hardware_capabilities`. A node sits on one base `image` and holds a SET
+  of composable `hardware_capabilities` resolved via a base-owned
+  provisioning-profile catalog — no more hand-authored monolithic classes. The
+  `installer_images` output is now keyed by hostname (was per class). Nodes whose
+  kernel-arg provisioning is corrected (for example, IOMMU) re-image once. See UPGRADING.md
+  and [`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md).
+
 ### Added
 
 - **Render-determinism regression fence (`scripts/check-render-determinism.sh`, wired into

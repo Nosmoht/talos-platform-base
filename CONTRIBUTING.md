@@ -6,37 +6,47 @@ have hard rules.
 
 ## Scope and audience
 
-This repository is the **cluster-agnostic platform base** for the
-Talos-on-Kubernetes deployment family. Contributions that fit this
-scope:
+This repository is the **substrate-only platform base** for the
+Talos-on-Kubernetes deployment family. The substrate is Talos + Cilium +
+ArgoCD (three co-equal pillars) plus `cert-approver` as boot-glue;
+`kubernetes/base/infrastructure/` ships only `argocd/` and
+`cert-approver/`. Contributions that fit this scope:
 
-- New cluster-agnostic Helm-base components.
+- Improvements to the substrate components (`argocd/`, `cert-approver/`).
+- Improvements to the OpenTofu cluster-lifecycle module
+  (`tofu/modules/talos-cluster`).
 - Improvements to the validation pipeline (kustomize, conftest,
-  kubeconform, Kyverno).
-- PNI capability schema and policy improvements.
+  kubeconform).
+- Layer-C node-capability / hardware-feature work
+  (`docs/platform-hardware-features.yaml`, the provisioning-profile
+  catalog, `scripts/lint-hardware-features.sh`,
+  `scripts/check-provisioning-catalog-refs.sh`).
 - Talos machine-config patches that apply to *all* clusters.
 - Documentation.
 
-Contributions that do NOT fit (open them in a consumer cluster repo
-instead):
+Contributions that do NOT fit:
 
-- Cluster identity (node IPs, FQDNs, SOPS keys, OIDC issuers).
+- Non-substrate platform components (observability, storage, the PNI /
+  capability-network contract, application-supporting services) — these
+  live in the [`talos-platform-apps`][apps] catalog as independently
+  versioned, signed OCI artifacts. See [`docs/adr-substrate-only-base.md`][ablation].
+- Cluster identity (node IPs, FQDNs, SOPS keys, OIDC issuers) — open in a
+  consumer cluster repo instead.
 - Per-cluster overlays or patches.
 - Application-workload manifests.
-- Per-instance Kyverno generate/mutate machinery for tools the base
-  does not deploy — see [ADR][adr] §"Per-instance enforcement is
-  consumer-overlay responsibility".
 
-[adr]: docs/adr-capability-producer-consumer-symmetry.md
+[apps]: https://github.com/devobagmbh/talos-platform-apps
+[ablation]: docs/adr-substrate-only-base.md
 
 ## Before you start
 
 1. **Read [`AGENTS.md`](AGENTS.md)**. It is the canonical SOT and lists
    hard constraints that fail PR checks if violated.
 2. **Read [`ARCHITECTURE.md`](ARCHITECTURE.md)** for the L1/L2 view.
-3. **Read [`docs/capability-architecture.md`](docs/capability-architecture.md)**
-   if your change touches network policy, namespace labels, or the
-   capability registry.
+3. **Read [`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md)**
+   and [`docs/adr-three-layer-capability-architecture.md`](docs/adr-three-layer-capability-architecture.md)
+   if your change touches per-node provisioning, Layer-C hardware
+   features, or the `tofu/modules/talos-cluster` interface.
 4. **Read the relevant ADRs** in `docs/adr-*.md`.
 
 ## Issue → PR workflow
@@ -57,8 +67,8 @@ type(scope): short imperative summary
 ```
 
 `type` ∈ {`feat`, `fix`, `perf`, `chore`, `docs`, `test`, `refactor`, `ci`}.
-`scope` ∈ component or subsystem (for example `pni`, `talos`, `cilium`,
-`kyverno`, `loki`, …).
+`scope` ∈ component or subsystem (for example `talos`, `cilium`,
+`argocd`, `cert-approver`, …).
 
 Body MUST explain the *why* and stay readable without an issue tracker.
 Cross-link with `Closes:`, `Refs:`, `Fixes:` trailers using public URLs;
@@ -79,7 +89,6 @@ footer, or the change ships as a non-breaking release. See
 
 ```bash
 make validate-gitops             # kustomize + conftest + kubeconform
-make validate-kyverno-policies   # server-side ClusterPolicy test
 ```
 
 For changes touching a single component:
@@ -88,11 +97,17 @@ For changes touching a single component:
 kubectl kustomize --enable-helm kubernetes/base/infrastructure/<comp>/
 ```
 
-For changes touching the PNI registry:
+For Layer-C hardware-feature / provisioning-catalog changes:
 
 ```bash
-scripts/render-capability-reference.sh
-git diff docs/capability-reference.md   # expect committed regen
+scripts/lint-hardware-features.sh
+scripts/check-provisioning-catalog-refs.sh
+```
+
+For `tofu/modules/talos-cluster` changes:
+
+```bash
+task ci   # tofu fmt -check + tofu validate + tflint
 ```
 
 ### Required (CI) before merge
@@ -106,25 +121,21 @@ git diff docs/capability-reference.md   # expect committed regen
 
 These are required PR checks and will block merge.
 
-### Capability-first design rules
-
-Any CCNP, Kyverno policy, or namespace label that involves cross-namespace
-reachability MUST follow these rules (see [ADR][adr]):
-
-- CCNP `endpointSelector` uses `capability-provider.<cap>` or `capability-consumer.<cap>` — never `app.kubernetes.io/name: <tool>`.
-- New producer component ships its own `namespace.yaml` carrying matching `provide.<cap>` labels.
-- No central tool-signature whitelist additions.
-- No `kube-system` (or other shared system namespace) producer placements — relocate to a dedicated namespace.
-- Instanced capabilities require the `.<inst>` suffix on consumer/producer labels.
+> The PNI / capability-first network-trust contract no longer lives in
+> this base — it dissolved out of the substrate (see
+> [`docs/adr-substrate-only-base.md`][ablation]) and is now realized by
+> apps-CI Conftest plus consumer-cluster Kyverno, with the catalog in
+> [`talos-platform-apps`][apps]. Cross-namespace reachability rules
+> belong there, not in a base PR.
 
 ## Documentation expectations
 
-If your change touches a public interface (Helm values, registry schema,
-CCNPs, hard constraints), update **at minimum**:
+If your change touches a public interface (Helm values, the
+`tofu/modules/talos-cluster` interface, Layer-C hardware-feature schema,
+hard constraints), update **at minimum**:
 
 - `CHANGELOG.md` (Unreleased section — Added / Changed / Deprecated / Removed / Fixed / Security).
 - Either an ADR (decision-grade) or the matching `docs/*.md` reference.
-- Auto-generated docs that drift (`scripts/render-capability-reference.sh --check` must pass in CI).
 
 If your change adds, removes, or renames a component in
 `kubernetes/base/infrastructure/`, or changes a service-DNS or

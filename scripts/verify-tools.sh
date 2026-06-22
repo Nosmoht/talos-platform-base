@@ -32,7 +32,6 @@ extract_version() {
     oras)        oras version 2>/dev/null | awk '/^Version:/ {print $2}' | sed -E 's/^v//; s/\+.*$//' ;;
     cosign)      cosign version 2>/dev/null | awk '/^GitVersion:/ {print $2}' | sed -E 's/^v//' ;;
     conftest)    conftest --version 2>/dev/null | awk '/^Version:/ {print $2}' | sed -E 's/^v//' ;;
-    kyverno-cli) kyverno version 2>/dev/null | awk '/^Version:/ {print $2}' | sed -E 's/^v//' ;;
     kubeconform) kubeconform -v 2>/dev/null | sed -E 's/^v//' ;;
     yq)          yq --version 2>/dev/null | awk '{print $NF}' | sed -E 's/^v//' ;;
     *) echo "" ;;
@@ -40,11 +39,7 @@ extract_version() {
 }
 
 binary_for() {
-  local tool="$1"
-  case "${tool}" in
-    kyverno-cli) echo "kyverno" ;;
-    *) echo "${tool}" ;;
-  esac
+  echo "$1"
 }
 
 fail=0

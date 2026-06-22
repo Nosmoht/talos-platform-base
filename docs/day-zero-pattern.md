@@ -49,10 +49,9 @@ flowchart TB
 
   subgraph L3["Layer 3 — ArgoCD reconciles everything else"]
     direction LR
-    reg["PNI registry ConfigMap<br/>(sync-wave -2)"]
-    infra["22 base/infrastructure/ components<br/>(sync-wave 0)"]
-    apps["consumer-side apps<br/>(sync-wave 1+)"]
-    reg --> infra --> apps
+    infra["base/infrastructure/ substrate components<br/>(sync-wave 0)"]
+    apps["consumer-side apps + apps-catalog components<br/>(sync-wave 1+)"]
+    infra --> apps
     infra -. self-reconcile .-> infra
   end
 
@@ -157,10 +156,9 @@ specific overlays. ArgoCD discovers child Applications and reconciles
 them by sync-wave:
 
 ```text
--2  PNI registry ConfigMap         (must exist before ClusterPolicies)
 -1  Additional AppProjects         (per-tool RBAC boundaries)
- 0  Infrastructure components      (the 22 in base/infrastructure/)
- 1  Apps (workload-layer)
+ 0  Infrastructure components      (the substrate set in base/infrastructure/)
+ 1  Apps (workload-layer + apps-catalog components)
 ```
 
 ArgoCD itself is in sync-wave 0 — `kubernetes/base/infrastructure/argocd/`
@@ -215,22 +213,21 @@ make argocd-bootstrap ENV=cluster.yaml               # reads the slim cluster.ya
 make argocd-password                                 # initial admin password (rotate after first login)
 
 # Layer 3 — wait, then git push
-kubectl -n argocd get applications --watch           # ArgoCD reconciles all 22 base components
+kubectl -n argocd get applications --watch           # ArgoCD reconciles the base substrate components
 # from this moment on, every change goes via:
 #   git commit && git push  →  ArgoCD detects  →  ArgoCD syncs
 ```
 
 ## Where this pattern is incomplete today
 
-The pattern is structurally complete and verified across the 22
-infrastructure components — none of them violate the Layer-3-only
-rule. One surface remains unevenly polished:
+The pattern is structurally complete and verified across the base
+substrate components — none of them violate the Layer-3-only rule. One
+surface remains unevenly polished:
 
-- **Cilium-specific coupling in PNI policies.** The 16 CCNP/CNP files
-  in `kubernetes/base/infrastructure/platform-network-interface/`
-  bind PNI to Cilium-specific CRDs. The substrate-layer "Talos +
-  bundled K8s + CNI" is true today, but the *CNI choice* is currently
-  not swappable without a multi-day rewrite. See
+- **CNI choice is not swappable yet.** The substrate-layer "Talos +
+  bundled K8s + CNI" is true today, but Cilium-specific coupling in the
+  bootstrap seed means the *CNI choice* is currently not swappable
+  without a multi-day rewrite. See
   [issue #59](https://github.com/Nosmoht/talos-platform-base/issues/59)
   for the decoupling track.
 
@@ -238,6 +235,6 @@ rule. One surface remains unevenly polished:
 
 - [`tutorial-first-consumer-cluster.md`](tutorial-first-consumer-cluster.md) — the rendering-only walk-through that stops short of Layer 2
 - [`ARCHITECTURE.md`](../ARCHITECTURE.md) §"Sync-wave order" — the canonical wave-number list
-- [`component-dependencies.md`](component-dependencies.md) — the graph of how the 22 Layer-3 components depend on each other
+- [`component-dependencies.md`](component-dependencies.md) — the graph of how the Layer-3 components depend on each other
 - [`AGENTS.md`](../AGENTS.md) §"Hard Constraints" — the `NEVER kubectl apply` rule with the documented exception
-- [`rendered-manifests.md`](rendered-manifests.md) — the three-stage render pipeline that produces the Cilium bootstrap manifest and the 22 component manifests
+- [`rendered-manifests.md`](rendered-manifests.md) — the three-stage render pipeline that produces the Cilium bootstrap manifest and the component manifests

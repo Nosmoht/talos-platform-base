@@ -54,9 +54,9 @@ source of truth for the answers that get submitted.
 | Criterion | Status | Source |
 |---|---|---|
 | Working build system | met | `Makefile` + `.github/workflows/gitops-validate.yml`; reproducible from `chart.lock.yaml` |
-| Automated test suite | met | conftest Rego (864+954 tests), kubeconform, kyverno-cli, capability-index validation |
+| Automated test suite | met | conftest Rego over rendered manifests, kubeconform schema validation, Layer-C hardware-features schema lint (`hardware-features-check` CI job) |
 | New functionality testing | met | every PR runs full `make validate-gitops`; per-component renderable smoke target |
-| Warning flags | met | markdownlint, gitleaks, conftest, kubeconform, kyverno-cli, REUSE lint — all CI-required |
+| Warning flags | met | markdownlint, gitleaks, conftest, kubeconform, REUSE lint — all CI-required |
 | Warning addressing | met | CI-required checks block merge; documented in `CONTRIBUTING.md` |
 | Warning strict | met | conftest exits non-zero on any policy fail; same for kubeconform |
 
@@ -75,7 +75,7 @@ source of truth for the answers that get submitted.
 | Criterion | Status | Source |
 |---|---|---|
 | Static code analysis | met | conftest Rego policies (`policies/conftest/*`) over rendered Kubernetes manifests is the load-bearing static check for a YAML-based repo; supplemented by markdownlint, gitleaks, and the per-component schema validation |
-| Static analysis common vulnerabilities | met | gitleaks (credentials) + capability-index validation (structural correctness) |
+| Static analysis common vulnerabilities | met | gitleaks (credentials) + conftest Rego policy checks (structural correctness) |
 | Static analysis fixed | met | All CI checks required; broken main is impossible by branch protection |
 | Dynamic analysis | n/a | Repo ships YAML manifests + Helm bases, not executable code. Dynamic analysis applies at the consumer-cluster runtime, not at the base. Documented as explicit n/a per Best-Practices guidance for non-executable-code repos. |
 

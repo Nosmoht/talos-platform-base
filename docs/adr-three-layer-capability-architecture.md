@@ -11,11 +11,8 @@ consulted:
   - team-red (Round 2 layer-audit — per-entry cleanup classification)
 informed: []
 companion-docs:
-  - "[Two-Layer ADR (superseded)](./adr-two-layer-capability-architecture.md)"
-  - "[Platform Capability Index (Layer A)](./platform-capability-index.yaml)"
   - "[Platform Hardware Features Registry (Layer C)](./platform-hardware-features.yaml)"
-  - "[Capability Producer/Consumer Symmetry ADR (Layer B)](./adr-capability-producer-consumer-symmetry.md)"
-  - "[PNI Capability Architecture (Layer B)](./capability-architecture.md)"
+  - "[Node Capability Composition ADR (Layer C consumer)](./adr-node-capability-composition.md)"
 supersedes:
   - base:two-layer-capability-architecture
 implementation-tracking-issue: "https://github.com/Nosmoht/talos-platform-base/issues/61"
@@ -30,11 +27,21 @@ implementation-tracking-issue: "https://github.com/Nosmoht/talos-platform-base/i
 > script, refs-check extension, Kyverno reserved-label extension) lands
 > as part of [issue #61](https://github.com/Nosmoht/talos-platform-base/issues/61);
 > CI enforcement gates closure of the issue.
+>
+> **Superseded in part (v2.0.0 substrate-only ablation).** Layer A
+> (Tool-Capability-Index) and Layer B (PNI Network-Trust Registry) were
+> **removed from the base** at the substrate-only ablation — they dissolved into
+> apps-CI Conftest + consumer-cluster Kyverno and the `talos-platform-apps`
+> catalog (see [`adr-substrate-only-base.md`](./adr-substrate-only-base.md)).
+> **Only Layer C (Hardware Features Registry) remains base-resident and
+> normative**, because the `tofu/modules/talos-cluster` node-capability
+> composition model depends on it. The Layer-A/B references below are retained
+> as historical decision context; their sibling docs no longer exist in this repo.
 
 ## Context and Problem Statement
 
-The [Two-Layer ADR](./adr-two-layer-capability-architecture.md) (accepted
-2026-05-18, superseded by this document) chose Option 2 from three
+The Two-Layer ADR (accepted
+2026-05-18, superseded by this document; removed from the base at v2.0.0) chose Option 2 from three
 candidates: separate Layer A (Tool-Capability-Index) from Layer B (PNI
 Network-Trust Registry). That decision was correct for the two layers it
 considered — but the considered-options enumeration never named hardware
@@ -102,15 +109,19 @@ to a misclassification that already pervades the Layer-A artifact.
   the base does not own. The Layer-C reservation must NOT relabel,
   proxy, or duplicate them — convention-based ownership is documented,
   enforcement is bounded to `platform.io/*`.
-- **D5.** The Reserved-label rule (AGENTS.md §"PNI v2 Capability-First
-  Contract") already governs `platform.io/{provide,
+- **D5.** *(Historical — decision context 2026-05-23.)* The Reserved-label rule
+  (then in AGENTS.md §"PNI v2 Capability-First Contract", removed at the v2.0.0
+  ablation) already governed `platform.io/{provide,
   capability-{provider,consumer,endpoint,protocol}}.*` namespaces. The
-  hardware-feature and hardware-capability reservations extend this
-  rule; they do not introduce a new enforcement primitive.
-- **D6.** Validation tooling (`scripts/lint-capability-index.sh`,
-  `scripts/check-capability-index-refs.sh`,
-  `scripts/render-capability-index.sh`) must extend over the new layer
-  without breaking the existing Layer A / Layer B contracts.
+  hardware-feature and hardware-capability reservations extend this rule; they do
+  not introduce a new enforcement primitive. Layer-C reserved-label enforcement
+  is now consumer-cluster Kyverno (the base ships no admission policy).
+- **D6.** *(Historical — the Layer-A tooling named here moved to
+  talos-platform-apps at v2.0.0.)* Validation tooling
+  (`lint-capability-index.sh`, `check-capability-index-refs.sh`,
+  `render-capability-index.sh`) must extend over the new layer without breaking
+  the existing Layer A / Layer B contracts. The surviving Layer-C lints are
+  `scripts/lint-hardware-features.sh` + `scripts/check-provisioning-catalog-refs.sh`.
 - **D7.** Workload-runtime-class labels (`sandbox.atlas.dev/gvisor`,
   future `runtime-class.platform.io/*`, podSecurity-class hints) are a
   distinct concern — not capabilities, not features. The ADR explicitly
@@ -158,8 +169,8 @@ validation pass. Compose at the consumer-`cluster.yaml` boundary via the
 
 | Layer | Scope | SOT | Example entry id |
 |---|---|---|---|
-| **A — Tool-Capability-Index** | What functional services this base provides, with which tools today, and what swap classes exist between alternative implementations. | `docs/platform-capability-index.yaml` | `gpu-runtime` |
-| **B — PNI Network-Trust Registry** | Which cross-namespace L4/L7 traffic patterns are permitted, governed by Kyverno + Cilium. Subset of Layer A by id. | `kubernetes/base/infrastructure/platform-network-interface/resources/capability-registry-configmap.yaml` | `monitoring-scrape` |
+| **A — Tool-Capability-Index** *(removed from base at v2.0.0 → talos-platform-apps)* | What functional services this base provides, with which tools today, and what swap classes exist between alternative implementations. | *(apps catalog)* | `gpu-runtime` |
+| **B — PNI Network-Trust Registry** *(removed from base at v2.0.0 → consumer Kyverno)* | Which cross-namespace L4/L7 traffic patterns are permitted, governed by Kyverno + Cilium. Subset of Layer A by id. | *(consumer cluster)* | `monitoring-scrape` |
 | **C — Hardware Features Registry** | What atomic hardware predicates a node must satisfy. Referenced by Layer A entries (via `requires_hardware_features[]`) and by consumer `cluster.yaml` composite capabilities (via `requires_features[]`). | `docs/platform-hardware-features.yaml` | `nvidia-gpu` |
 
 Layer A and Layer B remain in the relationship documented by the
@@ -214,7 +225,7 @@ co-located sibling policy) — same rule shape, extended key list.
   `DataVolume`, etc.) carry their own template-label paths. Per-CRD
   enforcement is the **operator's responsibility** (parallel to the
   per-instance generate/mutate machinery the
-  [Producer/Consumer Symmetry ADR](./adr-capability-producer-consumer-symmetry.md)
+  Producer/Consumer Symmetry ADR (removed from base at v2.0.0)
   scopes to consumer overlays). A follow-up issue tracks per-CRD policy
   generation; the base does not pre-empt operator-specific admission
   shapes.
@@ -292,7 +303,7 @@ on which key the consumer's nodeSelector references. The two
 `docs/platform-hardware-features.yaml` document the available sources;
 they do NOT authorize using more than one per cluster.
 
-Concretely: `docs/platform-capability-index.yaml` entry `gpu-runtime`
+Concretely: the (now apps-catalog) Tool-Capability-Index entry `gpu-runtime`
 removes `node-feature-discovery` from `composition[]` and gains
 `requires_hardware_features: [nvidia-gpu, iommu-enabled]` referencing
 Layer-C atoms. The `independence_test.alt_impls_exist` field is
@@ -375,8 +386,10 @@ A follow-up ADR may be filed when cross-component need surfaces.
 ### Negative
 
 - **C–1.** Three artifacts must stay in sync where IDs cross-reference.
-  Mitigated by the extended `scripts/check-capability-index-refs.sh`
-  pass + the `capability-index-check` CI job.
+  *(Historical: the Layer-A `check-capability-index-refs.sh` pass + the
+  `capability-index-check` CI job were removed at v2.0.0; the surviving Layer-C
+  equivalent is `check-provisioning-catalog-refs.sh` in the `hardware-features-check`
+  CI job.)*
 - **C–2.** Composite capabilities being downstream-defined means
   cluster-to-cluster comparability requires careful naming discipline.
   Mitigated by the convention being documented in this ADR + base
@@ -409,8 +422,7 @@ A follow-up ADR may be filed when cross-component need surfaces.
   https://github.com/NVIDIA/k8s-device-plugin
 - Talos `machine.nodeLabels`:
   https://www.talos.dev/v1.7/reference/configuration/v1alpha1/config/#Config.machine.nodeLabels
-- Companion ADR (superseded): [adr-two-layer-capability-architecture.md](./adr-two-layer-capability-architecture.md)
-- Companion ADR (Layer B): [adr-capability-producer-consumer-symmetry.md](./adr-capability-producer-consumer-symmetry.md)
+- Companion ADR (Layer C consumer): [adr-node-capability-composition.md](./adr-node-capability-composition.md)
 - Audit trail (Round 1): `.work/issues/layer-audit/findings.md`
 - Audit trail (Round 2): `.work/issues/layer-audit/cleanup-scope.md`
 - Implementation tracking: [issue #61](https://github.com/Nosmoht/talos-platform-base/issues/61)

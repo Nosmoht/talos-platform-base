@@ -5,14 +5,13 @@ by following along, not someone deploying a production cluster.
 **Time:** ~30 minutes of reading + commands.
 
 This is a [Diátaxis][diataxis] **tutorial**: it teaches by doing. For
-reference material, jump to the [capability reference][ref]; for
-recipes, the [cookbook][cookbook]; for explanation, the
-[architecture doc][arch].
+the day-zero path from rendered manifests to a live cluster, see the
+[day-zero pattern][dayzero]; for the substrate-only scope, see the
+[substrate-only base ADR][substrate].
 
 [diataxis]: https://diataxis.fr/
-[ref]: ./capability-reference.md
-[cookbook]: ./pni-cookbook.md
-[arch]: ./capability-architecture.md
+[dayzero]: ./day-zero-pattern.md
+[substrate]: ./adr-substrate-only-base.md
 
 ## Prerequisites
 
@@ -97,31 +96,28 @@ git add -A && git commit -q -m "chore: bootstrap scratch consumer repo"
 ```bash
 oras pull "ghcr.io/${OWNER}/talos-platform-base:$(cat .base-version)" \
   --output vendor/base
-ls vendor/base/kubernetes/base/infrastructure/ | head
+ls vendor/base/kubernetes/base/infrastructure/
 ```
 
-You should see the 22 component directories. The vendored tree is
-read-only by convention — do not edit it.
+You should see the substrate component directories (`argocd/`,
+`cert-approver/`). The vendored tree is read-only by convention — do
+not edit it. Everything that is not substrate lives in the separate
+[`talos-platform-apps`][substrate] catalog, which consumers self-serve
+from as signed OCI artifacts.
 
 ## Step 4 — Render a single component
 
 ```bash
 kubectl kustomize --enable-helm \
-  vendor/base/kubernetes/base/infrastructure/cert-manager/ | head -40
+  vendor/base/kubernetes/base/infrastructure/argocd/ | head -40
 ```
-
-Note the namespace declares
-`platform.io/provide.tls-issuance: "true"` and
-`platform.io/provide.monitoring-scrape: "true"` — the
-namespace-anchored trust anchors from the [architecture
-doc][arch].
 
 ## Step 5 — Write a tiny consumer manifest
 
 A note on namespaces, before you write any: **platform namespaces are
 owned by the platform**. A consumer never authors a Namespace resource
-for `argocd`, `cert-manager`, `kyverno`, `monitoring`, `vault`, or any
-other component this base ships under
+for `argocd`, `cert-approver`, or any other substrate component this
+base ships under
 `vendor/base/kubernetes/base/infrastructure/<component>/`. Each
 per-component Application takes the vendor `namespace.yaml` from its
 `_rendered/manifests.yaml` and becomes the sole ArgoCD tracking-id
@@ -132,7 +128,7 @@ cannot resolve safely — see
 for the architectural rationale.
 
 What you DO author: namespaces for your own tenant workloads. Below,
-a consumer namespace that wants Prometheus scraping:
+a minimal consumer namespace:
 
 ```yaml
 # kubernetes/cluster/my-app-namespace.yaml
@@ -143,14 +139,7 @@ metadata:
   labels:
     app.kubernetes.io/name: my-app
     app.kubernetes.io/managed-by: argocd
-    platform.io/network-interface-version: v1
-    platform.io/network-profile: managed
-    platform.io/consume.monitoring-scrape: "true"
 ```
-
-No tool names. The consumer never mentions Prometheus by name; the
-CCNP shipped by the base selects on
-`capability-consumer.monitoring-scrape`.
 
 ## Step 6 — Sanity-render the merged view
 
@@ -166,38 +155,20 @@ EOF
 kubectl kustomize kubernetes/cluster/
 ```
 
-## Step 7 — Check for deprecated capabilities
-
-If your manifests use the registry vocabulary, scan them before each
-base-version bump:
-
-```bash
-vendor/base/scripts/capability-deprecation-scan.sh kubernetes/
-```
-
-Empty output = no consume-labels reference deprecated registry entries.
-
 ## What just happened
 
-You have walked through the four operational moments a consumer-cluster
+You have walked through the three operational moments a consumer-cluster
 author repeats every time the base bumps a tag:
 
 1. Pin the tag (`.base-version`).
 2. Verify cryptographically.
-3. Vendor (`oras pull` to `vendor/base/`).
-4. Re-render and scan for deprecation.
-
-The consumer never named a tool. That is the entire point of the
-capability-first contract.
+3. Vendor (`oras pull` to `vendor/base/`) and re-render.
 
 ## Where to go next
 
 | You want to | Read |
 |---|---|
-| The full label vocabulary | [`pni-cookbook.md`](./pni-cookbook.md) |
-| What each capability is for | [`capability-reference.md`](./capability-reference.md) |
-| Why the architecture looks this way | [`capability-architecture.md`](./capability-architecture.md) |
+| Why the base ships substrate only | [`adr-substrate-only-base.md`](./adr-substrate-only-base.md) |
 | Take the cluster from rendered manifests to a live ArgoCD-reconciled environment | [`day-zero-pattern.md`](./day-zero-pattern.md) |
-| How the registry, policies, and CCNPs interact | [`adr-capability-producer-consumer-symmetry.md`](./adr-capability-producer-consumer-symmetry.md) |
 | Issue lifecycle when you find a bug | [`issue-workflow.md`](./issue-workflow.md) |
 | Verify the supply chain in depth | [`oci-artifact-verification.md`](./oci-artifact-verification.md) |

@@ -1,7 +1,13 @@
 # Rendered Manifests Pipeline
 
-This base produces fully-rendered Kubernetes YAML for every Helm-based
-infrastructure component. The rendered output is committed to git and
+This base produces fully-rendered Kubernetes YAML for its Helm-based
+infrastructure components. Since the v2.0.0 substrate-only ablation the
+substrate ships exactly one such component — `argocd` (`cert-approver` is a
+plain kustomization with no chart). The same Rendered Manifests Pattern
+governs the non-substrate components now in the
+[`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
+catalog; the worked examples below (e.g. `cert-manager`) illustrate the
+pattern and are no longer base-resident. The rendered output is committed to git and
 shipped via the OCI artifact (`ghcr.io/nosmoht/talos-platform-base:<tag>`).
 Consumer cluster repos use the rendered output as the basis for ArgoCD
 `directory`-source applications — ArgoCD does not run helm or kustomize
@@ -30,7 +36,7 @@ RBAC, capability labels. It does not hold cluster-specific values
 
 **Stage 2** runs `kustomize build` against `_rendered-overlay/`, which
 references the Stage-1 output and applies platform-base standard patches
-(common labels, Kyverno-relevant annotations, PNI capability metadata).
+(common labels, standard annotations).
 The Stage-2 output is split into `_rendered/manifests.yaml` (everything
 except CRDs) and `_rendered/crds.yaml` (CRDs only) so consumer-side
 ArgoCD can deploy them as separate Applications with `sync-wave -5` for
@@ -129,7 +135,7 @@ kubernetes/base/infrastructure/<comp>/
 ├── chart.lock.yaml             # pin spec
 ├── values.yaml                 # repo-wide defaults (Stage-1 input)
 ├── kustomization.yaml          # consumed by validate-gitops; references _rendered/
-├── namespace.yaml              # PNI labels, PSA labels
+├── namespace.yaml              # PSA labels, app.kubernetes.io/* labels
 ├── _rendered-overlay/          # Stage-2 input
 │   ├── kustomization.yaml      # references ../.render-stage1/<comp>.yaml + patches
 │   └── patches/*.yaml          # platform-base standard patches

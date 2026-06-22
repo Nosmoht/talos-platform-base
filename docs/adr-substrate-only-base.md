@@ -139,7 +139,7 @@ now has three sources (`base`, `apps`, `cluster`) instead of two.
 | `docs/{capability-architecture,pni-cookbook,capability-reference}.md` | Apps |
 | `docs/adr-capability-producer-consumer-symmetry.md` | Apps |
 | `docs/adr-two-layer-capability-architecture.md` | Apps |
-| `docs/adr-three-layer-capability-architecture.md` | Apps |
+| `docs/adr-three-layer-capability-architecture.md` | Substrate (Layer-C only) — Layer A/B dissolved at v2.0.0, but the Layer-C vocabulary is load-bearing for the post-#135 node-capability composition model (`tofu/modules/talos-cluster`), so the ADR stays base-resident with a superseded-in-part banner |
 | `Makefile` target `validate-kyverno-policies` | Apps |
 | `.github/workflows/gitops-validate.yml` kyverno-smoke + capability-index-check jobs | Apps |
 | `.github/workflows/docs-lint.yml` capability-reference-fresh job | Apps |
@@ -172,6 +172,16 @@ now has three sources (`base`, `apps`, `cluster`) instead of two.
   parity for both Base and Apps.
 
 ### Release sequencing
+
+> **Amendment (v2.0.0 — substrate-only ablation executed).** The sequencing below
+> targeted the split at **v1.0.0**. That tag shipped earlier WITHOUT the ablation
+> (it carried the OpenTofu cluster-lifecycle cutover). The substrate-only ablation
+> is therefore executed at **v2.0.0** (MAJOR), bundled with the #135
+> classes→capabilities composition break. Read every "v1.0.0" below as "v2.0.0"
+> for the ablation. Releases are semantic-release-driven: the MAJOR bump comes
+> from the ablation commit's `BREAKING CHANGE:` footer, not from this doc. The
+> three-layer ADR was reclassified Substrate (Layer-C only) — see the disposition
+> table above.
 
 The currently-planned v0.6.0 release bundles: Talos 5-axis path as
 default, PNI policy name/behaviour mismatch cleanup, kebab-case

@@ -38,7 +38,7 @@ Split the platform into **three logically distinct repository roles**:
 
 | Role | Visibility | Contents |
 |---|---|---|
-| **Platform base** (this repo, `talos-platform-base`) | public | Talos templates, infrastructure Helm bases, ArgoCD bootstrap (parameterised), `AGENTS.md` core constraints, PNI registry + policies. **NO cluster identity.** Published as an OCI artifact at `ghcr.io/<owner>/talos-platform-base:vX.Y.Z` on tag push. |
+| **Platform base** (this repo, `talos-platform-base`) | public | Talos templates, substrate infrastructure Helm bases (Talos + Cilium + ArgoCD + cert-approver), ArgoCD bootstrap (parameterised), `AGENTS.md` core constraints. **NO cluster identity.** Published as an OCI artifact at `ghcr.io/<owner>/talos-platform-base:vX.Y.Z` on tag push. (The capability-network contract has since dissolved out of the base — see [`adr-substrate-only-base.md`](adr-substrate-only-base.md).) |
 | **Claude-Code harness** (e.g. `kube-agent-harness`) | private | `.claude/{skills,agents,rules,references,hooks}`. Acts as a Claude-Code plugin for every consumer cluster repo. |
 | **Consumer cluster repo** (one per cluster) | per-cluster choice | `kubernetes/overlays/<cluster>/**`, `talos/nodes/`, `cluster.yaml` (cluster-identity SOT at repo root), cluster-specific ADRs. Consumes base via OCI artifact + harness via `claude plugin install`. |
 
@@ -46,7 +46,9 @@ Split the platform into **three logically distinct repository roles**:
 CA, no shared SOPS key, no shared Vault. Per-cluster break-glass kubeconfig.
 
 **Per-cluster service consumption**: all capabilities are cluster-local. The
-"shared platform service" class is intentionally empty. PNI labels remain
+"shared platform service" class is intentionally empty. The
+capability-network labels (the contract has since dissolved out of the base
+per [`adr-substrate-only-base.md`](adr-substrate-only-base.md)) remain
 cluster-scoped.
 
 **Tooling distribution**: Claude Code's plugin mechanism (project-level
@@ -56,6 +58,13 @@ users must clone the harness repo separately and symlink — manual fallback
 only.
 
 ## Component Classification — Consumer-in-Base / Backend-in-Overlay
+
+> **Superseded** by [`adr-substrate-only-base.md`](adr-substrate-only-base.md):
+> the base is now substrate-only (Talos + Cilium + ArgoCD + cert-approver), the
+> Platform-Consumer/Backend-Provider split below moved into the
+> `talos-platform-apps` catalog, and the capability-network contract dissolved
+> out of the base into apps-CI Conftest + consumer-side Kyverno. The section is
+> preserved for decision history; it does not describe the current base.
 
 Phase 1 of the original migration classified components by directory
 location (`kubernetes/base/` = base, `kubernetes/overlays/` = consumer).

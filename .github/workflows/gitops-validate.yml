@@ -25,7 +25,6 @@ jobs:
       KUSTOMIZE_VERSION: 5.3.0
       KUSTOMIZE_SHA256_LINUX_AMD64: 3ab32f92360d752a2a53e56be073b649abc1e7351b912c0fb32b960d1def854c
       CONFTEST_VERSION: v0.53.0
-      KYVERNO_CLI_VERSION: v1.17.1
       KUBECONFORM_VERSION: 0.6.7
       HELM_VERSION: 3.20.2
       YQ_VERSION: 4.53.2
@@ -54,7 +53,6 @@ jobs:
           tv() { awk -v k="$1" '$1==k {print $2}' .tool-versions; }
           assert kustomize   "$(tv kustomize)"   "$KUSTOMIZE_VERSION"
           assert conftest    "$(tv conftest)"    "$CONFTEST_VERSION"
-          assert kyverno-cli "$(tv kyverno-cli)" "$KYVERNO_CLI_VERSION"
           assert kubeconform "$(tv kubeconform)" "$KUBECONFORM_VERSION"
           assert helm        "$(tv helm)"        "$HELM_VERSION"
           assert yq          "$(tv yq)"          "$YQ_VERSION"
@@ -85,11 +83,6 @@ jobs:
         uses: princespaghetti/setup-conftest@v1.2.0
         with:
           version: ${{ env.CONFTEST_VERSION }}
-
-      - name: Setup Kyverno CLI
-        uses: kyverno/action-install-cli@v0.2.0
-        with:
-          release: ${{ env.KYVERNO_CLI_VERSION }}
 
       - name: Setup kubeconform
         uses: bmuschko/setup-kubeconform@v1.0.0
@@ -175,299 +168,6 @@ jobs:
         run: |
           set -eu
           command -v yq >/dev/null 2>&1 || { echo "error: yq is required but not installed"; exit 1; }
-          command -v kyverno >/dev/null 2>&1 || { echo "error: kyverno CLI is required but not installed"; exit 1; }
-
-      - name: Validate Kyverno policies from source manifests
-        run: |
-          set -eu
-          # Use a directory of per-file policy copies instead of a
-          # single concatenated multi-doc file. kyverno-cli v1.17.x
-          # (pinned) fails to parse the multi-doc form and reports
-          # "Applying 0 policy rule(s)" — the silent-skip class that
-          # the post-apply assertion below catches. A directory of
-          # one-document-per-file works reliably across CLI versions.
-          tmp_policy_dir="$(mktemp -d)"
-          tmp_resources="$(mktemp)"
-          tmp_manifest_list="$(mktemp)"
-
-          git ls-files 'kubernetes/**/*.yaml' 'kubernetes/**/*.yml' > "$tmp_manifest_list"
-          policy_count=0
-          while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            if yq -e '.apiVersion == "kyverno.io/v1" and (.kind == "ClusterPolicy" or .kind == "Policy")' "$f" >/dev/null 2>&1; then
-              # Encode path into filename to keep them unique under the
-              # flat policy dir layout.
-              dest="$(printf '%s' "$f" | tr '/' '_')"
-              cp "$f" "$tmp_policy_dir/$dest"
-              policy_count=$((policy_count + 1))
-            fi
-          done < "$tmp_manifest_list"
-
-          if [ "$policy_count" -eq 0 ]; then
-            echo "notice: no Kyverno policies found in source manifests"
-            exit 0
-          fi
-          echo "kyverno policies discovered: $policy_count"
-
-          # Smoke fixture: one minimal resource per kind matched by any
-          # base PNI ClusterPolicy. Each resource is shaped to PASS the
-          # policy so the smoke test verifies the policy evaluates and
-          # catches the silent-skip regression class (match.kinds
-          # narrowed to a kind absent from the fixture).
-          #
-          # Kinds covered:
-          #   Namespace   pni-contract, pni-capability-validation,
-          #               pni-reserved-labels-namespace, vault-ca-distribution
-          #   HTTPRoute   external-httproute-hostnames-enforce
-          #   Service     pni-reserved-annotations-enforce
-          #   Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob
-          #               pni-reserved-labels-workload + capability-provider-workload
-          #   ConfigMap   no policy matches today — future-proofing slot
-          cat > "$tmp_resources" <<'EOF'
-          ---
-          apiVersion: v1
-          kind: Namespace
-          metadata:
-            name: kyverno-ci-smoke
-            labels:
-              platform.io/network-interface-version: "v1"
-              platform.io/network-profile: "managed"
-              platform.io/consume.monitoring-scrape: "true"
-          ---
-          apiVersion: gateway.networking.k8s.io/v1
-          kind: HTTPRoute
-          metadata:
-            name: kyverno-ci-smoke-internal
-            namespace: kyverno-ci-smoke
-            labels:
-              app.kubernetes.io/name: kyverno-ci-smoke
-          spec:
-            parentRefs:
-              - name: cluster-gateway
-                namespace: gateway
-                sectionName: https
-            hostnames:
-              - internal.smoke.example
-            rules:
-              - backendRefs:
-                  - name: kyverno-ci-smoke
-                    port: 80
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: kyverno-ci-smoke
-            namespace: kyverno-ci-smoke
-            labels:
-              app.kubernetes.io/name: kyverno-ci-smoke
-            # annotations map MUST be present (even with a fixture-only
-            # entry) so the reserved-annotations policy's items(@,…)
-            # JMESPath does not error on nil traversal.
-            annotations:
-              fixture.kyverno-ci-smoke/note: "fixture-only annotation, not reserved"
-          spec:
-            selector:
-              app.kubernetes.io/name: kyverno-ci-smoke
-            ports:
-              - name: http
-                port: 80
-                targetPort: 8080
-          ---
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: kyverno-ci-smoke-pod
-            namespace: kyverno-ci-smoke
-            labels:
-              app.kubernetes.io/name: kyverno-ci-smoke
-          spec:
-            containers:
-              - name: pause
-                image: registry.k8s.io/pause:3.10
-          ---
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: kyverno-ci-smoke
-            namespace: kyverno-ci-smoke
-            labels:
-              app.kubernetes.io/name: kyverno-ci-smoke
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app.kubernetes.io/name: kyverno-ci-smoke
-            template:
-              metadata:
-                labels:
-                  app.kubernetes.io/name: kyverno-ci-smoke
-              spec:
-                containers:
-                  - name: pause
-                    image: registry.k8s.io/pause:3.10
-          ---
-          apiVersion: apps/v1
-          kind: StatefulSet
-          metadata:
-            name: kyverno-ci-smoke-sts
-            namespace: kyverno-ci-smoke
-            labels:
-              app.kubernetes.io/name: kyverno-ci-smoke
-          spec:
-            serviceName: kyverno-ci-smoke
-            replicas: 1
-            selector:
-              matchLabels:
-                app.kubernetes.io/name: kyverno-ci-smoke-sts
-            template:
-              metadata:
-                labels:
-                  app.kubernetes.io/name: kyverno-ci-smoke-sts
-              spec:
-                containers:
-                  - name: pause
-                    image: registry.k8s.io/pause:3.10
-          ---
-          apiVersion: apps/v1
-          kind: DaemonSet
-          metadata:
-            name: kyverno-ci-smoke-ds
-            namespace: kyverno-ci-smoke
-            labels:
-              app.kubernetes.io/name: kyverno-ci-smoke
-          spec:
-            selector:
-              matchLabels:
-                app.kubernetes.io/name: kyverno-ci-smoke-ds
-            template:
-              metadata:
-                labels:
-                  app.kubernetes.io/name: kyverno-ci-smoke-ds
-              spec:
-                containers:
-                  - name: pause
-                    image: registry.k8s.io/pause:3.10
-          ---
-          apiVersion: batch/v1
-          kind: Job
-          metadata:
-            name: kyverno-ci-smoke-job
-            namespace: kyverno-ci-smoke
-            labels:
-              app.kubernetes.io/name: kyverno-ci-smoke
-          spec:
-            template:
-              metadata:
-                labels:
-                  app.kubernetes.io/name: kyverno-ci-smoke-job
-              spec:
-                restartPolicy: Never
-                containers:
-                  - name: pause
-                    image: registry.k8s.io/pause:3.10
-          ---
-          apiVersion: batch/v1
-          kind: CronJob
-          metadata:
-            name: kyverno-ci-smoke-cron
-            namespace: kyverno-ci-smoke
-            labels:
-              app.kubernetes.io/name: kyverno-ci-smoke
-          spec:
-            schedule: "*/5 * * * *"
-            jobTemplate:
-              spec:
-                template:
-                  metadata:
-                    labels:
-                      app.kubernetes.io/name: kyverno-ci-smoke-cron
-                  spec:
-                    restartPolicy: Never
-                    containers:
-                      - name: pause
-                        image: registry.k8s.io/pause:3.10
-          ---
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: kyverno-ci-smoke-cm
-            namespace: kyverno-ci-smoke
-          data:
-            unused: "fixture for kind-coverage; no policy matches ConfigMap today"
-          EOF
-
-          kyverno version
-          tmp_log="$(mktemp)"
-          if ! kyverno apply "$tmp_policy_dir" --resource "$tmp_resources" --warn-no-pass=false 2>&1 | tee "$tmp_log"; then
-            echo "error: kyverno apply failed against smoke fixture"
-            exit 1
-          fi
-          # Parse the kyverno summary line:
-          #   pass: N, fail: N, warn: N, error: N, skip: N
-          # Workload rules carry skipBackgroundRequests: true, so
-          # kyverno-cli (background-scan mode) silently skips them.
-          # The realistic admission-mode pass-count baseline is the
-          # Namespace and Service rule passes. Asserting pass>0 catches
-          # the silent-skip regression class without overfitting to
-          # current rule counts.
-          summary="$(grep -E '^pass:' "$tmp_log" | tail -1)"
-          if [ -z "$summary" ]; then
-            echo "error: no kyverno summary line found"
-            exit 1
-          fi
-          pass_count="$(echo "$summary"  | sed -nE 's/.*pass:[[:space:]]*([0-9]+).*/\1/p')"
-          fail_count="$(echo "$summary"  | sed -nE 's/.*fail:[[:space:]]*([0-9]+).*/\1/p')"
-          error_count="$(echo "$summary" | sed -nE 's/.*error:[[:space:]]*([0-9]+).*/\1/p')"
-          if [ "$pass_count" -lt 1 ]; then
-            echo "error: kyverno smoke produced zero passes — every rule was silently skipped"
-            exit 1
-          fi
-          if [ "$fail_count" -ne 0 ]; then
-            echo "error: smoke fixture produced $fail_count policy failures"
-            exit 1
-          fi
-          if [ "$error_count" -ne 0 ]; then
-            echo "error: smoke fixture produced $error_count policy errors (JMESPath/context resolution failure)"
-            exit 1
-          fi
-          echo "ok: kyverno smoke fixture — pass=$pass_count fail=$fail_count error=$error_count"
-
-      - name: Run kyverno-cli unit tests
-        run: |
-          set -eu
-          # Each test directory carries its own kyverno-test.yaml,
-          # resources, and values. Run every test discovered under
-          # kubernetes/base/**/tests/**/kyverno-test.yaml.
-          found=0
-          failed=0
-          while IFS= read -r test_yaml; do
-            [ -n "$test_yaml" ] || continue
-            test_dir="$(dirname "$test_yaml")"
-            found=$((found + 1))
-            echo "kyverno test: $test_dir"
-            if ! kyverno test "$test_dir"; then
-              failed=$((failed + 1))
-            fi
-          done <<EOF
-          $(find kubernetes/base -type f -name 'kyverno-test.yaml' | sort)
-          EOF
-          if [ "$found" -eq 0 ]; then
-            echo "notice: no kyverno-cli unit tests found"
-            exit 0
-          fi
-          if [ "$failed" -ne 0 ]; then
-            echo "error: $failed of $found kyverno test directories failed"
-            exit 1
-          fi
-          echo "ok: $found kyverno test directories passed"
-
-      - name: Lint Kyverno JMESPath anti-patterns
-        run: |
-          set -eu
-          if grep -R -n -E --include='*.yaml' --include='*.yml' "request\\.object\\.metadata\\.labels\\.'[^']+'" kubernetes/; then
-            echo "error: invalid Kyverno JMESPath pattern detected. Use labels.\\\"key\\\" syntax for dotted/slashed label keys."
-            exit 1
-          fi
 
       - name: Kubeconform rendered manifests
         run: |
@@ -499,8 +199,8 @@ jobs:
           path: |
             .work/
 
-  capability-index-check:
-    name: Capability-index validation (Layer A + Layer C)
+  hardware-features-check:
+    name: Hardware-features registry validation (Layer C)
     runs-on: ubuntu-latest
     env:
       YQ_VERSION: 4.53.2
@@ -522,30 +222,11 @@ jobs:
           # Ensure the user-site bin dir is on PATH for subsequent steps.
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # ── Layer C first: Layer A refs-check depends on Layer C ids resolving.
       - name: Lint Layer-C hardware-features registry schema
         run: scripts/lint-hardware-features.sh
 
-      - name: Lint Layer-A capability index schema
-        run: scripts/lint-capability-index.sh
-
-      - name: Lint must reject broken fixture (negative test)
-        run: |
-          set -eu
-          if scripts/lint-capability-index.sh scripts/test/capability-index-broken-fixture.yaml >/dev/null 2>&1; then
-            echo "::error::lint script returned 0 on the broken fixture; rules are too loose"
-            exit 1
-          fi
-          echo "ok: lint rejected the broken fixture"
-
-      - name: Check cross-references (Layer A + Layer C resolution + orphan-infra-dir advisory)
-        run: scripts/check-capability-index-refs.sh
-
       - name: Check provisioning-catalog provides == registry talos-machine-config atoms (γ' composition)
         run: scripts/check-provisioning-catalog-refs.sh
-
-      - name: Verify rendered Markdown is up-to-date (Layer A + Layer C)
-        run: scripts/render-capability-index.sh --check
 
   reuse-compliance:
     name: REUSE 3.3 compliance

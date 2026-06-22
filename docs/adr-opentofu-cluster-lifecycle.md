@@ -88,7 +88,8 @@ pins the toolchain (OpenTofu, tflint, go-task, …) and a `Taskfile.yml` exposes
 `hard-constraints-check` CI gate scans this repo's `tofu/**`. Enforcing
 no-SecureBoot in consumer-supplied root/patch files (and schematic-level
 secureboot toggles) is the consumer overlay's responsibility — the same
-substrate-only boundary the base applies to PNI instance enforcement.
+substrate-only boundary that pushes per-instance policy enforcement out to
+the consumer overlay.
 
 ### Consequences
 

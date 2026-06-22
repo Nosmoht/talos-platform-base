@@ -1,17 +1,17 @@
 # Platform Hardware Features Registry (Layer C)
 # =============================================
 # Static catalog of atomic hardware features that nodes in this platform
-# may carry. Layer A entries reference these via `requires_hardware_features[]`;
-# consumer-side composite capabilities in cluster.yaml reference them via
-# `requires_features[]` under the `hardware-capabilities:` block.
+# may carry. Consumer-side composite capabilities in cluster.yaml reference
+# them via `requires_features[]` under the `hardware-capabilities:` block;
+# the talos-cluster provisioning-profile catalog `provides` these atoms.
 #
 # Not consumed at runtime by any in-cluster component; read at build time
-# by validation scripts, at PR time by `capability-index-check` CI, and
-# at design time by humans and agentic tools.
+# by validation scripts, at PR time by the `hardware-features-check` CI job,
+# and at design time by humans and agentic tools.
 #
 # See:
-#   - docs/adr-three-layer-capability-architecture.md  (architecture rationale)
-#   - docs/platform-capability-index.yaml              (Layer A — refs these ids)
+#   - docs/adr-three-layer-capability-architecture.md  (architecture rationale; Layer C)
+#   - docs/adr-node-capability-composition.md          (the composition model that consumes these)
 #   - docs/schemas/hardware-features.schema.json       (JSON Schema for this file)
 #
 # Schema (per-entry):

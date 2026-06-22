@@ -10,8 +10,9 @@ Email: `thomas.krahn.tk@gmail.com` with subject prefix
 Include:
 
 - The repository tag (or commit SHA) affected.
-- The component or path under suspicion (for example a specific PNI Kyverno
-  policy, a Talos patch, a Helm value default).
+- The component or path under suspicion (for example a Talos machine-config
+  patch, a substrate Helm value default, the `tofu/modules/talos-cluster`
+  module).
 - Reproduction steps and expected vs observed behaviour.
 - Whether you are willing to be credited in the eventual fix commit.
 
@@ -66,24 +67,30 @@ back to this repository's commit at the time of release.
 
 ## Threat model summary
 
-The base ships:
+The base is substrate-only. It ships:
 
-- Helm values + namespace declarations.
+- The substrate components `argocd/` and `cert-approver/`
+  (Helm values + namespace declarations).
 - ArgoCD bootstrap templates (parameterized; rendered with envsubst).
 - Talos machine-config patches.
-- Kyverno ClusterPolicies + conftest Rego.
-- 16 Cilium CCNPs (capability-selector form).
+- The `tofu/modules/talos-cluster` cluster-lifecycle module.
+- Layer-C node-capability / hardware-feature definitions
+  (`docs/platform-hardware-features.yaml` + schema) and base-scoped
+  conftest Rego.
 
-It does NOT ship secrets, IPs, FQDNs, OIDC issuers, or cluster
-credentials.
+It does NOT ship the PNI / capability-network contract, Kyverno
+ClusterPolicies, or Cilium CCNPs — those dissolved out of the substrate
+(see [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md))
+and now live as apps-CI Conftest plus consumer-cluster Kyverno, with the
+catalog in the separate `talos-platform-apps` repository. It does NOT
+ship secrets, IPs, FQDNs, OIDC issuers, or cluster credentials.
 
 ### In scope for a security report
 
 | Threat | Surface |
 |---|---|
-| **Reserved-label forgery** — tenant manifest claims `provide.<cap>` or `capability-provider.<cap>` it should not have | PNI Kyverno policies (`pni-reserved-labels-enforce`, `pni-reserved-annotations-enforce`) |
-| **Cross-tenant L4 reachability** — namespace mis-declares `consume.<cap>` (for example without instance suffix on instanced cap) and gains L4 reach across tenants | PNI registry + audit-mode advisory; CCNP `endpointSelector` |
-| **Capability-discovery forgery** — Service-level annotation forged to shadow real producers | `pni-reserved-annotations-enforce` |
+| **Layer-C hardware-label forgery** — a tenant manifest claims `platform.io/hardware-feature.*` / `hardware-capability.*` it has no node basis for | Layer-C labels are settable only by Talos `machine.nodeLabels`; schema enforced by `scripts/lint-hardware-features.sh` + `hardware-features-check` CI job |
+| **Provisioning-catalog override** — a consumer redefines the base-owned per-node provisioning-profile catalog | catalog is module-local / base-owned; `scripts/check-provisioning-catalog-refs.sh` |
 | **Secret leak in committed file** | `.github/workflows/gitops-validate.yml` `secret-scan` job (gitleaks); pre-commit gitleaks hook |
 | **Talos boot-loop trigger** in a patch (`debugfs=off`, `secureboot` installer) | AGENTS.md §Hard Constraints + `hard-constraints-check.yml` |
 | **Forbidden Kubernetes kind** (`Ingress`, `Endpoints`) | `hard-constraints-check.yml` |
@@ -93,24 +100,27 @@ credentials.
 
 | Out-of-scope concern | Owner |
 |---|---|
+| PNI / capability-network admission (reserved-label forgery, cross-tenant L4 reachability, capability-discovery forgery) — no longer base-shipped | consumer-cluster Kyverno + apps-CI Conftest; catalog in `talos-platform-apps` |
 | Application-layer authentication (Vault tokens, Postgres roles, OIDC scopes, Kafka ACLs) | application repo |
 | Consumer-cluster identity, secrets, SOPS keys, OIDC issuer config | consumer cluster repo |
-| Per-instance L4 enforcement for tools the base does not deploy | consumer cluster repo's overlay (see ADR §"Per-instance enforcement is consumer-overlay responsibility") |
+| Per-instance L4 enforcement for tools the base does not deploy | consumer cluster repo's overlay |
 | Live cluster RBAC misconfiguration | cluster operator |
-| SPIFFE / identity-aware policy | deferred (see ADR §"Network-layer isolation scope") |
+| SPIFFE / identity-aware policy | deferred |
 
 ## Hardening notes
 
 If you operate a consumer cluster against this base:
 
 1. **Pin and verify** the OCI tag before each vendoring (see OCI-verification doc).
-2. **Run `scripts/capability-deprecation-scan.sh`** in your CI to catch
-   sunset breakage before the next OCI tag flip.
-3. **Watch `kubectl get policyreport -A`** for `pni-instanced-suffix-required-audit`
-   advisories — they signal vocabulary smells before a multi-tenant L4 gap
-   becomes exploitable.
-4. **Do not relax the namespace-anchored producer rule**. If a producer
-   "needs" to live in a system namespace, relocate it.
+2. **Adopt the PNI / capability-network controls from `talos-platform-apps`.**
+   Reserved-label, cross-tenant-L4, and capability-discovery enforcement
+   dissolved out of the substrate (see
+   [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md));
+   pull the corresponding Conftest + Kyverno from the apps catalog and run
+   them in your own CI / cluster.
+3. **Do not relax the Layer-C label boundary.** `platform.io/hardware-feature.*`
+   and `hardware-capability.*` are settable only by Talos `machine.nodeLabels`;
+   a workload that forges them must be denied by your consumer-cluster Kyverno.
 
 ## Acknowledgements
 
@@ -130,6 +140,6 @@ section above. `Expires` is bumped annually together with the
 ## References
 
 - [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md)
-- [`docs/capability-architecture.md`](docs/capability-architecture.md) §"Enforcement summary"
 - [`AGENTS.md`](AGENTS.md) §"Hard Constraints" + §"Tool-Agnostic Safety Invariants"
-- [`docs/adr-capability-producer-consumer-symmetry.md`](docs/adr-capability-producer-consumer-symmetry.md)
+- [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md) — substrate-only scope; PNI dissolution
+- [`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md) — Layer-C label boundary

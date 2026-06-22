@@ -3,8 +3,8 @@
 #
 # Scope: this Taskfile covers the tofu/ subtree — the OpenTofu cluster-lifecycle
 # module that is now the substrate base's sole Talos provisioning path. The
-# kustomize/Kyverno manifest validation lives in the repo Makefile
-# (`make validate-gitops`, `make validate-kyverno-policies`) and is unchanged.
+# kustomize manifest validation lives in the repo Makefile
+# (`make validate-gitops`) and is unchanged.
 
 version: '3'
 
