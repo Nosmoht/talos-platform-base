@@ -149,3 +149,33 @@ run "emits_label_reserved_namespace_rejected" {
   }
   expect_failures = [var.hardware_capabilities]
 }
+
+# argocd-namespace seed carries the PSA floor + the six recommended labels.
+# Spec: AGENTS.md §Hard Constraints ("Kubernetes recommended labels on all
+# resources") + the PSA floor (enforce: baseline) preserved from the retired
+# kubernetes/bootstrap/argocd/namespace.yaml — the module is now the sole creator
+# of the namespace, so the create-only inlineManifest seed must carry these
+# itself. Red-green: drop labels from local.argocd_namespace_labels (main.tf) and
+# both asserts fail. deploy_argocd = true renders the argo-cd chart (NETWORK) and
+# needs a prefix-valid age key — already part of the network-gated `task test`.
+run "argocd_namespace_seed_carries_psa_floor_and_recommended_labels" {
+  command = plan
+  variables {
+    deploy_argocd = true
+    sops_age_key  = "AGE-SECRET-KEY-1TESTONLYPLACEHOLDERNOTAREALKEY00000000000000000000000000000"
+    nodes = [
+      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    ]
+  }
+  assert {
+    condition     = lookup(output.argocd_namespace_labels, "pod-security.kubernetes.io/enforce", "<absent>") == "baseline"
+    error_message = "AGENTS.md §Hard Constraints + namespace.yaml PSA floor: the module-seeded argocd namespace must enforce PSA baseline; got '${lookup(output.argocd_namespace_labels, "pod-security.kubernetes.io/enforce", "<absent>")}'"
+  }
+  assert {
+    condition = length(setsubtract(
+      ["app.kubernetes.io/name", "app.kubernetes.io/instance", "app.kubernetes.io/version", "app.kubernetes.io/component", "app.kubernetes.io/part-of", "app.kubernetes.io/managed-by"],
+      keys(output.argocd_namespace_labels)
+    )) == 0
+    error_message = "AGENTS.md §Hard Constraints: all six app.kubernetes.io/* recommended labels must be seeded on the argocd namespace; missing: ${jsonencode(setsubtract(["app.kubernetes.io/name", "app.kubernetes.io/instance", "app.kubernetes.io/version", "app.kubernetes.io/component", "app.kubernetes.io/part-of", "app.kubernetes.io/managed-by"], keys(output.argocd_namespace_labels)))}"
+  }
+}

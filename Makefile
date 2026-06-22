@@ -1,4 +1,4 @@
-.PHONY: argocd-install argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml verify-tools render-component render-all verify-rendered chart-pull .argocd-bootstrap-render oci-allowlist-check
+.PHONY: argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml verify-tools render-component render-all verify-rendered chart-pull .argocd-bootstrap-render oci-allowlist-check
 
 ENV ?= cluster.yaml
 
@@ -11,18 +11,6 @@ MCP_WRAPPER_BIN    := $(HOME)/.local/bin/mcp-github-wrapper
 MCP_WRAPPER_SOURCE := $(CURDIR)/scripts/mcp-github-wrapper.sh
 
 UNAME_S := $(shell uname -s)
-
-argocd-install:
-	kubectl apply -f kubernetes/bootstrap/argocd/namespace.yaml
-	helm upgrade --install argocd argo/argo-cd \
-		--version '9.4.5' \
-		--namespace argocd \
-		-f kubernetes/base/infrastructure/argocd/values.yaml
-	@kubectl create secret generic sops-age-key \
-		--namespace argocd \
-		--from-file=keys.txt=$${SOPS_AGE_KEY_FILE:-$$HOME/.config/sops/age/keys.txt} \
-		--dry-run=client -o yaml | kubectl apply -f -
-	kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
 
 init-cluster-yaml: cluster.yaml.example
 	@if [ ! -e cluster.yaml ]; then \
@@ -47,7 +35,17 @@ init-cluster-yaml: cluster.yaml.example
 	   < kubernetes/bootstrap/argocd/root-project.yaml.tmpl \
 	   > kubernetes/bootstrap/argocd/_out/root-project.yaml
 
-argocd-bootstrap: argocd-install .argocd-bootstrap-render
+# ArgoCD itself (controller + namespace + sops-age-key Secret + CRDs) is delivered
+# by tofu/modules/talos-cluster as a Talos inlineManifest SEED (deploy_argocd=true)
+# + kubectl server-side CRDs -- NOT by this target. This target only seeds the
+# consumer-identity App-of-Apps root (root-project + root-application), which the
+# module does NOT deliver. Precondition: a completed `tofu apply` (CRDs + controller).
+# The two waits restore the cross-context ordering barrier the removed
+# `make argocd-install` kubectl-wait used to provide (CRD established + server ready
+# before the root Application is applied).
+argocd-bootstrap: .argocd-bootstrap-render
+	kubectl wait --for=condition=established crd/applications.argoproj.io --timeout=120s
+	kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
 	kubectl apply -f kubernetes/bootstrap/argocd/_out/root-project.yaml
 	kubectl apply -f kubernetes/bootstrap/argocd/_out/root-application.yaml
 
