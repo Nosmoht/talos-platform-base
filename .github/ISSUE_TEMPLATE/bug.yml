@@ -12,7 +12,7 @@ body:
       description: What did you see? Include the exact command run and the exact output.
       placeholder: |
         ```bash
-        $ make validate-gitops
+        $ task gitops:validate
         … error trace …
         ```
     validations:
@@ -34,7 +34,7 @@ body:
       placeholder: |
         1. `git clone … && cd talos-platform-base`
         2. `cp cluster.yaml.example cluster.yaml`
-        3. `make validate-gitops`
+        3. `task gitops:validate`
         4. observe error
     validations:
       required: true

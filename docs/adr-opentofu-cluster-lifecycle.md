@@ -150,7 +150,7 @@ the consumer overlay.
 
 ## Validation
 
-- CI `tofu-validate` (mirrors local `task ci`: `tofu fmt -check`, per-dir
+- CI `tofu-validate` (mirrors local `task tofu:ci`: `tofu fmt -check`, per-dir
   `tofu validate`, `tflint`) is green on every `tofu/**` change.
 - `tofu/modules/talos-cluster/examples/homelab/` validates a mixed
   amd64 + arm64 topology (controlplane, kubevirt workers, GPU worker, arm64

@@ -2,7 +2,7 @@
 
 Claude Code (`.mcp.json`) and Codex CLI (`.codex/config.toml`) both reference three MCP
 servers by bare command name. These binaries must be installed on your workstation and the
-wrapper symlink must be registered in your `PATH`. All of this is automated by `make mcp-install`.
+wrapper symlink must be registered in your `PATH`. All of this is automated by `task mcp:install`.
 
 ## Prerequisites
 
@@ -21,18 +21,18 @@ wrapper symlink must be registered in your `PATH`. All of this is automated by `
 git clone <repo-url> && cd <repo-name>
 
 # 2. Install binaries and wrapper symlink
-make mcp-install
+task mcp:install
 
 # 3. Authenticate with GitHub (if not already done)
 gh auth login
 
 # 4. Verify everything is wired up
-make mcp-verify
+task mcp:verify
 
 # 5. Restart Claude Code or Codex CLI
 ```
 
-`make mcp-install` does the following per OS:
+`task mcp:install` does the following per OS:
 
 | Step | macOS | Linux |
 |------|-------|-------|
@@ -113,7 +113,7 @@ sudo launchctl setenv PATH "/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$P
 
 Then restart Claude Code. This setting persists across reboots until explicitly removed.
 
-### `github-mcp-server: not found in PATH` after `make mcp-install`
+### `github-mcp-server: not found in PATH` after `task mcp:install`
 
 On Linux, `go install` places the binary in `$(go env GOPATH)/bin` (typically `~/go/bin`).
 Ensure `~/go/bin` is in your `PATH`:

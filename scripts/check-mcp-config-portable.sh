@@ -47,7 +47,7 @@ check_file ".codex/config.toml" || fail=1
 if [ "$fail" -ne 0 ]; then
   printf "\nMCP config portability check FAILED.\n" >&2
   printf "Commands must be bare PATH identifiers (e.g. 'mcp-github-wrapper', not '/opt/homebrew/bin/...').\n" >&2
-  printf "Run 'make mcp-install' to install binaries and the wrapper symlink.\n" >&2
+  printf "Run 'task mcp:install' to install binaries and the wrapper symlink.\n" >&2
 fi
 
 exit "$fail"

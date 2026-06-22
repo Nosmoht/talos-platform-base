@@ -350,4 +350,4 @@ runtime-mutable config (Hubble, L2/BGP) is Day-2 Cilium self-management.
 ## Related
 
 - [`docs/adr-opentofu-cluster-lifecycle.md`](../../../docs/adr-opentofu-cluster-lifecycle.md) — why OpenTofu replaced the Makefile/5-axis path, and the consequences.
-- [`Taskfile.yml`](../../../Taskfile.yml) — `task ci` validates this module (fmt-check + validate + lint).
+- [`Taskfile.yml`](../../../Taskfile.yml) — `task tofu:ci` validates this module (fmt-check + validate + lint).

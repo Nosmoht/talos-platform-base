@@ -108,7 +108,7 @@ module bakes into the controlplane machine-config (`deploy_argocd = true`),
 before any Application — or even the apiserver's ArgoCD CRDs — exists. The
 create-only seed carries the full PSA floor (`enforce: baseline`) + the
 recommended labels itself, so the namespace is never delivered
-PSA-unenforced (the former `make argocd-install` /
+PSA-unenforced (the former Helm `argocd-install` /
 `kubernetes/bootstrap/argocd/namespace.yaml` path is retired). Once ArgoCD
 is up, the `argocd` Application syncs its `_rendered/manifests.yaml`, which
 includes vendor `namespace.yaml`; SSA-merge of labels onto the live
@@ -242,7 +242,7 @@ operators understand the policy.
   labels for platform namespaces. PSA labels and the recommended
   `app.kubernetes.io/*` labels all come from vendor `namespace.yaml`
   shipped by this base. Consumer's role: vendor the OCI artifact and run
-  `make argocd-bootstrap`.
+  `task bootstrap:argocd`.
 - Decommissioning a platform component is a single act: removing
   the per-component Application also cascade-deletes its namespace
   (correct semantics — the component is gone, no reason for its

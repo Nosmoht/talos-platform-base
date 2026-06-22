@@ -123,7 +123,7 @@ cleanly). Decisions 2 and 4 are the correction.
   the `examples/homelab` root is a thin `yamldecode` shim mapping it onto the typed
   interface (machine-config patches declared as structured YAML, `yamlencode`d by
   the shim); `AGENTS.md` + this ADR's parent (`base:opentofu-cluster-lifecycle`)
-  corrected. Verified by `task ci` (fmt + validate + tflint) and `tofu plan` (19
+  corrected. Verified by `task tofu:ci` (fmt + validate + tflint) and `tofu plan` (19
   add / 0 error on the homelab example).
 - **Done — decisions 1, 2, 4, 5 (the Cilium-delivery change):** `deploy_cilium`, `cni:none`
   (authoritative, last in the patch order so a stale caller `cni` patch cannot
@@ -179,7 +179,7 @@ cleanly). Decisions 2 and 4 are the correction.
   couples `ipv6.enabled` to `dual_stack`); fail-fast replaces the previously-silent
   broken plan — adding a v6-only path is a separate feature, not a regression.
   (d) Module preconditions are **plan-time**, so the validate-only CI gate
-  (`task ci`) does not exercise them — they protect `tofu plan`/`apply`, not
+  (`task tofu:ci`) does not exercise them — they protect `tofu plan`/`apply`, not
   `tofu validate` (a property shared by all of the module's preconditions).
 - **Deferred — chart/CRD integrity pinning (a delivery-mechanism change, not a
   precondition).** Verified 2026-06: the Helm provider's `data.helm_template`

@@ -38,7 +38,7 @@ flowchart TB
     talos --> k8s --> cilium --> argoseed
   end
 
-  subgraph L2["Layer 2 — App-of-Apps root (one-time, make argocd-bootstrap; NOT module-delivered)"]
+  subgraph L2["Layer 2 — App-of-Apps root (one-time, task bootstrap:argocd; NOT module-delivered)"]
     direction LR
     appproj["root AppProject<br/>(sync-wave -1)"]
     rootapp["root Application<br/>(App-of-Apps entry → consumer overlay)"]
@@ -62,7 +62,7 @@ mechanism**:
 | Layer | Lifecycle owner | Change mechanism | Reconciliation |
 |---|---|---|---|
 | 1 — Talos + bundled K8s + CNI | Talos / Sidero Labs | `talosctl apply-config` + `talosctl upgrade-k8s` | none in-cluster |
-| 2 — App-of-Apps root (NOT module-delivered) | this repo's `Makefile` | `make argocd-bootstrap` (one-time) | none until Layer 3 |
+| 2 — App-of-Apps root (NOT module-delivered) | this repo's `Taskfile` | `task bootstrap:argocd` (one-time) | none until Layer 3 |
 | 3 — everything else | this repo's `kubernetes/base/infrastructure/` + consumer overlay | git commit + push | ArgoCD continuous reconciliation |
 
 ## Layer 1 — what Talos delivers
@@ -118,12 +118,12 @@ step, and it is **mandatory**: without it ArgoCD runs but reconciles
 nothing — a healthy-looking, functionally inert cluster.
 
 The bootstrap break of GitOps purity is therefore contained to exactly
-**two** `kubectl apply` invocations, both behind `make argocd-bootstrap`
+**two** `kubectl apply` invocations, both behind `task bootstrap:argocd`
 and both documented as exceptions in [`AGENTS.md`](../AGENTS.md)
 §"Hard Constraints":
 
 ```bash
-# make argocd-bootstrap — requires deploy_argocd=true AND a completed `tofu apply`
+# task bootstrap:argocd — requires deploy_argocd=true AND a completed `tofu apply`
 # (which seeds ArgoCD + applies its CRDs). It first waits out the cross-context
 # ordering barrier: BOTH root CRDs (Application + AppProject), polling for
 # existence so a not-yet-created CRD does not fail-fast, then the server:
@@ -140,7 +140,7 @@ kubectl apply -f kubernetes/bootstrap/argocd/_out/root-application.yaml
 The waits matter: the `Application` and `AppProject` kinds require their
 respective ArgoCD CRDs (`applications.argoproj.io`,
 `appprojects.argoproj.io`), which `tofu apply` installs in a **different
-execution context** than `make argocd-bootstrap`. The target polls each
+execution context** than `task bootstrap:argocd`. The task polls each
 CRD for existence *before* waiting on its `established` condition, so a
 bootstrap launched before `tofu apply` finished — or in a split-CI
 topology where the two run on separate runners — **blocks** rather than
@@ -174,7 +174,7 @@ consumer `kubectl apply`):
   rest** and key rotation is a `tofu apply` (re-seed), not a `kubectl`
   secret edit. The Secret is **only** the age key, never app secrets.
 
-After `make argocd-bootstrap` succeeds, the boundary moves: any further
+After `task bootstrap:argocd` succeeds, the boundary moves: any further
 `kubectl apply` to ArgoCD-managed resources is now a hard constraint
 violation, enforced by `AGENTS.md` and the `hard-constraints-check` CI
 job in consumer repos.
@@ -244,8 +244,8 @@ tofu output -raw kubeconfig   > kubeconfig           # admin kubeconfig
 tofu output -raw talosconfig  > talosconfig          # talosctl client config
 
 # Layer 2 — App-of-Apps root (one-time; ArgoCD itself is already up from Layer 1)
-make argocd-bootstrap ENV=cluster.yaml               # waits for ArgoCD CRDs+server, then seeds the root project + app
-make argocd-password                                 # initial admin password (rotate after first login)
+task bootstrap:argocd ENV=cluster.yaml               # waits for ArgoCD CRDs+server, then seeds the root project + app
+task bootstrap:argocd-password                       # initial admin password (rotate after first login)
 
 # Layer 3 — wait, then git push
 kubectl -n argocd get applications --watch           # ArgoCD reconciles the base substrate components

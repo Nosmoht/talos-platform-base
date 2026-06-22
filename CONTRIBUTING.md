@@ -55,7 +55,7 @@ Issues are the primary entry point. State-machine and labels are
 described in [`docs/issue-workflow.md`](docs/issue-workflow.md).
 
 - Pick up `status: ready` issues only — these have passed R1–R5 readiness.
-- Open a draft PR early; mark `Ready for review` once `make validate-gitops`
+- Open a draft PR early; mark `Ready for review` once `task gitops:validate`
   passes locally.
 
 ## Conventional commits
@@ -88,7 +88,7 @@ footer, or the change ships as a non-breaking release. See
 ### Required (local) before opening
 
 ```bash
-make validate-gitops             # kustomize + conftest + kubeconform
+task gitops:validate             # kustomize + conftest + kubeconform
 ```
 
 For changes touching a single component:
@@ -107,7 +107,7 @@ scripts/check-provisioning-catalog-refs.sh
 For `tofu/modules/talos-cluster` changes:
 
 ```bash
-task ci   # tofu fmt -check + tofu validate + tflint
+task tofu:ci   # tofu fmt -check + tofu validate + tflint
 ```
 
 ### Required (CI) before merge

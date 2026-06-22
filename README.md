@@ -80,7 +80,7 @@ receives a frozen tree containing:
 - **`cluster.yaml.example`** — the declarative cluster Source-of-Truth
   template (identity, Talos/Kubernetes versions, endpoint, pod/service
   CIDR, dual-stack, node classes, machine-config patches, substrate
-  config). `make init-cluster-yaml` copies it to a `cluster.yaml` the
+  config). `task cluster:init-yaml` copies it to a `cluster.yaml` the
   consumer fills in.
 - **The substrate-only infrastructure components** under
   `kubernetes/base/infrastructure/` — `argocd/` and `cert-approver/`,
@@ -99,8 +99,8 @@ receives a frozen tree containing:
   in both the config-generation and per-node apply passes so a caller
   patch cannot resurrect Flannel.
 - **Parameterised ArgoCD bootstrap templates** (`*.tmpl`, rendered by
-  the consumer at install time via `make argocd-bootstrap`).
-- **The validation pipeline** itself (`make validate-gitops`, conftest
+  the consumer at install time via `task bootstrap:argocd`).
+- **The validation pipeline** itself (`task gitops:validate`, conftest
   Rego, kubeconform, the Layer-C hardware-features linter) so consumers
   can re-render the base inside their own CI and catch divergence.
 
@@ -128,7 +128,7 @@ oras pull ghcr.io/Nosmoht/talos-platform-base:${TAG} --output vendor/base/
 
 # 3. Create the declarative cluster Source-of-Truth and fill it in
 #    (identity, versions, endpoint, CIDRs, node classes, substrate).
-make init-cluster-yaml          # cluster.yaml.example -> cluster.yaml
+task cluster:init-yaml          # cluster.yaml.example -> cluster.yaml
 $EDITOR cluster.yaml
 ```
 
@@ -140,10 +140,10 @@ Talos, installs Cilium as the CNI, and seeds ArgoCD (namespace + app +
 CRDs). The remaining step is wiring ArgoCD to your cluster repo via the
 root App-of-Apps — see
 [`docs/day-zero-pattern.md`](docs/day-zero-pattern.md) for the bootstrap
-detail. (`make argocd-bootstrap` only seeds the consumer-identity
+detail. (`task bootstrap:argocd` only seeds the consumer-identity
 App-of-Apps root — the root AppProject + Application — after waiting on
-the module-seeded ArgoCD CRDs + server; the former `make argocd-install`
-Helm step is gone, because the module already delivers ArgoCD.) Secrets
+the module-seeded ArgoCD CRDs + server; the former Helm-based
+`argocd-install` step is gone, because the module already delivers ArgoCD.) Secrets
 (`sops_age_key`, `cilium_ipsec_key`) are supplied via `TF_VAR_*`/env,
 never via `cluster.yaml`.
 
@@ -229,7 +229,7 @@ Full Diátaxis index: [`docs/README.md`](docs/README.md).
 
 ## Contributing
 
-PRs that touch a single component and pass `make validate-gitops` are
+PRs that touch a single component and pass `task gitops:validate` are
 reviewable in one round. The full contribution workflow (Conventional
 Commits, the issue-readiness gate, the CI required-check list) lives in
 [`CONTRIBUTING.md`](CONTRIBUTING.md).

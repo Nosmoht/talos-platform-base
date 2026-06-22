@@ -533,7 +533,7 @@ module.
    `cluster.{name,overlay,target_revision}` and `repo.url`. Remove the Talos
    sections (`roles`, `architectures`, `infrastructure-platforms`,
    `hardware-platforms`, `hardware-capabilities`, `nodes`, `cluster.vip`,
-   `cluster.ntp_servers`, `kubeconfig`). `make argocd-bootstrap` still reads the
+   `cluster.ntp_servers`, `kubeconfig`). `task bootstrap:argocd` still reads the
    slim file.
 3. **Author an OpenTofu root** in your consumer repo that calls the module:
 
@@ -557,7 +557,7 @@ module.
    a full mixed amd64+arm64 worked example.
 4. **Supply provider + encrypted backend** in your root (state holds
    `machine_secrets`). See the module README for an example `versions.tf`.
-5. **Validate**: `task ci` (or `tofu fmt -check` + `tofu validate` + `tflint`).
+5. **Validate**: `task tofu:ci` (or `tofu fmt -check` + `tofu validate` + `tflint`).
 6. **⚠️ Already-running cluster?** The module *generates* fresh PKI by default,
    so a naive `tofu apply` against a live cluster would regenerate PKI and
    re-bootstrap etcd — destroying it. Do **not** apply against a running cluster
@@ -741,8 +741,8 @@ impact — using the format below:
 
 #### Validation steps after upgrade
 
-1. `make validate-gitops` in consumer repo
-2. `task ci` (for `tofu/` interface changes)
+1. `task gitops:validate` in consumer repo
+2. `task tofu:ci` (for `tofu/` interface changes)
 3. `scripts/lint-hardware-features.sh` (for Layer-C hardware-feature changes)
 ```
 
