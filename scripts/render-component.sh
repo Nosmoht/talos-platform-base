@@ -26,7 +26,7 @@
 #   values: <relative-path>          # default: values.yaml
 #
 # Determinism: helm + kustomize versions are pinned via .tool-versions and
-# enforced by `make verify-tools` and the CI drift-check. Chart tarballs
+# enforced by `task dev:verify-tools` and the CI drift-check. Chart tarballs
 # are verified by sha256 against the pinned digest in chart.lock.yaml.
 #
 # Exit codes:

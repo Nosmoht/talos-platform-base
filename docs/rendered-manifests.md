@@ -76,8 +76,9 @@ worth investigating) or the pin needs updating.
 ### Add a new component to the pipeline
 
 ```bash
-# 1. Discover the chart digest:
-make chart-pull REPO=https://charts.jetstack.io NAME=cert-manager VERSION=v1.19.2
+# 1. Discover the chart digest (helm pull + sha256):
+helm pull cert-manager --repo https://charts.jetstack.io --version v1.19.2 --destination .helm-cache
+shasum -a 256 .helm-cache/cert-manager-*.tgz   # -> tgz_sha256 for chart.lock.yaml
 
 # 2. Create chart.lock.yaml using the printed values.
 
@@ -85,7 +86,7 @@ make chart-pull REPO=https://charts.jetstack.io NAME=cert-manager VERSION=v1.19.
 #    ../.render-stage1/<comp>.yaml plus any platform-base patches.
 
 # 4. Render:
-make render-component COMPONENT=cert-manager
+task gitops:render-component COMPONENT=cert-manager
 
 # 5. Commit _rendered/manifests.yaml + _rendered/crds.yaml + chart.lock.yaml.
 ```
@@ -93,12 +94,13 @@ make render-component COMPONENT=cert-manager
 ### Bump a chart version
 
 ```bash
-# 1. Re-pull and update the digest:
-make chart-pull REPO=<repo> NAME=<name> VERSION=<new-version>
+# 1. Re-pull and update the digest (for an OCI repo: helm pull <oci-repo>/<name>):
+helm pull <name> --repo <repo> --version <new-version> --destination .helm-cache
+shasum -a 256 .helm-cache/<name>-*.tgz
 # Update chart.lock.yaml: version + tgz_sha256.
 
 # 2. Re-render:
-make render-component COMPONENT=<name>
+task gitops:render-component COMPONENT=<name>
 
 # 3. Review the manifest diff carefully. Helm chart bumps can change
 #    field names, default values, or add/remove resources.
@@ -109,7 +111,7 @@ make render-component COMPONENT=<name>
 ### Verify the committed render is reproducible
 
 ```bash
-make verify-rendered
+task gitops:verify-rendered
 ```
 
 This re-renders every component into a tmpdir and diffs against the
@@ -123,10 +125,10 @@ ordering, `tpl` parsing edge cases, `randAlphaNum` without seed). The
 pipeline mitigates this with:
 
 - **Pinned helm version** in `.tool-versions`, enforced by
-  `make verify-tools` and the CI drift-check.
+  `task dev:verify-tools` and the CI drift-check.
 - **Pinned chart digest** in `chart.lock.yaml.tgz_sha256`.
 - **Pinned kustomize version** likewise.
-- **`make verify-rendered` gate** in CI catches any remaining drift.
+- **`task gitops:verify-rendered` gate** in CI catches any remaining drift.
 
 ## Layout per component
 
@@ -164,7 +166,7 @@ All rendering tools are pinned in `.tool-versions`:
 - `oras` — OCI artifact push (`oci-publish.yml`)
 - `cosign` — signature verification
 
-`make verify-tools` confirms the local installation matches; CI fails
+`task dev:verify-tools` confirms the local installation matches; CI fails
 on drift between `.tool-versions` and workflow env vars.
 
 ## See also

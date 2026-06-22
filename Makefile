@@ -1,199 +1,44 @@
-.PHONY: argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml verify-tools render-component render-all verify-rendered chart-pull .argocd-bootstrap-render oci-allowlist-check
-
-ENV ?= cluster.yaml
-
-# MCP server versions — pinned to verified official sources (homebrew/core, containers/k8s, npm/talos-mcp).
-MCP_GITHUB_VERSION  := 0.33.0
-MCP_K8S_VERSION     := 0.0.60
-MCP_TALOS_VERSION   := 1.1.0
-
-MCP_WRAPPER_BIN    := $(HOME)/.local/bin/mcp-github-wrapper
-MCP_WRAPPER_SOURCE := $(CURDIR)/scripts/mcp-github-wrapper.sh
-
-UNAME_S := $(shell uname -s)
-
-init-cluster-yaml: cluster.yaml.example
-	@if [ ! -e cluster.yaml ]; then \
-	  cp cluster.yaml.example cluster.yaml && \
-	  echo "Created cluster.yaml from cluster.yaml.example -- fill in your cluster values"; \
-	fi
-
-.argocd-bootstrap-render:
-	@CLUSTER_NAME=$$(yq -e '.cluster.name' $(ENV)); \
-	 REPO_URL=$$(yq -e '.repo.url' $(ENV)); \
-	 OVERLAY=$$(yq -e '.cluster.overlay' $(ENV)); \
-	 TARGET_REVISION=$$(yq -e '.cluster.target_revision // "main"' $(ENV)); \
-	 for v in "$$CLUSTER_NAME" "$$REPO_URL" "$$OVERLAY" "$$TARGET_REVISION"; do \
-	   case "$$v" in *\$$*) echo "ERROR: cluster.yaml value contains '$$' which is unsafe for envsubst: $$v"; exit 1;; esac; \
-	 done; \
-	 mkdir -p kubernetes/bootstrap/argocd/_out; \
-	 export CLUSTER_NAME REPO_URL OVERLAY TARGET_REVISION; \
-	 envsubst '$$CLUSTER_NAME $$REPO_URL $$OVERLAY $$TARGET_REVISION' \
-	   < kubernetes/bootstrap/argocd/root-application.yaml.tmpl \
-	   > kubernetes/bootstrap/argocd/_out/root-application.yaml; \
-	 envsubst '$$CLUSTER_NAME $$REPO_URL' \
-	   < kubernetes/bootstrap/argocd/root-project.yaml.tmpl \
-	   > kubernetes/bootstrap/argocd/_out/root-project.yaml
-
-# ArgoCD itself (controller + namespace + sops-age-key Secret + CRDs) is delivered
-# by tofu/modules/talos-cluster as a Talos inlineManifest SEED (deploy_argocd=true)
-# + kubectl server-side CRDs -- NOT by this target. This target only seeds the
-# consumer-identity App-of-Apps root (root-project + root-application), which the
-# module does NOT deliver.
+# Makefile — RETIRED at v3.0.0.
 #
-# Preconditions: deploy_argocd=true AND a completed `tofu apply` (it seeds ArgoCD
-# and applies its CRDs server-side). The waits restore the cross-context ordering
-# barrier the removed `make argocd-install` kubectl-wait gave: BOTH ArgoCD CRDs
-# (Application + AppProject -- the two root kinds) established + the server ready
-# before the root manifests are applied. `kubectl wait` errors NotFound on an absent
-# object, so existence is polled first; a persistent NotFound means `tofu apply` did
-# not finish its CRD step -- recover with `tofu apply -replace=null_resource.argocd_crds[0]`.
-argocd-bootstrap: .argocd-bootstrap-render
-	@for crd in applications.argoproj.io appprojects.argoproj.io; do \
-	  echo "waiting for CRD $$crd to exist + establish ..."; \
-	  for i in $$(seq 1 60); do kubectl get crd "$$crd" >/dev/null 2>&1 && break; sleep 2; done; \
-	  kubectl wait --for=condition=established "crd/$$crd" --timeout=120s; \
-	done
-	kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
-	kubectl apply -f kubernetes/bootstrap/argocd/_out/root-project.yaml
-	kubectl apply -f kubernetes/bootstrap/argocd/_out/root-application.yaml
+# The single task runner for talos-platform-base is now the Taskfile (go-task).
+# This stub remains for ONE release cycle so that an old `make <target>` habit
+# produces a clear migration message instead of make's confusing
+# "No rule to make target" error. It will be deleted in the next MAJOR.
+#
+# See docs/adr-makefile-retirement.md
+# (supersedes docs/adr-task-runner-consolidation.md).
 
-argocd-password:
-	@kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+.DEFAULT_GOAL := _retired
+.PHONY: _retired
 
-verify-tools: ## Confirm installed binaries match .tool-versions pins
-	@./scripts/verify-tools.sh
+define RETIRED_MSG
+════════════════════════════════════════════════════════════════════
+ The Makefile was RETIRED at v3.0.0 — use the Taskfile (go-task).
+ Run 'task --list' for all targets. Migration:
 
-# Rendered Manifests Pipeline (Phase B of OCI base migration).
-# See docs/rendered-manifests.md for the 3-stage architecture.
+   make validate-gitops      ->  task gitops:validate
+   make render-component     ->  task gitops:render-component COMPONENT=<name>
+   make render-all           ->  task gitops:render-all
+   make verify-rendered      ->  task gitops:verify-rendered
+   make argocd-bootstrap     ->  task bootstrap:argocd
+   make argocd-password      ->  task bootstrap:argocd-password
+   make init-cluster-yaml    ->  task cluster:init-yaml
+   make oci-allowlist-check  ->  task supply-chain:oci-allowlist
+   make mcp-install          ->  task mcp:install
+   make mcp-verify           ->  task mcp:verify
+   make mcp-uninstall        ->  task mcp:uninstall
+   make install-pre-commit   ->  task dev:install-pre-commit
+   make verify-tools         ->  task dev:verify-tools
 
-render-component: ## Stage-1+2 render of one component. Usage: make render-component COMPONENT=<name>
-	@if [ -z "$(COMPONENT)" ]; then echo "usage: make render-component COMPONENT=<name>"; exit 1; fi
-	@./scripts/render-component.sh "$(COMPONENT)"
+ Removed (no replacement): make chart-pull, make grafana-dashboards-check.
+ See docs/adr-makefile-retirement.md.
+════════════════════════════════════════════════════════════════════
+endef
+export RETIRED_MSG
 
-render-all: ## Render every component that has a chart.lock.yaml
-	@components="$$(find kubernetes/base/infrastructure -mindepth 2 -maxdepth 2 -name chart.lock.yaml -exec dirname {} \; | xargs -n1 basename | sort)"; \
-	if [ -z "$$components" ]; then echo "no chart.lock.yaml files yet — nothing to render"; exit 0; fi; \
-	for c in $$components; do ./scripts/render-component.sh "$$c"; done
+_retired:
+	@printf '%s\n' "$$RETIRED_MSG" >&2; exit 2
 
-verify-rendered: ## Re-render all components and fail if committed _rendered/ drifts
-	@./scripts/verify-rendered.sh
+.DEFAULT:
+	@printf '%s\n' "$$RETIRED_MSG" >&2; exit 2
 
-chart-pull: ## Pull a chart and print its sha256 (helper for new chart.lock.yaml). Usage: make chart-pull REPO=<url> NAME=<chart> VERSION=<v>
-	@if [ -z "$(REPO)" ] || [ -z "$(NAME)" ] || [ -z "$(VERSION)" ]; then \
-	  echo "usage: make chart-pull REPO=<url> NAME=<chart> VERSION=<v>"; exit 1; \
-	fi
-	@mkdir -p .helm-cache
-	@case "$(REPO)" in \
-	  oci://*) helm pull "$(REPO)/$(NAME)" --version "$(VERSION)" --destination .helm-cache ;; \
-	  *)       helm pull "$(NAME)" --repo "$(REPO)" --version "$(VERSION)" --destination .helm-cache ;; \
-	esac
-	@tgz="$$(ls -t .helm-cache/$(NAME)-*.tgz | head -n1)"; \
-	 sha="$$(shasum -a 256 "$$tgz" | awk '{print $$1}')"; \
-	 echo ""; \
-	 echo "tarball: $$tgz"; \
-	 echo "sha256:  $$sha"; \
-	 echo ""; \
-	 echo "Add to chart.lock.yaml:"; \
-	 echo "  chart:"; \
-	 echo "    repo: $(REPO)"; \
-	 echo "    name: $(NAME)"; \
-	 echo "    version: $(VERSION)"; \
-	 echo "    tgz_sha256: $$sha"
-
-# grafana-dashboards-check is consumer-side: it scans the consumer overlay path
-# kubernetes/overlays/<cluster>/infrastructure/*/resources/dashboards/*.json. Override
-# OVERLAY_PATH for your cluster repo or run from the consumer-cluster checkout.
-OVERLAY_PATH ?= kubernetes/overlays/$$(yq -e '.cluster.overlay' $(ENV))
-grafana-dashboards-check:
-	@OVERLAY=$(OVERLAY_PATH); \
-	 if rg -n '\$\{DS_[A-Z0-9_]+\}|"__inputs"' $$OVERLAY/infrastructure/*/resources/dashboards/*.json 2>/dev/null; then \
-		echo "error: dashboard contains import-only datasource placeholders or __inputs; use fixed datasource uid (prometheus)"; \
-		exit 1; \
-	 else \
-		echo "ok: dashboards contain no DS_* placeholders or __inputs (or none present)"; \
-	 fi
-
-validate-gitops:
-	./scripts/discover_kustomize_targets.sh
-	./scripts/render_kustomize_safe.sh
-	./scripts/verify_sops_files.sh
-	./scripts/run_conftest.sh
-	@for f in $$(cat .work/kustomize-rendered-files.txt 2>/dev/null); do \
-		echo "kubeconform: $$f"; \
-		kubeconform -strict -ignore-missing-schemas "$$f"; \
-	done
-
-oci-allowlist-check: ## Build talos OCI tarball locally and diff against .ci-oci-tarball-expected.txt
-	# Allowlist-based (fail-closed) tarball verification. Builds locally per the
-	# same logic as oci-publish.yml "Build tarball" + "Verify tarball contents".
-	# Run before pushing a tag to confirm the fixture matches actual contents.
-	@[ -f .ci-oci-tarball-include.txt ] || { echo "ERROR: .ci-oci-tarball-include.txt not found"; exit 1; }
-	@[ -f .ci-oci-tarball-expected.txt ] || { echo "ERROR: .ci-oci-tarball-expected.txt not found"; exit 1; }
-	@mkdir -p .work
-	@tar -czf .work/oci-check.tar.gz --files-from=.ci-oci-tarball-include.txt
-	@tar -tzf .work/oci-check.tar.gz | sed 's|^\./||' | LC_ALL=C sort | sed 's|^|./|' > .work/oci-check-contents.txt
-	@if diff -u .ci-oci-tarball-expected.txt .work/oci-check-contents.txt; then \
-		echo "OK: tarball contents match .ci-oci-tarball-expected.txt"; \
-	else \
-		echo "FAIL: tarball contents diverge from .ci-oci-tarball-expected.txt"; \
-		echo "To update the fixture: mv .work/oci-check-contents.txt .ci-oci-tarball-expected.txt"; \
-		exit 1; \
-	fi
-	@rm -f .work/oci-check.tar.gz
-
-install-pre-commit:
-	uvx pre-commit install
-	uvx pre-commit run --all-files || true
-	@echo "pre-commit hooks installed. Run 'uvx pre-commit run --all-files' to validate the full repo."
-
-mcp-install: ## Install MCP server binaries (per-OS) and register wrapper symlink in ~/.local/bin
-	@command -v gh >/dev/null 2>&1 || { echo "ERROR: 'gh' (GitHub CLI) required — https://cli.github.com"; exit 1; }
-ifeq ($(UNAME_S),Darwin)
-	@command -v brew >/dev/null 2>&1 || { echo "ERROR: 'brew' required on macOS — https://brew.sh"; exit 1; }
-	brew install github-mcp-server@$(MCP_GITHUB_VERSION) 2>/dev/null || brew install github-mcp-server
-	brew install kubernetes-mcp-server@$(MCP_K8S_VERSION) 2>/dev/null || brew install kubernetes-mcp-server
-	@command -v npm >/dev/null 2>&1 || { echo "ERROR: 'npm' required for talos-mcp — https://nodejs.org"; exit 1; }
-	npm install -g talos-mcp@$(MCP_TALOS_VERSION)
-else
-	@command -v go >/dev/null 2>&1 || { echo "ERROR: 'go' required on Linux for github-mcp-server — https://go.dev/dl"; exit 1; }
-	go install github.com/github/github-mcp-server/cmd/github-mcp-server@v$(MCP_GITHUB_VERSION)
-	@command -v npm >/dev/null 2>&1 || { echo "ERROR: 'npm' required — https://nodejs.org"; exit 1; }
-	npm install -g kubernetes-mcp-server@$(MCP_K8S_VERSION)
-	npm install -g talos-mcp@$(MCP_TALOS_VERSION)
-endif
-	@mkdir -p "$(HOME)/.local/bin"
-	@ln -sf "$(MCP_WRAPPER_SOURCE)" "$(MCP_WRAPPER_BIN)"
-	@chmod +x "$(MCP_WRAPPER_SOURCE)"
-	@echo ""
-	@echo "Installed: $(MCP_WRAPPER_BIN) -> $(MCP_WRAPPER_SOURCE)"
-	@echo ""
-	@echo "Next steps:"
-	@echo "  1. Ensure \$$HOME/.local/bin is in your PATH"
-	@echo "     Check: echo \$$PATH | grep -q \$$HOME/.local/bin && echo ok || echo 'ADD to PATH'"
-	@echo "  2. Run: gh auth login  (if not already authenticated)"
-	@echo "  3. Run: make mcp-verify"
-	@echo "  4. Restart Claude Code / Codex CLI"
-
-mcp-verify: ## Verify MCP binaries, wrapper symlink, and gh auth state
-	@set -e; fail=0; \
-	for bin in gh github-mcp-server kubernetes-mcp-server talos-mcp mcp-github-wrapper; do \
-	  if command -v "$$bin" >/dev/null 2>&1; then \
-	    echo "OK:      $$bin -> $$(command -v $$bin)"; \
-	  else \
-	    echo "MISSING: $$bin — run 'make mcp-install'"; fail=1; \
-	  fi; \
-	done; \
-	if ! gh auth token >/dev/null 2>&1; then \
-	  echo "FAIL:    gh auth token — run 'gh auth login'"; fail=1; \
-	else \
-	  echo "OK:      gh auth token (keychain accessible)"; \
-	fi; \
-	if [ "$$fail" -eq 0 ]; then \
-	  echo ""; echo "All checks passed. MCP servers ready."; \
-	else \
-	  echo ""; echo "One or more checks failed — fix above before starting Claude/Codex."; exit 1; \
-	fi
-
-mcp-uninstall: ## Remove MCP wrapper symlink from ~/.local/bin (leaves binaries in place)
-	@rm -f "$(MCP_WRAPPER_BIN)" && echo "Removed $(MCP_WRAPPER_BIN)" || echo "$(MCP_WRAPPER_BIN) was not present"

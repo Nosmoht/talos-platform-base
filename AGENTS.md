@@ -33,7 +33,7 @@ platform layer model (`talos-platform-docs` ADR-0009).
 ## Project Structure & Module Organization
 
 - `kubernetes/base/infrastructure/`: base Helm values and namespace/kustomization manifests per infrastructure component.
-- `kubernetes/bootstrap/argocd/`: parameterized bootstrap templates (`*.tmpl`) consumed by `make argocd-bootstrap`.
+- `kubernetes/bootstrap/argocd/`: parameterized bootstrap templates (`*.tmpl`) consumed by `task bootstrap:argocd`.
 - `kubernetes/bootstrap/cilium/`: reference Cilium Helm values + `extras.yaml` (GatewayClass) for optional Day-2 self-management. Cilium itself is delivered by the `talos-cluster` module as a controlplane `inlineManifest` seed (`deploy_cilium`); the former consumer-side render path is retired.
 - `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-node composed Image-Factory installer — content-hash-deduped, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root that is a thin `yamldecode` shim over the declarative `cluster.yaml` SoT. See [`docs/adr-opentofu-cluster-lifecycle.md`](docs/adr-opentofu-cluster-lifecycle.md) and [`docs/adr-cluster-yaml-sot.md`](docs/adr-cluster-yaml-sot.md).
 - `policies/`: conftest Rego policies for kustomize-rendered manifests.
@@ -42,11 +42,11 @@ platform layer model (`talos-platform-docs` ADR-0009).
 
 ## Build, Test, and Development Commands
 
-- `make init-cluster-yaml`: copies `cluster.yaml.example` to `cluster.yaml` (gitignored) — the declarative cluster Source-of-Truth (identity, versions, endpoint, network, nodes, images, hardware-capabilities, machine-config patches, substrate). `make argocd-bootstrap` reads only the bootstrap-identity subset (`cluster.{name,overlay,target_revision}` + `repo.url`); the consumer's OpenTofu root is a thin `yamldecode` shim that maps the full file onto the `tofu/modules/talos-cluster` typed interface. tofu is the executor, not the SoT. See [`docs/adr-cluster-yaml-sot.md`](docs/adr-cluster-yaml-sot.md).
-- `make validate-gitops`: kustomize-render + SOPS check + conftest + kubeconform across all rendered manifests.
-- `make mcp-install` / `make mcp-verify`: install and verify MCP server binaries.
-- `task ci` (devbox): `tofu fmt -check` + `tofu validate` + `tflint` over the `tofu/` cluster-lifecycle module and its examples.
-- **The `make` ↔ `task` split is intentional — do not migrate `make`→`task`.** `task` (devbox) covers `tofu/`; `make` covers GitOps / bootstrap / MCP. Per [`docs/adr-task-runner-consolidation.md`](docs/adr-task-runner-consolidation.md) the `Makefile` dissolves *with* the substrate-only split (`docs/adr-substrate-only-base.md`): its component render-and-validate / Kyverno targets were removed with their components at the substrate-only ablation (v2.0.0), and the surviving targets fold into the Taskfile. **The ArgoCD bootstrap targets are a separate, immediate case** — ArgoCD is already module-delivered (`inlineManifest`), so `make argocd-install` / `argocd-bootstrap` are redundant (they double-install on top of the module-delivered seed); removing them is tracked under #113 and they remain live in this base until that lands. (devbox declares `go-task`, not `gnumake`; the `gnumake` bridge for still-live `make` targets is also #113.)
+- `task cluster:init-yaml`: copies `cluster.yaml.example` to `cluster.yaml` (gitignored) — the declarative cluster Source-of-Truth (identity, versions, endpoint, network, nodes, images, hardware-capabilities, machine-config patches, substrate). `task bootstrap:argocd` reads only the bootstrap-identity subset (`cluster.{name,overlay,target_revision}` + `repo.url`); the consumer's OpenTofu root is a thin `yamldecode` shim that maps the full file onto the `tofu/modules/talos-cluster` typed interface. tofu is the executor, not the SoT. See [`docs/adr-cluster-yaml-sot.md`](docs/adr-cluster-yaml-sot.md).
+- `task gitops:validate`: kustomize-render + SOPS check + conftest + kubeconform across all rendered manifests.
+- `task mcp:install` / `task mcp:verify`: install and verify MCP server binaries.
+- `task tofu:ci` (devbox): `tofu fmt -check` + `tofu validate` + `tflint` + render-determinism fence over the `tofu/` cluster-lifecycle module and its examples.
+- **go-task is the single runner — the `Makefile` was retired at v3.0.0.** Every former `make` target folds into a namespaced task in `Taskfile.yml`: `tofu:*` (OpenTofu validation), `gitops:*` (`validate`, `render-component`, `render-all`, `verify-rendered`), `bootstrap:*` (`argocd`, `argocd-password`), `cluster:init-yaml`, `supply-chain:oci-allowlist`, `mcp:*`, `dev:*`. Run `task --list` for the full set. A `Makefile` deprecation stub remains for one release cycle: any `make <target>` prints the migration mapping and exits non-zero. `chart-pull` and `grafana-dashboards-check` were dropped (no replacement). Decision: [`docs/adr-makefile-retirement.md`](docs/adr-makefile-retirement.md) (supersedes [`docs/adr-task-runner-consolidation.md`](docs/adr-task-runner-consolidation.md)).
 
 This base is consumed by cluster repos via OCI artifact (`oras pull
 ghcr.io/nosmoht/talos-platform-base:<tag>`) into a gitignored `vendor/base/`
@@ -64,7 +64,7 @@ referencing both the cluster repo and this base.
 
 - This repo has no live cluster. Validation is manifest-render and policy focused.
 - Required before opening a PR:
-  - `make validate-gitops`
+  - `task gitops:validate`
   - `kubectl kustomize kubernetes/base/infrastructure/<component>/` for any touched component
 - Live runtime verification belongs in consumer cluster repos.
 
@@ -86,9 +86,9 @@ referencing both the cluster repo and this base.
 
 - For base/infrastructure changes:
   - `kubectl kustomize kubernetes/base/infrastructure/<component>/`
-  - `make validate-gitops`
+  - `task gitops:validate`
 - For Talos cluster-lifecycle (`tofu/`) changes:
-  - `task ci` (or `tofu fmt -check -recursive tofu/` + per-dir `tofu init -backend=false && tofu validate` + `tflint`)
+  - `task tofu:ci` (or `tofu fmt -check -recursive tofu/` + per-dir `tofu init -backend=false && tofu validate` + `tflint`)
 
 ---
 
@@ -142,7 +142,7 @@ rule file is present in the working repo before relying on it.
 ## MCP Server Configuration
 
 All three MCP servers (github, kubernetes-mcp-server, talos) use **bare
-PATH-resolved command names**. Run `make mcp-install` once after cloning to
+PATH-resolved command names**. Run `task mcp:install` once after cloning to
 install the binaries and register the wrapper symlink. See `docs/mcp-setup.md`
 for full instructions.
 

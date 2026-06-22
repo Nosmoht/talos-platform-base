@@ -7,7 +7,7 @@
 # worked shim). The human edits YAML; tofu/HCL never carries cluster identity.
 #
 # Two consumers read this file:
-#   - `make argocd-bootstrap` reads ONLY the bootstrap identity
+#   - `task bootstrap:argocd` reads ONLY the bootstrap identity
 #     (.cluster.name, .cluster.overlay, .cluster.target_revision, .repo.url).
 #   - the OpenTofu root reads the full cluster definition below.
 #
@@ -19,11 +19,11 @@
 # documentation addresses (192.0.2.0/24).
 
 cluster:
-  # --- Identity (read by BOTH `make argocd-bootstrap` and the OpenTofu shim) ---
+  # --- Identity (read by BOTH `task bootstrap:argocd` and the OpenTofu shim) ---
   name: my-cluster # Talos cluster name (PKI CN) AND ArgoCD Application/Project name
   endpoint: https://my-cluster-api.example.com:6443 # Kubernetes API endpoint (cluster_endpoint)
 
-  # --- ArgoCD bootstrap identity (read by `make argocd-bootstrap` only) ---
+  # --- ArgoCD bootstrap identity (read by `task bootstrap:argocd` only) ---
   overlay: my-cluster # kustomize overlay name under kubernetes/overlays/
   target_revision: main # git branch/tag for the ArgoCD root Application
 

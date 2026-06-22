@@ -4,7 +4,7 @@ Reproducible proof scripts for the **already-running-cluster adoption** path
 documented in [`UPGRADING.md` §Adopting an already-running cluster](../../../../UPGRADING.md#adopting-an-already-running-cluster-no-re-bootstrap).
 They turn the runbook's manual step-5 gate into runnable checks.
 
-These are **operator-run**, not part of `task ci` — they need `talosctl` and/or
+These are **operator-run**, not part of `task tofu:ci` — they need `talosctl` and/or
 a decrypted secrets bundle, which a hermetic CI job does not have. They are
 generic templates: no cluster identity is hardcoded; point them at your root.
 

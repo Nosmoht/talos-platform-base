@@ -6,7 +6,9 @@
     "terraform-docs@latest",
     "go-task@latest",
     "yamllint@latest",
-    "markdownlint-cli@latest"
+    "markdownlint-cli@latest",
+    "yq-go@latest",
+    "gettext@latest"
   ],
   "shell": {
     "init_hook": [

@@ -2,7 +2,7 @@ name: tofu-validate
 
 # Validates the OpenTofu cluster-lifecycle module (tofu/modules/talos-cluster)
 # and its examples — the substrate base's sole Talos provisioning path. Mirrors
-# the local `task ci` (fmt-check + validate + lint) so CI and workstation agree.
+# the local `task tofu:ci` (fmt-check + validate + lint) so CI and workstation agree.
 
 on:
   workflow_dispatch:
@@ -41,7 +41,7 @@ jobs:
         uses: terraform-linters/setup-tflint@v4
         with:
           # Pinned to the devbox-locked version (devbox.lock) so CI and local
-          # `task ci` use the same tflint; an unrelated ruleset bump can't turn CI red.
+          # `task tofu:ci` use the same tflint; an unrelated ruleset bump can't turn CI red.
           tflint_version: v0.61.0
 
       - name: Install go-task
@@ -50,8 +50,8 @@ jobs:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: task ci (fmt-check + validate + lint)
-        run: task ci
+      - name: task tofu:ci (fmt-check + validate + lint)
+        run: task tofu:ci
 
   tofu-test:
     name: tofu-test (composition guard-regression suite)
@@ -77,12 +77,12 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       # NETWORK: `tofu test` resolves the live Talos Image Factory (schematic
-      # dedup proof), so it is deliberately excluded from the offline `task ci`.
+      # dedup proof), so it is deliberately excluded from the offline `task tofu:ci`.
       # This dedicated job is the CI enforcement of the node-capability
       # composition guard-regression suite — the ADR §"Falsification criteria"
       # (each hard-error guard fires red-green, dedup determinism holds). Without
-      # it those guards can regress silently with `task ci` still green.
+      # it those guards can regress silently with `task tofu:ci` still green.
       # An Image-Factory outage (factory.talos.dev unreachable) can red this job
       # independently of the diff — re-run on transient infra blips.
-      - name: task test (hard-error guards + dedup determinism — live Image Factory)
-        run: task test
+      - name: task tofu:test (hard-error guards + dedup determinism — live Image Factory)
+        run: task tofu:test

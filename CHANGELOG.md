@@ -27,20 +27,36 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed — BREAKING
 
+- **Single task runner — the `Makefile` is retired; go-task is the only runner
+  (#113).** Every former `make <target>` folds into a namespaced task in
+  `Taskfile.yml`: `tofu:*` (OpenTofu validation — the CI-invoked `task tofu:ci`
+  / `task tofu:test`), `gitops:*` (`validate`, `render-component`, `render-all`,
+  `verify-rendered`), `bootstrap:*` (`argocd`, `argocd-password`),
+  `cluster:init-yaml`, `supply-chain:oci-allowlist`, `mcp:*`, `dev:*`. Run
+  `task --list` for the full set. `chart-pull` and `grafana-dashboards-check`
+  are **dropped** with no replacement (the former is a `helm pull` + `shasum`
+  one-liner; the latter scanned a consumer overlay path absent in the base).
+  `devbox.json` gains `yq-go` + `gettext` (not `gnumake`). A `Makefile`
+  deprecation stub remains for one release cycle: any `make <target>` prints the
+  migration mapping and exits non-zero. **Contributor / consumer impact:**
+  day-zero runbooks or scripts invoking `make <target>` must switch to
+  `task <target>`. Decision:
+  [`docs/adr-makefile-retirement.md`](docs/adr-makefile-retirement.md)
+  (supersedes [`docs/adr-task-runner-consolidation.md`](docs/adr-task-runner-consolidation.md)).
+
 - **Day-zero bootstrap decoupled from the ArgoCD helm double-install (#113).**
   ArgoCD is delivered as a Talos `inlineManifest` seed by the
   `tofu/modules/talos-cluster` module (`deploy_argocd`, default true) since
-  #102, but `make argocd-install` still helm-installed it on top — a
-  double-install. `make argocd-install` is **removed**; `tofu apply` seeds the
-  ArgoCD controller, namespace, and CRDs, and the consumer day-zero runs only
-  `make argocd-bootstrap` to apply the consumer-identity App-of-Apps root
+  #102, but the bootstrap path still helm-installed it on top — a
+  double-install. The redundant helm install is **removed**; `tofu apply` seeds
+  the ArgoCD controller, namespace, and CRDs, and the consumer day-zero runs
+  only `task bootstrap:argocd` to apply the consumer-identity App-of-Apps root
   (root-project + root-application), which the module does **not** deliver.
-  Skipping `argocd-bootstrap` yields a healthy-looking but inert cluster.
-  `make argocd-bootstrap` now waits for both root CRDs (`applications`,
+  Skipping `task bootstrap:argocd` yields a healthy-looking but inert cluster.
+  `task bootstrap:argocd` now waits for both root CRDs (`applications`,
   `appprojects`) to establish and for argocd-server to become available before
   applying the root, restoring the cross-exec-context ordering barrier the
-  removed target provided. **Consumer impact:** day-zero procedures that called
-  `make argocd-install` must drop it. See [`docs/day-zero-pattern.md`](docs/day-zero-pattern.md)
+  removed step provided. See [`docs/day-zero-pattern.md`](docs/day-zero-pattern.md)
   and UPGRADING.md.
 
 ### Fixed

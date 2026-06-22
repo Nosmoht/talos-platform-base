@@ -52,7 +52,7 @@ that swap. And HCL is a *poor host* for this work:
   kernel-arg conflict guard false-positived on legitimate multi-value args.
 - **Not offline unit-testable.** The guard-regression suite
   (`tests/composition.tftest.hcl`) needs a live Talos Image Factory to `plan`, so
-  it cannot run in the offline `task ci` — its CI enforcement requires a dedicated
+  it cannot run in the offline `task tofu:ci` — its CI enforcement requires a dedicated
   networked job (added in PR #135). Pulling the pure resolution logic into a
   general-purpose language would make it testable with ordinary offline unit tests.
 

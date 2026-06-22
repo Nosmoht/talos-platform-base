@@ -36,7 +36,7 @@ for comp in ${components}; do
   comp_dir="${INFRA_DIR}/${comp}"
   rendered_dir="${comp_dir}/_rendered"
   if [ ! -d "${rendered_dir}" ]; then
-    echo "  MISSING:  ${rendered_dir} (run \`make render-component COMPONENT=${comp}\`)"
+    echo "  MISSING:  ${rendered_dir} (run \`task gitops:render-component COMPONENT=${comp}\`)"
     drift=1
     continue
   fi
@@ -73,7 +73,7 @@ fi
 if [ "${drift}" -ne 0 ]; then
   echo ""
   echo "::error::committed _rendered/ tree drifts from chart.lock.yaml + values.yaml + _rendered-overlay/"
-  echo "Re-run \`make render-all\` and commit the result, or fix chart.lock.yaml / values.yaml."
+  echo "Re-run \`task gitops:render-all\` and commit the result, or fix chart.lock.yaml / values.yaml."
   exit 1
 fi
 
