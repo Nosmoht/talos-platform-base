@@ -47,9 +47,9 @@ graph LR
   talos --> cilium --> argocd
   talos --> cert-approver
 
-  %% Consumer-provided dependency (out-of-base, dotted) ---------------
+  %% Opt-in dependency (disabled by default, out-of-base, dotted) -----
   issuer(["ClusterIssuer 'vault-internal'<br/>consumer-provided cert-manager"]):::boot
-  argocd -. "server cert<br/>(consumer overlay)" .-> issuer
+  argocd -. "server cert (opt-in;<br/>disabled by default)" .-> issuer
 ```
 
 ## Edge sources
@@ -58,22 +58,21 @@ graph LR
 |---|---|---|
 | `talos → cilium → argocd` | substrate boot order | `kubernetes/bootstrap/` README + tutorial step sequence; Cilium is a controlplane `inlineManifest` seed (`tofu/modules/talos-cluster`) |
 | `talos → cert-approver` | substrate boot necessity | no auto-approval → no kubelet serving certs → no bootable cluster |
-| `argocd ⇢ ClusterIssuer 'vault-internal'` | `ClusterIssuer` reference (consumer-provided) | `kubernetes/base/infrastructure/argocd/values.yaml:8-11` (`group: cert-manager.io`, `kind: ClusterIssuer`, `name: vault-internal`). cert-manager + Vault are no longer base-resident; the issuer is supplied by the consumer cluster / apps catalog |
+| `argocd ⇢ ClusterIssuer 'vault-internal'` (opt-in, off by default) | `server.certificate` block, disabled | `kubernetes/base/infrastructure/argocd/values.yaml` sets `server.certificate.enabled: false`, so the default render emits no `Certificate`. A consumer overlay that re-enables it references a `cert-manager.io` `ClusterIssuer` named `vault-internal` — cert-manager + Vault are sourced from the apps catalog, not base-resident |
 
-The `argocd ⇢ vault-internal` edge is the one cross-component reference that
-survives in the substrate: `argocd`'s server-certificate block
-(`server.certificate.enabled: true` in `argocd/values.yaml`) renders a
-`cert-manager.io/v1` `Certificate` referencing the `vault-internal`
-`ClusterIssuer`. After the ablation, cert-manager and Vault live in the apps
-catalog, so this is a **consumer-overlay** dependency, not a base-internal one.
+The `argocd ⇢ vault-internal` edge is **opt-in and disabled by default**.
+`argocd/values.yaml` sets `server.certificate.enabled: false`, so the substrate
+render emits no `cert-manager.io/v1 Certificate` and the substrate floor is
+self-contained. The substrate argocd-server runs with `server.insecure=true` —
+it serves plaintext at the pod, and a consumer terminates TLS at their gateway /
+ingress in front of it (the substrate ships no gateway).
 
-> **Substrate-only sync caveat.** Because `argocd`'s rendered manifest emits a
-> `cert-manager.io/v1 Certificate`, a cluster that syncs the substrate `argocd`
-> component *before* installing cert-manager (CRDs) and providing the
-> `vault-internal` `ClusterIssuer` from the apps catalog will hit a
-> missing-CRD / missing-issuer error and ArgoCD will not reach its TLS steady
-> state. Either source cert-manager + the issuer alongside the substrate, or
-> override `server.certificate.enabled: false` in a consumer values overlay.
+> **Re-enabling cert-manager TLS.** A consumer fronting ArgoCD with
+> cert-manager-issued TLS re-enables `server.certificate` in a values overlay and
+> provides the `vault-internal` `ClusterIssuer` (cert-manager + Vault live in the
+> apps catalog); to make the pod itself serve TLS they also set
+> `server.insecure=false`. Only then does this edge exist; until then there is no
+> base→cert-manager coupling and no missing-CRD / missing-issuer sync hazard.
 
 ## What this graph does NOT show
 

@@ -120,6 +120,15 @@ Consumer action:
   reserved-label, capability-registry, and CCNP machinery the base used
   to ship is gone; adopt the corresponding Conftest + Kyverno from the
   apps catalog and run them in your own CI / cluster.
+- **ArgoCD cert-manager Certificate is now opt-in (Helm-value default change).**
+  `argocd` no longer renders a `cert-manager.io/v1 Certificate` by default
+  (`server.certificate.enabled: false`), so the substrate floor carries no
+  cert-manager dependency. The substrate argocd-server already runs with
+  `server.insecure=true` — it serves plaintext at the pod; terminate TLS at your
+  gateway / ingress. A consumer that relied on the base-rendered
+  `argocd-server-tls` cert re-enables `server.certificate` in a values overlay and
+  provides the `vault-internal` `ClusterIssuer` (cert-manager comes from the apps
+  catalog); to have the pod itself serve TLS, also set `server.insecure=false`.
 - **Layer-C node-capability work stays in the base.**
   `docs/platform-hardware-features.yaml`,
   `docs/adr-node-capability-composition.md`,

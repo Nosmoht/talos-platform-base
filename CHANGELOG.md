@@ -19,6 +19,14 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the Layer-A capability-index scripts/docs, and the PNI ADRs were removed. The
   Layer-C hardware-features registry + node-capability composition stay (the
   `tofu/modules/talos-cluster` module depends on them). See UPGRADING.md.
+- **ArgoCD `server.certificate` disabled by default (substrate self-containment).**
+  The substrate `argocd` no longer renders a `cert-manager.io/v1 Certificate`
+  (`server.certificate.enabled: false`) — with cert-manager removed from the base
+  it would otherwise render against an absent CRD/issuer. argocd-server already
+  runs `server.insecure=true` (serves plaintext at the pod; terminate TLS at your
+  gateway/ingress). Consumers fronting ArgoCD with cert-manager-issued TLS
+  re-enable `server.certificate` in a values overlay and provide the issuer
+  (and set `server.insecure=false` for pod-served TLS). See UPGRADING.md.
 - **talos-cluster: `var.classes` / `node.class` removed (#135).** Use
   `var.images` + `var.hardware_capabilities` and `node.image` +
   `node.hardware_capabilities`. A node sits on one base `image` and holds a SET

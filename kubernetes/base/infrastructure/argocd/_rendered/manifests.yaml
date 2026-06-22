@@ -3202,33 +3202,3 @@ spec:
       restartPolicy: OnFailure
       serviceAccountName: argocd-redis-secret-init
   ttlSecondsAfterFinished: 60
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  labels:
-    app.kubernetes.io/component: server
-    app.kubernetes.io/instance: argocd
-    app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/name: argocd-server
-    app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
-  name: argocd-server
-  namespace: argocd
-spec:
-  commonName: argocd.example.com
-  dnsNames:
-    - argocd.example.com
-  duration: 2160h
-  issuerRef:
-    group: cert-manager.io
-    kind: ClusterIssuer
-    name: vault-internal
-  privateKey:
-    algorithm: ECDSA
-    encoding: PKCS1
-    rotationPolicy: Never
-    size: 256
-  renewBefore: 720h
-  secretName: argocd-server-tls

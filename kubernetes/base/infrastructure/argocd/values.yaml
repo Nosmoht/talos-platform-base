@@ -3,17 +3,18 @@ crds:
   keep: true
 
 server:
+  # Substrate ships ArgoCD self-contained — no cert-manager dependency on the
+  # floor. argocd-server runs with server.insecure=true (see configs.params
+  # below): it serves plaintext at the pod, and a consumer terminates TLS at
+  # their gateway / ingress in front of it. The chart's server.certificate block
+  # provisions a cert-manager.io/v1 Certificate (secret argocd-server-tls) that
+  # the insecure pod does not consume and that would render against an absent
+  # CRD/issuer once cert-manager leaves the substrate — so it is disabled here.
+  # A consumer fronting ArgoCD with cert-manager-issued TLS re-enables
+  # server.certificate in a values overlay and provides the ClusterIssuer (and,
+  # to make the pod itself serve TLS, also sets server.insecure=false).
   certificate:
-    enabled: true
-    issuer:
-      group: cert-manager.io
-      kind: ClusterIssuer
-      name: vault-internal
-    privateKey:
-      algorithm: ECDSA
-      size: 256
-    duration: 2160h
-    renewBefore: 720h
+    enabled: false
   service:
     type: ClusterIP
 
