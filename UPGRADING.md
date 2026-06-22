@@ -23,9 +23,9 @@ cosign verify \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   ghcr.io/${OWNER}/talos-platform-base:${TAG}
 
-# 2. Scan your manifests against the NEW registry for deprecated caps
-oras pull "ghcr.io/${OWNER}/talos-platform-base:${TAG}" --output /tmp/base-${TAG}
-/tmp/base-${TAG}/scripts/capability-deprecation-scan.sh kubernetes/
+# 2. (capability / PNI deprecation scanning moved to the talos-platform-apps
+#     catalog as of v2.0.0 — run its scan against your manifests there, not
+#     against the substrate base.)
 
 # 3. Render diff between current and target
 kubectl kustomize --enable-helm vendor/base/kubernetes/base/infrastructure/ \
@@ -42,7 +42,24 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
-## Next MAJOR (forthcoming) — node-capability composition (breaking)
+## `v2.0.0` — node-capability composition + substrate-only ablation (MAJOR / breaking)
+
+**Type:** MAJOR. v2.0.0 bundles **two** breaking changes:
+
+1. **Node-capability composition** — the `tofu/modules/talos-cluster`
+   interface changes (detailed below).
+2. **Substrate-only ablation** — the base is reduced to substrate
+   (Talos + Cilium + ArgoCD + `cert-approver`); the entire PNI /
+   capability-network contract and every non-substrate component move to
+   the [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
+   catalog (see [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md)).
+   See [§Substrate-only ablation](#substrate-only-ablation-consumer-action-required)
+   below for the consumer action.
+
+v1.0.0 shipped earlier **without** the ablation; the ablation lands in
+v2.0.0.
+
+### Node-capability composition (consumer action required)
 
 The `tofu/modules/talos-cluster` interface changes: the monolithic per-node
 `class` is replaced by a composable `image` + a SET of `hardware_capabilities`.
@@ -51,8 +68,6 @@ Boot kernel args now bake into the Image Factory schematic
 `machine.install.extraKernelArgs` path was a silent no-op. See
 [`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md)
 (the §Migration table is authoritative).
-
-### Breaking changes (consumer action required)
 
 - **`var.classes` and `node.class` are removed.** Map your `cluster.yaml`:
   - `class.architecture` / `class.overlay` → `images.<id>.architecture` / `.overlay`
@@ -79,6 +94,38 @@ Boot kernel args now bake into the Image Factory schematic
 A worked migration is the `tofu/modules/talos-cluster/examples/homelab/`
 fixture (its `kubevirt` IOMMU is the live no-op this fixes) and the module README
 Usage block.
+
+### Substrate-only ablation (consumer action required)
+
+As of v2.0.0 the base is **substrate-only**:
+`kubernetes/base/infrastructure/` ships only `argocd/` and
+`cert-approver/`. The PNI / capability-network contract and every
+non-substrate component (observability, storage, the capability registry
+and its policies, the application-supporting services) have **dissolved
+out of the base** — the PNI surface is now realized by apps-CI Conftest
+plus consumer-cluster Kyverno, and the components live as independently
+versioned, signed OCI artifacts in the
+[`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
+catalog. Decision + sequencing:
+[`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md).
+
+Consumer action:
+
+- **Re-source non-substrate components from `talos-platform-apps`.** Any
+  consumer that referenced `kubernetes/base/infrastructure/<comp>/` paths
+  for a non-substrate component (anything other than `argocd/` /
+  `cert-approver/`) must now pull that component from the apps catalog by
+  the OCI artifact it needs.
+- **Move PNI / capability-network enforcement to your cluster.** The
+  reserved-label, capability-registry, and CCNP machinery the base used
+  to ship is gone; adopt the corresponding Conftest + Kyverno from the
+  apps catalog and run them in your own CI / cluster.
+- **Layer-C node-capability work stays in the base.**
+  `docs/platform-hardware-features.yaml`,
+  `docs/adr-node-capability-composition.md`,
+  `docs/adr-three-layer-capability-architecture.md`, and the
+  `tofu/modules/talos-cluster` provisioning catalog are substrate and
+  remain here — no consumer move needed for those.
 
 ---
 
@@ -165,18 +212,18 @@ behaviour. No spec change.
 
 ### New non-breaking surface
 
-- **Layer-A capability-index validation in CI.** The base now ships
-  three scripts (`scripts/lint-capability-index.sh`,
-  `check-capability-index-refs.sh`, `render-capability-index.sh`) and
-  a `capability-index-check` CI job that enforce the Two-Layer
-  Capability Architecture invariant. Consumer repos that re-render
-  the base inside their own CI will see the new job; no consumer
-  manifests are affected.
+- **Layer-A capability-index validation in CI.** v0.5.0 added a set of
+  capability-index lint/render scripts and a CI job that enforced the
+  two-layer capability-architecture invariant. *Historical only:* this
+  Layer-A capability surface dissolved out of the substrate in v2.0.0
+  (see [§Substrate-only ablation](#substrate-only-ablation-consumer-action-required)) —
+  the scripts and job no longer exist in the base, and the concern moved
+  to [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps).
 - **Per-component READMEs.** Each `kubernetes/base/infrastructure/<comp>/`
-  directory now ships a README with Purpose / Chart / PNI capabilities /
-  Helm-value overrides / Upgrade gotchas. Recommended reading before
-  deciding which base components to deploy and which Helm-value
-  defaults to override in your consumer overlay.
+  directory shipped a README with Purpose / Chart / capabilities /
+  Helm-value overrides / Upgrade gotchas. *Historical only:* with the
+  v2.0.0 ablation only `argocd/` and `cert-approver/` remain in the base;
+  the non-substrate component READMEs travelled to the apps catalog.
 
 ### Validation steps after upgrade
 
@@ -437,22 +484,23 @@ kubectl get clusterpolicy pni-capability-validation-audit pni-reserved-labels-au
 ### Why not bundle the substrate split into v0.6.0
 
 `docs/adr-substrate-only-base.md` (accepted 2026-05-27) reclassifies
-the platform-network-interface, Kyverno, observability stack, and
-17 further `kubernetes/base/infrastructure/` components as platform
-**offerings**, not substrate. They move to a separate
-`talos-platform-apps` repository in **v1.0.0** — not in v0.6.0.
+the platform-network-interface, Kyverno, observability stack, and the
+further `kubernetes/base/infrastructure/` components as platform
+**offerings**, not substrate. They moved to the separate
+[`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
+catalog **as of v2.0.0** — not in v0.6.0, and not in v1.0.0 (which
+shipped without the ablation).
 
 Rationale: v0.6.0 was already in the consumer-cluster preparation
 pipeline when the substrate-only ADR landed. Bundling the substrate
 split into v0.6.0 would have invalidated that preparation; sequencing
-it to v1.0.0 preserves consumer planning at the cost of touching the
-PNI cleanup work twice (here in v0.6.0, then again at the v1.0.0
-move). See the ADR's §Release sequencing and §Migration plan.
+it later preserved consumer planning at the cost of touching the
+PNI cleanup work twice (here in v0.6.0, then again at the v2.0.0
+ablation). See the ADR's §Release sequencing and §Migration plan.
 
 Consumers who reference `platform-network-interface/**` paths from
-this repo will need to re-source from `talos-platform-apps` at the
-v1.0.0 cut. The v0.6.0 PNI cleanup is forward-compatible with that
-move — the renamed `-enforce` ClusterPolicies travel as-is.
+this repo re-source from `talos-platform-apps` at the v2.0.0 cut — see
+[§Substrate-only ablation](#substrate-only-ablation-consumer-action-required).
 
 ---
 
@@ -646,30 +694,19 @@ replacement, before adopting any real cluster.
 
 ## Pending sunsets
 
-These deprecations are scheduled to remove via PR F (alias removal),
-which auto-fires when the sunset date passes. PR F bumps the next OCI
-tag's **MAJOR** version.
+Capability deprecations and their sunset schedule are no longer a
+substrate-base concern. The capabilities and the PNI / capability-network
+contract that defined them dissolved out of the base in v2.0.0 (see
+[§Substrate-only ablation](#substrate-only-ablation-consumer-action-required)).
 
-| Capability | Status | Sunset | Replacement |
-|---|---|---|---|
-| `storage-csi` | deprecated | 2026-11-13 | `block-storage-replicated`, `block-storage-local` |
-| `monitoring-scrape-provider` | deprecated | 2026-08-13 | `monitoring-scrape` (folded) |
-
-### Action for consumers
-
-Before the sunset date:
-
-1. Run `scripts/capability-deprecation-scan.sh kubernetes/` in your
-   consumer repo CI. Failing the scan means you reference a
-   deprecated capability.
-2. Migrate `consume.storage-csi` to one of the split capabilities.
-   Read [`docs/capability-reference.md`](docs/capability-reference.md)
-   §`storage-csi` for the `disambiguation` guide on which split to
-   choose.
-3. Migrate `consume.monitoring-scrape-provider` to plain
-   `consume.monitoring-scrape`.
-4. Commit and merge in your consumer repo *before* you adopt the
-   PR-F-bearing MAJOR tag.
+Capability deprecation scanning and the per-capability replacement guidance
+(for example the former `storage-csi` → `block-storage-replicated` /
+`block-storage-local` split, or `monitoring-scrape-provider` folding into
+`monitoring-scrape`) now live in the
+[`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
+catalog. Run that catalog's deprecation scan against your manifests, and
+follow its replacement guidance, before adopting a catalog artifact that
+fires a sunset.
 
 ---
 
@@ -689,22 +726,15 @@ impact — using the format below:
 
 #### Breaking changes (consumer action required)
 
-- <bullet> — for example "Helm value `loki.write.s3.endpoint` renamed to
-  `loki.write.objectStorage.endpoint`. Patch your consumer overlay."
-
-#### New capabilities
-
-- `<cap-id>` — see capability reference
-
-#### Removed capabilities / sunsets fired
-
-- `<cap-id>` — sunset reached, alias removed
+- <bullet> — for example "Substrate Helm value `argocd.server.replicas`
+  default changed. Patch your consumer overlay." or "`tofu/modules/talos-cluster`
+  input `<var>` renamed."
 
 #### Validation steps after upgrade
 
 1. `make validate-gitops` in consumer repo
-2. `kubectl get policyreport -A` in live cluster — expect no new
-   PNI advisories
+2. `task ci` (for `tofu/` interface changes)
+3. `scripts/lint-hardware-features.sh` (for Layer-C hardware-feature changes)
 ```
 
 ---
@@ -714,4 +744,5 @@ impact — using the format below:
 - [`CHANGELOG.md`](CHANGELOG.md) — per-release notes
 - [`SECURITY.md`](SECURITY.md) — supported versions
 - [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) — verify before vendoring
-- [`docs/capability-architecture.md`](docs/capability-architecture.md) §"Backwards compatibility"
+- [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md) — substrate-only scope; PNI dissolution
+- [`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md) — node-capability composition migration

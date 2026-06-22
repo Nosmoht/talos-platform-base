@@ -1,4 +1,4 @@
-.PHONY: argocd-install argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops validate-kyverno-policies install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml verify-tools render-component render-all verify-rendered chart-pull .argocd-bootstrap-render oci-allowlist-check
+.PHONY: argocd-install argocd-bootstrap argocd-password grafana-dashboards-check validate-gitops install-pre-commit mcp-install mcp-verify mcp-uninstall init-cluster-yaml verify-tools render-component render-all verify-rendered chart-pull .argocd-bootstrap-render oci-allowlist-check
 
 ENV ?= cluster.yaml
 
@@ -139,15 +139,6 @@ install-pre-commit:
 	uvx pre-commit install
 	uvx pre-commit run --all-files || true
 	@echo "pre-commit hooks installed. Run 'uvx pre-commit run --all-files' to validate the full repo."
-
-validate-kyverno-policies:
-	@echo "Server-validating Kyverno ClusterPolicies..."
-	@kubectl apply --dry-run=server \
-		-f kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-contract-enforce.yaml \
-		-f kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-reserved-labels-enforce.yaml \
-		-f kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-vault-ca-distribution.yaml \
-		-f kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-capability-validation-enforce.yaml
-	@echo "ok: Kyverno ClusterPolicies passed server-side validation"
 
 mcp-install: ## Install MCP server binaries (per-OS) and register wrapper symlink in ~/.local/bin
 	@command -v gh >/dev/null 2>&1 || { echo "ERROR: 'gh' (GitHub CLI) required — https://cli.github.com"; exit 1; }

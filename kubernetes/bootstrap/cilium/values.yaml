@@ -130,15 +130,12 @@ securityContext:
       - SYS_RESOURCE
 
 # --- BPF ---
-# VLAN bypass: allow tagged packets through eBPF without dropping.
-# Required for VLAN sub-interfaces (e.g., KubeVirt VM networking on VLAN 100).
-# Without this, Cilium's eBPF programs drop 802.1Q-tagged packets on the physical NIC.
+# VLAN bypass: allow 802.1Q-tagged packets through eBPF without dropping.
+# The cluster-agnostic base ships NO VLAN ids. A consumer whose nodes carry VLAN
+# sub-interfaces (e.g. KubeVirt VM networking on a tagged VLAN) sets the ids it
+# needs via cilium_values_override, e.g. `bpf: { vlanBypass: [100, 110] }`.
 bpf:
-  vlanBypass:
-    - 100
-    - 110
-    - 120
-    - 130
+  vlanBypass: []
 
 # --- L2 announcements / LoadBalancer ---
 # Enable Cilium as the L2 announcer for Service type=LoadBalancer VIPs.
@@ -150,13 +147,13 @@ loadBalancer:
     enabled: true
 
 # --- cilium-secrets Namespace labels ---
-# PNI contract (platform.io/network-interface-version + network-profile) is required by
-# the pni-contract-enforce Kyverno policy. Without these labels, `talosctl upgrade-k8s`
-# re-applying the bootstrap manifest is denied at admission.
 # PSA labels match the live state and prevent non-SSA apply from stripping them.
+# NOTE: the substrate base no longer ships the PNI contract (dissolved per
+# docs/adr-substrate-only-base.md). A consumer that re-enables PNI enforcement
+# via its own Kyverno must re-add the platform.io/network-interface-version +
+# network-profile labels here (via cilium_values_override) so the bootstrap
+# manifest re-apply is not denied at admission.
 secretsNamespaceLabels:
-  platform.io/network-interface-version: v1
-  platform.io/network-profile: privileged
   pod-security.kubernetes.io/enforce: restricted
   pod-security.kubernetes.io/enforce-version: latest
   pod-security.kubernetes.io/audit: restricted

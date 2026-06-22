@@ -16,12 +16,6 @@
 # ADRs — decision-grade documents.
 /docs/adr-*.md                                   @nosmoht
 
-# PNI subsystem — capability-first contract.
-/kubernetes/base/infrastructure/platform-network-interface/  @nosmoht
-/docs/capability-architecture.md                 @nosmoht
-/docs/capability-reference.md                    @nosmoht
-/docs/pni-cookbook.md                            @nosmoht
-
 # OCI publish surface — supply-chain critical.
 /.github/workflows/oci-publish.yml               @nosmoht
 /docs/oci-artifact-verification.md               @nosmoht

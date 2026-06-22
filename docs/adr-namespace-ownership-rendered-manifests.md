@@ -225,9 +225,9 @@ operators understand the policy.
   in `root` is structurally impossible. The base does not ship a
   resource that two Applications co-track.
 - Consumer onboarding does NOT require manual authoring of namespace
-  labels for platform namespaces. PSA labels, PNI labels, capability
-  `provide.*` labels all come from vendor `namespace.yaml` shipped
-  by this base. Consumer's role: vendor the OCI artifact and run
+  labels for platform namespaces. PSA labels and the recommended
+  `app.kubernetes.io/*` labels all come from vendor `namespace.yaml`
+  shipped by this base. Consumer's role: vendor the OCI artifact and run
   `make argocd-bootstrap`.
 - Decommissioning a platform component is a single act: removing
   the per-component Application also cascade-deletes its namespace
@@ -275,7 +275,5 @@ by construction; no migration applies.
   https://argo-cd.readthedocs.io/en/stable/user-guide/resource_tracking/
 - Kubernetes Server-Side Apply (SSA):
   https://kubernetes.io/docs/reference/using-api/server-side-apply/
-- PNI contract ClusterPolicy:
-  `kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-contract-enforce.yaml`
 - 2026-05-18 incident timeline: ArgoCD application-controller log,
   syncId `12807-QfBNf`.

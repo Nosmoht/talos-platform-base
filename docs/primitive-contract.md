@@ -142,7 +142,7 @@ Smoke-Pass criterion per skill: dispatch against ≥ 1 idle worker yields valid 
 Issues #100, #102, #105, #107 require ephemeral-pod orchestration. Before they can be implemented:
 
 - New namespace `claude-harness-jobs` with ArgoCD-managed lifecycle
-- New PNI capability `host-net-diagnostic`: Kyverno-allowlist update at `kubernetes/base/infrastructure/platform-network-interface/resources/kyverno-clusterpolicy-pni-capability-validation-enforce.yaml` + Cilium-CCNP under PNI provider side
+- A `host-net-diagnostic` network-access grant for the diagnostics pods: now a consumer-overlay Kyverno-allowlist + Cilium-CCNP concern (the capability-network contract is no longer base-resident — see [`adr-substrate-only-base.md`](adr-substrate-only-base.md))
 - ServiceAccount `claude-harness-runner` + RoleBinding scoped to namespace (verbs: pods.create/get/list/delete, pods/exec, pods/log)
 - Image pinning by sha256 digest: ethtool image (alpine + apk-installed ethtool), iperf3 image (`networkstatic/iperf3` candidate), fio image (maintained alternative — `clusterhq/fio-tools` is dead)
 - Cleanup contract: pre-run idempotent label-selector delete, during-run trap-EXIT cleanup, post-run delete, backup janitor CronJob
@@ -152,7 +152,14 @@ These sections will be appended to this document when Phase 1b is planned.
 
 ## External HTTPRoute hostname enforcement
 
-The base `external-httproute-hostnames-enforce` ClusterPolicy denies any HTTPRoute attached to the `sectionName=external-https` listener whose hostname does not match the cluster's `external_hostname_pattern` regex.
+> **No longer base-resident.** The `external-httproute-hostnames-enforce`
+> Kyverno ClusterPolicy dissolved out of the base together with the rest of
+> the base Kyverno set (the base is now substrate-only — see
+> [`adr-substrate-only-base.md`](adr-substrate-only-base.md)). The contract is
+> retained here for reference; it is now a consumer-side / apps-catalog
+> concern, not a base artifact.
+
+The `external-httproute-hostnames-enforce` ClusterPolicy denies any HTTPRoute attached to the `sectionName=external-https` listener whose hostname does not match the cluster's `external_hostname_pattern` regex.
 
 Consumer overlay contract:
 
@@ -161,6 +168,4 @@ Consumer overlay contract:
 - Consumer cluster bootstrap order:
   1. AppProject + Kyverno operator install (sync-wave -1 to 0).
   2. Consumer-side `cluster-config` ConfigMap (sync-wave 0 or earlier).
-  3. Base PNI ClusterPolicies (sync-wave 1+).
-
-Test fixtures live at `kubernetes/base/infrastructure/platform-network-interface/resources/tests/external-httproute-hostnames-enforce/` and are exercised by `kyverno test` in CI.
+  3. Consumer-side ClusterPolicies (sync-wave 1+).

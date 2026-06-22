@@ -52,7 +52,7 @@ body:
     id: env
     attributes:
       label: Environment
-      description: OS, tool versions (yq, kustomize, kubeconform, conftest, kyverno-cli).
+      description: OS, tool versions (yq, kustomize, kubeconform, conftest).
       placeholder: macOS 14.5 / kustomize v5.4.2 / conftest 0.50.0 …
     validations:
       required: false

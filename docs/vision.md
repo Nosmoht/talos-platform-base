@@ -28,9 +28,10 @@ these as work.
 
 ### Backstage Software Catalog adapter
 
-The Layer-A capability index ([`platform-capability-index.yaml`](platform-capability-index.yaml))
-was designed with Backstage entity-model field alignment so that a future
-adapter can ingest it without remapping. The adapter itself is **not built**.
+The capability catalogue — now owned by the `talos-platform-apps` repo
+rather than this base — was designed with Backstage entity-model field
+alignment so that a future adapter can ingest it without remapping. The
+adapter itself is **not built**.
 
 Known open question: Backstage's `lifecycle` field exists for the `Component`
 and `API` entity kinds, but not for `Resource` (Backstage open issue #25111).
@@ -72,24 +73,25 @@ Realism check:
 **This will not ship in v0.x.** It is included here only to explain why
 schema fields like `deployment_topology ∈ {host-singleton, host-only,
 tenant-instance, host-and-tenant}` and `cross_cluster_protocol` exist in the
-capability index — they reserve namespace, they do not implement behaviour.
+capability catalogue (now in `talos-platform-apps`) — they reserve
+namespace, they do not implement behaviour.
 
 ### Cross-cluster identity
 
 Cross-cluster identity (SPIFFE? Vault auth? OIDC federation?) is **the
-v2.X-blocking open question**. The Layer A index documents the protocol
-bridge (`cilium-clustermesh`) but does not resolve identity.
+v2.X-blocking open question**. The capability catalogue documents the
+protocol bridge (`cilium-clustermesh`) but does not resolve identity.
 
 ### Customer parametric capability selection
 
 If multi-tenant cluster provisioning materialises, the customer's choice of
 capability implementation would happen at the Crossplane Composition layer,
-not in this base. The base would supply the catalogue (Layer A); composition
-selection would happen one layer above.
+not in this base. The `talos-platform-apps` catalogue would supply the
+options; composition selection would happen one layer above.
 
 ## CNCF-conformance is not a claim
 
-The Two-Layer ADR aligns vocabulary with the [CNCF TAG App Delivery Platforms
+The capability vocabulary aligns with the [CNCF TAG App Delivery Platforms
 White Paper](https://github.com/cncf/tag-app-delivery/blob/main/platforms-whitepaper/v1/paper.md),
 draws on Backstage (CNCF Incubating) and Crossplane (CNCF Graduated) field
 shapes, and uses ISO-8601 dates. None of this is **CNCF-conformant** in a
@@ -99,8 +101,8 @@ repos. The alignment is design-rhetorical, not certificational.
 ## Harness plugin (separate repo)
 
 [`docs/harness-plugin-integration.md`](harness-plugin-integration.md) specifies
-what the `kube-agent-harness` Claude Code plugin should provide for v2. That
-plugin repository does not yet exist publicly. Subagents and rules listed
+what the `kube-agent-harness` Claude Code plugin should provide for this base.
+That plugin repository does not yet exist publicly. Subagents and rules listed
 there as "shipped" describe the maintainer's local workflow, not a public
 artefact.
 
@@ -130,7 +132,6 @@ overstates what is in flight.
 
 ## See also
 
-- [`adr-two-layer-capability-architecture.md`](adr-two-layer-capability-architecture.md) — Layer A/B split (status: proposed)
-- [`capability-architecture.md`](capability-architecture.md) — the v2 contract as implemented today
+- [`adr-substrate-only-base.md`](adr-substrate-only-base.md) — why the base ships substrate only
 - [`harness-plugin-integration.md`](harness-plugin-integration.md) — spec for the not-yet-public plugin repo
 - [`CHANGELOG.md`](../CHANGELOG.md) — what actually shipped per tag

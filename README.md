@@ -3,25 +3,22 @@
 [![REUSE status](https://api.reuse.software/badge/github.com/Nosmoht/talos-platform-base)](https://api.reuse.software/info/github.com/Nosmoht/talos-platform-base)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Nosmoht/talos-platform-base/badge)](https://scorecard.dev/viewer/?uri=github.com/Nosmoht/talos-platform-base)
 
-> Build the same Kubernetes platform across many Talos clusters from one
-> signed, provenance-attested base — and swap any tool inside it without
-> rewriting your network policies.
+> Build the same Talos + Kubernetes substrate across many clusters from
+> one signed, provenance-attested base — Talos, Cilium, and ArgoCD stood
+> up the same way every time.
 
 ## Why this exists
 
-Three problems recur in homelab-to-fleet Kubernetes operation:
+Two problems recur in homelab-to-fleet Kubernetes operation:
 
 - **Per-cluster drift.** Each new cluster begins as a copy-paste of the
   last one. Six months later, no two clusters render the same manifests
   and no one remembers why.
-- **Tool lock-in via network policy.** A `CiliumNetworkPolicy` that
-  matches on `app.kubernetes.io/name: prometheus` makes
-  Prometheus → Victoria-Metrics a multi-day rewrite, not a label move.
 - **Vendor-the-tarball trust.** Most platform "templates" are git
   submodules or `wget`-ed tarballs. There is nothing to verify and
   no proof who built what.
 
-This base is the answer to those three problems, in order.
+This base is the answer to those two problems, in order.
 
 The base provisions **Talos plus its three co-equal substrate pillars
 — Talos + Cilium + ArgoCD** — through one OpenTofu module
@@ -37,21 +34,19 @@ bring-up and the documented bootstrap exceptions.
 | Pain | Answer | Mechanism |
 |---|---|---|
 | Per-cluster drift | A single immutable artifact, vendored per cluster | OCI artifact on `ghcr.io`, pinned by `.base-version` |
-| Tool lock-in | Network policies select **capabilities**, not tool names | Platform Network Interface (PNI) v2 — namespace-anchored producer trust |
 | Tarball trust | Every artifact carries cryptographic provenance | cosign keyless signature + SLSA build provenance + CycloneDX 1.6 SBOM |
 
-The capability-first model is the differentiator. A consumer namespace
-opts in with `platform.io/consume.monitoring-scrape: "true"`; the
-Cilium policy admitting its egress selects on
-`capability-provider.monitoring-scrape`, not on the provider's name.
-Swap Prometheus for Victoria-Metrics by moving one pod label. Trust is
-namespace-local: a pod is believed to provide a capability only if its
-namespace declares the matching `provide.<cap>`. No central trust list
-to grow stale.
-
-See [`docs/capability-architecture.md`](docs/capability-architecture.md)
-for the full explanation;
-[`docs/pni-cookbook.md`](docs/pni-cookbook.md) for the recipes.
+The base is **substrate-only**: it ships Talos + Cilium + ArgoCD (plus
+`cert-approver` boot glue) and nothing above them. The OpenTofu module
+stands the substrate up identically on every cluster, and the signed OCI
+artifact gives consumers a verifiable thing to vendor instead of an
+unaudited tarball. Everything that is *not* substrate — monitoring,
+secrets, storage, the network-trust contract — lives in the separate
+[`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
+catalog as independently versioned, signed OCI components that consumers
+self-serve. See
+[`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md) for
+the boundary.
 
 ## At a glance
 
@@ -87,18 +82,17 @@ receives a frozen tree containing:
   CIDR, dual-stack, node classes, machine-config patches, substrate
   config). `make init-cluster-yaml` copies it to a `cluster.yaml` the
   consumer fills in.
-- **22 standalone-renderable infrastructure components** under
-  `kubernetes/base/infrastructure/`. 15 are Helm-based (chart + values
-  pinned via `chart.lock.yaml`, rendered manifests committed alongside);
-  7 ship plain Kubernetes resources (`cert-approver`, `kubevirt`,
-  `kubevirt-cdi`, `local-path-provisioner`, `multus-cni`,
-  `piraeus-operator`, `platform-network-interface`). The accepted
-  substrate-only direction migrates the non-substrate components to the
-  separate `talos-platform-apps` catalog; that migration is in flight, so
-  they still ship here today (see
+- **The substrate-only infrastructure components** under
+  `kubernetes/base/infrastructure/` — `argocd/` and `cert-approver/`,
+  the only components delivered as base kustomize manifests. ArgoCD is a
+  co-equal substrate pillar; `cert-approver` is Talos boot-necessity glue
+  (no CSR auto-approval → no bootable cluster). Every non-substrate
+  component (monitoring, secrets, storage, device plugins, the
+  network-trust contract, …) now lives in the separate
+  [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
+  catalog as independently versioned, signed OCI artifacts; consumers
+  self-serve from there (see
   [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md)).
-- **Platform Network Interface (PNI)** Kyverno policies and Cilium
-  cluster-wide network policies that enforce the capability contract.
 - **Per-class Talos machine-config**, derived by the module from the
   `cluster.yaml` classes (architecture, system extensions, optional
   ARM/SBC overlay, per-class and per-node patches) — `cni:none` is forced
@@ -107,7 +101,7 @@ receives a frozen tree containing:
 - **Parameterised ArgoCD bootstrap templates** (`*.tmpl`, rendered by
   the consumer at install time via `make argocd-bootstrap`).
 - **The validation pipeline** itself (`make validate-gitops`, conftest
-  Rego, kubeconform, kyverno-cli, capability-index linter) so consumers
+  Rego, kubeconform, the Layer-C hardware-features linter) so consumers
   can re-render the base inside their own CI and catch divergence.
 
 What does **not** ship: cluster identity (IPs, FQDNs, OIDC issuers,
@@ -222,8 +216,7 @@ the base, not application developers or end-users.
 | Read this | If you want to |
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Understand the system (C4 L1+L2 with arc42 §1, 2, 4, 10, 11, 12) |
-| [`docs/capability-architecture.md`](docs/capability-architecture.md) | Understand the capability-first network contract |
-| [`docs/pni-cookbook.md`](docs/pni-cookbook.md) | Write a consumer or producer manifest |
+| [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md) | Understand the substrate / apps-catalog boundary |
 | [`docs/tutorial-first-consumer-cluster.md`](docs/tutorial-first-consumer-cluster.md) | Bootstrap a second cluster from scratch |
 | [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) | Verify a release before vendoring |
 | [`UPGRADING.md`](UPGRADING.md) | Apply a version bump |
@@ -236,10 +229,9 @@ Full Diátaxis index: [`docs/README.md`](docs/README.md).
 
 ## Contributing
 
-PRs that touch a single component and pass `make validate-gitops` plus
-`make validate-kyverno-policies` are reviewable in one round. The full
-contribution workflow (Conventional Commits, the issue-readiness gate,
-the CI required-check list) lives in
+PRs that touch a single component and pass `make validate-gitops` are
+reviewable in one round. The full contribution workflow (Conventional
+Commits, the issue-readiness gate, the CI required-check list) lives in
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Community and support

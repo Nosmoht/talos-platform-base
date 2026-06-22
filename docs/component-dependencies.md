@@ -20,10 +20,10 @@ Soft edges (dotted) are sourced from one of:
 - App-of-Apps deploy provenance (ArgoCD → everything).
 - Hard-constraint or substrate prerequisites (Talos → Cilium → ArgoCD).
 
-PNI `provide.<cap>` / `consume.<cap>` labels are **not** a source for
-this graph — the labels are an admission-time policy contract, not a
-component-dependency declaration, and are incomplete across components
-that don't ship a `namespace.yaml`.
+Network-policy `provide.<cap>` / `consume.<cap>` labels (the dissolved
+capability-network contract, now an apps-CI Conftest + consumer-Kyverno
+concern, not base-resident) are **not** a source for this graph — they are
+an admission-time policy contract, not a component-dependency declaration.
 
 ## The graph
 
@@ -45,14 +45,6 @@ graph LR
 
   talos --> cilium --> argocd
   talos --> cert-approver
-
-  %% Policy + network contract ----------------------------------------
-  kyverno["kyverno<br/>admission controller"]:::policy
-  pni["platform-network-interface<br/>registry + ClusterPolicies + CCNPs"]:::policy
-
-  argocd ==> kyverno
-  cilium --> pni
-  kyverno --> pni
 
   %% Identity + secret chain ------------------------------------------
   vault-op["vault-operator<br/>CRD: VaultServer"]:::sec
@@ -126,7 +118,6 @@ graph LR
 | `alloy → loki` | service DNS in chart values | `kubernetes/base/infrastructure/alloy/values.yaml`: `url = "http://loki-gateway.monitoring.svc/loki/api/v1/push"` |
 | `loki → kube-prometheus-stack` | service DNS in chart values | `kubernetes/base/infrastructure/loki/values.yaml`: `alertmanager_url: …monitoring.svc:9093` |
 | `kube-prometheus-stack → {alloy, loki}` (ns co-tenancy) | namespace-ownership ADR | [`adr-namespace-ownership-rendered-manifests.md`](adr-namespace-ownership-rendered-manifests.md) + `kubernetes/base/infrastructure/alloy/kustomization.yaml` header comment |
-| `pni → {kyverno, cilium}` | Layer-B contract | `ARCHITECTURE.md §"L2 Container View"`, `docs/glossary.md` ("Kyverno + Cilium contract") |
 | CRD-producer edges (NFD → nvdp → DCGM, multus → kvirt, cdi → kvirt, …) | rendered CRD manifests | each component's `_rendered/crds.yaml` or rendered manifest |
 
 ## What this graph does NOT show
@@ -139,10 +130,11 @@ graph LR
 - **Runtime/operational dependencies.** Pod-to-pod L4 reachability is
   enforced by CCNPs; deploy order is governed by ArgoCD sync waves.
   This graph is a build-time / design-time map, not a runtime topology.
-- **`platform.io/provide.<cap>` / `consume.<cap>` labels.** These
-  exist on `namespace.yaml` of *some* components and not others. They
-  describe an admission-policy contract for tenant traffic, not a
-  component-dependency tree. They are deliberately not the source for
+- **`platform.io/provide.<cap>` / `consume.<cap>` labels.** The
+  capability-network contract dissolved out of the base (now apps-CI
+  Conftest + consumer-side Kyverno). These labels describe an
+  admission-policy contract for tenant traffic, not a
+  component-dependency tree, and are deliberately not the source for
   this graph.
 
 ## Maintenance
@@ -157,11 +149,10 @@ This file is hand-maintained. When you submit a PR that:
 
 …edit this file in the same PR. PR reviewers flag stale graphs.
 
-A future render-script-based approach was considered and rejected:
-the catalog (`docs/platform-capability-index.yaml`) is the right
-SOT for **capability-level** dependency, but at 22 components with
-3 documented service-endpoint cross-references, CNCF Platforms
-White Paper TVP guidance — "thinnest viable platform layer,
-validate user demand before tooling investment" — argues for the
-manual approach until the cross-reference count or the consultation
-frequency grows materially. Re-evaluate when either crosses ~50.
+A future render-script-based approach was considered and rejected: at
+the current component count with a handful of documented
+service-endpoint cross-references, CNCF Platforms White Paper TVP
+guidance — "thinnest viable platform layer, validate user demand
+before tooling investment" — argues for the manual approach until the
+cross-reference count or the consultation frequency grows materially.
+Re-evaluate when either crosses ~50.
