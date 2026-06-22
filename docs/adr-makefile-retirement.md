@@ -157,5 +157,5 @@ tarball.
   disposition; Phase-3 ablation (#140) is the trigger this ADR fires on.
 - ADR `base:opentofu-cluster-lifecycle` — the partial tooling migration that
   first introduced `Taskfile.yml` + `devbox.json`.
-- Tracking issue #113 — ArgoCD double-install fix + Layer-2 rewrite (sibling PR)
-  + the devbox-no-make seam closure (this PR).
+- Tracking issue #113 — the ArgoCD double-install fix and Layer-2 rewrite
+  (sibling PR) plus the devbox-no-make seam closure (this PR).
