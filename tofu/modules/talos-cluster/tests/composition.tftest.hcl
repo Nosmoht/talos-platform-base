@@ -3,8 +3,8 @@
 # Proves the γ' composition + its hard-error invariants. command = plan (no
 # apply). The valid run resolves the live Image Factory (network) for schematic
 # dedup; the expect_failures runs lock in each guard (red-green: revert the guard
-# and the matching run stops failing). NETWORK REQUIRED — run via `task test`,
-# NOT part of the offline `task ci`.
+# and the matching run stops failing). NETWORK REQUIRED — run via `task tofu:test`,
+# NOT part of the offline `task tofu:ci`.
 #
 # Not covered (no triggerable input via the real base catalog — the shipped
 # profiles never collide): module-param / sysctl / kernel-arg conflict guards.
@@ -157,7 +157,7 @@ run "emits_label_reserved_namespace_rejected" {
 # of the namespace, so the create-only inlineManifest seed must carry these
 # itself. Red-green: drop labels from local.argocd_namespace_labels (main.tf) and
 # both asserts fail. deploy_argocd = true renders the argo-cd chart (NETWORK) and
-# needs a prefix-valid age key — already part of the network-gated `task test`.
+# needs a prefix-valid age key — already part of the network-gated `task tofu:test`.
 run "argocd_namespace_seed_carries_psa_floor_and_recommended_labels" {
   command = plan
   variables {

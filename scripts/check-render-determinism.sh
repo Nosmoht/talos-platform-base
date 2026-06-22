@@ -22,7 +22,7 @@
 #      is caught.
 #
 # Hermetic: pure static analysis of main.tf, no providers/network. Wired into
-# `task ci`. Usage: scripts/check-render-determinism.sh [path/to/main.tf]
+# `task tofu:ci`. Usage: scripts/check-render-determinism.sh [path/to/main.tf]
 #
 # NOTE (acknowledged limit): check (3) asserts triggers_replace is PRESENT, not that
 # it ENUMERATES every render-affecting input of the data source. A render input added

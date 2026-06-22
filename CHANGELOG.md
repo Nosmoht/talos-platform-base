@@ -16,7 +16,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `task --list` for the full set. `chart-pull` and `grafana-dashboards-check`
   are **dropped** with no replacement (the former is a `helm pull` + `shasum`
   one-liner; the latter scanned a consumer overlay path absent in the base).
-  `devbox.json` gains `yq-go` + `gettext` (not `gnumake`). A `Makefile`
+  `devbox.json` gains `yq-go` + `gettext` + `ripgrep` (not `gnumake`). A `Makefile`
   deprecation stub remains for one release cycle: any `make <target>` prints the
   migration mapping and exits non-zero. **Contributor / consumer impact:**
   day-zero runbooks or scripts invoking `make <target>` must switch to
