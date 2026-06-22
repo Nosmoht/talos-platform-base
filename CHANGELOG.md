@@ -25,7 +25,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   of composable `hardware_capabilities` resolved via a base-owned
   provisioning-profile catalog — no more hand-authored monolithic classes. The
   `installer_images` output is now keyed by hostname (was per class). Nodes whose
-  kernel-arg provisioning is corrected (e.g. IOMMU) re-image once. See UPGRADING.md
+  kernel-arg provisioning is corrected (for example, IOMMU) re-image once. See UPGRADING.md
   and [`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md).
 
 ### Added

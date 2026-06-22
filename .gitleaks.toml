@@ -19,6 +19,12 @@ useDefault = true
 [allowlist]
 paths = [
   '''^scripts/test/codex-leak\.toml$''',   # placeholder values only — see scripts/check-codex-config-placeholders.sh tests
+  # Historical Kyverno unit-test fixtures: deleted from the tree in the
+  # substrate-only ablation, but retained in git history (gitleaks scans full
+  # history). Their Secret manifests carry base64 PLACEHOLDER values
+  # (fake-for-test-only), not real-shaped tokens; the path allowlist must stay
+  # so the historical commits do not trip the kubernetes-secret-yaml rule.
+  '''^kubernetes/base/infrastructure/platform-network-interface/resources/tests/[^/]+/resources\.yaml$''',
 
   # Phase B rendered-manifests outputs that include a Helm-rendered
   # `kind: Secret` whose `data.<key>` is *configuration*, not a credential.
