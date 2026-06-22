@@ -1,7 +1,13 @@
 # Rendered Manifests Pipeline
 
-This base produces fully-rendered Kubernetes YAML for every Helm-based
-infrastructure component. The rendered output is committed to git and
+This base produces fully-rendered Kubernetes YAML for its Helm-based
+infrastructure components. Since the v2.0.0 substrate-only ablation the
+substrate ships exactly one such component — `argocd` (`cert-approver` is a
+plain kustomization with no chart). The same Rendered Manifests Pattern
+governs the non-substrate components now in the
+[`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
+catalog; the worked examples below (e.g. `cert-manager`) illustrate the
+pattern and are no longer base-resident. The rendered output is committed to git and
 shipped via the OCI artifact (`ghcr.io/nosmoht/talos-platform-base:<tag>`).
 Consumer cluster repos use the rendered output as the basis for ArgoCD
 `directory`-source applications — ArgoCD does not run helm or kustomize

@@ -55,7 +55,7 @@ Existing in the harness plugin today (CLAUDE.md §Subagents lists them):
 | Subagent | Purpose | When dispatched |
 |---|---|---|
 | `gitops-operator` | renders, validates, suggests minimal kustomize patches | edit-time on `kubernetes/**` |
-| `talos-sre` | reviews Talos patches against hard constraints, knows boot-loop traps | edit-time on `talos/**` |
+| `talos-sre` | reviews Talos patches against hard constraints, knows boot-loop traps | edit-time on `tofu/modules/talos-cluster/**` |
 | `platform-reliability-reviewer` | reviews PR diffs touching substrate manifests, Talos patches, ADRs | explicit on PR-prep |
 | `researcher` | open-ended cross-repo research with web budgets | explicit |
 | `builder-implementer` / `builder-evaluator` | issue-implementation pipeline (see issue-workflow.md) | `/implement-issue` skill |
