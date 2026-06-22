@@ -71,7 +71,6 @@ tasks:
   tofu:docs:
     desc: Regenerate module READMEs' input/output tables via terraform-docs
     cmd: |
-      shopt -s nullglob
       for m in {{.TOFU_MODULES}}; do
         terraform-docs markdown table --output-file README.md --output-mode inject "$m" || true
       done
@@ -83,7 +82,8 @@ tasks:
       markdownlint 'tofu/**/*.md' || true
 
   tofu:check:render-determinism:
-    desc: "#123 fence — Cilium/ArgoCD/CRD helm renders must be consumed only via the frozen terraform_data (ignore_changes), never the live data.helm_template"
+    # The #123 render-determinism fence — full rationale in scripts/check-render-determinism.sh.
+    desc: "CI fence: Cilium/ArgoCD/CRD helm renders must use frozen terraform_data (ignore_changes), not live data.helm_template"
     cmd: scripts/check-render-determinism.sh
 
   tofu:test:

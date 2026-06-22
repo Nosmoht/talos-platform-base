@@ -92,10 +92,11 @@ coexistence window that no longer exists. Concretely:
    `make <target>` prints the migration mapping and exits non-zero, so a stale
    habit gets a clear message instead of `No rule to make target`. Deleted next
    MAJOR.
-4. **Update `devbox.json`** — add `yq-go` + `gettext` (the `bootstrap:*` /
-   `cluster:*` tasks read `cluster.yaml` via `yq` and template via `envsubst`).
-   **Not** `gnumake` (the bridge is retired), **not** `ripgrep` (its only consumer
-   was the dropped `grafana-dashboards-check`).
+4. **Update `devbox.json`** — add `yq-go` + `gettext` + `ripgrep` (the
+   `bootstrap:*` / `cluster:*` tasks read `cluster.yaml` via `yq` and template
+   via `envsubst`; `gitops:validate` → `scripts/render_kustomize_safe.sh`
+   requires `rg` for its ksops detection). **Not** `gnumake` — the bridge is
+   retired, the Makefile is deleted.
 5. **Re-point CI** — `tofu-validate.yml` calls `task tofu:ci` / `task tofu:test`
    (the namespaced names).
 
