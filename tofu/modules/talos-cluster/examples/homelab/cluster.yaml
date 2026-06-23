@@ -15,6 +15,14 @@ cluster:
   overlay: homelab
   target_revision: main
 
+  # Cluster network (install-time-fixed in Talos; irreversible after bootstrap).
+  # Shown with the platform defaults so the worked example exercises every field
+  # the shim reads. This homelab is multi-control-plane and single-stack IPv4.
+  pod_cidr: ["10.244.0.0/16"] # Talos podSubnets AND Cilium IPAM/masquerade/native-routing
+  service_cidr: ["10.96.0.0/12"] # Talos serviceSubnets
+  dual_stack: false # v4+v6 → give pod_cidr/service_cidr each a v4 AND a v6 entry, e.g. ["10.244.0.0/16","fd00:10:244::/56"]
+  allow_scheduling_on_controlplanes: false # multi-CP: control planes stay tainted (true only for single-node/edge)
+
 repo:
   url: https://github.com/your-org/homelab.git
 
@@ -97,15 +105,37 @@ nodes:
 config_patches:
   - machine: { time: { servers: ["192.0.2.123"] } }
 
-# Role tier — applied to controlplane nodes only (exercises the role pass).
+# Role tier — applied to controlplane nodes only (exercises the controlplane pass).
 controlplane_config_patches:
   - cluster: { apiServer: { extraArgs: { event-ttl: "1h0m0s" } } }
 
-# Substrate: Cilium + ArgoCD delivered by the module (Layer-1 floor). Defaults
-# are shown explicitly; secrets (sops_age_key, cilium_ipsec_key) come from
-# tfvar/env via variables.tf, NEVER from this file.
+# Role tier — applied to worker nodes only (exercises the worker pass). maxPods is
+# an int (unquoted) — workload-bearing workers carry more pods than the kubelet default.
+worker_config_patches:
+  - machine: { kubelet: { extraConfig: { maxPods: 200 } } }
+
+# Substrate: Cilium + ArgoCD delivered by the module (Layer-1 floor). Defaults are
+# shown explicitly so the worked example documents the full substrate surface;
+# secrets (sops_age_key, cilium_ipsec_key) come from tfvar/env via variables.tf,
+# NEVER from this file. The free-form escape hatches (config_patches above,
+# substrate.*.values_override below) are unbounded passthrough into the controlplane
+# machine config — NEVER paste secret material into them (cluster.yaml is committed;
+# gitleaks is the only backstop).
 substrate:
   cilium:
-    enabled: true
+    enabled: true # false keeps Talos-default Flannel (opt-out)
+    chart_version: "1.19.4" # SEED knob (install-time), not an upgrade knob
+    chart_repository: https://helm.cilium.io # baked into machineConfig WITHOUT a digest pin — point ONLY at a trusted source
+    routing_mode: tunnel # tunnel | native (native needs native_routing_cidr or pod_cidr)
+    kube_proxy_replacement: true # Cilium replaces kube-proxy (Talos cluster.proxy.disabled)
+    gateway_api: true # Hard Constraint: Gateway API only — no Ingress
+    gateway_api_crds_url: "" # "" = CRDs via Day-1 GitOps (air-gap-safe); a URL is boot-seeded (connected only) via extraManifests with NO digest pin — point ONLY at a trusted source; a blocked fetch crashloops bootstrap
+    mtu: 0 # 0 = chart auto-detect; set for jumbo-frame fabrics
+    native_routing_cidr: "" # ipv4NativeRoutingCIDR for routing_mode: native ("" = derive from pod_cidr)
+    encryption: { type: none } # none | wireguard | ipsec (ipsec needs cilium_ipsec_key via tfvar/env)
+    values_override: "" # long tail: Hubble, L2/BGP, bpf, VLAN bypass (Helm values, merged on the floor)
   argocd:
-    enabled: true
+    enabled: true # false opts out of ArgoCD delivery
+    chart_version: "9.4.5" # SEED knob (install-time), not an upgrade knob
+    namespace: argocd
+    values_override: "" # consumer Helm values merged on the shipped slim values
