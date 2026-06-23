@@ -1,6 +1,6 @@
 #!/bin/sh
 # MCP GitHub server wrapper — pulls auth token from gh CLI (macOS Keychain / Linux libsecret).
-# Called via PATH-installed symlink created by `make mcp-install`.
+# Called via PATH-installed symlink created by `task mcp:install`.
 # Fails loudly on missing/empty token — prevents silent anonymous-auth fallback.
 #
 # Token scope: the token is passed to the github-mcp-server child
@@ -19,7 +19,7 @@ if [ -z "$GH_BIN" ] || [ ! -x "$GH_BIN" ]; then
   exit 1
 fi
 if [ -z "$GITHUB_MCP_BIN" ] || [ ! -x "$GITHUB_MCP_BIN" ]; then
-  echo "mcp-github-wrapper: 'github-mcp-server' not found in PATH — run 'make mcp-install'" >&2
+  echo "mcp-github-wrapper: 'github-mcp-server' not found in PATH — run 'task mcp:install'" >&2
   exit 1
 fi
 

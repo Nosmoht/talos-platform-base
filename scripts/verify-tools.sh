@@ -9,7 +9,7 @@
 #   0 — all tools present at pinned versions
 #   1 — at least one tool missing or version mismatch
 #
-# Used by `make verify-tools` and CI drift-check step.
+# Used by `task dev:verify-tools` and CI drift-check step.
 
 set -euo pipefail
 

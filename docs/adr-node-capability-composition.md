@@ -568,7 +568,7 @@ Round 3 → Round 4 (implementation-plan review: reviewer + team-red) → this r
 - **Follow-up.**
   1. Implement the composition in `tofu/modules/talos-cluster` (mechanics §
      above is the contract); emit `machine.kernel.modules` (net-new); gate on
-     `task ci` + a live Image-Factory plan/apply + a throwaway-cluster boot
+     `task tofu:ci` + a live Image-Factory plan/apply + a throwaway-cluster boot
      proof.
   2. Ship the provisioning-profile catalog + its JSON Schema + a
      cross-reference CI gate (profile / atom id linkage).

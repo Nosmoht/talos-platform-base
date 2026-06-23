@@ -1,7 +1,12 @@
 ---
-status: accepted
+status: superseded
 id: base:task-runner-consolidation
+superseded_by:
+  - base:makefile-retirement
 date: 2026-06-07
+date-history:
+  - 2026-06-07 initial (accepted; no wholesale Make→go-task migration — the Makefile dissolves with the substrate-only split)
+  - 2026-06-22 superseded (Phase-3 ablation #140 landed; base:makefile-retirement folds the survivors into the Taskfile and retires the Makefile — correcting this ADR's per-target table, where render-*/validate-gitops in fact survive because argocd keeps a chart.lock.yaml, and retiring its gnumake-bridge §Validation predicate)
 deciders:
   - Thomas Krahn
 consulted: []
@@ -11,6 +16,16 @@ related:
   - base:substrate-only-base
   - base:opentofu-cluster-lifecycle
 ---
+
+> **Superseded by [`adr-makefile-retirement.md`](adr-makefile-retirement.md)
+> (`base:makefile-retirement`, 2026-06-22).** Phase-3 ablation (#140) landed, so
+> the Decision Outcome §4 trigger below fired: the Makefile is retired and the
+> survivors fold into the Taskfile. Two premises here proved wrong in execution
+> and are corrected by the superseding ADR — `validate-gitops` / `render-*`
+> **survive** (argocd retains a `chart.lock.yaml`), and the §3 `gnumake`-in-devbox
+> bridge + the §Validation predicate that depends on it are **retired** (the
+> Makefile is deleted, not bridged). The text below is preserved as the
+> historical record.
 
 # ADR: No wholesale Make→go-task migration — the Makefile dissolves with substrate-only
 

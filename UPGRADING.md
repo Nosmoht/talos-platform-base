@@ -42,6 +42,50 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
+## `v3.0.0` — go-task is the single runner; the Makefile is retired (MAJOR / dev-facing breaking)
+
+**Type:** MAJOR (dev-facing). The `Makefile` is retired and go-task is the sole
+runner — every former `make <target>` is now a namespaced `task <target>`. A
+`Makefile` deprecation stub remains for one release cycle: any `make <target>`
+prints the migration mapping and exits non-zero. There is **no consumer-runtime
+impact** — the OCI artifact ships neither the Makefile nor the Taskfile, so this
+affects only workstation / runbook / CI tooling, not the vendored module or the
+rendered manifests. Decision:
+[`docs/adr-makefile-retirement.md`](docs/adr-makefile-retirement.md).
+
+**Migration — replace `make` with `task` in any runbook, script, or CI you own:**
+
+| Retired `make` target | Replacement |
+|---|---|
+| `make validate-gitops` | `task gitops:validate` |
+| `make render-component COMPONENT=<c>` | `task gitops:render-component COMPONENT=<c>` |
+| `make render-all` | `task gitops:render-all` |
+| `make verify-rendered` | `task gitops:verify-rendered` |
+| `make argocd-bootstrap` | `task bootstrap:argocd` |
+| `make argocd-password` | `task bootstrap:argocd-password` |
+| `make init-cluster-yaml` | `task cluster:init-yaml` |
+| `make oci-allowlist-check` | `task supply-chain:oci-allowlist` |
+| `make mcp-install` / `mcp-verify` / `mcp-uninstall` | `task mcp:install` / `mcp:verify` / `mcp:uninstall` |
+| `make install-pre-commit` / `verify-tools` | `task dev:install-pre-commit` / `dev:verify-tools` |
+
+The pre-existing tofu tasks were also namespaced: `task ci` → `task tofu:ci`,
+`task test` → `task tofu:test` (and `fmt` / `validate` / `lint` → `tofu:*`).
+Run `devbox shell -- task --list` for the full set.
+
+**Dropped (no replacement):**
+
+- `make chart-pull` — for a new `chart.lock.yaml` digest, run
+  `helm pull <chart> --repo <repo> --version <v> --destination .helm-cache`
+  then `shasum -a 256 .helm-cache/<chart>-*.tgz`.
+- `make grafana-dashboards-check` — it scanned a consumer-overlay path
+  (`kubernetes/overlays/…`) absent in the substrate base.
+
+**devbox:** `devbox.json` gains `yq-go`, `gettext`, and `ripgrep` (no `gnumake`)
+so the folded `bootstrap:*` / `cluster:*` / `gitops:*` tasks run inside
+`devbox shell`.
+
+---
+
 ## `v2.0.0` — node-capability composition + substrate-only ablation (MAJOR / breaking)
 
 **Type:** MAJOR. v2.0.0 bundles **two** breaking changes:
@@ -236,7 +280,7 @@ behaviour. No spec change.
 
 ### Validation steps after upgrade
 
-1. `make validate-gitops` in consumer repo passes.
+1. `task gitops:validate` in consumer repo passes.
 2. `kubectl get clusterpolicy pni-contract-enforce` returns one
    resource with `ADMISSION=true BACKGROUND=true READY=True`.
 3. `kubectl get clusterpolicy pni-contract-audit` returns NotFound.
@@ -482,7 +526,7 @@ make -C talos argv-print NODE=<node-name> ENV=../cluster.yaml
 Live-cluster checks (post-reconcile):
 
 ```bash
-make validate-gitops    # consumer-side
+task gitops:validate    # consumer-side
 kubectl get clusterpolicy pni-capability-validation-enforce \
                          pni-reserved-labels-enforce
 # Both should return one resource each with ADMISSION=true BACKGROUND=true READY=True
@@ -533,7 +577,7 @@ module.
    `cluster.{name,overlay,target_revision}` and `repo.url`. Remove the Talos
    sections (`roles`, `architectures`, `infrastructure-platforms`,
    `hardware-platforms`, `hardware-capabilities`, `nodes`, `cluster.vip`,
-   `cluster.ntp_servers`, `kubeconfig`). `make argocd-bootstrap` still reads the
+   `cluster.ntp_servers`, `kubeconfig`). `task bootstrap:argocd` still reads the
    slim file.
 3. **Author an OpenTofu root** in your consumer repo that calls the module:
 
@@ -557,7 +601,7 @@ module.
    a full mixed amd64+arm64 worked example.
 4. **Supply provider + encrypted backend** in your root (state holds
    `machine_secrets`). See the module README for an example `versions.tf`.
-5. **Validate**: `task ci` (or `tofu fmt -check` + `tofu validate` + `tflint`).
+5. **Validate**: `task tofu:ci` (or `tofu fmt -check` + `tofu validate` + `tflint`).
 6. **⚠️ Already-running cluster?** The module *generates* fresh PKI by default,
    so a naive `tofu apply` against a live cluster would regenerate PKI and
    re-bootstrap etcd — destroying it. Do **not** apply against a running cluster
@@ -741,8 +785,8 @@ impact — using the format below:
 
 #### Validation steps after upgrade
 
-1. `make validate-gitops` in consumer repo
-2. `task ci` (for `tofu/` interface changes)
+1. `task gitops:validate` in consumer repo
+2. `task tofu:ci` (for `tofu/` interface changes)
 3. `scripts/lint-hardware-features.sh` (for Layer-C hardware-feature changes)
 ```
 

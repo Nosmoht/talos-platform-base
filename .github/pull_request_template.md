@@ -29,11 +29,11 @@ Refs: <!-- #N — issues this PR touches but does not close -->
 
 ## Validation locally (required before opening)
 
-- [ ] `make validate-gitops` exits 0
+- [ ] `task gitops:validate` exits 0
 - [ ] `kubectl kustomize --enable-helm kubernetes/base/infrastructure/<comp>/` exits 0 for each touched component
 - [ ] `markdownlint` clean (if Markdown-touching)
 - [ ] `scripts/lint-hardware-features.sh` + `scripts/check-provisioning-catalog-refs.sh` pass (if Layer-C hardware-feature / provisioning-catalog touching)
-- [ ] `task ci` exits 0 (if `tofu/` touching)
+- [ ] `task tofu:ci` exits 0 (if `tofu/` touching)
 
 ## CI gates (required for merge)
 

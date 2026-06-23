@@ -55,7 +55,7 @@ source of truth for the answers that get submitted.
 |---|---|---|
 | Working build system | met | `Makefile` + `.github/workflows/gitops-validate.yml`; reproducible from `chart.lock.yaml` |
 | Automated test suite | met | conftest Rego over rendered manifests, kubeconform schema validation, Layer-C hardware-features schema lint (`hardware-features-check` CI job) |
-| New functionality testing | met | every PR runs full `make validate-gitops`; per-component renderable smoke target |
+| New functionality testing | met | every PR runs full `task gitops:validate`; per-component renderable smoke target |
 | Warning flags | met | markdownlint, gitleaks, conftest, kubeconform, REUSE lint — all CI-required |
 | Warning addressing | met | CI-required checks block merge; documented in `CONTRIBUTING.md` |
 | Warning strict | met | conftest exits non-zero on any policy fail; same for kubeconform |
