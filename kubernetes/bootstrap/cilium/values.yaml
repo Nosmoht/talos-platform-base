@@ -5,7 +5,7 @@
 # controlplane cluster.inlineManifests at bootstrap (deploy_cilium). This file
 # is retained as the reference for optional Day-2 Cilium self-management — the
 # former render path (scripts/render-cilium-bootstrap.sh) was retired with the
-# module-delivered Cilium seed; see docs/adr-cluster-yaml-sot.md.
+# module-delivered Cilium seed; see docs/adr-0007-cluster-yaml-sot.md.
 #
 # Only non-default values are listed. Chart defaults apply for everything else.
 
@@ -149,7 +149,7 @@ loadBalancer:
 # --- cilium-secrets Namespace labels ---
 # PSA labels match the live state and prevent non-SSA apply from stripping them.
 # NOTE: the substrate base no longer ships the PNI contract (dissolved per
-# docs/adr-substrate-only-base.md). A consumer that re-enables PNI enforcement
+# docs/adr-0004-substrate-only-base.md). A consumer that re-enables PNI enforcement
 # via its own Kyverno must re-add the platform.io/network-interface-version +
 # network-profile labels here (via cilium_values_override) so the bootstrap
 # manifest re-apply is not denied at admission.

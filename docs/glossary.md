@@ -64,5 +64,5 @@ agent-context loading and links back here for the full definition.
 ## See also
 
 - [`AGENTS.md`](../AGENTS.md) — canonical SOT; this glossary is its dictionary
-- [`adr-substrate-only-base.md`](adr-substrate-only-base.md) — why the base ships substrate only (Talos + Cilium + ArgoCD + cert-approver)
-- [`adr-three-layer-capability-architecture.md`](adr-three-layer-capability-architecture.md) — the Layer C hardware-features registry that survives in the substrate
+- [`adr-0004-substrate-only-base.md`](adr-0004-substrate-only-base.md) — why the base ships substrate only (Talos + Cilium + ArgoCD + cert-approver)
+- [`adr-0003-three-layer-capability-architecture.md`](adr-0003-three-layer-capability-architecture.md) — the Layer C hardware-features registry that survives in the substrate

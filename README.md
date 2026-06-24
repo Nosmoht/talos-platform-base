@@ -45,7 +45,7 @@ secrets, storage, the network-trust contract — lives in the separate
 [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
 catalog as independently versioned, signed OCI components that consumers
 self-serve. See
-[`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md) for
+[`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) for
 the boundary.
 
 ## At a glance
@@ -92,7 +92,7 @@ receives a frozen tree containing:
   [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
   catalog as independently versioned, signed OCI artifacts; consumers
   self-serve from there (see
-  [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md)).
+  [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md)).
 - **Per-class Talos machine-config**, derived by the module from the
   `cluster.yaml` classes (architecture, system extensions, optional
   ARM/SBC overlay, per-class and per-node patches) — `cni:none` is forced
@@ -169,7 +169,7 @@ spec:
 A worked walk-through (30 minutes, end-to-end):
 [`docs/tutorial-first-consumer-cluster.md`](docs/tutorial-first-consumer-cluster.md).
 The deeper rationale for the two-mechanism split:
-[`docs/adr-multi-repo-platform-split.md`](docs/adr-multi-repo-platform-split.md).
+[`docs/adr-0001-multi-repo-platform-split.md`](docs/adr-0001-multi-repo-platform-split.md).
 
 ## Verify
 
@@ -216,7 +216,7 @@ the base, not application developers or end-users.
 | Read this | If you want to |
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Understand the system (C4 L1+L2 with arc42 §1, 2, 4, 10, 11, 12) |
-| [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md) | Understand the substrate / apps-catalog boundary |
+| [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) | Understand the substrate / apps-catalog boundary |
 | [`docs/tutorial-first-consumer-cluster.md`](docs/tutorial-first-consumer-cluster.md) | Bootstrap a second cluster from scratch |
 | [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) | Verify a release before vendoring |
 | [`UPGRADING.md`](UPGRADING.md) | Apply a version bump |

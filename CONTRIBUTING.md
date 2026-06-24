@@ -29,22 +29,22 @@ Contributions that do NOT fit:
 - Non-substrate platform components (observability, storage, the PNI /
   capability-network contract, application-supporting services) — these
   live in the [`talos-platform-apps`][apps] catalog as independently
-  versioned, signed OCI artifacts. See [`docs/adr-substrate-only-base.md`][ablation].
+  versioned, signed OCI artifacts. See [`docs/adr-0004-substrate-only-base.md`][ablation].
 - Cluster identity (node IPs, FQDNs, SOPS keys, OIDC issuers) — open in a
   consumer cluster repo instead.
 - Per-cluster overlays or patches.
 - Application-workload manifests.
 
 [apps]: https://github.com/devobagmbh/talos-platform-apps
-[ablation]: docs/adr-substrate-only-base.md
+[ablation]: docs/adr-0004-substrate-only-base.md
 
 ## Before you start
 
 1. **Read [`AGENTS.md`](AGENTS.md)**. It is the canonical SOT and lists
    hard constraints that fail PR checks if violated.
 2. **Read [`ARCHITECTURE.md`](ARCHITECTURE.md)** for the L1/L2 view.
-3. **Read [`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md)**
-   and [`docs/adr-three-layer-capability-architecture.md`](docs/adr-three-layer-capability-architecture.md)
+3. **Read [`docs/adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md)**
+   and [`docs/adr-0003-three-layer-capability-architecture.md`](docs/adr-0003-three-layer-capability-architecture.md)
    if your change touches per-node provisioning, Layer-C hardware
    features, or the `tofu/modules/talos-cluster` interface.
 4. **Read the relevant ADRs** in `docs/adr-*.md`.
@@ -123,7 +123,7 @@ These are required PR checks and will block merge.
 
 > The PNI / capability-first network-trust contract no longer lives in
 > this base — it dissolved out of the substrate (see
-> [`docs/adr-substrate-only-base.md`][ablation]) and is now realized by
+> [`docs/adr-0004-substrate-only-base.md`][ablation]) and is now realized by
 > apps-CI Conftest plus consumer-cluster Kyverno, with the catalog in
 > [`talos-platform-apps`][apps]. Cross-namespace reachability rules
 > belong there, not in a base PR.

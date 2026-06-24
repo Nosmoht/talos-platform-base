@@ -51,7 +51,7 @@ prints the migration mapping and exits non-zero. There is **no consumer-runtime
 impact** — the OCI artifact ships neither the Makefile nor the Taskfile, so this
 affects only workstation / runbook / CI tooling, not the vendored module or the
 rendered manifests. Decision:
-[`docs/adr-makefile-retirement.md`](docs/adr-makefile-retirement.md).
+[`docs/adr-0012-makefile-retirement.md`](docs/adr-0012-makefile-retirement.md).
 
 **Migration — replace `make` with `task` in any runbook, script, or CI you own:**
 
@@ -96,7 +96,7 @@ so the folded `bootstrap:*` / `cluster:*` / `gitops:*` tasks run inside
    (Talos + Cilium + ArgoCD + `cert-approver`); the entire PNI /
    capability-network contract and every non-substrate component move to
    the [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
-   catalog (see [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md)).
+   catalog (see [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md)).
    See [§Substrate-only ablation](#substrate-only-ablation-consumer-action-required)
    below for the consumer action.
 
@@ -110,7 +110,7 @@ The `tofu/modules/talos-cluster` interface changes: the monolithic per-node
 Boot kernel args now bake into the Image Factory schematic
 (`customization.extraKernelArgs`) — the v1.10+ UKI correctness fix; the old
 `machine.install.extraKernelArgs` path was a silent no-op. See
-[`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md)
+[`docs/adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md)
 (the §Migration table is authoritative).
 
 - **`var.classes` and `node.class` are removed.** Map your `cluster.yaml`:
@@ -151,7 +151,7 @@ plus consumer-cluster Kyverno, and the components live as independently
 versioned, signed OCI artifacts in the
 [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
 catalog. Decision + sequencing:
-[`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md).
+[`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md).
 
 Consumer action:
 
@@ -175,8 +175,8 @@ Consumer action:
   catalog); to have the pod itself serve TLS, also set `server.insecure=false`.
 - **Layer-C node-capability work stays in the base.**
   `docs/platform-hardware-features.yaml`,
-  `docs/adr-node-capability-composition.md`,
-  `docs/adr-three-layer-capability-architecture.md`, and the
+  `docs/adr-0009-node-capability-composition.md`,
+  `docs/adr-0003-three-layer-capability-architecture.md`, and the
   `tofu/modules/talos-cluster` provisioning catalog are substrate and
   remain here — no consumer move needed for those.
 
@@ -536,7 +536,7 @@ kubectl get clusterpolicy pni-capability-validation-audit pni-reserved-labels-au
 
 ### Why not bundle the substrate split into v0.6.0
 
-`docs/adr-substrate-only-base.md` (accepted 2026-05-27) reclassifies
+`docs/adr-0004-substrate-only-base.md` (accepted 2026-05-27) reclassifies
 the platform-network-interface, Kyverno, observability stack, and the
 further `kubernetes/base/infrastructure/` components as platform
 **offerings**, not substrate. They moved to the separate
@@ -562,7 +562,7 @@ this repo re-source from `talos-platform-apps` at the v2.0.0 cut — see
 **Type:** MAJOR. The Talos cluster lifecycle moves from the removed
 `talos/Makefile.lib` + 5-axis `cluster.yaml` generator to the OpenTofu module
 `tofu/modules/talos-cluster`. Rationale + consequences:
-[`docs/adr-opentofu-cluster-lifecycle.md`](docs/adr-opentofu-cluster-lifecycle.md).
+[`docs/adr-0006-opentofu-cluster-lifecycle.md`](docs/adr-0006-opentofu-cluster-lifecycle.md).
 
 **Breaking?** Yes. Consumers stop generating Talos configs with
 `make -C talos gen-configs` and instead author an OpenTofu root that calls the
@@ -797,5 +797,5 @@ impact — using the format below:
 - [`CHANGELOG.md`](CHANGELOG.md) — per-release notes
 - [`SECURITY.md`](SECURITY.md) — supported versions
 - [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) — verify before vendoring
-- [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md) — substrate-only scope; PNI dissolution
-- [`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md) — node-capability composition migration
+- [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) — substrate-only scope; PNI dissolution
+- [`docs/adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md) — node-capability composition migration

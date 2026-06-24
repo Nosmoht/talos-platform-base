@@ -70,16 +70,16 @@ captured in a separate ADR with MADR 3.0 frontmatter:
 
 | Strategy | Realised by | ADR |
 |---|---|---|
-| **Goal 1** (reusable) — separate cluster identity from platform code | Three-role split: base / harness-plugin / consumer-cluster | [`adr-multi-repo-platform-split.md`](docs/adr-multi-repo-platform-split.md) |
+| **Goal 1** (reusable) — separate cluster identity from platform code | Three-role split: base / harness-plugin / consumer-cluster | [`adr-0001-multi-repo-platform-split.md`](docs/adr-0001-multi-repo-platform-split.md) |
 | **Goal 2** (auditable) — every artifact carries cryptographic provenance | OCI artifact + cosign + SLSA + CycloneDX SBOM, all keyless OIDC | [`SECURITY.md`](SECURITY.md) §"Supply chain" + [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) |
-| **Goal 3** (no cluster identity) — base is fully cluster-agnostic | Rendered manifests pattern + consumer-side overlays own namespace creation | [`adr-namespace-ownership-rendered-manifests.md`](docs/adr-namespace-ownership-rendered-manifests.md) |
+| **Goal 3** (no cluster identity) — base is fully cluster-agnostic | Rendered manifests pattern + consumer-side overlays own namespace creation | [`adr-0002-namespace-ownership-rendered-manifests.md`](docs/adr-0002-namespace-ownership-rendered-manifests.md) |
 
 A further decision — the substrate-only scope itself — keeps everything
 above Talos + Cilium + ArgoCD (plus `cert-approver` boot glue) out of the
 base; non-substrate components live in the
 [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
 catalog (see
-[`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md)).
+[`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md)).
 
 The one capability surface that *stays* in the substrate is **Layer C —
 per-node hardware capability composition**, which decides which Talos
@@ -93,9 +93,9 @@ dissolved network-trust contract:
   provisioning profiles compose into a schematic.
 
 The decision is captured in
-[`adr-node-capability-composition.md`](docs/adr-node-capability-composition.md)
+[`adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md)
 and the broader layer model in
-[`adr-three-layer-capability-architecture.md`](docs/adr-three-layer-capability-architecture.md).
+[`adr-0003-three-layer-capability-architecture.md`](docs/adr-0003-three-layer-capability-architecture.md).
 
 ## L1 — System Context
 
@@ -253,7 +253,7 @@ auto-loaded into agent contexts.
 ## See also
 
 - [`docs/README.md`](docs/README.md) — full documentation index (Diátaxis-organised)
-- [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md) — substrate / apps-catalog boundary
-- [`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md) — Layer-C per-node hardware capability composition
+- [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) — substrate / apps-catalog boundary
+- [`docs/adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md) — Layer-C per-node hardware capability composition
 - [`AGENTS.md`](AGENTS.md) — tool-agnostic SOT (canonical for agents)
 - [`docs/openssf-best-practices.md`](docs/openssf-best-practices.md) — self-assessment against OpenSSF Passing-level criteria

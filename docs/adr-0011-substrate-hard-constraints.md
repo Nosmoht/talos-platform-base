@@ -120,4 +120,4 @@ stays correct?
 - `AGENTS.md` §Hard Constraints — the three constraints as stated to agents (SOT for the rule text).
 - `.github/workflows/hard-constraints-check.yml` — the CI gate for **all three** (SecureBoot / `debugfs=off` / forbidden-kinds steps).
 - `tofu/modules/talos-cluster/main.tf` — D1 code enforcement (installer-URL selection + `secureboot_patches` precondition).
-- `docs/adr-opentofu-cluster-lifecycle.md` — the ADR for that module.
+- `docs/adr-0006-opentofu-cluster-lifecycle.md` — the ADR for that module.

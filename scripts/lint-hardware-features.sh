@@ -3,7 +3,7 @@
 # Features Registry (docs/platform-hardware-features.yaml) against the
 # JSON Schema (docs/schemas/hardware-features.schema.json).
 #
-# Per docs/adr-three-layer-capability-architecture.md §Decision Drivers D6
+# Per docs/adr-0003-three-layer-capability-architecture.md §Decision Drivers D6
 # and issue #61 Phase 4 ACs. Validates the Layer-C registry that survives the
 # substrate-only ablation. Uses check-jsonschema (Python, draft 2020-12 capable).
 #

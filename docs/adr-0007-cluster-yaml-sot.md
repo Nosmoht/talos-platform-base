@@ -17,7 +17,7 @@ related:
 ## Context and Problem Statement
 
 Two defects surfaced after the OpenTofu cluster-lifecycle cutover
-([`adr-opentofu-cluster-lifecycle.md`](adr-opentofu-cluster-lifecycle.md)):
+([`adr-0006-opentofu-cluster-lifecycle.md`](adr-0006-opentofu-cluster-lifecycle.md)):
 
 1. **The base delivered Flannel, not Cilium.** The `tofu/modules/talos-cluster`
    module — the sole cluster-lifecycle path — generated the Talos machine config
@@ -200,8 +200,8 @@ cleanly). Decisions 2 and 4 are the correction.
 
 ## Links
 
-- [adr-opentofu-cluster-lifecycle.md](adr-opentofu-cluster-lifecycle.md) — the engine
+- [adr-0006-opentofu-cluster-lifecycle.md](adr-0006-opentofu-cluster-lifecycle.md) — the engine
   this builds on; its "Cilium convergence — temporary" roadmap note is realized here.
-- [adr-substrate-only-base.md](adr-substrate-only-base.md) — the substrate boundary
+- [adr-0004-substrate-only-base.md](adr-0004-substrate-only-base.md) — the substrate boundary
   (no secrets, no cluster identity in the base) this respects.
 - `tofu/modules/talos-cluster/README.md` — module contract.

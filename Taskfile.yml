@@ -2,7 +2,7 @@
 # https://taskfile.dev
 #
 # Scope: this Taskfile is the SOLE runner for the repository. The Makefile was
-# retired at v3.0.0 (see docs/adr-makefile-retirement.md); every former target
+# retired at v3.0.0 (see docs/adr-0012-makefile-retirement.md); every former target
 # folds into a namespaced task here:
 #
 #   tofu:*         — OpenTofu cluster-lifecycle module (tofu/) validation

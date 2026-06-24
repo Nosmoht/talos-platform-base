@@ -11,7 +11,7 @@ the day-zero path from rendered manifests to a live cluster, see the
 
 [diataxis]: https://diataxis.fr/
 [dayzero]: ./day-zero-pattern.md
-[substrate]: ./adr-substrate-only-base.md
+[substrate]: ./adr-0004-substrate-only-base.md
 
 ## Prerequisites
 
@@ -124,7 +124,7 @@ per-component Application takes the vendor `namespace.yaml` from its
 owner of that namespace. Consumer overlays that declare a duplicate
 in a top-level file create a double-tracking conflict that ArgoCD
 cannot resolve safely — see
-[`adr-namespace-ownership-rendered-manifests.md`](adr-namespace-ownership-rendered-manifests.md)
+[`adr-0002-namespace-ownership-rendered-manifests.md`](adr-0002-namespace-ownership-rendered-manifests.md)
 for the architectural rationale.
 
 What you DO author: namespaces for your own tenant workloads. Below,
@@ -168,7 +168,7 @@ author repeats every time the base bumps a tag:
 
 | You want to | Read |
 |---|---|
-| Why the base ships substrate only | [`adr-substrate-only-base.md`](./adr-substrate-only-base.md) |
+| Why the base ships substrate only | [`adr-0004-substrate-only-base.md`](./adr-0004-substrate-only-base.md) |
 | Take the cluster from rendered manifests to a live ArgoCD-reconciled environment | [`day-zero-pattern.md`](./day-zero-pattern.md) |
 | Issue lifecycle when you find a bug | [`issue-workflow.md`](./issue-workflow.md) |
 | Verify the supply chain in depth | [`oci-artifact-verification.md`](./oci-artifact-verification.md) |

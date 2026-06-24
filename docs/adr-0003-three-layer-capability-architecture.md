@@ -12,7 +12,7 @@ consulted:
 informed: []
 companion-docs:
   - "[Platform Hardware Features Registry (Layer C)](./platform-hardware-features.yaml)"
-  - "[Node Capability Composition ADR (Layer C consumer)](./adr-node-capability-composition.md)"
+  - "[Node Capability Composition ADR (Layer C consumer)](./adr-0009-node-capability-composition.md)"
 supersedes:
   - base:two-layer-capability-architecture
 implementation-tracking-issue: "https://github.com/Nosmoht/talos-platform-base/issues/61"
@@ -32,7 +32,7 @@ implementation-tracking-issue: "https://github.com/Nosmoht/talos-platform-base/i
 > (Tool-Capability-Index) and Layer B (PNI Network-Trust Registry) were
 > **removed from the base** at the substrate-only ablation — they dissolved into
 > apps-CI Conftest + consumer-cluster Kyverno and the `talos-platform-apps`
-> catalog (see [`adr-substrate-only-base.md`](./adr-substrate-only-base.md)).
+> catalog (see [`adr-0004-substrate-only-base.md`](./adr-0004-substrate-only-base.md)).
 > **Only Layer C (Hardware Features Registry) remains base-resident and
 > normative**, because the `tofu/modules/talos-cluster` node-capability
 > composition model depends on it. The Layer-A/B references below are retained
@@ -422,7 +422,7 @@ A follow-up ADR may be filed when cross-component need surfaces.
   https://github.com/NVIDIA/k8s-device-plugin
 - Talos `machine.nodeLabels`:
   https://www.talos.dev/v1.7/reference/configuration/v1alpha1/config/#Config.machine.nodeLabels
-- Companion ADR (Layer C consumer): [adr-node-capability-composition.md](./adr-node-capability-composition.md)
+- Companion ADR (Layer C consumer): [adr-0009-node-capability-composition.md](./adr-0009-node-capability-composition.md)
 - Audit trail (Round 1): `.work/issues/layer-audit/findings.md`
 - Audit trail (Round 2): `.work/issues/layer-audit/cleanup-scope.md`
 - Implementation tracking: [issue #61](https://github.com/Nosmoht/talos-platform-base/issues/61)
