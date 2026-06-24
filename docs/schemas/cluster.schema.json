@@ -2,10 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Nosmoht/talos-platform-base/docs/schemas/cluster.schema.json",
   "title": "Consumer cluster.yaml — declarative cluster Source-of-Truth",
-  "description": "Shape of a consumer cluster.yaml (see cluster.yaml.example). Mirrors the tofu/modules/talos-cluster variable validations for the structured surface (images / hardware-capabilities / nodes / identity / versions); the free-form Talos config_patches and substrate.*.values_override passthroughs stay loosely typed. Secrets (sops_age_key, cilium_ipsec_key) have no schema slot by design.",
+  "description": "Shape of a consumer cluster.yaml (see cluster.yaml.example). Mirrors the tofu/modules/talos-cluster variable validations for the structured surface (images / hardware-capabilities / nodes / identity / versions); the free-form Talos config_patches and substrate.*.values_override passthroughs stay loosely typed and are NOT content-validated here. Secrets (sops_age_key, cilium_ipsec_key) have no TOP-LEVEL slot by design; the open substrate.* and *config_patches passthroughs are guarded by gitleaks, not this schema. Forged reserved labels inside free-form config_patches are the downstream-Kyverno boundary, not a schema concern.",
+  "$comment": "No schema_version field by design: cluster.yaml carries none, and the schema is versioned by its $id + the base OCI tag (a breaking shape change bumps the next tag's MAJOR per AGENTS.md/CHANGELOG). Migration signal = OCI tag, not an in-file version.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["cluster", "repo", "talos", "kubernetes", "images", "nodes"],
+  "required": ["cluster", "talos", "kubernetes", "images", "nodes"],
   "properties": {
     "cluster": {
       "type": "object",
@@ -120,13 +121,13 @@
       "items": { "type": "object" }
     },
     "substrate": {
-      "description": "Layer-1 substrate delivery (Cilium + ArgoCD). The per-tool keys are loosely typed — the long tail (values_override, encryption, …) is intentionally open.",
+      "description": "Layer-1 substrate delivery (Cilium + ArgoCD; cert-approver is boot-glue). The per-tool keys are loosely typed and the set is open — the long tail (values_override, encryption, …) and future substrate tools are intentionally not enumerated.",
       "type": "object",
-      "additionalProperties": false,
       "properties": {
         "cilium": { "type": "object" },
         "argocd": { "type": "object" }
-      }
+      },
+      "additionalProperties": { "type": "object" }
     }
   },
   "$defs": {

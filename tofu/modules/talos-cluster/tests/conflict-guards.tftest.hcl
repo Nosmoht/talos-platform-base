@@ -8,10 +8,25 @@
 #
 # Each run below points at ./tests/fixtures/colliding-catalog via `run { module }`.
 # That fixture SYMLINKS the real composition.tf + variables.tf and substitutes a
-# synthetic profiles.tf engineered to collide, so the guards under test are the
-# REAL code: revert a guard in composition.tf and the matching run stops failing
-# ("Missing expected failure"). Pure plan over terraform_data — NO network, NO
-# provider — so this file is offline (unlike composition.tftest.hcl).
+# synthetic profiles.tf (the CATALOG is synthetic; the conflict-detection locals
+# module_conflicts / sysctl_conflicts / karg_conflicts / _karg_multivalue_keys and
+# their guard preconditions are the REAL symlinked composition.tf). Revert a guard
+# in composition.tf and the matching run stops failing ("Missing expected
+# failure"). Pure plan over terraform_data — NO network, NO provider — offline
+# (unlike composition.tftest.hcl).
+#
+# BINDING CAVEAT (keep this binding intact): the red-green binding holds only while
+# those four conflict-detection locals live IN composition.tf. Moving any of them
+# into profiles.tf/main.tf would make the fixture's own profiles.tf shadow it (or
+# drop it), and these runs would test a stale/synthetic copy while production goes
+# untested. Per-guard isolation rests on every fixture profile having provides=[]
+# and every capability requires_features=[] (so the symmetry/variant guards stay
+# inert) — do NOT add a `provides` to a fixture profile without re-checking which
+# precondition fires.
+#
+# PORTABILITY: the fixture uses git symlinks; on Windows checkouts with
+# core.symlinks=false they materialise as text files and tofu fails to parse them
+# (`git config core.symlinks true`). CI runs Linux, so it is unaffected.
 #
 # expect_failures references the resource (terraform_data.composition_guards); a
 # precondition failure on it is the checkable object. Each run's capability sets
@@ -92,10 +107,12 @@ run "kernel_arg_conflict_guard_fires" {
 }
 
 # Task 2 — multi-value kernel-arg keys (console=) carrying differing values on
-# one node must NOT be flagged a conflict (composition.tf _karg_multivalue_keys).
-# No expect_failures: a clean plan IS the assertion. Red-green: remove "console"
-# from _karg_multivalue_keys and the karg_conflicts precondition fires here,
-# turning this run red with an unexpected failure.
+# one node must NOT be flagged a conflict (composition.tf _karg_multivalue_keys),
+# AND both values must be carried into the unioned kernel_args (the union-
+# correctness half of composition.tf:223-227, not just "no conflict raised").
+# Red-green: remove "console" from _karg_multivalue_keys and the karg_conflicts
+# precondition fires → unexpected failure → red; break the union and the assert
+# below goes red.
 run "console_multivalue_is_not_a_conflict" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }
@@ -110,5 +127,9 @@ run "console_multivalue_is_not_a_conflict" {
     nodes = [
       { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["console"] },
     ]
+  }
+  assert {
+    condition     = contains(output.node_kernel_args["cp-1"], "console=ttyS0,115200n8") && contains(output.node_kernel_args["cp-1"], "console=tty0")
+    error_message = "both multi-value console= args must survive into the union; got ${jsonencode(output.node_kernel_args["cp-1"])}"
   }
 }

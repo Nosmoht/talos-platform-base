@@ -233,12 +233,21 @@ jobs:
 
       - name: Reject malformed cluster.yaml fixture (schema red-green)
         run: |
-          set -eu
-          if scripts/lint-cluster-yaml.sh docs/schemas/fixtures/cluster.invalid.yaml; then
+          set -u
+          # Discriminate exit 1 (schema violation — the assertion) from exit 2
+          # (env/arg error — schema/file missing, no check-jsonschema). Treating
+          # any non-zero as "rejected" lets a broken toolchain pass vacuously.
+          rc=0
+          scripts/lint-cluster-yaml.sh docs/schemas/fixtures/cluster.invalid.yaml || rc=$?
+          if [ "$rc" -eq 0 ]; then
             echo "FAIL: malformed cluster.yaml fixture passed schema validation" >&2
             exit 1
           fi
-          echo "OK: malformed cluster.yaml fixture correctly rejected"
+          if [ "$rc" -ne 1 ]; then
+            echo "FAIL: linter errored (exit $rc), did not reach a schema verdict" >&2
+            exit 1
+          fi
+          echo "OK: malformed cluster.yaml fixture correctly rejected (exit 1)"
 
   reuse-compliance:
     name: REUSE 3.3 compliance
