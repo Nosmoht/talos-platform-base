@@ -5,8 +5,8 @@
 # produces a clear migration message instead of make's confusing
 # "No rule to make target" error. It will be deleted in the next MAJOR.
 #
-# See docs/adr-makefile-retirement.md
-# (supersedes docs/adr-task-runner-consolidation.md).
+# See docs/adr-0012-makefile-retirement.md
+# (supersedes docs/adr-0008-task-runner-consolidation.md).
 
 .DEFAULT_GOAL := _retired
 .PHONY: _retired
@@ -31,7 +31,7 @@ define RETIRED_MSG
    make verify-tools         ->  task dev:verify-tools
 
  Removed (no replacement): make chart-pull, make grafana-dashboards-check.
- See docs/adr-makefile-retirement.md.
+ See docs/adr-0012-makefile-retirement.md.
 ════════════════════════════════════════════════════════════════════
 endef
 export RETIRED_MSG

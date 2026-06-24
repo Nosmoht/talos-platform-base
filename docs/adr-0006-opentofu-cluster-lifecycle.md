@@ -18,7 +18,7 @@ related:
 
 > **Amendment (2026-06-20):** the per-*class* node model described below
 > (per-class installer + per-class patches) is superseded by
-> [base:node-capability-composition](adr-node-capability-composition.md): a node
+> [base:node-capability-composition](adr-0009-node-capability-composition.md): a node
 > now sits on a per-node `image` and composes a *set* of `hardware_capabilities`
 > (content-hash-deduped schematics), and boot kernel args move into the Image
 > Factory schematic. The lifecycle decision in this ADR — OpenTofu as the sole
@@ -58,7 +58,7 @@ in #99. This ADR is the concrete decision; #99 is the pattern it instantiates.
 - Reproducible, pinned local tooling (devbox) + a single task runner
   (go-task) over an ad-hoc `make` lifecycle.
 - The base must stay substrate-only and identity-free
-  ([adr-substrate-only-base.md](adr-substrate-only-base.md)); the module is
+  ([adr-0004-substrate-only-base.md](adr-0004-substrate-only-base.md)); the module is
   backend- and identity-agnostic, so cluster identity stays consumer-side.
 
 ## Considered Options
@@ -104,7 +104,7 @@ the consumer overlay.
   (`cluster.{name,overlay,target_revision}` + `repo.url`); the 5-axis Talos
   sections are gone. NTP (formerly injected from `cluster.yaml`) is now a
   caller `config_patches` value.
-  **[Amended by [base:cluster-yaml-sot](adr-cluster-yaml-sot.md): `cluster.yaml`
+  **[Amended by [base:cluster-yaml-sot](adr-0007-cluster-yaml-sot.md): `cluster.yaml`
   is re-expanded into the full declarative cluster SoT — identity, versions,
   endpoint, network, nodes, classes, machine-config patches, substrate. The
   consumer's OpenTofu root becomes a thin `yamldecode` shim over it; tofu stays
@@ -242,5 +242,5 @@ first consumer (seeder).
 
 - #99 — the generalised pattern this ADR instantiates (prefer maintained declarative tooling over bespoke imperative reinvention).
 - PR #82 (reopened) — the implementation.
-- [adr-substrate-only-base.md](adr-substrate-only-base.md) — the substrate-only boundary this module respects.
+- [adr-0004-substrate-only-base.md](adr-0004-substrate-only-base.md) — the substrate-only boundary this module respects.
 - [tofu/modules/talos-cluster/README.md](../tofu/modules/talos-cluster/README.md) — module contract.

@@ -21,7 +21,7 @@ related:
 > **Superseded (2026-06-02).** This ADR's premise was *two* per-node config
 > frontends (`make`/`argv-print.sh` and the OpenTofu provider) needing a shared
 > render artifact. The OpenTofu cutover
-> ([`adr-opentofu-cluster-lifecycle.md`](adr-opentofu-cluster-lifecycle.md))
+> ([`adr-0006-opentofu-cluster-lifecycle.md`](adr-0006-opentofu-cluster-lifecycle.md))
 > removed the `make`/argv-print frontend entirely, so only one renderer (the
 > provider) remains and no cross-frontend bridge is needed. Retained for
 > historical context.
@@ -50,7 +50,7 @@ held is three-category — substrate-invariant settings the base
 fixes, universal mechanisms the base enables for the consumer to
 select at Day-2, and cluster-topology the base deliberately does not
 know and passes through generically (see
-[`adr-substrate-only-base.md` §Validation](adr-substrate-only-base.md#validation)
+[`adr-0004-substrate-only-base.md` §Validation](adr-0004-substrate-only-base.md#validation)
 for the full verdict).
 
 The erosion was not in the config-axis but in the **implementation
@@ -170,8 +170,8 @@ byte-identity.
 - PR #87 — base-side `EMIT=content` renderer (merged 2026-05-29).
 - `talos/scripts/argv-print.sh` — the shared resolver.
 - `talos/scripts/test-content-mode.sh` — the composition-parity gate.
-- `docs/adr-substrate-only-base.md` — the substrate model whose
+- `docs/adr-0004-substrate-only-base.md` — the substrate model whose
   realisability this four-cluster investigation validated.
-- `docs/adr-multi-repo-platform-split.md` — OCI consumption and
+- `docs/adr-0001-multi-repo-platform-split.md` — OCI consumption and
   Day-0 / Day-2 distinction that frame the consumer relationship.
 - `docs/adr-template.md` — MADR 3.0 template followed here.

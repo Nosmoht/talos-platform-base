@@ -5,7 +5,7 @@ Kubernetes cluster, and returns the admin `kubeconfig` + `talosconfig`.
 
 This is the substrate base's **only** Talos cluster-lifecycle path (it replaced
 the former `talos/Makefile.lib` + 5-axis `cluster.yaml` generator — see
-[`docs/adr-opentofu-cluster-lifecycle.md`](../../../docs/adr-opentofu-cluster-lifecycle.md)).
+[`docs/adr-0006-opentofu-cluster-lifecycle.md`](../../../docs/adr-0006-opentofu-cluster-lifecycle.md)).
 The module is **backend- and caller-agnostic**: it contains no
 `terraform { backend ... }` block. A consumer cluster repo pulls the base as an
 OCI artifact, supplies the `provider "talos"` block + an **encrypted** state
@@ -93,7 +93,7 @@ hand-authored class, and a heterogeneous multi-arch cluster (amd64 servers + an
 arm64 Raspberry Pi worker) is expressible in one apply. Capability names are
 tool-agnostic — a node declares `storage-replicated`, not `drbd`; the base
 provisioning-profile catalog maps each to extensions / kernel args / modules. See
-[`docs/adr-node-capability-composition.md`](../../../docs/adr-node-capability-composition.md).
+[`docs/adr-0009-node-capability-composition.md`](../../../docs/adr-0009-node-capability-composition.md).
 
 ## Usage
 
@@ -296,7 +296,7 @@ bootstrap itself. A third-party `kubectl_manifest` provider works but is a worse
 footprint for a substrate module (third-party provider + ~1.8 MB of state bloat).
 The `kubectl` host dependency is therefore a deliberate, accepted trade — every
 apply host must ship `kubectl`, including the Crossplane provider-terraform runner
-image. See the `adr-opentofu-cluster-lifecycle.md` 2026-06-03 amendment.
+image. See the `adr-0006-opentofu-cluster-lifecycle.md` 2026-06-03 amendment.
 
 > The `sops_age_key` lands in Tofu state and in the controlplane machine config
 > — both already sensitive (state holds PKI; machine config is a secret). But it
@@ -322,7 +322,7 @@ inlineManifest pattern as ArgoCD (`deploy_cilium`, default true): the module
 disables the Talos default CNI + kube-proxy and bakes a locally-rendered Cilium
 chart into the controlplane `cluster.inlineManifests` as a create-only SEED. The
 former consumer-side `cluster.extraManifests`-URL recipe is obsolete. See
-[`docs/adr-cluster-yaml-sot.md`](../../../docs/adr-cluster-yaml-sot.md). Install-time
+[`docs/adr-0007-cluster-yaml-sot.md`](../../../docs/adr-0007-cluster-yaml-sot.md). Install-time
 Cilium config rides the typed `cilium_*` inputs + `cilium_values_override`;
 runtime-mutable config (Hubble, L2/BGP) is Day-2 Cilium self-management.
 
@@ -349,5 +349,5 @@ runtime-mutable config (Hubble, L2/BGP) is Day-2 Cilium self-management.
 
 ## Related
 
-- [`docs/adr-opentofu-cluster-lifecycle.md`](../../../docs/adr-opentofu-cluster-lifecycle.md) — why OpenTofu replaced the Makefile/5-axis path, and the consequences.
+- [`docs/adr-0006-opentofu-cluster-lifecycle.md`](../../../docs/adr-0006-opentofu-cluster-lifecycle.md) — why OpenTofu replaced the Makefile/5-axis path, and the consequences.
 - [`Taskfile.yml`](../../../Taskfile.yml) — `task tofu:ci` validates this module (fmt-check + validate + lint).

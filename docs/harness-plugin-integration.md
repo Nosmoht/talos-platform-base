@@ -114,6 +114,6 @@ The pinning mechanism is forward-looking.
 
 - [`AGENTS.md`](../AGENTS.md) — tool-agnostic SOT
 - [`CLAUDE.md`](../CLAUDE.md) — Claude Code addenda
-- [`docs/adr-substrate-only-base.md`](./adr-substrate-only-base.md) — the substrate-only base scope
+- [`docs/adr-0004-substrate-only-base.md`](./adr-0004-substrate-only-base.md) — the substrate-only base scope
 - [`agents.md spec`](https://agents.md) — canonical agent-instruction file format
 - [`kube-agent-harness`](https://github.com/nosmoht/kube-agent-harness) — the plugin repo (separate)

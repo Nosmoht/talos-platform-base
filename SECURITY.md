@@ -80,7 +80,7 @@ The base is substrate-only. It ships:
 
 It does NOT ship the PNI / capability-network contract, Kyverno
 ClusterPolicies, or Cilium CCNPs — those dissolved out of the substrate
-(see [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md))
+(see [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md))
 and now live as apps-CI Conftest plus consumer-cluster Kyverno, with the
 catalog in the separate `talos-platform-apps` repository. It does NOT
 ship secrets, IPs, FQDNs, OIDC issuers, or cluster credentials.
@@ -115,7 +115,7 @@ If you operate a consumer cluster against this base:
 2. **Adopt the PNI / capability-network controls from `talos-platform-apps`.**
    Reserved-label, cross-tenant-L4, and capability-discovery enforcement
    dissolved out of the substrate (see
-   [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md));
+   [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md));
    pull the corresponding Conftest + Kyverno from the apps catalog and run
    them in your own CI / cluster.
 3. **Do not relax the Layer-C label boundary.** `platform.io/hardware-feature.*`
@@ -141,5 +141,5 @@ section above. `Expires` is bumped annually together with the
 
 - [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md)
 - [`AGENTS.md`](AGENTS.md) §"Hard Constraints" + §"Tool-Agnostic Safety Invariants"
-- [`docs/adr-substrate-only-base.md`](docs/adr-substrate-only-base.md) — substrate-only scope; PNI dissolution
-- [`docs/adr-node-capability-composition.md`](docs/adr-node-capability-composition.md) — Layer-C label boundary
+- [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) — substrate-only scope; PNI dissolution
+- [`docs/adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md) — Layer-C label boundary

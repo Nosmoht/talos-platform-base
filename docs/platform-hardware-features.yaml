@@ -10,8 +10,8 @@
 # and at design time by humans and agentic tools.
 #
 # See:
-#   - docs/adr-three-layer-capability-architecture.md  (architecture rationale; Layer C)
-#   - docs/adr-node-capability-composition.md          (the composition model that consumes these)
+#   - docs/adr-0003-three-layer-capability-architecture.md  (architecture rationale; Layer C)
+#   - docs/adr-0009-node-capability-composition.md          (the composition model that consumes these)
 #   - docs/schemas/hardware-features.schema.json       (JSON Schema for this file)
 #
 # Schema (per-entry):

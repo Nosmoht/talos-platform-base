@@ -17,7 +17,7 @@ related:
   - base:opentofu-cluster-lifecycle
 ---
 
-> **Superseded by [`adr-makefile-retirement.md`](adr-makefile-retirement.md)
+> **Superseded by [`adr-0012-makefile-retirement.md`](adr-0012-makefile-retirement.md)
 > (`base:makefile-retirement`, 2026-06-22).** Phase-3 ablation (#140) landed, so
 > the Decision Outcome §4 trigger below fired: the Makefile is retired and the
 > survivors fold into the Taskfile. Two premises here proved wrong in execution

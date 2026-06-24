@@ -142,7 +142,7 @@ Smoke-Pass criterion per skill: dispatch against ≥ 1 idle worker yields valid 
 Issues #100, #102, #105, #107 require ephemeral-pod orchestration. Before they can be implemented:
 
 - New namespace `claude-harness-jobs` with ArgoCD-managed lifecycle
-- A `host-net-diagnostic` network-access grant for the diagnostics pods: now a consumer-overlay Kyverno-allowlist + Cilium-CCNP concern (the capability-network contract is no longer base-resident — see [`adr-substrate-only-base.md`](adr-substrate-only-base.md))
+- A `host-net-diagnostic` network-access grant for the diagnostics pods: now a consumer-overlay Kyverno-allowlist + Cilium-CCNP concern (the capability-network contract is no longer base-resident — see [`adr-0004-substrate-only-base.md`](adr-0004-substrate-only-base.md))
 - ServiceAccount `claude-harness-runner` + RoleBinding scoped to namespace (verbs: pods.create/get/list/delete, pods/exec, pods/log)
 - Image pinning by sha256 digest: ethtool image (alpine + apk-installed ethtool), iperf3 image (`networkstatic/iperf3` candidate), fio image (maintained alternative — `clusterhq/fio-tools` is dead)
 - Cleanup contract: pre-run idempotent label-selector delete, during-run trap-EXIT cleanup, post-run delete, backup janitor CronJob
@@ -155,7 +155,7 @@ These sections will be appended to this document when Phase 1b is planned.
 > **No longer base-resident.** The `external-httproute-hostnames-enforce`
 > Kyverno ClusterPolicy dissolved out of the base together with the rest of
 > the base Kyverno set (the base is now substrate-only — see
-> [`adr-substrate-only-base.md`](adr-substrate-only-base.md)). The contract is
+> [`adr-0004-substrate-only-base.md`](adr-0004-substrate-only-base.md)). The contract is
 > retained here for reference; it is now a consumer-side / apps-catalog
 > concern, not a base artifact.
 

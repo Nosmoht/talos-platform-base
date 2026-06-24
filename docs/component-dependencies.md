@@ -5,7 +5,7 @@ Human-maintained dependency map for the components in
 file** — see the maintenance note at the bottom.
 
 Since the v2.0.0 substrate-only ablation
-([`adr-substrate-only-base.md`](adr-substrate-only-base.md)) this directory
+([`adr-0004-substrate-only-base.md`](adr-0004-substrate-only-base.md)) this directory
 ships exactly two components — `argocd` + `cert-approver` — so the base-internal
 dependency graph is now trivial. The dependency map for the 20 non-substrate
 components (vault, cert-manager, monitoring, storage, GPU, virt, …) moved with
@@ -23,7 +23,7 @@ Hard edges (solid, labeled) are sourced from one of:
 Soft edges (dotted) are sourced from one of:
 
 - ADR-documented namespace co-tenancy
-  ([`adr-namespace-ownership-rendered-manifests.md`](adr-namespace-ownership-rendered-manifests.md)).
+  ([`adr-0002-namespace-ownership-rendered-manifests.md`](adr-0002-namespace-ownership-rendered-manifests.md)).
 - App-of-Apps deploy provenance (ArgoCD → everything).
 - Hard-constraint or substrate prerequisites (Talos → Cilium → ArgoCD).
 

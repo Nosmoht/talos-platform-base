@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-provisioning-catalog-refs.sh — cross-reference gate for the γ'
-# node-capability-composition model (docs/adr-node-capability-composition.md).
+# node-capability-composition model (docs/adr-0009-node-capability-composition.md).
 #
 # Asserts the load-bearing equivalence the composition guards rely on:
 #   { atoms a base provisioning profile `provides` }  ==

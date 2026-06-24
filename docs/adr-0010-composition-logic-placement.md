@@ -15,7 +15,7 @@ related:
 
 > **An open question, not a settled decision** (frontmatter `status: proposed`).
 > This ADR records a tension surfaced
-> reviewing [base:node-capability-composition](adr-node-capability-composition.md)
+> reviewing [base:node-capability-composition](adr-0009-node-capability-composition.md)
 > (PR #135). It does **not** reverse that decision — the composition *model* (M1
 > composite-capability) stands. It scopes a separate question the prior ADRs never
 > weighed: in which *layer* the resolution logic executes. Decision deferred with a
@@ -32,7 +32,7 @@ module/sysctl/kernel-arg conflicts, undefined image/capability/profile). The
 installers, machine config, and apply. The composition layer is base-local logic.
 
 This is in direct tension with the decision that motivated the current executor.
-[base:opentofu-cluster-lifecycle](adr-opentofu-cluster-lifecycle.md) replaced the
+[base:opentofu-cluster-lifecycle](adr-0006-opentofu-cluster-lifecycle.md) replaced the
 `make`/5-axis path precisely because it had grown "a large, base-specific
 imperative surface" (a schematic-hash cache, a placeholder-substitution engine, a
 feature registry) — and its generalised lesson (#99) is *"prefer maintained
@@ -106,6 +106,6 @@ keeping the thin guards declarative.
 
 ## Links
 
-- [base:node-capability-composition](adr-node-capability-composition.md) — the composition model this ADR scopes the *placement* of.
-- [base:opentofu-cluster-lifecycle](adr-opentofu-cluster-lifecycle.md) — the executor decision + the #99 anti-pattern this ADR re-applies to the HCL layer.
+- [base:node-capability-composition](adr-0009-node-capability-composition.md) — the composition model this ADR scopes the *placement* of.
+- [base:opentofu-cluster-lifecycle](adr-0006-opentofu-cluster-lifecycle.md) — the executor decision + the #99 anti-pattern this ADR re-applies to the HCL layer.
 - PR #135 — introduces `composition.tf`; the review that surfaced this tension.

@@ -12,8 +12,8 @@ deciders:
 consulted: []
 informed: []
 supersedes:
-  - docs/adr-multi-repo-platform-split.md §Component Classification — Consumer-in-Base / Backend-in-Overlay
-  - docs/adr-multi-repo-platform-split.md §"Corollary on PNI itself"
+  - docs/adr-0001-multi-repo-platform-split.md §Component Classification — Consumer-in-Base / Backend-in-Overlay
+  - docs/adr-0001-multi-repo-platform-split.md §"Corollary on PNI itself"
 related:
   - base:multi-repo-platform-split
   - base:capability-producer-consumer-symmetry
@@ -38,7 +38,7 @@ path-provisioner), Workloads (KubeVirt, CDI, NVIDIA, Multus), platform
 contract (`platform-network-interface`) and Admission engine (Kyverno)
 — are tenant-facing platform **offerings**, not substrate.
 
-ADR `adr-multi-repo-platform-split.md` §Component Classification
+ADR `adr-0001-multi-repo-platform-split.md` §Component Classification
 (committed 2026-04-30) classified these offerings as "Platform
 Consumer in Base" and explicitly fixed PNI as "platform architecture
 [that] stays in base". That classification ties every Base-tag bump
@@ -96,12 +96,12 @@ as runnability prerequisites.
 ### Scope of supersession
 
 This ADR supersedes **only** the named sections of
-`adr-multi-repo-platform-split.md`:
+`adr-0001-multi-repo-platform-split.md`:
 
 - §Component Classification — Consumer-in-Base / Backend-in-Overlay
 - §"Corollary on PNI itself"
 
-All other sections of `adr-multi-repo-platform-split.md` remain in
+All other sections of `adr-0001-multi-repo-platform-split.md` remain in
 force:
 
 - The 3-Repo-Role model (base / harness / consumer)
@@ -139,7 +139,7 @@ now has three sources (`base`, `apps`, `cluster`) instead of two.
 | `docs/{capability-architecture,pni-cookbook,capability-reference}.md` | Apps |
 | `docs/adr-capability-producer-consumer-symmetry.md` | Apps |
 | `docs/adr-two-layer-capability-architecture.md` | Apps |
-| `docs/adr-three-layer-capability-architecture.md` | Substrate (Layer-C only) — Layer A/B dissolved at v2.0.0, but the Layer-C vocabulary is load-bearing for the post-#135 node-capability composition model (`tofu/modules/talos-cluster`), so the ADR stays base-resident with a superseded-in-part banner |
+| `docs/adr-0003-three-layer-capability-architecture.md` | Substrate (Layer-C only) — Layer A/B dissolved at v2.0.0, but the Layer-C vocabulary is load-bearing for the post-#135 node-capability composition model (`tofu/modules/talos-cluster`), so the ADR stays base-resident with a superseded-in-part banner |
 | `Makefile` target `validate-kyverno-policies` | Apps |
 | `.github/workflows/gitops-validate.yml` kyverno-smoke + capability-index-check jobs | Apps |
 | `.github/workflows/docs-lint.yml` capability-reference-fresh job | Apps |
@@ -348,7 +348,7 @@ distinct from the config-axis: two provisioning frontends
 (`make` / `argv-print.sh` and `tofu/modules/talos-cluster`)
 re-derived per-node patch composition independently. That erosion
 is addressed by
-[`adr-shared-render-artifact.md`](adr-shared-render-artifact.md),
+[`adr-0005-shared-render-artifact.md`](adr-0005-shared-render-artifact.md),
 not by re-opening this split.
 
 ## Amendment 2026-05-30 — apps is the central catalog; Phase 1/2 superseded
@@ -425,7 +425,7 @@ nothing.
 
 ## Links
 
-- `docs/adr-multi-repo-platform-split.md` — the partially-superseded
+- `docs/adr-0001-multi-repo-platform-split.md` — the partially-superseded
   predecessor. Sections retained: 3-Repo-Role model, OCI consumption,
   Day-0 / Day-2 distinction, pin-drift discipline.
 - `.ci-oci-tarball-include.txt` — the existing artifact-boundary

@@ -11,9 +11,9 @@ consulted:
 informed: []
 supersedes: []
 related:
-  - "[Three-Layer Capability Architecture (Layer C vocabulary + iommu detection atom)](./adr-three-layer-capability-architecture.md)"
-  - "[OpenTofu Cluster Lifecycle (the module this changes)](./adr-opentofu-cluster-lifecycle.md)"
-  - "[cluster.yaml as Source-of-Truth](./adr-cluster-yaml-sot.md)"
+  - "[Three-Layer Capability Architecture (Layer C vocabulary + iommu detection atom)](./adr-0003-three-layer-capability-architecture.md)"
+  - "[OpenTofu Cluster Lifecycle (the module this changes)](./adr-0006-opentofu-cluster-lifecycle.md)"
+  - "[cluster.yaml as Source-of-Truth](./adr-0007-cluster-yaml-sot.md)"
 implementation-tracking-issue: "not yet filed (the P2 γ' issue referenced by base:three-layer-capability-architecture / issue #61)"
 ---
 
@@ -604,7 +604,7 @@ criterion). Each is a mechanical check in the implementation issue.
 
 ## Links
 
-- [Three-Layer Capability Architecture](./adr-three-layer-capability-architecture.md)
+- [Three-Layer Capability Architecture](./adr-0003-three-layer-capability-architecture.md)
   — Layer-C vocabulary; this ADR also corrected its `iommu-enabled`
   `presence_predicate` (dead `machine.install.extraKernelArgs` →
   `customization.extraKernelArgs`).

@@ -132,6 +132,6 @@ overstates what is in flight.
 
 ## See also
 
-- [`adr-substrate-only-base.md`](adr-substrate-only-base.md) — why the base ships substrate only
+- [`adr-0004-substrate-only-base.md`](adr-0004-substrate-only-base.md) — why the base ships substrate only
 - [`harness-plugin-integration.md`](harness-plugin-integration.md) — spec for the not-yet-public plugin repo
 - [`CHANGELOG.md`](../CHANGELOG.md) — what actually shipped per tag
