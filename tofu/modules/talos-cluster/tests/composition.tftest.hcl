@@ -6,10 +6,11 @@
 # and the matching run stops failing). NETWORK REQUIRED — run via `task tofu:test`,
 # NOT part of the offline `task tofu:ci`.
 #
-# Not covered (no triggerable input via the real base catalog — the shipped
-# profiles never collide): module-param / sysctl / kernel-arg conflict guards.
-# Those are defensive for future catalog additions; a colliding synthetic catalog
-# would be needed to exercise them.
+# The module-param / sysctl / kernel-arg conflict guards are exercised in the
+# sibling conflict-guards.tftest.hcl via a synthetic colliding catalog fixture
+# (tests/fixtures/colliding-catalog/) — the shipped base catalog never collides,
+# and provisioning_profiles is a module-local constant the variables{} block
+# cannot override. That file is offline; this one needs the network.
 
 provider "talos" {}
 provider "helm" {}

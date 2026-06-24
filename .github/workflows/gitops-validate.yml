@@ -228,6 +228,27 @@ jobs:
       - name: Check provisioning-catalog provides == registry talos-machine-config atoms (γ' composition)
         run: scripts/check-provisioning-catalog-refs.sh
 
+      - name: Lint consumer cluster.yaml schema (example)
+        run: scripts/lint-cluster-yaml.sh cluster.yaml.example
+
+      - name: Reject malformed cluster.yaml fixture (schema red-green)
+        run: |
+          set -u
+          # Discriminate exit 1 (schema violation — the assertion) from exit 2
+          # (env/arg error — schema/file missing, no check-jsonschema). Treating
+          # any non-zero as "rejected" lets a broken toolchain pass vacuously.
+          rc=0
+          scripts/lint-cluster-yaml.sh docs/schemas/fixtures/cluster.invalid.yaml || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "FAIL: malformed cluster.yaml fixture passed schema validation" >&2
+            exit 1
+          fi
+          if [ "$rc" -ne 1 ]; then
+            echo "FAIL: linter errored (exit $rc), did not reach a schema verdict" >&2
+            exit 1
+          fi
+          echo "OK: malformed cluster.yaml fixture correctly rejected (exit 1)"
+
   reuse-compliance:
     name: REUSE 3.3 compliance
     runs-on: ubuntu-latest

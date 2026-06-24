@@ -54,7 +54,10 @@ tasks:
     desc: tofu validate per tofu dir (modules + examples; init -backend=false, no state)
     cmd: |
       set -e
-      for m in $(find tofu -type f -name '*.tf' -exec dirname {} \; | sort -u); do
+      # tests/fixtures/** are test INPUTS exercised via `tofu test` (run { module })
+      # — partial stand-in modules (e.g. a colliding-catalog with no main.tf), not
+      # standalone modules, so they are excluded from the validate/lint sweep.
+      for m in $(find tofu -type f -name '*.tf' -not -path '*/tests/fixtures/*' -exec dirname {} \; | sort -u); do
         echo "=== validate ${m} ==="
         ( cd "$m" && tofu init -backend=false -input=false >/dev/null && tofu validate )
       done
@@ -63,7 +66,10 @@ tasks:
     desc: tflint per tofu dir (modules + examples)
     cmd: |
       set -e
-      for m in $(find tofu -type f -name '*.tf' -exec dirname {} \; | sort -u); do
+      # Excludes tests/fixtures/** — see tofu:validate rationale (test-input
+      # stand-in modules, not standalone modules; a fixture symlinking the real
+      # composition.tf without main.tf trips terraform_unused_declarations).
+      for m in $(find tofu -type f -name '*.tf' -not -path '*/tests/fixtures/*' -exec dirname {} \; | sort -u); do
         echo "=== tflint ${m} ==="
         ( cd "$m" && tflint --chdir=. )
       done
