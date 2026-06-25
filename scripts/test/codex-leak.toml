@@ -1,0 +1,15 @@
+# Test fixture for scripts/check-codex-config-placeholders.sh
+#
+# Values must be PLACEHOLDER strings that do NOT match gitleaks
+# default token patterns (no ghp_, no gho_, no SK-, no AKIA…, no JWT
+# shapes). The intent is to exercise the placeholder gate against
+# both uppercase and lowercase TOML bare-key assignments WITHOUT
+# tripping the secret scanner itself.
+#
+# This file is allowlisted in .gitleaks.toml `[allowlist] paths`.
+# Do not put real-shaped credentials here under any circumstance.
+
+[mcp_servers.example.env]
+api_token = "PLACEHOLDER_NOT_A_REAL_TOKEN"
+API_KEY   = "PLACEHOLDER_NOT_A_REAL_KEY"
+Mixed_Case = "PLACEHOLDER_NOT_A_REAL_VALUE"

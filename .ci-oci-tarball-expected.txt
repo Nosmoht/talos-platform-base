@@ -1,0 +1,14 @@
+./docs/platform-hardware-features.yaml
+./docs/schemas/hardware-features.schema.json
+./kubernetes/bootstrap/cilium/extras.yaml
+./kubernetes/bootstrap/cilium/values.yaml
+./tofu/modules/talos-cluster/README.md
+./tofu/modules/talos-cluster/helm/argocd-values.yaml
+./tofu/modules/talos-cluster/helm/cilium-values.yaml
+./tofu/modules/talos-cluster/main.tf
+./tofu/modules/talos-cluster/outputs.tf
+./tofu/modules/talos-cluster/test/README.md
+./tofu/modules/talos-cluster/test/pki-reconcile-microtest.sh
+./tofu/modules/talos-cluster/test/run-adoption-proof.sh
+./tofu/modules/talos-cluster/variables.tf
+./tofu/modules/talos-cluster/versions.tf

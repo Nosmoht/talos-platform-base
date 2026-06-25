@@ -1,0 +1,11 @@
+# Pin file for the argo-cd Helm chart. See docs/rendered-manifests.md.
+chart:
+  repo: https://argoproj.github.io/argo-helm
+  name: argo-cd
+  version: 9.4.5
+  tgz_sha256: 4079dfd1d811058a64ea939483adfd0bbb437f4cb4fa3529e0bc211d53348384
+release:
+  name: argocd
+  namespace: argocd
+  includeCRDs: true
+values: values.yaml

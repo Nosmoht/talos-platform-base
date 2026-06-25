@@ -1,0 +1,6 @@
+vendor/
+charts/
+node_modules/
+.work/
+Plans/
+**/CHANGELOG.md

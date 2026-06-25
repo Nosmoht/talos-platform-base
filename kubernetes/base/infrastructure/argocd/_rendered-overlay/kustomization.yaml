@@ -1,0 +1,34 @@
+# Stage-2 input. See docs/rendered-manifests.md.
+# .render-stage1/ is gitignored; populated by scripts/render-component.sh.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../.render-stage1/argocd.yaml
+
+# argocd-server serves the UI/REST API AND gRPC(-web) on one insecure :8080 port.
+# Behind the Cilium Gateway, envoy de-frames grpc-web into native gRPC, which only
+# reaches argocd over h2c — signalled by the Service port's appProtocol. The argo-cd
+# chart exposes servicePortHttpsAppProtocol but NOT one for the http port (80) the
+# Gateway routes to, so it is set here and BAKED into the committed _rendered/ (so the
+# drift gate verifies it; base#133 review M2). Strategic merge keyed on the full http
+# port entry — self-corrects on a chart port reorder, unlike a positional JSON6902
+# index (base#133 review M1). Pairs with Cilium gatewayAPI.enableAppProtocol (the
+# talos-cluster computed layer). Without both, gRPC 404s through the Gateway (argocd
+# CLI/UI unreachable). See #132.
+patches:
+  - target:
+      kind: Service
+      name: argocd-server
+    patch: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: argocd-server
+      spec:
+        ports:
+          - name: http
+            port: 80
+            protocol: TCP
+            targetPort: 8080
+            appProtocol: kubernetes.io/h2c

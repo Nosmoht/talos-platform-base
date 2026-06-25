@@ -1,0 +1,10 @@
+# gitleaks fingerprint allowlist (auto-loaded by `gitleaks detect` from the repo root).
+#
+# The entry below acknowledges a single historical occurrence of an
+# AGE-SECRET-KEY-shaped *placeholder* (never a real key) committed to the tofu
+# complete example before it was replaced with a clearly-fake non-key value. The
+# full-history scan (fetch-depth: 0) still sees the old commit; this fingerprint
+# exempts exactly that one finding while leaving the file fully scanned going
+# forward. After this branch squash-merges to main the old commit is no longer
+# reachable and this entry becomes inert — safe to delete.
+410b7b98c695552a1dff1c086059b71ac9a365bb:tofu/modules/talos-cluster/examples/complete/main.tf:age-secret-key:137

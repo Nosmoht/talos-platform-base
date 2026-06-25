@@ -1,0 +1,30 @@
+version = 1
+SPDX-PackageName = "talos-platform-base"
+SPDX-PackageSupplier = "nosmoht (https://github.com/nosmoht)"
+SPDX-PackageDownloadLocation = "https://github.com/Nosmoht/talos-platform-base"
+
+# Blanket annotation: every file in the repo is Apache-2.0 unless a more
+# specific annotation overrides it below. `precedence = "aggregate"` means
+# this entry is used as a fallback when no in-file SPDX header exists; an
+# in-file `SPDX-License-Identifier:` line still takes precedence.
+#
+# REUSE spec v3.3: https://reuse.software/spec/
+
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 nosmoht"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Generated artifacts under kubernetes/base/infrastructure/<component>/_rendered/
+# are derivative outputs of upstream Helm charts. They carry the upstream
+# chart's licence, not the repo's Apache-2.0. Per-chart licence attribution
+# lives in each component's README.md (see PR #46 series). LicenseRef-
+# UpstreamHelm marks the directory as "see the in-tree README for the actual
+# upstream licence" so SBOM consumers do not silently inherit Apache-2.0 for
+# code the project does not own the copyright to.
+[[annotations]]
+path = "kubernetes/base/infrastructure/**/_rendered/**"
+precedence = "override"
+SPDX-FileCopyrightText = "various upstream Helm chart authors"
+SPDX-License-Identifier = "LicenseRef-UpstreamHelm"

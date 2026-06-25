@@ -1,0 +1,166 @@
+# Cilium Helm values — REFERENCE ONLY (base; consumer overlays may patch).
+#
+# The LIVE Cilium seed floor is the talos-cluster module's
+# tofu/modules/talos-cluster/helm/cilium-values.yaml, baked into the
+# controlplane cluster.inlineManifests at bootstrap (deploy_cilium). This file
+# is retained as the reference for optional Day-2 Cilium self-management — the
+# former render path (scripts/render-cilium-bootstrap.sh) was retired with the
+# module-delivered Cilium seed; see docs/adr-0007-cluster-yaml-sot.md.
+#
+# Only non-default values are listed. Chart defaults apply for everything else.
+
+# --- CNI ---
+cni:
+  exclusive: false
+
+# --- Kube-proxy replacement ---
+kubeProxyReplacement: "true"
+k8sServiceHost: "127.0.0.1"
+k8sServicePort: "7445"
+
+# --- IPAM ---
+ipam:
+  mode: "kubernetes"
+
+# --- Gateway API ---
+gatewayAPI:
+  enabled: true
+  enableAppProtocol: true
+  hostNetwork:
+    enabled: true
+    nodes:
+      matchLabels:
+        node-role.kubernetes.io/gateway: ""
+
+# --- Envoy ---
+# Disable standalone Envoy DaemonSet. Envoy runs embedded in cilium-agent.
+# Gateway listeners are configured via CiliumEnvoyConfig with nodeSelector.
+envoy:
+  enabled: false
+  securityContext:
+    capabilities:
+      keepCapNetBindService: true
+
+# --- Policy secrets ---
+policySecrets:
+  enabled: true
+
+# --- Encryption ---
+encryption:
+  enabled: true
+  type: wireguard
+  wireguard:
+    userspaceFallback: false
+  strictMode:
+    enabled: true
+    cidr: "10.244.0.0/16"
+    allowRemoteNodeIdentities: true
+
+# --- Hubble ---
+hubble:
+  enabled: true
+  metrics:
+    enabled:
+      - "dns:query;ignoreAAAA"
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - httpV2
+  tls:
+    auto:
+      method: cronJob
+      schedule: "0 0 1 */4 *"
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+  export:
+    dynamic:
+      enabled: true
+      config:
+        content:
+          - name: dropped-flows
+            fieldMask:
+              - source
+              - destination
+              - verdict
+              - drop_reason
+              - l4
+              - IP
+              - time
+            includeFilters:
+              - verdict:
+                  - DROPPED
+            filePath: /var/run/cilium/hubble/dropped.log
+          - name: dns-flows
+            fieldMask:
+              - source
+              - destination
+              - verdict
+              - l7
+              - time
+            includeFilters:
+              - protocol:
+                  - DNS
+            filePath: /var/run/cilium/hubble/dns.log
+
+# --- Security context ---
+# Remove SYS_MODULE — causes "operation not permitted" on some nodes
+# (runc rejects the capability). Not needed with kube-proxy replacement.
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - NET_BIND_SERVICE
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+# --- BPF ---
+# VLAN bypass: allow 802.1Q-tagged packets through eBPF without dropping.
+# The cluster-agnostic base ships NO VLAN ids. A consumer whose nodes carry VLAN
+# sub-interfaces (e.g. KubeVirt VM networking on a tagged VLAN) sets the ids it
+# needs via cilium_values_override, e.g. `bpf: { vlanBypass: [100, 110] }`.
+bpf:
+  vlanBypass: []
+
+# --- L2 announcements / LoadBalancer ---
+# Enable Cilium as the L2 announcer for Service type=LoadBalancer VIPs.
+# Replaces kube-vip / MetalLB for L2 ARP announcements on the cluster LAN.
+l2announcements:
+  enabled: true
+loadBalancer:
+  l2:
+    enabled: true
+
+# --- cilium-secrets Namespace labels ---
+# PSA labels match the live state and prevent non-SSA apply from stripping them.
+# NOTE: the substrate base no longer ships the PNI contract (dissolved per
+# docs/adr-0004-substrate-only-base.md). A consumer that re-enables PNI enforcement
+# via its own Kyverno must re-add the platform.io/network-interface-version +
+# network-profile labels here (via cilium_values_override) so the bootstrap
+# manifest re-apply is not denied at admission.
+secretsNamespaceLabels:
+  pod-security.kubernetes.io/enforce: restricted
+  pod-security.kubernetes.io/enforce-version: latest
+  pod-security.kubernetes.io/audit: restricted
+  pod-security.kubernetes.io/audit-version: latest
+  pod-security.kubernetes.io/warn: restricted
+  pod-security.kubernetes.io/warn-version: latest
+
+# --- Operator ---
+operator:
+  replicas: 2

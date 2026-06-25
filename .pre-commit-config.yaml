@@ -1,0 +1,30 @@
+repos:
+  - repo: local
+    hooks:
+      - id: codex-config-placeholder-only
+        name: Ensure .codex/config.toml uses only ${VAR} placeholders in env blocks
+        entry: bash scripts/check-codex-config-placeholders.sh
+        language: system
+        files: '^\.codex/config\.toml$'
+        pass_filenames: false
+
+      - id: check-mcp-config-portable
+        name: MCP configs must use bare PATH commands (no absolute paths or variables)
+        entry: sh scripts/check-mcp-config-portable.sh
+        language: system
+        files: '^(\.mcp\.json|\.codex/config\.toml)$'
+        pass_filenames: false
+
+      - id: shellcheck
+        name: ShellCheck (-S warning) on shell scripts
+        entry: shellcheck -S warning
+        language: system
+        files: '\.sh$'
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.3
+    hooks:
+      - id: gitleaks
+        # Pin shared .gitleaks.toml so pre-commit and CI cannot drift
+        # silently across the project lifecycle.
+        args: ["--config=.gitleaks.toml"]

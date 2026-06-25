@@ -1,0 +1,124 @@
+# cluster.yaml — the declarative Source-of-Truth (SoT) for a consumer cluster.
+#
+# This file IS the cluster definition. A YAML document is the SoT; OpenTofu is
+# the executor, not the SoT — the consumer's OpenTofu root is a thin `yamldecode`
+# shim that maps this file onto the talos-cluster module's typed, validated
+# variable interface (see tofu/modules/talos-cluster/examples/complete/ for a
+# worked shim). The human edits YAML; tofu/HCL never carries cluster identity.
+#
+# Two consumers read this file:
+#   - `task bootstrap:argocd` reads ONLY the bootstrap identity
+#     (.cluster.name, .cluster.overlay, .cluster.target_revision, .repo.url).
+#   - the OpenTofu root reads the full cluster definition below.
+#
+# Secrets are NEVER in this file (it has no slot for them): sops_age_key and
+# cilium_ipsec_key are supplied via TF_VAR_* / a gitignored tfvars / SOPS.
+#
+# Copy to cluster.yaml (gitignored at the base; committed in consumer repos per
+# repo convention) and fill in your values. Example IPs below are RFC5737
+# documentation addresses (192.0.2.0/24).
+
+cluster:
+  # --- Identity (read by BOTH `task bootstrap:argocd` and the OpenTofu shim) ---
+  name: my-cluster # Talos cluster name (PKI CN) AND ArgoCD Application/Project name
+  endpoint: https://my-cluster-api.example.com:6443 # Kubernetes API endpoint (cluster_endpoint)
+
+  # --- ArgoCD bootstrap identity (read by `task bootstrap:argocd` only) ---
+  overlay: my-cluster # kustomize overlay name under kubernetes/overlays/
+  target_revision: main # git branch/tag for the ArgoCD root Application
+
+  # --- Cluster network (install-time-fixed in Talos; irreversible after bootstrap) ---
+  pod_cidr: ["10.244.0.0/16"] # Talos podSubnets AND Cilium IPAM/masquerade/native-routing
+  service_cidr: ["10.96.0.0/12"] # Talos serviceSubnets
+  dual_stack: false # v4+v6: give pod_cidr/service_cidr each a v4 and a v6 entry
+  allow_scheduling_on_controlplanes: false # true for single-node / edge clusters
+
+repo:
+  url: https://github.com/your-org/your-cluster-repo.git
+
+# --- Talos / Kubernetes versions ---
+talos:
+  version: v1.12.6 # machine-config SCHEMA pin — fixed at bootstrap, do NOT change later
+  install_version: "" # installer-image tag for OS upgrades; "" = matches talos.version
+kubernetes:
+  version: v1.35.0
+
+# --- Base images: the non-composable per-image installer base ---
+# Key = image id (referenced by node.image). architecture + cpu_vendor + baseline
+# extensions (baked on EVERY node of the image — CPU microcode, firmware, base
+# tooling, default runtime sandbox) + optional SBC overlay. Capability-specific
+# extensions (drbd, nvidia) come from a hardware_capability, NOT from here.
+images:
+  standard:
+    architecture: amd64 # amd64 | arm64 (arm64 unblocks ARM single-board computers)
+    cpu_vendor: intel # intel | amd | arm — resolves a profile's vendor variants (e.g. iommu)
+    extensions: [] # baseline extensions for every node of this image (e.g. siderolabs/intel-ucode)
+    # overlay:                       # ARM SBC board overlay only (omit for x86/metal)
+    #   name: rpi_generic
+    #   image: siderolabs/sbc-raspberrypi
+
+# --- Hardware capabilities: composable, tool-agnostic node functions ---
+# Key = capability id (referenced by node.hardware_capabilities). A node holds a
+# SET (storage + compute + GPU) without a hand-authored class. requires_features
+# (scheduling/labels) and provisioning_profiles (what the base catalog bakes) are
+# SEPARATE lists; emits_label MUST be platform.io/hardware-capability.*. Base
+# catalog profiles: drbd, iommu, nvidia-lts. See the complete example for usage.
+hardware-capabilities: {} # e.g. { storage-replicated: { requires_features: [drbd-kernel-module], provisioning_profiles: [drbd], emits_label: platform.io/hardware-capability.storage-replicated } }
+
+# --- Nodes: bare-metal members (must be PXE-booted into Talos maintenance mode) ---
+# role is ONLY controlplane | worker. Hardware specialisation = image + the SET of
+# hardware_capabilities, not role.
+nodes:
+  - { hostname: cp-1, ip: 192.0.2.11, role: controlplane, image: standard, hardware_capabilities: [] }
+  - { hostname: w-1, ip: 192.0.2.21, role: worker, image: standard, hardware_capabilities: [] }
+  # Per-node patches (e.g. a NIC-specific bridge) are structured YAML maps:
+  # - hostname: gpu-1
+  #   ip: 192.0.2.31
+  #   role: worker
+  #   image: standard
+  #   hardware_capabilities: [compute-gpu-nvidia]
+  #   config_patches:
+  #     - machine: { network: { interfaces: [{ interface: enp0s20f0u2, dhcp: true }] } }
+
+# --- Machine-config patches (structured YAML maps; the shim yamlencodes them) ---
+# The long tail (registry mirrors, install disk, NTP, kernel args, VIP) lives here
+# as raw Talos patches — inside the SoT, just untyped.
+# QUOTING: values that must reach Talos as STRINGS must be quoted — bare YAML
+# scalars coerce (e.g. `event-ttl: 1h0m0s` stays a string, but `30`/`on`/`no`/
+# `0755` parse as int/bool/octal and re-encode wrong). When in doubt, quote.
+config_patches:
+  - machine: { time: { servers: ["pool.ntp.org"] } } # cluster-wide (all nodes)
+controlplane_config_patches: [] # controlplane-only
+worker_config_patches: [] # worker-only
+
+# --- Substrate (Layer-1: Talos + Cilium + ArgoCD). Secrets are NOT here. ---
+substrate:
+  cilium:
+    # namespace is fixed to kube-system by Talos convention (not a settable field).
+    enabled: true # false keeps Talos-default Flannel (opt-out)
+    chart_version: "1.19.4" # SEED knob (install-time), not an upgrade knob
+    # SECURITY: chart_repository + gateway_api_crds_url below are pulled WITHOUT a
+    # digest pin and baked into the controlplane machine config — point ONLY at a
+    # source you trust (a poisoned repo/URL injects arbitrary bootstrap manifests).
+    chart_repository: https://helm.cilium.io # override for a private mirror / air-gap
+    routing_mode: tunnel # tunnel | native (native needs native_routing_cidr or pod_cidr)
+    kube_proxy_replacement: true # Cilium replaces kube-proxy (Talos cluster.proxy.disabled)
+    gateway_api: true # Hard Constraint: Gateway API only — no Ingress
+    gateway_api_crds_url: "" # "" = CRDs via Day-1 GitOps (air-gap-safe); URL = boot-seed (connected only)
+    mtu: 0 # 0 = chart auto-detect; set for jumbo-frame fabrics
+    native_routing_cidr: "" # ipv4NativeRoutingCIDR for routing_mode: native ("" = derive from pod_cidr)
+    encryption: { type: none } # none | wireguard | ipsec (ipsec needs cilium_ipsec_key via tfvar/env)
+    values_override: "" # long tail: Hubble, L2/BGP, bpf, VLAN bypass (Helm values, merged on the floor)
+  argocd:
+    enabled: true # false opts out of ArgoCD delivery
+    chart_version: "9.4.5" # SEED knob (install-time), not an upgrade knob
+    namespace: argocd
+    values_override: "" # consumer Helm values merged on the shipped slim values
+
+# --- Secrets (NEVER in this file — the schema has no slot for them) ---
+# sops_age_key     (ArgoCD ksops)         -> TF_VAR_sops_age_key / tfvars / SOPS
+# cilium_ipsec_key (encryption: ipsec)    -> TF_VAR_cilium_ipsec_key / tfvars / SOPS
+# These two are structurally excluded (no schema slot). The free-form escape
+# hatches above (config_patches, substrate.*.values_override) are unbounded
+# passthrough into the controlplane machine config — NEVER paste secret material
+# into them. cluster.yaml is committed in consumer repos; gitleaks is the backstop.

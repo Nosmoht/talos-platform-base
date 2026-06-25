@@ -1,0 +1,59 @@
+# cluster.yaml carries the local ArgoCD-bootstrap identity (name/overlay/
+# target_revision/repo.url); gitignored at the base, committed in consumer repos.
+/cluster.yaml
+/kubernetes/bootstrap/argocd/_out/
+# Claude Code harness runtime dir — agent scratch state; this base ships
+# no .claude/ tree by policy (see CLAUDE.md).
+.claude/
+# Harness scratchpad (validation cache, conftest output, plan workspaces).
+.work/
+# Transitional: keep ignored until all developer workstations have run `make migrate-cluster-yaml`.
+.claude/environment.yaml
+Plans/
+
+# MCP config local overrides and pre-apply snapshots
+.mcp.json.local
+.mcp.json.bak-*
+
+# Kustomize-extracted Helm charts (rendered at build time, not stored in repo)
+kubernetes/base/infrastructure/*/charts/
+
+# Rendered Manifests Pipeline (Phase B):
+# .render-stage1/ holds Stage-1 (helm template) output; intermediate, never committed.
+# .helm-cache/ holds pulled chart tarballs; deterministic by chart.lock.yaml.tgz_sha256.
+# _rendered/ IS committed (Stage-2 output, OCI-payload).
+kubernetes/base/infrastructure/*/.render-stage1/
+.helm-cache/
+
+# Auto Claude data directory
+.auto-claude/
+
+# Auto Claude generated files
+.auto-claude-security.json
+.auto-claude-status
+.claude_settings.json
+.worktrees/
+.security-key
+logs/security/
+
+# Vale prose linter — package directory populated by `vale sync` (CI step + local).
+.vale/styles/Google/
+.vale/styles/Vocab/
+.vale/styles/.vale-config/
+.vale/styles/config/
+.devbox/
+.direnv/
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+# tfvars carry caller secrets (sops_age_key, cilium_ipsec_key) — never commit them.
+# A committed template uses a *.tfvars.example name, which these patterns do not match.
+*.tfvars
+*.auto.tfvars
+tofu/modules/talos-cluster/.tmp/
+
+# Release toolchain (semantic-release) install dir. package.json + package-lock.json
+# are committed and pinned; node_modules is never committed (CI installs it via
+# `npm ci --ignore-scripts`). See docs/release-automation.md.
+node_modules/

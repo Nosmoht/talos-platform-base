@@ -1,0 +1,30 @@
+LicenseRef-UpstreamHelm
+=======================
+
+This is a *placeholder* licence identifier per REUSE Specification v3.3
+§"Custom licences" (https://reuse.software/spec/#custom-licenses).
+
+It applies to files under
+`kubernetes/base/infrastructure/<component>/_rendered/` which are the
+output of `helm template` + `kubectl kustomize` against an upstream
+Helm chart. The repo redistributes these rendered manifests verbatim
+under the rendered-manifests pattern; the *actual* licence is whatever
+the upstream chart project declares.
+
+To resolve the actual licence for a given component, read that
+component's `kubernetes/base/infrastructure/<component>/README.md`
+which records:
+
+- The upstream Helm chart name and repository URL.
+- The chart version pin (`chart.lock.yaml`).
+- The licence reported by that chart's source repository.
+
+This marker prevents SBOM consumers from silently inheriting the
+repo's Apache-2.0 licence for code whose copyright the project does
+not own.
+
+Files annotated with this identifier are not licensed under
+Apache-2.0; the upstream chart's licence governs. If a downstream
+consumer needs a single concrete SPDX identifier per file, regenerate
+the SBOM against your vendored copy with a per-component licence
+mapping that resolves each upstream chart to its actual SPDX licence.

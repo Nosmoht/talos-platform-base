@@ -1,0 +1,345 @@
+name: GitOps Validate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: sh
+    env:
+      # Tool versions — KEEP IN SYNC with .tool-versions at repo root.
+      # The drift-check step below fails the workflow on mismatch.
+      # .tool-versions is the single source of truth (asdf/mise format);
+      # these env vars exist because GitHub Actions inputs cannot read
+      # .tool-versions natively.
+      KUSTOMIZE_VERSION: 5.3.0
+      KUSTOMIZE_SHA256_LINUX_AMD64: 3ab32f92360d752a2a53e56be073b649abc1e7351b912c0fb32b960d1def854c
+      CONFTEST_VERSION: v0.53.0
+      KUBECONFORM_VERSION: 0.6.7
+      HELM_VERSION: 3.20.2
+      YQ_VERSION: 4.53.2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify env tool-versions match .tool-versions
+        # Drift-detector: the env block above and the .tool-versions file
+        # must agree. If they diverge, render output may differ between
+        # local and CI — exactly the class of failure rendered-manifests
+        # migration needs to prevent.
+        run: |
+          set -eu
+          fail=0
+          assert() {
+            tool="$1"; pinned_in_file="$2"; env_value="$3"; env_value_normalized="${env_value#v}"
+            if [ "$pinned_in_file" != "$env_value_normalized" ]; then
+              echo "DRIFT:    $tool .tool-versions=$pinned_in_file workflow-env=$env_value"
+              fail=1
+            else
+              echo "OK:       $tool $pinned_in_file"
+            fi
+          }
+          tv() { awk -v k="$1" '$1==k {print $2}' .tool-versions; }
+          assert kustomize   "$(tv kustomize)"   "$KUSTOMIZE_VERSION"
+          assert conftest    "$(tv conftest)"    "$CONFTEST_VERSION"
+          assert kubeconform "$(tv kubeconform)" "$KUBECONFORM_VERSION"
+          assert helm        "$(tv helm)"        "$HELM_VERSION"
+          assert yq          "$(tv yq)"          "$YQ_VERSION"
+          [ "$fail" -eq 0 ] || { echo "::error::tool-version drift detected — sync .tool-versions and workflow env"; exit 1; }
+
+      - name: Install ripgrep
+        # scripts/render_kustomize_safe.sh uses `rg` for ksops/sops-generator
+        # detection. Not preinstalled on ubuntu-latest GitHub runners as of
+        # 2026-05; explicit install keeps the workflow self-contained.
+        run: |
+          set -eu
+          if ! command -v rg >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends ripgrep
+          fi
+          rg --version | head -1
+
+      - name: Setup kustomize
+        uses: kustomize-everything/action-kustomize@v2.1.0
+        with:
+          version: ${{ env.KUSTOMIZE_VERSION }}
+          sha256-checksum: ${{ env.KUSTOMIZE_SHA256_LINUX_AMD64 }}
+
+      - name: Verify kustomize install
+        run: kustomize version --short
+
+      - name: Setup conftest
+        uses: princespaghetti/setup-conftest@v1.2.0
+        with:
+          version: ${{ env.CONFTEST_VERSION }}
+
+      - name: Setup kubeconform
+        uses: bmuschko/setup-kubeconform@v1.0.0
+        with:
+          kubeconform-version: ${{ env.KUBECONFORM_VERSION }}
+
+      - name: Setup helm
+        # Phase 0 of rendered-manifests migration: helm is the Stage-1
+        # renderer for all Helm-based components in Phase B. Pinned to
+        # .tool-versions to keep rendered output deterministic between
+        # CI and local developer renders.
+        uses: azure/setup-helm@v4
+        with:
+          version: v${{ env.HELM_VERSION }}
+
+      - name: Verify helm install
+        run: helm version --short
+
+      - name: Install yq (pinned version)
+        # render-component.sh + verify-rendered.sh use yq for chart.lock.yaml
+        # parsing and CRD/manifest splitting. yq is not preinstalled on
+        # ubuntu-latest GitHub runners. Pinned to .tool-versions because
+        # multi-line block scalar serialization (`|` vs `|2`) differs
+        # across yq versions and would produce verify-rendered drift.
+        # Always download — ubuntu-latest sometimes ships a different yq.
+        run: |
+          set -eu
+          sudo wget -q "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          installed="$(yq --version | awk '{print $NF}' | sed -E 's/^v//')"
+          if [ "$installed" != "$YQ_VERSION" ]; then
+            echo "::error::yq install version mismatch: installed=$installed expected=$YQ_VERSION"
+            exit 1
+          fi
+          echo "OK: yq v$installed"
+
+      - name: Verify rendered manifests are reproducible (drift gate)
+        # Phase B re-render gate: re-runs scripts/render-component.sh for
+        # every component with a chart.lock.yaml in a tmpdir and diffs
+        # against the committed _rendered/ tree. Drift = build fails.
+        # This is the load-bearing guarantee that committed _rendered/
+        # YAML is reproducible from chart.lock.yaml + values.yaml +
+        # _rendered-overlay/. Without this gate, a developer could
+        # hand-edit the committed output and the change would silently
+        # ship to consumer clusters.
+        run: ./scripts/verify-rendered.sh
+
+      - name: Discover kustomize targets
+        run: ./scripts/discover_kustomize_targets.sh
+
+      - name: Render safe kustomize targets
+        run: ./scripts/render_kustomize_safe.sh
+
+      - name: Verify rendered set matches .ci-renderable-components.txt
+        run: |
+          set -eu
+          if [ ! -f .ci-renderable-components.txt ]; then
+            echo "error: .ci-renderable-components.txt missing — frozen ground-truth list required"
+            exit 1
+          fi
+          expected_file="$(mktemp)"
+          actual_file="$(mktemp)"
+          sort -u < .ci-renderable-components.txt > "$expected_file"
+          awk -F/ '$3 == "infrastructure" {print $4}' \
+              .work/kustomize-safe-targets.txt 2>/dev/null \
+            | sort -u > "$actual_file"
+          if ! cmp -s "$expected_file" "$actual_file"; then
+            echo "error: rendered base-component set != .ci-renderable-components.txt"
+            echo "--- expected ---"
+            cat "$expected_file"
+            echo "--- actual ---"
+            cat "$actual_file"
+            echo "--- diff ---"
+            diff "$expected_file" "$actual_file" || true
+            rm -f "$expected_file" "$actual_file"
+            exit 1
+          fi
+          count="$(wc -l < "$expected_file" | tr -d ' ')"
+          rm -f "$expected_file" "$actual_file"
+          echo "ok: rendered set matches .ci-renderable-components.txt ($count components)"
+
+      - name: Check required CLI tools
+        run: |
+          set -eu
+          command -v yq >/dev/null 2>&1 || { echo "error: yq is required but not installed"; exit 1; }
+
+      - name: Kubeconform rendered manifests
+        run: |
+          set -eu
+          if [ ! -f .work/kustomize-rendered-files.txt ]; then
+            echo "notice: rendered file list not found, skipping kubeconform"
+            exit 0
+          fi
+
+          count=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            [ -f "$f" ] || continue
+            count=$((count + 1))
+            echo "kubeconform: $f"
+            kubeconform -strict -ignore-missing-schemas "$f"
+          done < .work/kustomize-rendered-files.txt
+
+          echo "kubeconform tested files: $count"
+
+      - name: Conftest policy checks
+        run: ./scripts/run_conftest.sh
+
+      - name: Upload diagnostics (failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitops-validate-diagnostics
+          path: |
+            .work/
+
+  hardware-features-check:
+    name: Hardware-features registry validation (Layer C)
+    runs-on: ubuntu-latest
+    env:
+      YQ_VERSION: 4.53.2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yq (pinned)
+        run: |
+          set -eu
+          sudo wget -q "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Install check-jsonschema (for Layer-C schema lint)
+        run: |
+          set -eu
+          python3 -m pip install --user check-jsonschema
+          # Ensure the user-site bin dir is on PATH for subsequent steps.
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Lint Layer-C hardware-features registry schema
+        run: scripts/lint-hardware-features.sh
+
+      - name: Check provisioning-catalog provides == registry talos-machine-config atoms (γ' composition)
+        run: scripts/check-provisioning-catalog-refs.sh
+
+      - name: Lint consumer cluster.yaml schema (example)
+        run: scripts/lint-cluster-yaml.sh cluster.yaml.example
+
+      - name: Reject malformed cluster.yaml fixture (schema red-green)
+        run: |
+          set -u
+          # Discriminate exit 1 (schema violation — the assertion) from exit 2
+          # (env/arg error — schema/file missing, no check-jsonschema). Treating
+          # any non-zero as "rejected" lets a broken toolchain pass vacuously.
+          rc=0
+          scripts/lint-cluster-yaml.sh docs/schemas/fixtures/cluster.invalid.yaml || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "FAIL: malformed cluster.yaml fixture passed schema validation" >&2
+            exit 1
+          fi
+          if [ "$rc" -ne 1 ]; then
+            echo "FAIL: linter errored (exit $rc), did not reach a schema verdict" >&2
+            exit 1
+          fi
+          echo "OK: malformed cluster.yaml fixture correctly rejected (exit 1)"
+
+  reuse-compliance:
+    name: REUSE 3.3 compliance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: REUSE lint
+        # https://reuse.software/spec/ — every file must carry SPDX
+        # licence + copyright metadata, either inline or via REUSE.toml.
+        # Aggregate annotation at repo root covers all Apache-2.0 files;
+        # _rendered/ output of upstream Helm charts is marked
+        # LicenseRef-UpstreamHelm — see LICENSES/LicenseRef-UpstreamHelm.txt.
+        uses: fsfe/reuse-action@v5
+
+  secret-scan:
+    name: Secret Scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (full history for secret scan)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks v8.24.3
+        env:
+          GITLEAKS_VERSION: 8.24.3
+          GITLEAKS_SHA256: 9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          curl -fsSLo gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          mkdir -p "$HOME/.local/bin"
+          install -m 0755 gitleaks "$HOME/.local/bin/gitleaks"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/gitleaks" version
+
+      - name: Run gitleaks (full history)
+        # --config: pin shared .gitleaks.toml so this scan and the
+        # pre-commit hook cannot drift across the project lifecycle.
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose --exit-code 1 --no-banner
+
+  oci-allowlist-check:
+    name: OCI Allowlist Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify OCI tarball allowlist matches expected fixture
+        # Builds the talos OCI tarball locally from .ci-oci-tarball-include.txt
+        # and diffs against the committed .ci-oci-tarball-expected.txt fixture.
+        # Catches accidental additions or removals before a tag fires the publish
+        # workflow. Allowlist is fail-closed: any path not listed is excluded.
+        run: |
+          set -euo pipefail
+          [ -f .ci-oci-tarball-include.txt ] || { echo "::error::.ci-oci-tarball-include.txt missing"; exit 1; }
+          [ -f .ci-oci-tarball-expected.txt ] || { echo "::error::.ci-oci-tarball-expected.txt missing"; exit 1; }
+          mkdir -p .work
+          tar -czf .work/oci-check.tar.gz --files-from=.ci-oci-tarball-include.txt
+          tar -tzf .work/oci-check.tar.gz | sed 's|^\./||' | LC_ALL=C sort | sed 's|^|./|' > .work/oci-check-contents.txt
+          if diff -u .ci-oci-tarball-expected.txt .work/oci-check-contents.txt; then
+            echo "OK: tarball contents match .ci-oci-tarball-expected.txt"
+          else
+            echo "::error::Tarball contents diverge from .ci-oci-tarball-expected.txt"
+            echo "To update the fixture: mv .work/oci-check-contents.txt .ci-oci-tarball-expected.txt"
+            exit 1
+          fi
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ShellCheck (-S warning) over all tracked shell scripts
+        run: |
+          set -euo pipefail
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends shellcheck
+          fi
+          shellcheck --version
+          git ls-files -z '*.sh' | xargs -0 -r shellcheck -S warning

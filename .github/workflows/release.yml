@@ -1,0 +1,121 @@
+name: Release
+
+# Conventional-commit-driven releases with a human approval gate.
+#
+# Flow: a push to `main` runs `plan` (semantic-release --dry-run) which computes
+# the next version from the conventional-commit history and surfaces it in the
+# job summary. If a release is due, `release` waits for manual approval in the
+# `release` GitHub Environment, then runs the real semantic-release: it creates
+# the tag + GitHub Release. Because the tag is pushed with a GitHub App token
+# (NOT the default GITHUB_TOKEN, whose events do not trigger other workflows),
+# the existing `oci-publish.yml` (on: push tags 'v*') fires and attaches the
+# cosign-signed OCI assets to the Release. oci-publish.yml is unchanged, so the
+# signing identity + consumer verification regex are preserved.
+#
+# See docs/release-automation.md for the full design, the one-time GitHub App +
+# Environment setup, and the commit-message (BREAKING CHANGE footer) discipline.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false # never cancel a half-done release
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # dry-run only — satisfies @semantic-release/github verifyConditions.
+      # GITHUB_TOKEN cannot push to protected main nor trigger downstream
+      # workflows, so it cannot cut a real release from this ungated job.
+    outputs:
+      will-release: ${{ steps.dry.outputs.will-release }}
+      next-version: ${{ steps.dry.outputs.next-version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0 # full history + tags for semantic-release
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: Dry-run semantic-release (compute next version)
+        id: dry
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          set +e
+          npx semantic-release --dry-run > sr-dry.log 2>&1
+          rc=$?
+          set -e
+          cat sr-dry.log
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::semantic-release --dry-run exited $rc (see log above)"
+            exit "$rc"
+          fi
+          # semantic-release logs "The next release version is X.Y.Z" (and a
+          # "...the next release version is X.Y.Z" first-release variant) —
+          # match case-insensitively and take the version token.
+          version="$(grep -ioE 'the next release version is [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?' sr-dry.log | awk '{print $NF}' | tail -1 || true)"
+          {
+            echo "# Release plan"
+            if [ -n "$version" ]; then
+              echo "**Next version:** \`v${version}\`"
+              echo "will-release=true" >> "$GITHUB_OUTPUT"
+              echo "next-version=${version}" >> "$GITHUB_OUTPUT"
+            else
+              echo "**No release** — no relevant changes since the last tag."
+              echo "will-release=false" >> "$GITHUB_OUTPUT"
+              echo "next-version=" >> "$GITHUB_OUTPUT"
+            fi
+            # Breaking-change prompt (AGENTS.md: a base Helm-value breaking change
+            # requires a MAJOR bump). semantic-release only bumps MAJOR on a
+            # `BREAKING CHANGE:` footer / `type!:` — prose "BREAKING" is ignored.
+            last_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+            if [ -n "$last_tag" ]; then
+              base_values_changed="$(git diff --name-only "${last_tag}..HEAD" -- 'kubernetes/base/**/values.yaml' || true)"
+              if [ -n "$base_values_changed" ]; then
+                echo ""
+                echo "> ⚠️ **Base Helm values changed since \`${last_tag}\`** — confirm MAJOR-vs-MINOR per AGENTS.md before approving. A genuine breaking change needs a \`BREAKING CHANGE:\` footer to bump MAJOR."
+                echo ""
+                echo "Changed value files:"
+                echo '```'
+                echo "$base_values_changed"
+                echo '```'
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    needs: plan
+    if: ${{ needs.plan.outputs.will-release == 'true' }}
+    runs-on: ubuntu-latest
+    environment: release # manual-approval gate (required reviewer = @nosmoht)
+    permissions:
+      contents: read # the App token performs writes, not GITHUB_TOKEN
+    steps:
+      - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        id: app-token
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false # force semantic-release to use the App token for the tag push
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: semantic-release
+        env:
+          # App token (NOT GITHUB_TOKEN) so the tag push triggers oci-publish.yml.
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: npx semantic-release

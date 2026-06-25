@@ -1,0 +1,144 @@
+# Complete worked cluster definition — the declarative SoT consumed by the OpenTofu
+# shim in main.tf (yamldecode). Mixed amd64 + arm64 topology:
+#   3 controlplane (intel) · 4 kubevirt workers (intel) · 1 GPU worker (intel) ·
+#   1 Raspberry-Pi worker (arm64).
+#
+# Kubernetes roles are ONLY controlplane / worker; storage / compute-virt / GPU
+# are composable hardware_capabilities, NOT roles. A node holds a SET of
+# capabilities (e.g. storage + virt). The arm64 Pi worker is the case the
+# pre-composition module could not express. IPs are RFC5737 documentation
+# addresses (192.0.2.0/24) — a tofu validate/plan fixture, not a runnable apply.
+
+cluster:
+  name: example-cluster
+  endpoint: https://192.0.2.1:6443
+  overlay: example-cluster
+  target_revision: main
+
+  # Cluster network (install-time-fixed in Talos; irreversible after bootstrap).
+  # Shown with the platform defaults so the worked example exercises every field
+  # the shim reads. This example is multi-control-plane and single-stack IPv4.
+  pod_cidr: ["10.244.0.0/16"] # Talos podSubnets AND Cilium IPAM/masquerade/native-routing
+  service_cidr: ["10.96.0.0/12"] # Talos serviceSubnets
+  dual_stack: false # v4+v6 → give pod_cidr/service_cidr each a v4 AND a v6 entry, e.g. pod ["10.244.0.0/16","fd00::/48"] (matches variables.tf examples)
+  allow_scheduling_on_controlplanes: false # multi-CP: control planes stay tainted (true only for single-node/edge)
+
+repo:
+  url: https://github.com/your-org/your-cluster-repo.git
+
+talos:
+  version: v1.12.6 # schema pin (fixed at bootstrap)
+  install_version: v1.12.7 # installer tag bumped for an OS upgrade (exercises the split)
+kubernetes:
+  version: v1.35.0
+
+# Base images — the non-composable axis: arch + CPU vendor + BASELINE extensions
+# baked on every node of the image regardless of capabilities (CPU microcode,
+# GPU/NIC firmware, base tooling, default runtime sandbox). drbd + nvidia are
+# capabilities, not baseline, so they are NOT listed here.
+images:
+  intel:
+    architecture: amd64
+    cpu_vendor: intel
+    extensions:
+      - siderolabs/gvisor
+      - siderolabs/i915
+      - siderolabs/intel-ucode
+      - siderolabs/nvme-cli
+  intel-gpu: # the GPU node additionally carries Realtek NIC firmware
+    architecture: amd64
+    cpu_vendor: intel
+    extensions:
+      - siderolabs/gvisor
+      - siderolabs/i915
+      - siderolabs/intel-ucode
+      - siderolabs/nvme-cli
+      - siderolabs/realtek-firmware
+  rpi:
+    architecture: arm64
+    cpu_vendor: arm
+    extensions: [] # the RPi schematic carries the board overlay, not extensions
+    overlay:
+      name: rpi_generic
+      image: siderolabs/sbc-raspberrypi
+
+# Composite hardware-capabilities (tool-agnostic; resolve to base catalog
+# profiles). requires_features (scheduling/labels) and provisioning_profiles
+# (what to bake) are SEPARATE lists.
+hardware-capabilities:
+  storage-replicated:
+    requires_features: [drbd-kernel-module]
+    provisioning_profiles: [drbd]
+    emits_label: platform.io/hardware-capability.storage-replicated
+  compute-virt-passthrough: # KubeVirt + PCI passthrough; IOMMU now actually bakes (the v1.10+ fix)
+    # vt-x-or-amd-v and kvm-kernel-module are NFD-DETECTED atoms (no profile): KVM
+    # is in-kernel and auto-loads on VMX/SVM-capable hardware, so only iommu-enabled
+    # is provisioned here. They stay in requires_features for scheduling/labels.
+    requires_features: [vt-x-or-amd-v, kvm-kernel-module, iommu-enabled]
+    provisioning_profiles: [iommu] # provides iommu-enabled (symmetry); vendor-resolved to intel_iommu via the image cpu_vendor
+    emits_label: platform.io/hardware-capability.compute-virt-passthrough
+  compute-gpu-nvidia: # plain device-plugin GPU (NOT passthrough): no iommu. A vfio
+    # passthrough GPU would additionally list iommu-enabled + the iommu profile.
+    requires_features: [nvidia-gpu] # NFD-detected presence atom (no profile provisions it)
+    provisioning_profiles: [nvidia-lts]
+    emits_label: platform.io/hardware-capability.compute-gpu-nvidia
+
+nodes:
+  - { hostname: node-cp-1, ip: 192.0.2.11, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
+  - { hostname: node-cp-2, ip: 192.0.2.12, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
+  - { hostname: node-cp-3, ip: 192.0.2.13, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
+  - { hostname: node-w-1, ip: 192.0.2.21, role: worker, image: intel, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  - { hostname: node-w-2, ip: 192.0.2.22, role: worker, image: intel, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  - { hostname: node-w-3, ip: 192.0.2.23, role: worker, image: intel, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  - { hostname: node-w-4, ip: 192.0.2.24, role: worker, image: intel, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  - hostname: node-gpu-1
+    ip: 192.0.2.31
+    role: worker
+    image: intel-gpu
+    hardware_capabilities: [storage-replicated, compute-gpu-nvidia]
+    config_patches:
+      # per-node NIC binding (the value the old ${NIC_NAME} placeholder carried)
+      - machine: { network: { interfaces: [{ interface: enp0s20f0u2, dhcp: true }] } }
+  - { hostname: node-pi-1, ip: 192.0.2.41, role: worker, image: rpi, hardware_capabilities: [] }
+
+# Cluster-wide patches the caller owns (NTP here; the module injects none).
+config_patches:
+  - machine: { time: { servers: ["192.0.2.123"] } }
+
+# Role tier — applied to controlplane nodes only (exercises the controlplane pass).
+controlplane_config_patches:
+  - cluster: { apiServer: { extraArgs: { event-ttl: "1h0m0s" } } }
+
+# Role tier — applied to worker nodes only (exercises the worker pass). maxPods is
+# an int (unquoted) — workload-bearing workers carry more pods than the kubelet default (110).
+worker_config_patches:
+  - machine: { kubelet: { extraConfig: { maxPods: 200 } } }
+
+# Substrate: Cilium + ArgoCD delivered by the module (Layer-1 floor). Defaults are
+# shown explicitly so the worked example documents every substrate knob the shim
+# wires from this file (cilium_namespace is fixed by Talos and cluster_health_timeout
+# is a tofu-apply knob, not substrate — neither is SoT-settable here); secrets
+# (sops_age_key, cilium_ipsec_key) come from tfvar/env via variables.tf, NEVER from
+# this file. The free-form escape hatches (config_patches above,
+# substrate.*.values_override below) are unbounded passthrough into the controlplane
+# machine config — NEVER paste secret material into them (cluster.yaml is committed;
+# gitleaks is the only backstop).
+substrate:
+  cilium:
+    # namespace is fixed to kube-system by Talos convention (not a SoT-settable field)
+    enabled: true # false keeps Talos-default Flannel (opt-out)
+    chart_version: "1.19.4" # SEED knob (install-time), not an upgrade knob
+    chart_repository: https://helm.cilium.io # baked into machineConfig WITHOUT a digest pin — point ONLY at a trusted source
+    routing_mode: tunnel # tunnel | native (native needs native_routing_cidr or pod_cidr)
+    kube_proxy_replacement: true # Cilium replaces kube-proxy (Talos cluster.proxy.disabled)
+    gateway_api: true # Hard Constraint: Gateway API only — no Ingress
+    gateway_api_crds_url: "" # "" = CRDs via Day-1 GitOps (air-gap-safe); a URL is boot-seeded (connected only) via extraManifests with NO digest pin — point ONLY at a trusted source; a blocked fetch crashloops bootstrap
+    mtu: 0 # 0 = chart auto-detect; set for jumbo-frame fabrics
+    native_routing_cidr: "" # ipv4NativeRoutingCIDR for routing_mode: native ("" = derive from pod_cidr)
+    encryption: { type: none } # none | wireguard | ipsec (ipsec needs cilium_ipsec_key via tfvar/env)
+    values_override: "" # long tail: Hubble, L2/BGP, bpf, VLAN bypass (Helm values, merged on the floor)
+  argocd:
+    enabled: true # false opts out of ArgoCD delivery (true REQUIRES sops_age_key via tfvar/env)
+    chart_version: "9.4.5" # SEED knob (install-time), not an upgrade knob
+    namespace: argocd
+    values_override: "" # consumer Helm values merged on the shipped slim values

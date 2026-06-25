@@ -1,0 +1,72 @@
+crds:
+  install: true
+  keep: true
+
+server:
+  # Substrate ships ArgoCD self-contained — no cert-manager dependency on the
+  # floor. argocd-server runs with server.insecure=true (see configs.params
+  # below): it serves plaintext at the pod, and a consumer terminates TLS at
+  # their gateway / ingress in front of it. The chart's server.certificate block
+  # provisions a cert-manager.io/v1 Certificate (secret argocd-server-tls) that
+  # the insecure pod does not consume and that would render against an absent
+  # CRD/issuer once cert-manager leaves the substrate — so it is disabled here.
+  # A consumer fronting ArgoCD with cert-manager-issued TLS re-enables
+  # server.certificate in a values overlay and provides the ClusterIssuer (and,
+  # to make the pod itself serve TLS, also sets server.insecure=false).
+  certificate:
+    enabled: false
+  service:
+    type: ClusterIP
+
+repoServer:
+  env:
+    - name: SOPS_AGE_KEY_FILE
+      value: /sops-age/keys.txt
+  volumes:
+    - name: custom-tools
+      emptyDir: {}
+    - name: sops-age
+      secret:
+        secretName: sops-age-key
+  volumeMounts:
+    - name: custom-tools
+      mountPath: /usr/local/bin/ksops
+      subPath: ksops
+    - name: sops-age
+      mountPath: /sops-age
+      readOnly: true
+  initContainers:
+    - name: install-ksops
+      image: viaductoss/ksops:v4.3.2
+      command: ["/bin/sh", "-c"]
+      args:
+        - cp /usr/local/bin/ksops /custom-tools/
+      volumeMounts:
+        - name: custom-tools
+          mountPath: /custom-tools
+
+configs:
+  rbac:
+    policy.default: ''
+    policy.csv: |
+      g, nosmoht, role:admin
+    scopes: '[preferred_username]'
+  params:
+    server.insecure: true
+    server.dex.server.strict.tls: "false"
+    server.repo.server.strict.tls: "false"
+  cm:
+    admin.enabled: "true"
+    resource.compareoptions: |
+      serverSideDiff: true
+    resource.customizations.ignoreDifferences.apps_Deployment: |
+      jqPathExpressions:
+        - '.status.terminatingReplicas'
+    kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
+    resource.exclusions: |
+      - apiGroups:
+          - cilium.io
+        kinds:
+          - CiliumIdentity
+        clusters:
+          - "*"
