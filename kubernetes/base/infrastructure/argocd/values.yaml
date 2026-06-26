@@ -2,6 +2,15 @@ crds:
   install: true
   keep: true
 
+# The bundled ArgoCD Dex is OFF. Consumers wire SSO via configs.cm `oidc.config`
+# pointed at their own external OIDC provider (the per-cluster platform Dex) and set
+# no `dex.config` — so the chart-default argocd-dex-server would render with no
+# connectors: an idle, unused Deployment/Service/RBAC in every consumer cluster.
+# A consumer that genuinely wants ArgoCD's bundled Dex re-enables it in a values
+# overlay. (base#151)
+dex:
+  enabled: false
+
 server:
   # Substrate ships ArgoCD self-contained — no cert-manager dependency on the
   # floor. argocd-server runs with server.insecure=true (see configs.params
@@ -53,7 +62,6 @@ configs:
     scopes: '[preferred_username]'
   params:
     server.insecure: true
-    server.dex.server.strict.tls: "false"
     server.repo.server.strict.tls: "false"
   cm:
     admin.enabled: "true"
