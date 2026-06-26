@@ -59,6 +59,34 @@ variable "talos_install_version" {
   }
 }
 
+variable "auto_os_upgrade" {
+  description = <<-EOT
+    Whether tofu itself drives the Talos OS upgrade (in-place, drain + reboot)
+    when `talos_install_version` changes, via the talos_machine resource's
+    native `image` argument.
+
+      false (default) — talos_machine omits `image`, so it does NOT manage the
+        running OS version. The initial install still uses machine.install.image
+        from the generated config; OS upgrades stay the consumer's controlled,
+        out-of-band `task talos:upgrade:cluster` (laptop/CI) path. This is
+        the behaviour of the retired talos_machine_configuration_apply era —
+        keep it for clusters where a human/CI gates each OS roll.
+
+      true — talos_machine sets `image` to the per-class Image-Factory installer,
+        so bumping talos_install_version triggers an in-place OS upgrade on the
+        NEXT `tofu apply`. Combined with the in-cluster Crossplane Workspace this
+        makes the OS roll fully GitOps-driven: no talosctl, no manual reboot. Set
+        true on self-managed clusters (those reconciled by their own in-cluster
+        XCluster). Multi-node clusters additionally drain each node before reboot
+        (see drain wiring on talos_machine); single-node clusters skip drain
+        (you cannot drain the sole node and keep it healthy).
+
+    Requires the talos provider >= 0.12.0 (talos_machine). See versions.tf gate.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "kubernetes_version" {
   description = "Kubernetes version to install, e.g. \"v1.36.0\"."
   type        = string

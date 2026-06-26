@@ -70,7 +70,7 @@ output "distinct_schematic_count" {
 }
 
 output "talos_install_version" {
-  description = "Effective Talos OS installer version (= var.talos_install_version, or var.talos_version if unset). The upgrade task reads this from tfplan JSON for `talosctl upgrade --image …:<version>`."
+  description = "Effective Talos OS installer version (= var.talos_install_version, or var.talos_version if unset). When auto_os_upgrade = false the out-of-band `talos:upgrade:cluster` task reads this from tfplan JSON for `talosctl upgrade --image …:<version>`; when auto_os_upgrade = true talos_machine drives the in-place upgrade itself on a version bump."
   value       = local.install_version
 }
 
