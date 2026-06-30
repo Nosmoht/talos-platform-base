@@ -37,7 +37,7 @@ bring-up and the documented bootstrap exceptions.
 | Tarball trust | Every artifact carries cryptographic provenance | cosign keyless signature + SLSA build provenance + CycloneDX 1.6 SBOM |
 
 The base is **substrate-only**: it ships Talos + Cilium + ArgoCD (plus
-`cert-approver` boot glue) and nothing above them. The OpenTofu module
+`cert-approver` serving-cert glue) and nothing above them. The OpenTofu module
 stands the substrate up identically on every cluster, and the signed OCI
 artifact gives consumers a verifiable thing to vendor instead of an
 unaudited tarball. Everything that is *not* substrate — monitoring,
@@ -82,11 +82,14 @@ receives a frozen tree containing:
   CIDR, dual-stack, node classes, machine-config patches, substrate
   config). `task cluster:init-yaml` copies it to a `cluster.yaml` the
   consumer fills in.
-- **The substrate-only infrastructure components** under
-  `kubernetes/base/infrastructure/` — `argocd/` and `cert-approver/`,
-  the only components delivered as base kustomize manifests. ArgoCD is a
-  co-equal substrate pillar; `cert-approver` is Talos boot-necessity glue
-  (no CSR auto-approval → no bootable cluster). Every non-substrate
+- **The substrate-only infrastructure component** under
+  `kubernetes/base/infrastructure/` — `argocd/`, the only component
+  delivered as a base kustomize manifest set. ArgoCD is a co-equal
+  substrate pillar. `cert-approver` is also substrate (Talos serving-cert
+  glue — it approves the `kubernetes.io/kubelet-serving` CSRs the base's
+  default-on kubelet rotation triggers) but is delivered as a controlplane
+  `inlineManifest` seed by `tofu/modules/talos-cluster` (adr-0013), not as
+  a kustomize component. Every non-substrate
   component (monitoring, secrets, storage, device plugins, the
   network-trust contract, …) now lives in the separate
   [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)

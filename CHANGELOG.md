@@ -24,8 +24,32 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the running state with
   `kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.enable-gateway-api-app-protocol}'`
   (expect `"true"`). See UPGRADING.md.
+- **Kubelet serving-cert rotation is default-on for every cluster + cert-approver
+  is now a base-delivered substrate seed (adr-0013).** The `tofu/modules/talos-cluster`
+  module injects `machine.kubelet.extraConfig.serverTLSBootstrap: true` on ALL nodes
+  (the non-deprecated KubeletConfiguration field, not the deprecated
+  `--rotate-server-certificates` flag), placed FIRST so a consumer can opt out via
+  `config_patches`. cert-approver (`alex1989hu/kubelet-serving-cert-approver` v0.11.0,
+  image digest-pinned) ships as a controlplane `inlineManifest` seed (namespace +
+  signer-restricted RBAC + restricted-PSA Deployment), replacing the former
+  namespace-only `kubernetes/base/infrastructure/cert-approver/` stub — no consumer
+  wiring of the upstream remote. Net effect: trusted kubelet serving certs
+  out-of-the-box (metrics-server / `kubectl logs|exec|top` without
+  `--kubelet-insecure-tls`). SAN-to-node CSR validation is a documented
+  consumer-cluster Kyverno defense-in-depth obligation (the base ships no admission
+  policy).
 
 ### Changed — BREAKING
+
+- **cert-approver relocated from a `kubernetes/base/infrastructure/` component to a
+  Talos controlplane `inlineManifest` seed (adr-0013); kubelet serving-cert rotation
+  default-on.** Existing-cluster impact: adopting this tag re-pushes machine config
+  (reconciled) → rotation turns on and kubelets emit `kubernetes.io/kubelet-serving`
+  CSRs, but the create-only approver seed does NOT land on an already-bootstrapped
+  cluster → rotation-on-without-approver unless the approver is ensured present. See
+  UPGRADING.md `v3.0.0` for the required migration (incl. double-management resolution
+  for consumers who already wired the upstream approver Application).
+  `.ci-renderable-components.txt` is now `argocd` only.
 
 - **Single task runner — the `Makefile` is retired; go-task is the only runner
   (#113).** Every former `make <target>` folds into a namespaced task in

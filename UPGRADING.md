@@ -42,7 +42,7 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
-## `v3.0.0` — go-task is the single runner; the Makefile is retired (MAJOR / dev-facing breaking)
+## `v3.0.0` — go-task single runner + Makefile retired; kubelet serving-cert rotation default-on + cert-approver seed (MAJOR — dev-facing + consumer-facing)
 
 **Type:** MAJOR (dev-facing). The `Makefile` is retired and go-task is the sole
 runner — every former `make <target>` is now a namespaced `task <target>`. A
@@ -83,6 +83,67 @@ Run `devbox shell -- task --list` for the full set.
 **devbox:** `devbox.json` gains `yq-go`, `gettext`, and `ripgrep` (no `gnumake`)
 so the folded `bootstrap:*` / `cluster:*` / `gitops:*` tasks run inside
 `devbox shell`.
+
+### Kubelet serving-cert rotation default-on + cert-approver seed (consumer action required)
+
+**Type:** consumer-runtime breaking (folded into this MAJOR). Decision:
+[`docs/adr-0013-kubelet-serving-cert-rotation.md`](docs/adr-0013-kubelet-serving-cert-rotation.md).
+
+The module now enables `machine.kubelet.extraConfig.serverTLSBootstrap: true` on all
+nodes (default-on) and seeds cert-approver as a controlplane `inlineManifest` (it was
+a namespace-only stub before). On a **fresh** cluster this is automatic. On an
+**already-bootstrapped** cluster adopting this tag:
+
+1. `tofu apply` re-pushes machine config (reconciled) → rotation turns on → kubelets
+   emit `kubernetes.io/kubelet-serving` CSRs. But Talos `inlineManifests` are
+   **create-only** — the cert-approver seed does **not** land on a cluster that
+   already bootstrapped. Without the approver those CSRs sit `Pending` and
+   metrics-server / `kubectl logs|exec|top` degrade.
+2. **Before/at the bump, ensure the approver runs.** The vendored seed manifest
+   (`tofu/modules/talos-cluster/manifests/cert-approver.yaml`) has its `Namespace`
+   document stripped (the namespace is seeded separately by the module), so do NOT
+   `kubectl apply` it directly on an existing cluster — it would land the
+   ServiceAccount/Deployment into a non-existent namespace. Instead use ONE of:
+   - keep your existing upstream cert-approver ArgoCD Application until the seed
+     path is confirmed on the next fresh node; OR
+   - apply the **complete upstream** manifest once (it is self-contained — namespace
+     included): `kubectl apply -f https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/v0.11.0/deploy/standalone-install.yaml`.
+3. **Resolve double-management** if you already wired the upstream approver via your
+   own Application: the base seed and your Application would both own the
+   cluster-scoped ClusterRole/ClusterRoleBinding. **Recommended (durable): remove your
+   Application** (let it prune) and let the seed own it. Keeping your Application works
+   only until the next control-plane node joins — a fresh CP node DOES receive the
+   inlineManifest seed, re-introducing the two-writer conflict on the cluster-scoped
+   objects. Any cluster that may add CP nodes should remove the Application.
+4. **Verify:** `kubectl get csr` shows `kubernetes.io/kubelet-serving` CSRs
+   `Approved,Issued` on controlplane AND worker nodes; metrics-server works without
+   `--kubelet-insecure-tls`.
+
+**Opt-out** (rare): add `- machine: { kubelet: { extraConfig: { serverTLSBootstrap: false } } }`
+to `config_patches` in your `cluster.yaml` (the base patch is placed FIRST, so the
+override wins; confirm on the homelab apply since the merge is server-side).
+
+**Approver upgrades on a running cluster are manual** (create-only seed):
+`kubectl -n kubelet-serving-cert-approver set image deployment/kubelet-serving-cert-approver cert-approver=<new-image@digest>`,
+or re-apply the upstream manifest. A plain `tofu apply` does NOT update an
+already-seeded approver.
+
+**Availability note (single replica):** the approver runs `replicas: 1` and (absent
+worker scheduling) on a control-plane node. A rolling OS upgrade / CP-node reboot
+(`talosctl upgrade`) evicts it; any kubelet serving-cert rotation during that window
+stalls until it reschedules and is Ready. Time mass-rotation-affecting upgrades
+accordingly, and wire a consumer alert on the count of `Pending`
+`kubernetes.io/kubelet-serving` CSRs (the approver exposes metrics on port 9090).
+
+**Security — REQUIRED for multi-tenant / untrusted-node clusters (not optional
+hardening):** the approver (alex1989hu) validates node identity (CN ==
+`system:node:<name>`, Org `system:nodes`) but does NOT bind requested DNS/IP SANs to
+the requesting node — a compromised node could mint a serving cert for another node's
+SANs (MITM). Rotation is now default-on cluster-wide, so every cluster ships this
+residual until you add it. **Add a consumer-cluster Kyverno policy enforcing
+SAN-to-node** for `kubernetes.io/kubelet-serving` CSRs (the base ships no admission
+policy — ADR-0004 puts the `kubelet-serving` policy surface in consumer clusters).
+See adr-0013 §Security.
 
 ---
 

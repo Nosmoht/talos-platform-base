@@ -83,3 +83,88 @@ output "argocd_namespace_labels" {
   EOT
   value       = var.deploy_argocd ? local.argocd_namespace_labels : {}
 }
+
+output "kubelet_serving_cert_rotation" {
+  description = <<-EOT
+    Whether the base kubelet serving-cert rotation patch
+    (machine.kubelet.extraConfig.serverTLSBootstrap) is wired into each role's
+    machine-config patch list. BOTH must be true — the serving cert is per
+    kubelet, so rotation is all-nodes. Binding point for the composition test
+    (red-green: drop [local.base_kubelet_rotation_patch] from a role's concat in
+    main.tf and that role flips to false). Secret-free: booleans only — the role
+    patch lists themselves embed the sops/ipsec seed Secrets and are NOT exposed.
+  EOT
+  value = {
+    controlplane = contains(local.controlplane_base_patches, local.base_kubelet_rotation_patch)
+    worker       = contains(local.worker_machine_config_patches, local.base_kubelet_rotation_patch)
+  }
+}
+
+output "cert_approver_namespace_labels" {
+  description = <<-EOT
+    Labels seeded onto the module-delivered kubelet-serving-cert-approver
+    namespace (PSA-restricted floor + the six recommended labels). Audit surface
+    + the binding point for the composition test's PSA-restricted assertion.
+    Non-sensitive (labels carry no secret).
+  EOT
+  value       = local.cert_approver_namespace_labels
+}
+
+output "cert_approver_seeded" {
+  description = <<-EOT
+    Whether the cert-approver inlineManifest seed is wired into the controlplane
+    machine-config patch list. Always true (unconditional substrate boot-glue);
+    red-green binding for the seed wiring. Secret-free (boolean).
+  EOT
+  value       = length(local.cert_approver_controlplane_patch) > 0 ? contains(local.controlplane_base_patches, local.cert_approver_controlplane_patch[0]) : false
+}
+
+output "kubelet_rotation_setting" {
+  description = <<-EOT
+    Decoded content of the base kubelet rotation patch — proves the mechanism is
+    the non-deprecated KubeletConfiguration field machine.kubelet.extraConfig.
+    serverTLSBootstrap (NOT the deprecated --rotate-server-certificates extraArgs
+    flag; repo directive: no deprecated options). Audit surface + the composition
+    test's mechanism-binding point. Secret-free.
+  EOT
+  value       = yamldecode(local.base_kubelet_rotation_patch)
+}
+
+output "cert_approver_approve_resource_names" {
+  description = <<-EOT
+    The resourceNames the vendored cert-approver ClusterRole's `approve` verb is
+    scoped to — MUST be exactly ["kubernetes.io/kubelet-serving"] (NOT ["*"], not
+    empty/absent). Parses the multi-doc vendored manifest and collects, across all
+    ClusterRole docs, the resourceNames of every rule whose verbs include "approve".
+    Binds the composition test to the RBAC SCOPE (H7) — a re-vendor that broadens
+    the signer scope or drops resourceNames changes this list and fails the test
+    (unlike a presence-only substring check, which the signer string survives in
+    the ClusterRole name / namespace / comments). Secret-free.
+  EOT
+  value = flatten([
+    for doc in split("---", file("${path.module}/manifests/cert-approver.yaml")) :
+    [
+      for rule in try(yamldecode(doc).rules, []) :
+      try(rule.resourceNames, [])
+      if contains(try(rule.verbs, []), "approve")
+    ]
+    if try(yamldecode(doc).kind, "") == "ClusterRole"
+  ])
+}
+
+output "controlplane_base_is_prefix_of_final" {
+  description = <<-EOT
+    True iff the assembled controlplane patch list (what
+    data.talos_machine_configuration.controlplane actually receives) BEGINS with
+    controlplane_base_patches — i.e. the sensitive argocd/cilium seeds are only
+    APPENDED after the base, never reordered before it or replacing it. The
+    rotation + cert-approver wiring outputs check the non-sensitive base sub-list
+    (a contains() over the full list would taint on the sops/ipsec seed Secrets and
+    a non-sensitive root output would be rejected); this output binds the LAST
+    assembly step so a future edit that drops or reorders the base prefix fails the
+    test. Secret-free (boolean — the sensitive tail is excluded by the slice).
+  EOT
+  value = slice(
+    local.controlplane_machine_config_patches, 0, length(local.controlplane_base_patches)
+  ) == local.controlplane_base_patches
+}

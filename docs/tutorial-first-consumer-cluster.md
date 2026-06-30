@@ -99,8 +99,9 @@ oras pull "ghcr.io/${OWNER}/talos-platform-base:$(cat .base-version)" \
 ls vendor/base/kubernetes/base/infrastructure/
 ```
 
-You should see the substrate component directories (`argocd/`,
-`cert-approver/`). The vendored tree is read-only by convention — do
+You should see the substrate component directory (`argocd/`). (`cert-approver`
+ships as a Talos `inlineManifest` seed in the OpenTofu module, not a kustomize
+component — adr-0013.) The vendored tree is read-only by convention — do
 not edit it. Everything that is not substrate lives in the separate
 [`talos-platform-apps`][substrate] catalog, which consumers self-serve
 from as signed OCI artifacts.
@@ -116,9 +117,9 @@ kubectl kustomize --enable-helm \
 
 A note on namespaces, before you write any: **platform namespaces are
 owned by the platform**. A consumer never authors a Namespace resource
-for `argocd`, `cert-approver`, or any other substrate component this
-base ships under
-`vendor/base/kubernetes/base/infrastructure/<component>/`. Each
+for `argocd` or any other substrate component this base ships under
+`vendor/base/kubernetes/base/infrastructure/<component>/` (cert-approver's
+namespace is platform-owned too, seeded by its Talos `inlineManifest`). Each
 per-component Application takes the vendor `namespace.yaml` from its
 `_rendered/manifests.yaml` and becomes the sole ArgoCD tracking-id
 owner of that namespace. Consumer overlays that declare a duplicate

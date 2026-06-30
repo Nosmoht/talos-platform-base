@@ -75,7 +75,7 @@ captured in a separate ADR with MADR 3.0 frontmatter:
 | **Goal 3** (no cluster identity) — base is fully cluster-agnostic | Rendered manifests pattern + consumer-side overlays own namespace creation | [`adr-0002-namespace-ownership-rendered-manifests.md`](docs/adr-0002-namespace-ownership-rendered-manifests.md) |
 
 A further decision — the substrate-only scope itself — keeps everything
-above Talos + Cilium + ArgoCD (plus `cert-approver` boot glue) out of the
+above Talos + Cilium + ArgoCD (plus `cert-approver` serving-cert glue) out of the
 base; non-substrate components live in the
 [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
 catalog (see
@@ -145,8 +145,8 @@ flowchart LR
     direction TB
     Make[Makefile<br/>validate-gitops<br/>argocd-bootstrap]
     Boot["kubernetes/bootstrap/<br/>(parameterized templates)"]
-    Infra["kubernetes/base/infrastructure/<br/>substrate components<br/>(argocd, cert-approver)"]
-    Talos["tofu/modules/talos-cluster/<br/>OpenTofu cluster-lifecycle module<br/>(per-class Image-Factory + bootstrap,<br/>Cilium + ArgoCD inlineManifest seeds)"]
+    Infra["kubernetes/base/infrastructure/<br/>substrate component<br/>(argocd)"]
+    Talos["tofu/modules/talos-cluster/<br/>OpenTofu cluster-lifecycle module<br/>(per-class Image-Factory + bootstrap,<br/>Cilium + ArgoCD + cert-approver inlineManifest seeds)"]
     Pol["policies/<br/>conftest Rego"]
     Scripts["scripts/<br/>render + lint helpers"]
     Docs["docs/<br/>ADRs + reference"]
@@ -162,9 +162,9 @@ flowchart LR
 
 | Subsystem | Purpose | Key files |
 |---|---|---|
-| `kubernetes/base/infrastructure/` | substrate components (`argocd`, `cert-approver`), each renderable in isolation | `<comp>/{application,kustomization,namespace,values}.yaml` |
+| `kubernetes/base/infrastructure/` | substrate component (`argocd`), renderable in isolation (cert-approver is a Talos seed, not here — adr-0013) | `argocd/{kustomization,namespace,values}.yaml` + `_rendered/` |
 | `kubernetes/bootstrap/` | parameterized ArgoCD + Cilium bootstrap templates (envsubst) | `argocd/*.tmpl`, `cilium/extras.yaml` |
-| `tofu/modules/talos-cluster/` | OpenTofu cluster-lifecycle module — sole Talos provisioning path (per-class Image-Factory installer, Cilium + ArgoCD inlineManifest seeds, machine config, bootstrap, kubeconfig) | `*.tf`, `examples/complete/` |
+| `tofu/modules/talos-cluster/` | OpenTofu cluster-lifecycle module — sole Talos provisioning path (per-class Image-Factory installer, Cilium + ArgoCD + cert-approver inlineManifest seeds, machine config, bootstrap, kubeconfig) | `*.tf`, `manifests/` (vendored cert-approver), `examples/complete/` |
 | `policies/` | conftest Rego — label hygiene over rendered manifests | `policies/conftest/*` |
 | Validation pipeline | kustomize render + conftest + kubeconform | `scripts/`, `Makefile`, `.github/workflows/gitops-validate.yml` |
 | OCI publish | cosign keyless + SLSA attestation + immutable GHCR tag | `.github/workflows/oci-publish.yml` |
@@ -199,7 +199,7 @@ for the verification recipe.
 
 ```text
 -1  ArgoCD AppProjects             (RBAC boundary)
- 0  Substrate components           (argocd, cert-approver)
+ 0  Substrate component            (argocd; cert-approver is a Talos inlineManifest seed, applied pre-ArgoCD)
  1  Apps (workload-layer, from the talos-platform-apps catalog)
 ```
 

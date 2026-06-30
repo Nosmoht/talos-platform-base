@@ -208,6 +208,20 @@ locals {
     }
   })
 
+  # All-nodes OVERRIDABLE base patch: enable kubelet serving-cert rotation via the
+  # KubeletConfiguration serverTLSBootstrap field — NOT the deprecated
+  # --rotate-server-certificates extraArgs flag (repo directive: no deprecated
+  # options; the flag is what Talos' metrics-server doc still shows). The kubelet
+  # then requests its serving cert via a kubernetes.io/kubelet-serving CSR instead
+  # of self-signing; cert-approver (seeded below) approves it. Placed FIRST in the
+  # config_patches concat (like base_cluster_patch) so a consumer can opt out via
+  # config_patches. extraConfig = KubeletConfiguration → genuine bool (no string
+  # quoting). Applied to BOTH controlplane and worker (the serving cert is per
+  # kubelet). See docs/adr-0013.
+  base_kubelet_rotation_patch = yamlencode({
+    machine = { kubelet = { extraConfig = { serverTLSBootstrap = true } } }
+  })
+
   # All-nodes AUTHORITATIVE patch (cni:none + proxy.disabled), gated on Cilium
   # delivery. Placed LAST so it wins over any caller config_patch: when
   # deploy_cilium is true, Flannel must NOT come up, so cni:none is intentionally
@@ -290,6 +304,71 @@ locals {
       )
     }
   })] : []
+}
+
+# ---------------------------------------------------------------------------
+# cert-approver (kubelet-serving CSR approver) — Talos boot-glue substrate,
+# delivered as a controlplane cluster.inlineManifest SEED. This is the
+# VENDORED-STATIC-MANIFEST seed pattern, distinct from the helm-render/freeze
+# pattern Cilium/ArgoCD use: alex1989hu ships raw YAML (no Helm chart), so the
+# pinned manifest is vendored at manifests/cert-approver.yaml and read via file().
+# UNCONDITIONAL (no toggle): cert-approver is always-on boot-glue and
+# cluster.schema.json's substrate block carries no knob for it. Pairs with
+# base_kubelet_rotation_patch — without the approver the serving CSRs that
+# serverTLSBootstrap triggers stay Pending. See docs/adr-0013.
+# ---------------------------------------------------------------------------
+locals {
+  # PSA-restricted floor + the six recommended labels for the module-seeded
+  # cert-approver namespace. The seed is the SOLE owner (no steady-state
+  # Application — the ADR-0002 sole-owner case, strictly simpler than the argocd
+  # two-writer transfer). restricted (NOT argocd's baseline): single-replica
+  # controller, no host access. managed-by=opentofu marks the seed as creator.
+  # The stale platform.io/network-* (PNI) labels of the retired
+  # infrastructure/cert-approver stub are intentionally dropped (PNI dissolved at
+  # v2.0.0, ADR-0004). version = the approver image tag (the SEED knob).
+  cert_approver_namespace_labels = {
+    "app.kubernetes.io/name"                     = "kubelet-serving-cert-approver"
+    "app.kubernetes.io/instance"                 = "kubelet-serving-cert-approver"
+    "app.kubernetes.io/version"                  = "0.11.0"
+    "app.kubernetes.io/component"                = "cert-approver"
+    "app.kubernetes.io/part-of"                  = "talos-platform-base"
+    "app.kubernetes.io/managed-by"               = "opentofu"
+    "pod-security.kubernetes.io/enforce"         = "restricted"
+    "pod-security.kubernetes.io/enforce-version" = "latest"
+    "pod-security.kubernetes.io/audit"           = "restricted"
+    "pod-security.kubernetes.io/audit-version"   = "latest"
+    "pod-security.kubernetes.io/warn"            = "restricted"
+    "pod-security.kubernetes.io/warn-version"    = "latest"
+  }
+
+  # Controlplane inlineManifest seed, in apply order: (1) the namespace as a
+  # SEPARATE entry FIRST (so the namespaced SA/Deployment land into an existing
+  # namespace — the same Namespace-first ordering the argocd seed relies on),
+  # (2) the vendored SA + signer-restricted ClusterRoles/Bindings + Service +
+  # Deployment. The approver is cluster-scoped → it approves serving CSRs from ALL
+  # nodes (incl. workers, which carry no inlineManifest seeds). Controlplane-only,
+  # like the Cilium/ArgoCD seeds. Unconditional (always seeded).
+  cert_approver_controlplane_patch = [yamlencode({
+    cluster = {
+      inlineManifests = [
+        {
+          name = "kubelet-serving-cert-approver-namespace"
+          contents = yamlencode({
+            apiVersion = "v1"
+            kind       = "Namespace"
+            metadata = {
+              name   = "kubelet-serving-cert-approver"
+              labels = local.cert_approver_namespace_labels
+            }
+          })
+        },
+        {
+          name     = "kubelet-serving-cert-approver"
+          contents = file("${path.module}/manifests/cert-approver.yaml")
+        },
+      ]
+    }
+  })]
 }
 
 # Cilium chart rendered locally into the inlineManifest (NO helm_release/apply).
@@ -522,6 +601,56 @@ resource "talos_machine_secrets" "this" {
 
 # Base machine configuration per role. Cluster-specific patches are layered on
 # by the caller via var.config_patches (all) and the role-specific lists.
+#
+# Patch ORDER (both roles): base_cluster_patch + base_kubelet_rotation_patch
+# (both overridable) FIRST so caller patches can override; base_cni_patch
+# (authoritative cni:none + proxy) + the inlineManifest seeds LAST so they merge
+# after caller patches and are not overridden. Rotation is all-nodes (the serving
+# cert is per kubelet); the cert-approver seed is controlplane-only (workers carry
+# no inlineManifest seeds — the controlplane approver approves worker serving CSRs
+# cluster-wide). Extracted into named locals so the composition test binds to the
+# EXACT list each data source receives (red-green: drop a patch and the matching
+# output flips).
+#
+# SENSITIVITY SPLIT: the controlplane list is assembled as a NON-sensitive base
+# (controlplane_base_patches) + the argocd/cilium seeds, which embed the
+# sops-age-key / cilium-ipsec-key Secrets (sensitive). OpenTofu taints any
+# expression derived from a sensitive value, so a contains() membership check over
+# the full list would taint the wiring booleans and a (non-sensitive) root output
+# would be rejected. The composition test therefore asserts wiring against
+# controlplane_base_patches (non-sensitive), and the real data-source list is
+# DERIVED from it so the red-green binding still holds. Talos COMBINES the
+# cluster.inlineManifests from multiple config_patches (append/merge, NOT
+# last-wins-replace — the pre-existing argocd+cilium two-seed arrangement proves
+# that in prod: both come up), and each seed here carries a UNIQUE manifest name,
+# so the seed ORDER among argocd/cilium/cert-approver does not affect correctness.
+# (The exact append-vs-merge-by-name semantic is a homelab-apply predicate, but
+# correctness holds under both; only last-wins-replace would break it, and prod
+# falsifies that.)
+locals {
+  controlplane_base_patches = concat(
+    [local.base_cluster_patch],
+    [local.base_kubelet_rotation_patch],
+    var.config_patches,
+    var.controlplane_config_patches,
+    local.base_cni_patch,
+    local.gateway_api_patch,
+    local.cert_approver_controlplane_patch,
+  )
+  controlplane_machine_config_patches = concat(
+    local.controlplane_base_patches,
+    local.argocd_controlplane_patch,
+    local.cilium_controlplane_patch,
+  )
+  worker_machine_config_patches = concat(
+    [local.base_cluster_patch],
+    [local.base_kubelet_rotation_patch],
+    var.config_patches,
+    var.worker_config_patches,
+    local.base_cni_patch,
+  )
+}
+
 data "talos_machine_configuration" "controlplane" {
   cluster_name       = var.cluster_name
   cluster_endpoint   = var.cluster_endpoint
@@ -529,18 +658,7 @@ data "talos_machine_configuration" "controlplane" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  # base_cluster_patch (overridable subnets/scheduling) FIRST so caller patches
-  # can override; base_cni_patch (authoritative cni:none + proxy) + ArgoCD/Cilium
-  # inlineManifests LAST so they merge after caller patches and are not overridden.
-  config_patches = concat(
-    [local.base_cluster_patch],
-    var.config_patches,
-    var.controlplane_config_patches,
-    local.base_cni_patch,
-    local.gateway_api_patch,
-    local.argocd_controlplane_patch,
-    local.cilium_controlplane_patch,
-  )
+  config_patches     = local.controlplane_machine_config_patches
 }
 
 data "talos_machine_configuration" "worker" {
@@ -550,14 +668,7 @@ data "talos_machine_configuration" "worker" {
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
-  # base_cluster_patch (overridable) FIRST; base_cni_patch (authoritative cni:none
-  # + proxy) LAST. Workers carry no inlineManifest seeds (controlplane-only).
-  config_patches = concat(
-    [local.base_cluster_patch],
-    var.config_patches,
-    var.worker_config_patches,
-    local.base_cni_patch,
-  )
+  config_patches     = local.worker_machine_config_patches
 }
 
 # Apply the config to each node. Patches arrive in TWO passes:

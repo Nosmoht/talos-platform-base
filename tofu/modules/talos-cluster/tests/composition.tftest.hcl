@@ -180,3 +180,72 @@ run "argocd_namespace_seed_carries_psa_floor_and_recommended_labels" {
     error_message = "AGENTS.md §Hard Constraints: all six app.kubernetes.io/* recommended labels must be seeded on the argocd namespace; missing: ${jsonencode(setsubtract(["app.kubernetes.io/name", "app.kubernetes.io/instance", "app.kubernetes.io/version", "app.kubernetes.io/component", "app.kubernetes.io/part-of", "app.kubernetes.io/managed-by"], keys(output.argocd_namespace_labels)))}"
   }
 }
+
+# Kubelet serving-cert rotation (serverTLSBootstrap) + cert-approver substrate
+# seed — docs/adr-0013. Binds both deliverables to the EXACT per-role patch lists
+# the data.talos_machine_configuration sources receive (via the named locals
+# main.tf exposes through outputs). Red-green: drop [local.base_kubelet_rotation_patch]
+# from a role's concat in main.tf and that role's rotation assert fails; drop
+# local.cert_approver_controlplane_patch from the controlplane concat and
+# cert_approver_seeded fails. NETWORK (Image Factory) like the other plan runs.
+run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
+  command = plan
+  variables {
+    nodes = [
+      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      { hostname = "w-1", ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    ]
+  }
+
+  # Rotation is per-kubelet -> must be wired into BOTH roles' patch lists.
+  assert {
+    condition     = output.kubelet_serving_cert_rotation.controlplane
+    error_message = "adr-0013 (plan Goal 1): kubelet serving-cert rotation must be wired into the controlplane machine-config patch list"
+  }
+  assert {
+    condition     = output.kubelet_serving_cert_rotation.worker
+    error_message = "adr-0013 (plan Goal 1): kubelet serving-cert rotation must be wired into the WORKER machine-config patch list — the serving cert is per kubelet, workers need it too"
+  }
+  # Mechanism: the non-deprecated KubeletConfiguration field, not the deprecated flag.
+  assert {
+    condition     = try(output.kubelet_rotation_setting.machine.kubelet.extraConfig.serverTLSBootstrap, null) == true
+    error_message = "adr-0013 + no-deprecated-options directive: rotation must use machine.kubelet.extraConfig.serverTLSBootstrap = true (KubeletConfiguration), NOT the deprecated --rotate-server-certificates extraArgs flag"
+  }
+  # No-deprecated-options directive (negative): the base rotation patch must NOT
+  # carry the deprecated extraArgs.rotate-server-certificates flag.
+  assert {
+    condition     = try(output.kubelet_rotation_setting.machine.kubelet.extraArgs["rotate-server-certificates"], null) == null
+    error_message = "no-deprecated-options directive: the deprecated machine.kubelet.extraArgs.rotate-server-certificates flag must be absent (use extraConfig.serverTLSBootstrap instead)"
+  }
+  # cert-approver seeded as a controlplane inlineManifest (unconditional substrate).
+  assert {
+    condition     = output.cert_approver_seeded
+    error_message = "adr-0013 (plan Goal 2): the cert-approver inlineManifest seed must be wired into the controlplane machine-config patch list"
+  }
+  # Seeded namespace runs under PSA restricted (single-replica controller, no host access).
+  assert {
+    condition     = lookup(output.cert_approver_namespace_labels, "pod-security.kubernetes.io/enforce", "<absent>") == "restricted"
+    error_message = "adr-0013 + namespace PSA floor: the cert-approver namespace must enforce PSA restricted; got '${lookup(output.cert_approver_namespace_labels, "pod-security.kubernetes.io/enforce", "<absent>")}'"
+  }
+  # AGENTS.md Hard Constraint: all six recommended labels on the seeded namespace.
+  assert {
+    condition = length(setsubtract(
+      ["app.kubernetes.io/name", "app.kubernetes.io/instance", "app.kubernetes.io/version", "app.kubernetes.io/component", "app.kubernetes.io/part-of", "app.kubernetes.io/managed-by"],
+      keys(output.cert_approver_namespace_labels)
+    )) == 0
+    error_message = "AGENTS.md §Hard Constraints: all six app.kubernetes.io/* recommended labels must be seeded on the cert-approver namespace; missing: ${jsonencode(setsubtract(["app.kubernetes.io/name", "app.kubernetes.io/instance", "app.kubernetes.io/version", "app.kubernetes.io/component", "app.kubernetes.io/part-of", "app.kubernetes.io/managed-by"], keys(output.cert_approver_namespace_labels)))}"
+  }
+  # H7: the approver's RBAC `approve` verb is signer-scoped to kubelet-serving ONLY
+  # (not "*", not empty) — binds the SCOPE, not mere signer-string presence.
+  assert {
+    condition     = output.cert_approver_approve_resource_names == ["kubernetes.io/kubelet-serving"]
+    error_message = "adr-0013 §Security (H7): the cert-approver ClusterRole `approve` verb must be resourceNames-scoped to exactly [kubernetes.io/kubelet-serving]; got ${jsonencode(output.cert_approver_approve_resource_names)}"
+  }
+  # The assembled controlplane list (the data source's actual input) must BEGIN with
+  # controlplane_base_patches, so the base-sublist wiring checks above transitively
+  # bind the final list (the sensitive argocd/cilium seeds are only appended).
+  assert {
+    condition     = output.controlplane_base_is_prefix_of_final
+    error_message = "adr-0013 §Validation: controlplane_machine_config_patches must begin with controlplane_base_patches (sensitive seeds appended after); the base-sublist wiring assertions only bind the final list if this prefix invariant holds"
+  }
+}

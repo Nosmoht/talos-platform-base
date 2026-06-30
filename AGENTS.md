@@ -16,8 +16,12 @@ the boundary is binary. `talos-platform-base` is the **substrate** — the
 cluster-agnostic floor every cluster needs. Its core is three **co-equal
 pillars: Talos + Cilium + ArgoCD**; the GitOps engine (ArgoCD) is as
 constitutive as the OS (Talos) and the CNI (Cilium), **not** a Day-2 app.
-`cert-approver` is the only addition, present solely as Talos boot-necessity
-glue (no CSR auto-approval → no bootable cluster), not a fourth pillar.
+`cert-approver` is the only addition, present solely as Talos serving-cert glue:
+it approves the `kubernetes.io/kubelet-serving` CSRs the base's default-on kubelet
+serving-cert rotation triggers (client-kubelet CSRs auto-approve, so the cluster
+boots without it; metrics-server / `kubectl logs|exec|top` need it). Delivered as
+a controlplane `inlineManifest` seed (`docs/adr-0013-kubelet-serving-cert-rotation.md`),
+not a fourth pillar.
 Because ArgoCD is core substrate it is delivered as part of standing the
 cluster up — **opt-out, never an opt-in Day-2 add-on**; classifying
 ArgoCD-bootstrap as Day-2 is a scoping error. `talos-platform-apps` is the
@@ -58,7 +62,7 @@ referencing both the cluster repo and this base.
 - YAML with 2-space indentation; keep keys and list nesting consistent with existing manifests.
 - One component per directory (`.../component/{application.yaml,kustomization.yaml,values.yaml}`).
 - Conventional Commit style with subsystem scope (`fix(cilium): …`, `chore(talos): …`).
-- Component directory name must equal the ArgoCD Application name (`cert-approver/`, not `csr-approver/`).
+- Component directory name must equal the ArgoCD Application name — exact match, no abbreviation or synonym.
 
 ## Testing Guidelines
 

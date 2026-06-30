@@ -35,7 +35,6 @@ command -v yq >/dev/null 2>&1 || { echo "ERROR: yq not found in PATH" >&2; exit 
 purpose_of() {
   case "$1" in
     argocd) echo "ArgoCD GitOps engine — reconciles every other component in this base from git source via Multi-Source Applications." ;;
-    cert-approver) echo "kubelet CSR approver — auto-approves serving certificates for kubelet so cert-manager can rotate them without manual intervention." ;;
     *) echo "Cluster-agnostic Helm base for $1." ;;
   esac
 }
