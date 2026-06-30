@@ -76,6 +76,10 @@ if [ -n "$expected_sha" ]; then
     echo "::error::chart sha256 mismatch for ${name}@${version}: lock=${expected_sha} actual=${actual_sha} (upstream republish or chart.lock.yaml drift)" >&2
     exit 2
   fi
+else
+  # Surface a missing pin instead of silently skipping verification (review L2):
+  # an unpinned tarball is rendered un-tamper-checked, so make the gap visible.
+  echo "::warning::chart.lock.yaml has no tgz_sha256 for ${name}@${version} — supply-chain digest verification skipped; pin it for reproducible, tamper-evident renders" >&2
 fi
 
 violations=0
