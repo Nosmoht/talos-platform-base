@@ -109,7 +109,7 @@ tasks:
   # gitops:* — kustomize manifest validation + rendered-manifests pipeline
   # ===========================================================================
   gitops:validate:
-    desc: kustomize-render + SOPS check + conftest + kubeconform across all rendered manifests
+    desc: kustomize-render + SOPS check + conftest + kubeconform + ArgoCD substrate invariants across all rendered manifests
     cmd: |
       set -e
       ./scripts/discover_kustomize_targets.sh
@@ -120,6 +120,7 @@ tasks:
         echo "kubeconform: $f"
         kubeconform -strict -ignore-missing-schemas "$f"
       done
+      ./scripts/check-argocd-substrate-invariants.sh
 
   gitops:render-component:
     desc: 'Stage-1+2 render of one component. Usage: task gitops:render-component COMPONENT=<name>'
