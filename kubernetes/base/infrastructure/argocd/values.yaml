@@ -2,6 +2,16 @@ crds:
   install: true
   keep: true
 
+# Substrate invariant: the bundled Dex server stays OFF in BOTH render paths
+# (this steady-state render AND the tofu bootstrap seed). Consumers wire ArgoCD
+# SSO via configs.cm `oidc.config` against their own external OIDC provider and
+# set no `dex.config`, so the chart-default dex-server (dex.enabled: true) is an
+# idle, connector-less Deployment/Service/RBAC in every cluster. Disabling it
+# also drops the `server.dex.server*` cmd-params. See README §Substrate
+# invariants and scripts/check-argocd-substrate-invariants.sh (the CI gate).
+dex:
+  enabled: false
+
 server:
   # Substrate ships ArgoCD self-contained — no cert-manager dependency on the
   # floor. argocd-server runs with server.insecure=true (see configs.params
@@ -53,7 +63,8 @@ configs:
     scopes: '[preferred_username]'
   params:
     server.insecure: true
-    server.dex.server.strict.tls: "false"
+    # No server.dex.server.* params: the bundled Dex is disabled (see `dex` above),
+    # so the cmd-params ConfigMap must carry no `server.dex.server*` data key.
     server.repo.server.strict.tls: "false"
   cm:
     admin.enabled: "true"
