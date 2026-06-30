@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 id: base:kubelet-serving-cert-rotation
 date: 2026-06-30
 deciders:

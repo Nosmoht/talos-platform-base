@@ -126,7 +126,7 @@ now has three sources (`base`, `apps`, `cluster`) instead of two.
 | `kubernetes/bootstrap/argocd/**` | Substrate |
 | `kubernetes/bootstrap/cilium/**` | Substrate |
 | `kubernetes/base/infrastructure/argocd/**` | Substrate (GitOps engine self-upgrade path) |
-| `kubernetes/base/infrastructure/cert-approver/**` | Substrate — Talos-specific bootstrap glue. **(SUPERSEDED 2026-06-30, adr-0013: relocated to a controlplane `inlineManifest` seed at `tofu/modules/talos-cluster/manifests/cert-approver.yaml`; this `infrastructure/` path no longer exists — see the amended invariant + disposition row below.)** Native Talos integration declined in siderolabs/talos#8523 as "not planned"; external approver remains the prescribed pattern as of Talos v1.12 (2025-12) |
+| `kubernetes/base/infrastructure/cert-approver/**` | Substrate — Talos-specific bootstrap glue. Native Talos integration declined in siderolabs/talos#8523 as "not planned"; external approver remains the prescribed pattern as of Talos v1.12 (2025-12) |
 | `policies/conftest/{k8s,argocd}.rego` | Substrate — generic K8s + ArgoCD hygiene, PNI-frei |
 | `docs/platform-hardware-features.yaml` + schema | Substrate — Talos Layer-C vocabulary |
 | Pre-commit hooks (gitleaks, mcp-config-portable, codex-config-placeholder-only) | Substrate |
