@@ -53,7 +53,7 @@ tutorial / how-to / reference / explanation.
 
 ## ADR Index (numeric)
 
-All 12 ADRs in chronological decision order (`0001..0012`):
+All 13 ADRs in chronological decision order (`0001..0013`):
 
 - [`adr-0001-multi-repo-platform-split.md`](adr-0001-multi-repo-platform-split.md)
 - [`adr-0002-namespace-ownership-rendered-manifests.md`](adr-0002-namespace-ownership-rendered-manifests.md)
@@ -67,6 +67,7 @@ All 12 ADRs in chronological decision order (`0001..0012`):
 - [`adr-0010-composition-logic-placement.md`](adr-0010-composition-logic-placement.md)
 - [`adr-0011-substrate-hard-constraints.md`](adr-0011-substrate-hard-constraints.md)
 - [`adr-0012-makefile-retirement.md`](adr-0012-makefile-retirement.md)
+- [`adr-0013-kubelet-serving-cert-rotation.md`](adr-0013-kubelet-serving-cert-rotation.md)
 
 ## See also
 

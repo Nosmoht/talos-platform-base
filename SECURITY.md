@@ -69,8 +69,11 @@ back to this repository's commit at the time of release.
 
 The base is substrate-only. It ships:
 
-- The substrate components `argocd/` and `cert-approver/`
-  (Helm values + namespace declarations).
+- The substrate component `argocd/` (Helm values + namespace declaration).
+  `cert-approver` is substrate too but ships as a Talos controlplane
+  `inlineManifest` seed in the OpenTofu module
+  (`tofu/modules/talos-cluster/manifests/cert-approver.yaml`), not a kustomize
+  component (adr-0013).
 - ArgoCD bootstrap templates (parameterized; rendered with envsubst).
 - Talos machine-config patches.
 - The `tofu/modules/talos-cluster` cluster-lifecycle module.

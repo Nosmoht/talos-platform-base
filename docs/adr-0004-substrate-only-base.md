@@ -323,9 +323,16 @@ The decision is **wrong** if any of the following surface within
 
 The mechanical check that confirms it stays correct: after v1.0.0
 lands, `find kubernetes/base/infrastructure -maxdepth 1 -mindepth 1
--type d | wc -l` returns ≤2 (only `argocd` and `cert-approver`).
-If any other directory appears, this ADR was violated by a later
-PR.
+-type d | wc -l` returns **1** (only `argocd`). `cert-approver` was
+relocated (2026-06-30, adr-0013) from a `kubernetes/base/infrastructure/`
+component to a controlplane Talos `inlineManifest` seed in the
+`tofu/modules/talos-cluster` module — it remains substrate, delivered
+by the module rather than as a rendered infrastructure component, so it
+no longer appears under `infrastructure/`. The frozen
+`.ci-renderable-components.txt` list (now `argocd` only) + the
+`gitops-validate.yml` `cmp` gate enforce this count mechanically. If any
+directory other than `argocd` appears here, this ADR was violated by a
+later PR.
 
 Re-review date: **2027-05-26** (12 months post-decision) or upon
 the next Talos major-version release, whichever is sooner.
@@ -408,7 +415,8 @@ Binding disposition of the 22 components (tracked per-component in
 
 | Component(s) | Disposition | Catalog sub-layer | Tracking |
 |---|---|---|---|
-| `argocd`, `cert-approver` | STAY substrate | — (base) | this ADR |
+| `argocd` | STAY substrate (rendered `infrastructure/` component) | — (base) | this ADR |
+| `cert-approver` | STAY substrate (relocated 2026-06-30 to a controlplane Talos `inlineManifest` seed in `tofu/modules/talos-cluster`; no longer an `infrastructure/` component) | — (base) | adr-0013 |
 | `platform-network-interface`, `kyverno` | DISSOLVE (not a move) | — | Conftest in apps-CI + Kyverno in consumers (ADR-0018) |
 | `external-secrets`, `cert-manager`, `vault-operator`, `vault-config-operator` | → catalog | `secrets` (existing) | apps epic #40 |
 | `kube-prometheus-stack` (catalog ships it split into prometheus / alertmanager / node-exporter / kube-state-metrics — a stack is a composition, not one chart), `loki`, `alloy`, `metrics-server`, `nvidia-dcgm-exporter` | → catalog | `observability` (existing; renamed from `monitoring`) | apps epic #38; nvidia-dcgm-exporter apps#61/#197 |

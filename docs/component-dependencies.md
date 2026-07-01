@@ -42,7 +42,7 @@ graph LR
   talos["Talos OS<br/>tofu/modules/talos-cluster"]:::boot
   cilium["Cilium CNI<br/>controlplane inlineManifest seed"]:::boot
   argocd["argocd<br/>GitOps engine"]:::boot
-  cert-approver["cert-approver<br/>kubelet-serving CSR auto-approve"]:::boot
+  cert-approver["cert-approver<br/>kubelet-serving CSR auto-approve<br/>controlplane inlineManifest seed"]:::boot
 
   talos --> cilium --> argocd
   talos --> cert-approver
@@ -57,7 +57,7 @@ graph LR
 | Edge | Source | File / line |
 |---|---|---|
 | `talos → cilium → argocd` | substrate boot order | `kubernetes/bootstrap/` README + tutorial step sequence; Cilium is a controlplane `inlineManifest` seed (`tofu/modules/talos-cluster`) |
-| `talos → cert-approver` | substrate boot necessity | no auto-approval → no kubelet serving certs → no bootable cluster |
+| `talos → cert-approver` | substrate (serving-cert rotation) | controlplane `inlineManifest` seed (`tofu/modules/talos-cluster`, adr-0013). Client-kubelet CSRs auto-approve so nodes join without it; the approver approves the `kubernetes.io/kubelet-serving` CSRs default-on `serverTLSBootstrap` triggers, so metrics-server / `kubectl logs\|exec\|top` work |
 | `argocd ⇢ ClusterIssuer 'vault-internal'` (opt-in, off by default) | `server.certificate` block, disabled | `kubernetes/base/infrastructure/argocd/values.yaml` sets `server.certificate.enabled: false`, so the default render emits no `Certificate`. A consumer overlay that re-enables it references a `cert-manager.io` `ClusterIssuer` named `vault-internal` — cert-manager + Vault are sourced from the apps catalog, not base-resident |
 
 The `argocd ⇢ vault-internal` edge is **opt-in and disabled by default**.

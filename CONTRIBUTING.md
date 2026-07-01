@@ -8,11 +8,13 @@ have hard rules.
 
 This repository is the **substrate-only platform base** for the
 Talos-on-Kubernetes deployment family. The substrate is Talos + Cilium +
-ArgoCD (three co-equal pillars) plus `cert-approver` as boot-glue;
-`kubernetes/base/infrastructure/` ships only `argocd/` and
-`cert-approver/`. Contributions that fit this scope:
+ArgoCD (three co-equal pillars) plus `cert-approver` as serving-cert glue (a
+Talos `inlineManifest` seed, not a rendered component — adr-0013);
+`kubernetes/base/infrastructure/` ships only `argocd/`. Contributions that fit
+this scope:
 
-- Improvements to the substrate components (`argocd/`, `cert-approver/`).
+- Improvements to the substrate components (`argocd/` rendered component; the
+  `cert-approver` seed at `tofu/modules/talos-cluster/manifests/`).
 - Improvements to the OpenTofu cluster-lifecycle module
   (`tofu/modules/talos-cluster`).
 - Improvements to the validation pipeline (kustomize, conftest,

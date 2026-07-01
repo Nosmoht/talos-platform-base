@@ -121,7 +121,7 @@
       "items": { "type": "object" }
     },
     "substrate": {
-      "description": "Layer-1 substrate delivery. Cilium + ArgoCD are the ONLY cluster.yaml-configurable substrate tools — the consumer yamldecode shim reads only substrate.cilium and substrate.argocd; cert-approver is always-on boot-glue with no cluster.yaml knobs. Closed (additionalProperties:false) so a typo'd sibling key (e.g. argo_cd:) is caught at lint time instead of being silently dropped by the shim. The per-tool inner long tail (values_override, encryption, …) stays loosely typed. A future configurable substrate tool ships a schema update in the same base OCI tag.",
+      "description": "Layer-1 substrate delivery. Cilium + ArgoCD are the ONLY cluster.yaml-configurable substrate tools — the consumer yamldecode shim reads only substrate.cilium and substrate.argocd; cert-approver is always-on substrate (a controlplane inlineManifest seed, adr-0013) with no cluster.yaml knobs. Closed (additionalProperties:false) so a typo'd sibling key (e.g. argo_cd:) is caught at lint time instead of being silently dropped by the shim. The per-tool inner long tail (values_override, encryption, …) stays loosely typed. A future configurable substrate tool ships a schema update in the same base OCI tag.",
       "type": "object",
       "additionalProperties": false,
       "properties": {

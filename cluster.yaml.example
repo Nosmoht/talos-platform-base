@@ -91,6 +91,12 @@ config_patches:
 controlplane_config_patches: [] # controlplane-only
 worker_config_patches: [] # worker-only
 
+# kubelet serving-cert rotation (machine.kubelet.extraConfig.serverTLSBootstrap) is a
+# BASE DEFAULT injected for ALL nodes by the module — do NOT set it here. The
+# base-seeded cert-approver approves the resulting kubernetes.io/kubelet-serving CSRs.
+# To opt OUT (rare): add `- machine: { kubelet: { extraConfig: { serverTLSBootstrap: false } } }`
+# to config_patches above (the base patch is placed FIRST, so a caller patch overrides it).
+
 # --- Substrate (Layer-1: Talos + Cilium + ArgoCD). Secrets are NOT here. ---
 substrate:
   cilium:

@@ -6,6 +6,7 @@
 ./tofu/modules/talos-cluster/helm/argocd-values.yaml
 ./tofu/modules/talos-cluster/helm/cilium-values.yaml
 ./tofu/modules/talos-cluster/main.tf
+./tofu/modules/talos-cluster/manifests/cert-approver.yaml
 ./tofu/modules/talos-cluster/outputs.tf
 ./tofu/modules/talos-cluster/test/README.md
 ./tofu/modules/talos-cluster/test/pki-reconcile-microtest.sh
