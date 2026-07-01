@@ -152,6 +152,25 @@ output "cert_approver_approve_resource_names" {
   ])
 }
 
+output "cert_approver_seed_missing_labels" {
+  description = <<-EOT
+    Per-object gaps in the six required app.kubernetes.io/* recommended labels
+    (AGENTS.md Hard Constraint) across every object in the vendored cert-approver
+    seed manifest. MUST be empty. The seed ships as a Talos inlineManifest, OUTSIDE
+    the kustomize render / conftest label gate, so this output binds the
+    all-resources label invariant to the seed at test time: dropping a label on a
+    re-vendor makes this list non-empty and fails the composition test. Secret-free.
+  EOT
+  value = flatten([
+    for doc in split("---", file("${path.module}/manifests/cert-approver.yaml")) :
+    setsubtract(
+      ["app.kubernetes.io/name", "app.kubernetes.io/instance", "app.kubernetes.io/version", "app.kubernetes.io/component", "app.kubernetes.io/part-of", "app.kubernetes.io/managed-by"],
+      keys(try(yamldecode(doc).metadata.labels, {}))
+    )
+    if try(yamldecode(doc).kind, "") != ""
+  ])
+}
+
 output "controlplane_base_is_prefix_of_final" {
   description = <<-EOT
     True iff the assembled controlplane patch list (what

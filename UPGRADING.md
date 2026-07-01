@@ -110,11 +110,18 @@ a namespace-only stub before). On a **fresh** cluster this is automatic. On an
      included): `kubectl apply -f https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/v0.11.0/deploy/standalone-install.yaml`.
 3. **Resolve double-management** if you already wired the upstream approver via your
    own Application: the base seed and your Application would both own the
-   cluster-scoped ClusterRole/ClusterRoleBinding. **Recommended (durable): remove your
-   Application** (let it prune) and let the seed own it. Keeping your Application works
-   only until the next control-plane node joins — a fresh CP node DOES receive the
-   inlineManifest seed, re-introducing the two-writer conflict on the cluster-scoped
-   objects. Any cluster that may add CP nodes should remove the Application.
+   cluster-scoped ClusterRole/ClusterRoleBinding. Resolve it **without pruning the
+   running approver** — the create-only seed does NOT re-create it on an
+   already-bootstrapped cluster (step 1), so a cascading delete of your Application
+   would leave `serverTLSBootstrap` on with NO approver and kubelet-serving CSRs stuck
+   `Pending`. **Orphan** the resources instead: remove the
+   `resources-finalizer.argocd.argoproj.io` finalizer from your Application (and/or set
+   `spec.syncPolicy.automated.prune: false`) *before* deleting it, so ArgoCD leaves the
+   live cert-approver in place rather than pruning it. The seed becomes the owner only
+   when a control-plane node is next (re-)bootstrapped and receives the inlineManifest —
+   server-side apply then reconciles the identical objects, so there is no lasting
+   two-writer conflict once the Application is gone. Do NOT rely on the seed to recreate
+   a pruned approver on existing nodes.
 4. **Verify:** `kubectl get csr` shows `kubernetes.io/kubelet-serving` CSRs
    `Approved,Issued` on controlplane AND worker nodes; metrics-server works without
    `--kubelet-insecure-tls`.

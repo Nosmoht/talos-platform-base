@@ -248,4 +248,13 @@ run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
     condition     = output.controlplane_base_is_prefix_of_final
     error_message = "adr-0013 §Validation: controlplane_machine_config_patches must begin with controlplane_base_patches (sensitive seeds appended after); the base-sublist wiring assertions only bind the final list if this prefix invariant holds"
   }
+  # AGENTS.md Hard Constraint (all six app.kubernetes.io/* labels on all resources):
+  # the seed ships as a Talos inlineManifest, OUTSIDE the kustomize render/conftest
+  # label gate, so bind the invariant to the vendored manifest here. Red-green: drop
+  # any of the six labels from any object in cert-approver.yaml and this list becomes
+  # non-empty. Codex cross-family review [P2], 2026-07-01.
+  assert {
+    condition     = length(output.cert_approver_seed_missing_labels) == 0
+    error_message = "AGENTS.md §Hard Constraints: every object in the cert-approver seed must carry all six app.kubernetes.io/* recommended labels; object-flattened missing set: ${jsonencode(output.cert_approver_seed_missing_labels)}"
+  }
 }
