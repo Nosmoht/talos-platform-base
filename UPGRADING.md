@@ -91,40 +91,42 @@ so the folded `bootstrap:*` / `cluster:*` / `gitops:*` tasks run inside
 
 The module now enables `machine.kubelet.extraConfig.serverTLSBootstrap: true` on all
 nodes (default-on) and seeds cert-approver as a controlplane `inlineManifest` (it was
-a namespace-only stub before). On a **fresh** cluster this is automatic. On an
-**already-bootstrapped** cluster adopting this tag:
+a namespace-only stub before). On a **fresh** cluster this is automatic.
 
-1. `tofu apply` re-pushes machine config (reconciled) → rotation turns on → kubelets
-   emit `kubernetes.io/kubelet-serving` CSRs. But Talos `inlineManifests` are
-   **create-only** — the cert-approver seed does **not** land on a cluster that
-   already bootstrapped. Without the approver those CSRs sit `Pending` and
-   metrics-server / `kubectl logs|exec|top` degrade.
-2. **Before/at the bump, ensure the approver runs.** The vendored seed manifest
-   (`tofu/modules/talos-cluster/manifests/cert-approver.yaml`) has its `Namespace`
-   document stripped (the namespace is seeded separately by the module), so do NOT
-   `kubectl apply` it directly on an existing cluster — it would land the
-   ServiceAccount/Deployment into a non-existent namespace. Instead use ONE of:
-   - keep your existing upstream cert-approver ArgoCD Application until the seed
-     path is confirmed on the next fresh node; OR
-   - apply the **complete upstream** manifest once (it is self-contained — namespace
-     included): `kubectl apply -f https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/v0.11.0/deploy/standalone-install.yaml`.
-3. **Resolve double-management** if you already wired the upstream approver via your
-   own Application: the base seed and your Application would both own the
-   cluster-scoped ClusterRole/ClusterRoleBinding. Resolve it **without pruning the
-   running approver** — the create-only seed does NOT re-create it on an
-   already-bootstrapped cluster (step 1), so a cascading delete of your Application
-   would leave `serverTLSBootstrap` on with NO approver and kubelet-serving CSRs stuck
-   `Pending`. **Orphan** the resources instead: remove the
-   `resources-finalizer.argocd.argoproj.io` finalizer from your Application (and/or set
-   `spec.syncPolicy.automated.prune: false`) *before* deleting it, so ArgoCD leaves the
-   live cert-approver in place rather than pruning it. The seed becomes the owner only
-   when a control-plane node is next (re-)bootstrapped and receives the inlineManifest —
-   server-side apply then reconciles the identical objects, so there is no lasting
-   two-writer conflict once the Application is gone. Do NOT rely on the seed to recreate
-   a pruned approver on existing nodes.
-4. **Verify:** `kubectl get csr` shows `kubernetes.io/kubelet-serving` CSRs
-   `Approved,Issued` on controlplane AND worker nodes; metrics-server works without
-   `--kubelet-insecure-tls`.
+On an **already-bootstrapped** cluster adopting this tag, the approver seed **also
+lands automatically** via the config-apply reconcile. Talos reconciles the manifests in
+the machine config on *every change*, not only at initial bootstrap, and *creates* any
+manifest whose resources do not yet exist ([Talos docs — inlineManifests](https://docs.siderolabs.com/kubernetes-guides/advanced-guides/inlinemanifests)).
+So `tofu apply` re-pushes the machine config → rotation turns on → kubelets emit
+`kubernetes.io/kubelet-serving` CSRs → the newly-seeded approver (created by the same
+reconcile) approves them. **Empirically confirmed** on a live single-node,
+already-bootstrapped cluster (base v2.0.0 → v3.0.0 driven by a Crossplane self-heal
+reconcile): the approver pod came up and the CSRs went `Approved,Issued` with **no
+manual step**. Talos's "create-only" semantics mean it never *updates or deletes* a
+resource it already created (see "Approver upgrades" below) — NOT that a new manifest is
+skipped on a running cluster.
+
+1. **Verify after the apply:** `kubectl get csr` shows `kubernetes.io/kubelet-serving`
+   CSRs `Approved,Issued` on controlplane AND worker nodes; metrics-server works without
+   `--kubelet-insecure-tls`; the `kubelet-serving-cert-approver` Deployment is Running.
+2. **Fallback — only if the seed does not land** (CSRs stuck `Pending`, e.g. an older
+   Talos without reconcile-on-change): apply the **complete upstream** manifest once
+   (self-contained, namespace included):
+   `kubectl apply -f https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/v0.11.0/deploy/standalone-install.yaml`.
+   Do NOT `kubectl apply` the vendored seed manifest
+   (`tofu/modules/talos-cluster/manifests/cert-approver.yaml`) directly — its
+   `Namespace` document is stripped (the module seeds the namespace separately), so it
+   would land the ServiceAccount/Deployment into a non-existent namespace.
+3. **If you already wired an upstream cert-approver Application** (pre-v3.0.0), you now
+   have two owners of the cluster-scoped ClusterRole/ClusterRoleBinding. The already-
+   existing objects are not re-created or mutated by the seed (create-only applies to
+   *existing* resources), so resolve the double-management **without pruning the running
+   approver**: **orphan** your Application — remove the
+   `resources-finalizer.argocd.argoproj.io` finalizer (and/or set
+   `spec.syncPolicy.automated.prune: false`) *before* deleting it — so ArgoCD leaves the
+   live approver in place. Server-side apply reconciles the identical objects; a
+   cascading prune would instead leave `serverTLSBootstrap` on with NO approver and
+   CSRs stuck `Pending`.
 
 **Opt-out** (rare): add `- machine: { kubelet: { extraConfig: { serverTLSBootstrap: false } } }`
 to `config_patches` in your `cluster.yaml` (the base patch is placed FIRST, so the
