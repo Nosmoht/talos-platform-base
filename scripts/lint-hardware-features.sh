@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # lint-hardware-features.sh — schema validation for the Layer-C Hardware
-# Features Registry (docs/platform-hardware-features.yaml) against the
-# JSON Schema (docs/schemas/hardware-features.schema.json).
+# Features Registry (platform-hardware-features.yaml) against the
+# JSON Schema (schemas/hardware-features.schema.json).
 #
-# Per docs/adr-0003-three-layer-capability-architecture.md §Decision Drivers D6
+# Per knowledge/decisions/0003-three-layer-capability-architecture.md §Decision Drivers D6
 # and issue #61 Phase 4 ACs. Validates the Layer-C registry that survives the
 # substrate-only ablation. Uses check-jsonschema (Python, draft 2020-12 capable).
 #
@@ -19,8 +19,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REGISTRY_FILE="${1:-$REPO_ROOT/docs/platform-hardware-features.yaml}"
-SCHEMA_FILE="$REPO_ROOT/docs/schemas/hardware-features.schema.json"
+REGISTRY_FILE="${1:-$REPO_ROOT/platform-hardware-features.yaml}"
+SCHEMA_FILE="$REPO_ROOT/schemas/hardware-features.schema.json"
 
 case "${1:-}" in
   --help|-h)

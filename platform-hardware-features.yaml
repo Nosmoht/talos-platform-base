@@ -10,9 +10,9 @@
 # and at design time by humans and agentic tools.
 #
 # See:
-#   - docs/adr-0003-three-layer-capability-architecture.md  (architecture rationale; Layer C)
-#   - docs/adr-0009-node-capability-composition.md          (the composition model that consumes these)
-#   - docs/schemas/hardware-features.schema.json       (JSON Schema for this file)
+#   - knowledge/decisions/0003-three-layer-capability-architecture.md  (architecture rationale; Layer C)
+#   - knowledge/decisions/0009-node-capability-composition.md          (the composition model that consumes these)
+#   - schemas/hardware-features.schema.json             (JSON Schema for this file)
 #
 # Schema (per-entry):
 #   - id                  kebab-case identifier (matches `^[a-z0-9-]+$`)

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Nosmoht/talos-platform-base/docs/schemas/hardware-features.schema.json",
+  "$id": "https://github.com/Nosmoht/talos-platform-base/schemas/hardware-features.schema.json",
   "title": "Platform Hardware Features Registry",
   "description": "Layer C — static catalog of atomic hardware features. Referenced by Layer A `requires_hardware_features[]` and by consumer-side `cluster.yaml` composite capabilities via `requires_features[]`.",
   "type": "object",

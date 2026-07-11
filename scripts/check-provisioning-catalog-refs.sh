@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-provisioning-catalog-refs.sh — cross-reference gate for the γ'
-# node-capability-composition model (docs/adr-0009-node-capability-composition.md).
+# node-capability-composition model (knowledge/decisions/0009-node-capability-composition.md).
 #
 # Asserts the load-bearing equivalence the composition guards rely on:
 #   { atoms a base provisioning profile `provides` }  ==
@@ -22,7 +22,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROFILES="$REPO_ROOT/tofu/modules/talos-cluster/profiles.tf"
-REGISTRY="$REPO_ROOT/docs/platform-hardware-features.yaml"
+REGISTRY="$REPO_ROOT/platform-hardware-features.yaml"
 
 command -v yq >/dev/null 2>&1 || { echo "ERROR: yq (mikefarah v4+) required" >&2; exit 2; }
 [ -f "$PROFILES" ] || { echo "ERROR: catalog not found: $PROFILES" >&2; exit 2; }
@@ -59,7 +59,7 @@ if [ "$registry_atoms" != "$catalog_atoms" ]; then
   echo "$registry_atoms" | sed 's/^/  /' >&2
   echo "--- catalog (profile provides) ---" >&2
   echo "$catalog_atoms" | sed 's/^/  /' >&2
-  echo "Reconcile docs/platform-hardware-features.yaml and tofu/modules/talos-cluster/profiles.tf." >&2
+  echo "Reconcile platform-hardware-features.yaml and tofu/modules/talos-cluster/profiles.tf." >&2
   exit 1
 fi
 
