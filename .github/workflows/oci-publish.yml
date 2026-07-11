@@ -113,7 +113,7 @@ jobs:
         # Anchors signing to the workflow's GitHub OIDC token identity
         # (the workflow ref, the repository, and the tag pattern).
         # Verify command + identity regex documented in
-        # docs/oci-artifact-verification.md.
+        # knowledge/workflows/verify-release.md.
         run: |
           set -euo pipefail
           OWNER_LC='${{ steps.push.outputs.owner_lc }}'

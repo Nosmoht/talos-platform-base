@@ -13,12 +13,17 @@
 /CODEOWNERS                                      @nosmoht
 /MAINTAINERS.md                                  @nosmoht
 
-# ADRs — decision-grade documents.
-/docs/adr-*.md                                   @nosmoht
+# Decision records — decision-grade documents.
+/knowledge/decisions/                            @nosmoht
+
+# Machine-consumed contracts — schema/registry surfaces.
+/schemas/                                        @nosmoht
+/contracts/                                      @nosmoht
+/platform-hardware-features.yaml                 @nosmoht
 
 # OCI publish surface — supply-chain critical.
 /.github/workflows/oci-publish.yml               @nosmoht
-/docs/oci-artifact-verification.md               @nosmoht
+/knowledge/workflows/verify-release.md           @nosmoht
 
 # Release automation surface — supply-chain critical. These files decide what
 # gets versioned, packaged, and signed; a change here can ship/sign content

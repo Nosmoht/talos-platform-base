@@ -21,7 +21,7 @@ append_targets_from_root() {
     dir=$(dirname "$kfile")
 
     case "$dir" in
-      */.git/*|docs/*|*/docs/*|talos/generated/*|*/talos/generated/*|vendor/*|*/vendor/*|third_party/*|*/third_party/*)
+      */.git/*|knowledge/*|*/knowledge/*|talos/generated/*|*/talos/generated/*|vendor/*|*/vendor/*|third_party/*|*/third_party/*)
         continue
         ;;
     esac

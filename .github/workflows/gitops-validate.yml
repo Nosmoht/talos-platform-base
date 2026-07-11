@@ -246,7 +246,7 @@ jobs:
           # (env/arg error — schema/file missing, no check-jsonschema). Treating
           # any non-zero as "rejected" lets a broken toolchain pass vacuously.
           rc=0
-          scripts/lint-cluster-yaml.sh docs/schemas/fixtures/cluster.invalid.yaml || rc=$?
+          scripts/lint-cluster-yaml.sh schemas/fixtures/cluster.invalid.yaml || rc=$?
           if [ "$rc" -eq 0 ]; then
             echo "FAIL: malformed cluster.yaml fixture passed schema validation" >&2
             exit 1

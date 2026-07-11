@@ -26,7 +26,7 @@ The base provisions **Talos plus its three co-equal substrate pillars
 module disables the Talos-default Flannel and seeds Cilium (CNI) and
 ArgoCD as Talos `inlineManifest`s at bootstrap; everything above the
 substrate is GitOps-reconciled. See
-[`docs/day-zero-pattern.md`](docs/day-zero-pattern.md) for the layered
+[`knowledge/architecture/day-zero-bootstrap.md`](knowledge/architecture/day-zero-bootstrap.md) for the layered
 bring-up and the documented bootstrap exceptions.
 
 ## The idea
@@ -45,7 +45,7 @@ secrets, storage, the network-trust contract — lives in the separate
 [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
 catalog as independently versioned, signed OCI components that consumers
 self-serve. See
-[`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) for
+[`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md) for
 the boundary.
 
 ## At a glance
@@ -95,7 +95,7 @@ receives a frozen tree containing:
   [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
   catalog as independently versioned, signed OCI artifacts; consumers
   self-serve from there (see
-  [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md)).
+  [`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md)).
 - **Per-class Talos machine-config**, derived by the module from the
   `cluster.yaml` classes (architecture, system extensions, optional
   ARM/SBC overlay, per-class and per-node patches) — `cni:none` is forced
@@ -142,7 +142,7 @@ interface (worked example:
 Talos, installs Cilium as the CNI, and seeds ArgoCD (namespace + app +
 CRDs). The remaining step is wiring ArgoCD to your cluster repo via the
 root App-of-Apps — see
-[`docs/day-zero-pattern.md`](docs/day-zero-pattern.md) for the bootstrap
+[`knowledge/architecture/day-zero-bootstrap.md`](knowledge/architecture/day-zero-bootstrap.md) for the bootstrap
 detail. (`task bootstrap:argocd` only seeds the consumer-identity
 App-of-Apps root — the root AppProject + Application — after waiting on
 the module-seeded ArgoCD CRDs + server; the former Helm-based
@@ -170,9 +170,9 @@ spec:
 ```
 
 A worked walk-through (30 minutes, end-to-end):
-[`docs/tutorial-first-consumer-cluster.md`](docs/tutorial-first-consumer-cluster.md).
+[`knowledge/workflows/first-consumer-cluster.md`](knowledge/workflows/first-consumer-cluster.md).
 The deeper rationale for the two-mechanism split:
-[`docs/adr-0001-multi-repo-platform-split.md`](docs/adr-0001-multi-repo-platform-split.md).
+[`knowledge/decisions/0001-multi-repo-platform-split.md`](knowledge/decisions/0001-multi-repo-platform-split.md).
 
 ## Verify
 
@@ -187,7 +187,7 @@ to the GitHub OIDC token identity of `.github/workflows/oci-publish.yml`:
 
 The full five-step verification recipe (signature → digest →
 provenance → SBOM → checksums) is in
-[`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md).
+[`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
 Consumers are expected to run all five steps in their own CI before any
 vendored base reaches a live cluster. Failure of any step is fail-closed:
 do not vendor.
@@ -207,7 +207,7 @@ do not vendor.
   [`ARCHITECTURE.md §11`](ARCHITECTURE.md#11-risks-and-technical-debt).
   Read that before adopting the base in a regulated environment.
 - **OpenSSF Best Practices Badge** is self-assessed in
-  [`docs/openssf-best-practices.md`](docs/openssf-best-practices.md);
+  [`knowledge/project/openssf-self-assessment.md`](knowledge/project/openssf-self-assessment.md);
   external enrolment is pending.
 
 The audience for this repo is platform operators evaluating or adopting
@@ -218,16 +218,16 @@ the base, not application developers or end-users.
 | Read this | If you want to |
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Understand the system (C4 L1+L2 with arc42 §1, 2, 4, 10, 11, 12) |
-| [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) | Understand the substrate / apps-catalog boundary |
-| [`docs/tutorial-first-consumer-cluster.md`](docs/tutorial-first-consumer-cluster.md) | Bootstrap a second cluster from scratch |
-| [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) | Verify a release before vendoring |
+| [`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md) | Understand the substrate / apps-catalog boundary |
+| [`knowledge/workflows/first-consumer-cluster.md`](knowledge/workflows/first-consumer-cluster.md) | Bootstrap a second cluster from scratch |
+| [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md) | Verify a release before vendoring |
 | [`UPGRADING.md`](UPGRADING.md) | Apply a version bump |
 | [`CHANGELOG.md`](CHANGELOG.md) | Read per-release notes |
 | [`SECURITY.md`](SECURITY.md) | Report a vulnerability |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Open a PR |
 | [`AGENTS.md`](AGENTS.md) | Configure an agentic tool against the repo |
 
-Full Diátaxis index: [`docs/README.md`](docs/README.md).
+Full knowledge-bundle index (OKF v0.1): [`knowledge/index.md`](knowledge/index.md).
 
 ## Contributing
 

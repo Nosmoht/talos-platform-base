@@ -48,7 +48,7 @@ These run automatically; PR is blocked until all are green.
 ## Documentation
 
 - [ ] CHANGELOG.md `[Unreleased]` updated (Added / Changed / Deprecated / Removed / Fixed / Security)
-- [ ] If a public interface changed (Helm values, `tofu/modules/talos-cluster` interface, Layer-C hardware-feature schema, hard constraints): either an ADR or a `docs/*.md` reference updated
+- [ ] If a public interface changed (Helm values, `tofu/modules/talos-cluster` interface, Layer-C hardware-feature schema, hard constraints): either a decision record (`knowledge/decisions/`) or the matching `knowledge/` concept updated
 
 ## Consumer impact
 

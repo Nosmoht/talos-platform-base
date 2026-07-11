@@ -1,0 +1,11 @@
+# openknowledge CLI configuration for the knowledge/ OKF bundle.
+#
+# link-target is raised from the spec default (warn) to error so that
+# `openknowledge validate` is a BINDING intra-bundle link gate: a broken
+# relative link or a link escaping the bundle root fails validation
+# (exit 1). Consequence for authors: files outside knowledge/ are cited
+# as inline code spans, never markdown-linked.
+# Verified empirically against openknowledge v0.5.0 (2026-07-11).
+
+[validation.rules]
+link-target = "error"

@@ -217,7 +217,7 @@ locals {
   # config_patches concat (like base_cluster_patch) so a consumer can opt out via
   # config_patches. extraConfig = KubeletConfiguration → genuine bool (no string
   # quoting). Applied to BOTH controlplane and worker (the serving cert is per
-  # kubelet). See docs/adr-0013.
+  # kubelet). See knowledge/decisions/0013-kubelet-serving-cert-rotation.md.
   base_kubelet_rotation_patch = yamlencode({
     machine = { kubelet = { extraConfig = { serverTLSBootstrap = true } } }
   })
@@ -315,7 +315,7 @@ locals {
 # UNCONDITIONAL (no toggle): cert-approver is always-on boot-glue and
 # cluster.schema.json's substrate block carries no knob for it. Pairs with
 # base_kubelet_rotation_patch — without the approver the serving CSRs that
-# serverTLSBootstrap triggers stay Pending. See docs/adr-0013.
+# serverTLSBootstrap triggers stay Pending. See knowledge/decisions/0013-kubelet-serving-cert-rotation.md.
 # ---------------------------------------------------------------------------
 locals {
   # PSA-restricted floor + the six recommended labels for the module-seeded
@@ -815,7 +815,7 @@ data "talos_cluster_health" "this" {
 # itself); a third-party `kubectl_manifest` provider trades a kubectl binary for a
 # third-party provider dependency + ~1.8 MB of state bloat in a substrate module
 # (worse footprint). Full rationale + alternatives:
-# docs/adr-0006-opentofu-cluster-lifecycle.md (2026-06-03 amendment) and the README.
+# knowledge/decisions/0006-opentofu-cluster-lifecycle.md (2026-06-03 amendment) and the README.
 # CONTRACT: every apply host MUST ship `kubectl` — a workstation has it via
 # devbox; the Crossplane provider-terraform runner image MUST include it.
 # OPEN: #104 item 2 (boot proof — CP boots, ArgoCD pods Ready once CRDs land)

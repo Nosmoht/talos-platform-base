@@ -20,7 +20,7 @@ this scope:
 - Improvements to the validation pipeline (kustomize, conftest,
   kubeconform).
 - Layer-C node-capability / hardware-feature work
-  (`docs/platform-hardware-features.yaml`, the provisioning-profile
+  (`platform-hardware-features.yaml`, the provisioning-profile
   catalog, `scripts/lint-hardware-features.sh`,
   `scripts/check-provisioning-catalog-refs.sh`).
 - Talos machine-config patches that apply to *all* clusters.
@@ -31,30 +31,31 @@ Contributions that do NOT fit:
 - Non-substrate platform components (observability, storage, the PNI /
   capability-network contract, application-supporting services) — these
   live in the [`talos-platform-apps`][apps] catalog as independently
-  versioned, signed OCI artifacts. See [`docs/adr-0004-substrate-only-base.md`][ablation].
+  versioned, signed OCI artifacts. See [`knowledge/decisions/0004-substrate-only-base.md`][ablation].
 - Cluster identity (node IPs, FQDNs, SOPS keys, OIDC issuers) — open in a
   consumer cluster repo instead.
 - Per-cluster overlays or patches.
 - Application-workload manifests.
 
 [apps]: https://github.com/devobagmbh/talos-platform-apps
-[ablation]: docs/adr-0004-substrate-only-base.md
+[ablation]: knowledge/decisions/0004-substrate-only-base.md
 
 ## Before you start
 
 1. **Read [`AGENTS.md`](AGENTS.md)**. It is the canonical SOT and lists
    hard constraints that fail PR checks if violated.
 2. **Read [`ARCHITECTURE.md`](ARCHITECTURE.md)** for the L1/L2 view.
-3. **Read [`docs/adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md)**
-   and [`docs/adr-0003-three-layer-capability-architecture.md`](docs/adr-0003-three-layer-capability-architecture.md)
+3. **Read [`knowledge/decisions/0009-node-capability-composition.md`](knowledge/decisions/0009-node-capability-composition.md)**
+   and [`knowledge/decisions/0003-three-layer-capability-architecture.md`](knowledge/decisions/0003-three-layer-capability-architecture.md)
    if your change touches per-node provisioning, Layer-C hardware
    features, or the `tofu/modules/talos-cluster` interface.
-4. **Read the relevant ADRs** in `docs/adr-*.md`.
+4. **Read the relevant decision records** in `knowledge/decisions/` (index:
+   [`knowledge/decisions/index.md`](knowledge/decisions/index.md)).
 
 ## Issue → PR workflow
 
 Issues are the primary entry point. State-machine and labels are
-described in [`docs/issue-workflow.md`](docs/issue-workflow.md).
+described in [`knowledge/workflows/issue-lifecycle.md`](knowledge/workflows/issue-lifecycle.md).
 
 - Pick up `status: ready` issues only — these have passed R1–R5 readiness.
 - Open a draft PR early; mark `Ready for review` once `task gitops:validate`
@@ -83,7 +84,7 @@ footer or a `type!:` marker** — a prose `**BREAKING**` line in the body is
 *not* recognised by the release tool. This matters for the AGENTS.md Hard
 Constraint that a breaking change to base Helm values bumps MAJOR: add the
 footer, or the change ships as a non-breaking release. See
-[`docs/release-automation.md`](docs/release-automation.md).
+[`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md).
 
 ## PR expectations
 
@@ -125,7 +126,7 @@ These are required PR checks and will block merge.
 
 > The PNI / capability-first network-trust contract no longer lives in
 > this base — it dissolved out of the substrate (see
-> [`docs/adr-0004-substrate-only-base.md`][ablation]) and is now realized by
+> [`knowledge/decisions/0004-substrate-only-base.md`][ablation]) and is now realized by
 > apps-CI Conftest plus consumer-cluster Kyverno, with the catalog in
 > [`talos-platform-apps`][apps]. Cross-namespace reachability rules
 > belong there, not in a base PR.
@@ -137,12 +138,13 @@ If your change touches a public interface (Helm values, the
 hard constraints), update **at minimum**:
 
 - `CHANGELOG.md` (Unreleased section — Added / Changed / Deprecated / Removed / Fixed / Security).
-- Either an ADR (decision-grade) or the matching `docs/*.md` reference.
+- Either a decision record (decision-grade, `knowledge/decisions/`) or the
+  matching `knowledge/` concept.
 
 If your change adds, removes, or renames a component in
 `kubernetes/base/infrastructure/`, or changes a service-DNS or
 `ClusterIssuer` cross-reference between components, also update
-[`docs/component-dependencies.md`](docs/component-dependencies.md).
+[`knowledge/architecture/substrate.md`](knowledge/architecture/substrate.md).
 The graph is human-maintained — no render script enforces it; PR
 reviewers flag stale graphs.
 
@@ -151,7 +153,7 @@ reviewers flag stale graphs.
 - Component directory name MUST equal the ArgoCD Application name.
 - File-naming: `cnp-<component>.yaml`, `ccnp-<description>.yaml`.
 - One component per directory: `<comp>/{application,kustomization,values}.yaml`.
-- Repository-wide SOT belongs at the repo root or `docs/`, never under tool-namespaced directories like `.claude/`, `.cursor/`, `.vscode/`.
+- Repository-wide SOT belongs at the repo root, `knowledge/`, `schemas/`, or `contracts/`, never under tool-namespaced directories like `.claude/`, `.cursor/`, `.vscode/`.
 
 ## Sensitive data
 

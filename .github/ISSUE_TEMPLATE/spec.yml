@@ -1,5 +1,5 @@
 name: Spec — work item ready for implementation
-description: A scoped, testable spec following the 7-section format documented in docs/issue-workflow.md. Use this for new features, refactors, or non-trivial fixes that an agent or human can pick up.
+description: A scoped, testable spec following the 7-section format documented in knowledge/workflows/issue-lifecycle.md. Use this for new features, refactors, or non-trivial fixes that an agent or human can pick up.
 title: "<type>(<scope>): <imperative summary>"
 labels:
   - "status: triage"
@@ -8,7 +8,7 @@ body:
     attributes:
       value: |
         This template implements the 7-section spec format from
-        [`docs/issue-workflow.md`](../blob/main/docs/issue-workflow.md).
+        [`knowledge/workflows/issue-lifecycle.md`](../blob/main/knowledge/workflows/issue-lifecycle.md).
         An issue is **ready to implement** only when all 7 sections are populated
         and the issue carries `status: ready` (set during triage). Issues with
         empty or vague Acceptance Criteria will be returned to the author.
@@ -106,7 +106,7 @@ body:
     id: risk
     attributes:
       label: Risk classification (set during triage)
-      description: See docs/issue-workflow.md §"Risk classification".
+      description: See knowledge/workflows/issue-lifecycle.md §"Risk classification".
       options:
         - "risk: low — reversible, narrow scope, portable refactor"
         - "risk: medium — touches multiple subsystems OR has rollback cost"

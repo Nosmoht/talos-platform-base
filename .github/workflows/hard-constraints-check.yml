@@ -10,7 +10,7 @@ on:
 
 # Note: paths: filter intentionally removed. Path-filtered required-checks
 # count as "skipped/successful" in branch protection — a PR touching only
-# scripts/, docs/, or .github/ would silently bypass this gate. The grep
+# scripts/, knowledge/, or .github/ would silently bypass this gate. The grep
 # steps below short-circuit cleanly when CHANGED is empty for the workflow's
 # original scope, so the cost of always running is negligible.
 

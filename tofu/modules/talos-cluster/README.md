@@ -5,7 +5,7 @@ Kubernetes cluster, and returns the admin `kubeconfig` + `talosconfig`.
 
 This is the substrate base's **only** Talos cluster-lifecycle path (it replaced
 the former `talos/Makefile.lib` + 5-axis `cluster.yaml` generator — see
-[`docs/adr-0006-opentofu-cluster-lifecycle.md`](../../../docs/adr-0006-opentofu-cluster-lifecycle.md)).
+[`knowledge/decisions/0006-opentofu-cluster-lifecycle.md`](../../../knowledge/decisions/0006-opentofu-cluster-lifecycle.md)).
 The module is **backend- and caller-agnostic**: it contains no
 `terraform { backend ... }` block. A consumer cluster repo pulls the base as an
 OCI artifact, supplies the `provider "talos"` block + an **encrypted** state
@@ -93,7 +93,7 @@ hand-authored class, and a heterogeneous multi-arch cluster (amd64 servers + an
 arm64 Raspberry Pi worker) is expressible in one apply. Capability names are
 tool-agnostic — a node declares `storage-replicated`, not `drbd`; the base
 provisioning-profile catalog maps each to extensions / kernel args / modules. See
-[`docs/adr-0009-node-capability-composition.md`](../../../docs/adr-0009-node-capability-composition.md).
+[`knowledge/decisions/0009-node-capability-composition.md`](../../../knowledge/decisions/0009-node-capability-composition.md).
 
 ## Usage
 
@@ -322,7 +322,7 @@ inlineManifest pattern as ArgoCD (`deploy_cilium`, default true): the module
 disables the Talos default CNI + kube-proxy and bakes a locally-rendered Cilium
 chart into the controlplane `cluster.inlineManifests` as a create-only SEED. The
 former consumer-side `cluster.extraManifests`-URL recipe is obsolete. See
-[`docs/adr-0007-cluster-yaml-sot.md`](../../../docs/adr-0007-cluster-yaml-sot.md). Install-time
+[`knowledge/decisions/0007-cluster-yaml-sot.md`](../../../knowledge/decisions/0007-cluster-yaml-sot.md). Install-time
 Cilium config rides the typed `cilium_*` inputs + `cilium_values_override`;
 runtime-mutable config (Hubble, L2/BGP) is Day-2 Cilium self-management.
 
@@ -349,5 +349,5 @@ runtime-mutable config (Hubble, L2/BGP) is Day-2 Cilium self-management.
 
 ## Related
 
-- [`docs/adr-0006-opentofu-cluster-lifecycle.md`](../../../docs/adr-0006-opentofu-cluster-lifecycle.md) — why OpenTofu replaced the Makefile/5-axis path, and the consequences.
+- [`knowledge/decisions/0006-opentofu-cluster-lifecycle.md`](../../../knowledge/decisions/0006-opentofu-cluster-lifecycle.md) — why OpenTofu replaced the Makefile/5-axis path, and the consequences.
 - [`Taskfile.yml`](../../../Taskfile.yml) — `task tofu:ci` validates this module (fmt-check + validate + lint).

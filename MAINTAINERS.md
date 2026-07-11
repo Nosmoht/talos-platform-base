@@ -8,7 +8,7 @@ Releases are tagged and published automatically by semantic-release from
 the conventional-commit history; a maintainer's role is to **approve the
 release** in the `release` GitHub Environment (the gate before anything is
 signed and `:latest` advances). The manual hand-tag path remains as the
-fallback. See [`docs/release-automation.md`](docs/release-automation.md).
+fallback. See [`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md).
 
 ## Active maintainers
 

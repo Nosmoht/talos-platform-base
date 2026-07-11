@@ -10,7 +10,7 @@ For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 - Read every section between the version you currently pin and the
   version you want to adopt. Apply in order.
 - Always verify the new artifact (cosign + provenance) before vendoring
-  — see [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md).
+  — see [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
 
 ## Upgrade workflow (every version)
 
@@ -42,6 +42,54 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
+## `v4.0.0` — docs/ replaced by the knowledge/ OKF bundle; machine contracts relocated (MAJOR — path-consumer-facing)
+
+**Type:** MAJOR. Two path surfaces changed: (1) two OCI-tarball members
+moved, so a vendored tree's references to them break; (2) the `docs/` tree
+no longer exists, so any deep link or hardcoded path into `docs/**` breaks.
+Rendered manifests, the module interface, and all Helm values are
+UNCHANGED — no cluster-runtime impact.
+
+**Old → new path table:**
+
+| Old | New |
+|---|---|
+| `docs/platform-hardware-features.yaml` (ships in tarball) | `platform-hardware-features.yaml` (repo root) |
+| `docs/schemas/hardware-features.schema.json` (ships in tarball) | `schemas/hardware-features.schema.json` |
+| `docs/schemas/cluster.schema.json` | `schemas/cluster.schema.json` |
+| `docs/schemas/fixtures/cluster.invalid.yaml` | `schemas/fixtures/cluster.invalid.yaml` |
+| `docs/primitive-contract.md` (machine-read by external harnesses) | `contracts/primitive-contract.md` |
+| `docs/README.md` (doc index) | `knowledge/index.md` |
+| `docs/adr-NNNN-<slug>.md` (13 ADRs) | `knowledge/decisions/NNNN-<slug>.md` |
+| `docs/rendered-manifests.md` | `knowledge/reference/manifest-pipeline.md` |
+| `docs/tutorial-first-consumer-cluster.md` | `knowledge/workflows/first-consumer-cluster.md` |
+| `docs/oci-artifact-verification.md` | `knowledge/workflows/verify-release.md` |
+| `docs/release-automation.md` | `knowledge/workflows/release-process.md` |
+| `docs/issue-workflow.md` | `knowledge/workflows/issue-lifecycle.md` |
+| `docs/mcp-setup.md` | `knowledge/workflows/mcp-setup.md` |
+| `docs/day-zero-pattern.md` | `knowledge/architecture/day-zero-bootstrap.md` |
+| `docs/component-dependencies.md` | dissolved into `knowledge/architecture/substrate.md` |
+| `docs/glossary.md` | `knowledge/glossary.md` |
+| `docs/{vision,openssf-best-practices,harness-plugin-integration}.md` | `knowledge/project/{vision,openssf-self-assessment,harness-plugin-contract}.md` |
+
+**Migration:**
+
+1. Re-vendor at `v4.0.0` (the tarball now carries
+   `platform-hardware-features.yaml` and
+   `schemas/hardware-features.schema.json` at their new paths); update any
+   consumer script that referenced the two old tarball paths.
+2. If an external harness reads the diagnostics primitive contract at a
+   hardcoded path, repoint it: `docs/primitive-contract.md` →
+   `contracts/primitive-contract.md` (the lookup is fail-closed — an
+   unrepointed harness returns `PRECONDITION_NOT_MET` on every Phase-1a
+   primitive until updated).
+3. Repoint any bookmarks, runbooks, or docs deep-linking `docs/**` per the
+   table above. The JSON Schema `$id` URLs changed with the paths; the
+   schemas are versioned by `$id` + OCI tag, so this bump is the migration
+   signal.
+
+---
+
 ## `v3.0.0` — go-task single runner + Makefile retired; kubelet serving-cert rotation default-on + cert-approver seed (MAJOR — dev-facing + consumer-facing)
 
 **Type:** MAJOR (dev-facing). The `Makefile` is retired and go-task is the sole
@@ -51,7 +99,7 @@ prints the migration mapping and exits non-zero. There is **no consumer-runtime
 impact** — the OCI artifact ships neither the Makefile nor the Taskfile, so this
 affects only workstation / runbook / CI tooling, not the vendored module or the
 rendered manifests. Decision:
-[`docs/adr-0012-makefile-retirement.md`](docs/adr-0012-makefile-retirement.md).
+[`knowledge/decisions/0012-makefile-retirement.md`](knowledge/decisions/0012-makefile-retirement.md).
 
 **Migration — replace `make` with `task` in any runbook, script, or CI you own:**
 
@@ -87,7 +135,7 @@ so the folded `bootstrap:*` / `cluster:*` / `gitops:*` tasks run inside
 ### Kubelet serving-cert rotation default-on + cert-approver seed (consumer action required)
 
 **Type:** consumer-runtime breaking (folded into this MAJOR). Decision:
-[`docs/adr-0013-kubelet-serving-cert-rotation.md`](docs/adr-0013-kubelet-serving-cert-rotation.md).
+[`knowledge/decisions/0013-kubelet-serving-cert-rotation.md`](knowledge/decisions/0013-kubelet-serving-cert-rotation.md).
 
 The module now enables `machine.kubelet.extraConfig.serverTLSBootstrap: true` on all
 nodes (default-on) and seeds cert-approver as a controlplane `inlineManifest` (it was
@@ -109,8 +157,8 @@ skipped on a running cluster.
 1. **Verify after the apply:** `kubectl get csr` shows `kubernetes.io/kubelet-serving`
    CSRs `Approved,Issued` on controlplane AND worker nodes; metrics-server works without
    `--kubelet-insecure-tls`; the `kubelet-serving-cert-approver` Deployment is Running.
-2. **Fallback — only if the seed does not land** (CSRs stuck `Pending`, e.g. an older
-   Talos without reconcile-on-change): apply the **complete upstream** manifest once
+2. **Fallback — only if the seed does not land** (CSRs stuck `Pending`, for example an
+   older Talos without reconcile-on-change): apply the **complete upstream** manifest once
    (self-contained, namespace included):
    `kubectl apply -f https://raw.githubusercontent.com/alex1989hu/kubelet-serving-cert-approver/v0.11.0/deploy/standalone-install.yaml`.
    Do NOT `kubectl apply` the vendored seed manifest
@@ -166,7 +214,7 @@ See adr-0013 §Security.
    (Talos + Cilium + ArgoCD + `cert-approver`); the entire PNI /
    capability-network contract and every non-substrate component move to
    the [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
-   catalog (see [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md)).
+   catalog (see [`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md)).
    See [§Substrate-only ablation](#substrate-only-ablation-consumer-action-required)
    below for the consumer action.
 
@@ -180,7 +228,7 @@ The `tofu/modules/talos-cluster` interface changes: the monolithic per-node
 Boot kernel args now bake into the Image Factory schematic
 (`customization.extraKernelArgs`) — the v1.10+ UKI correctness fix; the old
 `machine.install.extraKernelArgs` path was a silent no-op. See
-[`docs/adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md)
+[`knowledge/decisions/0009-node-capability-composition.md`](knowledge/decisions/0009-node-capability-composition.md)
 (the §Migration table is authoritative).
 
 - **`var.classes` and `node.class` are removed.** Map your `cluster.yaml`:
@@ -221,7 +269,7 @@ plus consumer-cluster Kyverno, and the components live as independently
 versioned, signed OCI artifacts in the
 [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
 catalog. Decision + sequencing:
-[`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md).
+[`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md).
 
 Consumer action:
 
@@ -371,8 +419,8 @@ behaviour. No spec change.
 for live clusters, two ClusterPolicy renames.
 **Breaking?** yes — coordinated package of seven `cluster.yaml`-level
 changes plus the v0.5.0-style PNI policy cleanup. Engineering rationale
-per item lives in
-[`talos/RELEASE-NOTES-v0.6.0.md`](talos/RELEASE-NOTES-v0.6.0.md); this
+per item lived in `talos/RELEASE-NOTES-v0.6.0.md` (removed with the
+`talos/` tree; see git history); this
 section is the consumer migration recipe.
 
 ### Migration checklist
@@ -632,7 +680,7 @@ this repo re-source from `talos-platform-apps` at the v2.0.0 cut — see
 **Type:** MAJOR. The Talos cluster lifecycle moves from the removed
 `talos/Makefile.lib` + 5-axis `cluster.yaml` generator to the OpenTofu module
 `tofu/modules/talos-cluster`. Rationale + consequences:
-[`docs/adr-0006-opentofu-cluster-lifecycle.md`](docs/adr-0006-opentofu-cluster-lifecycle.md).
+[`knowledge/decisions/0006-opentofu-cluster-lifecycle.md`](knowledge/decisions/0006-opentofu-cluster-lifecycle.md).
 
 **Breaking?** Yes. Consumers stop generating Talos configs with
 `make -C talos gen-configs` and instead author an OpenTofu root that calls the
@@ -836,7 +884,7 @@ fires a sunset.
 ## Template for future MAJOR/MINOR sections
 
 Releases are now tagged automatically by semantic-release (see
-[`docs/release-automation.md`](docs/release-automation.md)), which does **not**
+[`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md)), which does **not**
 write this file. Migration sections here are curated by a maintainer
 retroactively — typically alongside the release for a MAJOR/MINOR with consumer
 impact — using the format below:
@@ -866,6 +914,6 @@ impact — using the format below:
 
 - [`CHANGELOG.md`](CHANGELOG.md) — per-release notes
 - [`SECURITY.md`](SECURITY.md) — supported versions
-- [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) — verify before vendoring
-- [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) — substrate-only scope; PNI dissolution
-- [`docs/adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md) — node-capability composition migration
+- [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md) — verify before vendoring
+- [`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md) — substrate-only scope; PNI dissolution
+- [`knowledge/decisions/0009-node-capability-composition.md`](knowledge/decisions/0009-node-capability-composition.md) — node-capability composition migration

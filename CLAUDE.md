@@ -21,12 +21,14 @@ install; they live and are versioned outside this base.
 
 ### Documentation entry-points
 
-For the full Diátaxis-organised index, read [`docs/README.md`](docs/README.md).
-The root-level orientation files ([`README.md`](README.md),
-[`ARCHITECTURE.md`](ARCHITECTURE.md), [`AGENTS.md`](AGENTS.md),
-[`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md),
-[`UPGRADING.md`](UPGRADING.md), [`MAINTAINERS.md`](MAINTAINERS.md)) cover
-governance and scope; everything else lives under `docs/` and is indexed there.
+For the deep reference, read [`knowledge/index.md`](knowledge/index.md) —
+the OKF v0.1 knowledge bundle (architecture, reference, workflows,
+decisions, glossary). The root-level orientation files
+([`README.md`](README.md), [`ARCHITECTURE.md`](ARCHITECTURE.md),
+[`AGENTS.md`](AGENTS.md), [`CONTRIBUTING.md`](CONTRIBUTING.md),
+[`SECURITY.md`](SECURITY.md), [`UPGRADING.md`](UPGRADING.md),
+[`MAINTAINERS.md`](MAINTAINERS.md)) cover governance and scope; everything
+else lives under `knowledge/` and is indexed there.
 
 Claude-Code-specific: read this file plus AGENTS.md before editing. Any
 additional runtime context (path-scoped rules, hooks, subagents) comes from an

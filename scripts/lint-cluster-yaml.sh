@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lint-cluster-yaml.sh — schema validation for a consumer cluster.yaml against
-# the JSON Schema (docs/schemas/cluster.schema.json).
+# the JSON Schema (schemas/cluster.schema.json).
 #
 # Per issue #136 Task 3 (ADR base:node-capability-composition §"Schema parity
 # decisions" #1 deferred the enforcing schema to implementation). Mirrors
@@ -24,7 +24,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLUSTER_FILE="${1:-$REPO_ROOT/cluster.yaml.example}"
-SCHEMA_FILE="$REPO_ROOT/docs/schemas/cluster.schema.json"
+SCHEMA_FILE="$REPO_ROOT/schemas/cluster.schema.json"
 
 case "${1:-}" in
   --help|-h)

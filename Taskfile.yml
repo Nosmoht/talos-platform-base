@@ -2,7 +2,7 @@
 # https://taskfile.dev
 #
 # Scope: this Taskfile is the SOLE runner for the repository. The Makefile was
-# retired at v3.0.0 (see docs/adr-0012-makefile-retirement.md); every former target
+# retired at v3.0.0 (see knowledge/decisions/0012-makefile-retirement.md); every former target
 # folds into a namespaced task here:
 #
 #   tofu:*         — OpenTofu cluster-lifecycle module (tofu/) validation
@@ -33,6 +33,17 @@ vars:
   MCP_GITHUB_VERSION: 0.33.0
   MCP_K8S_VERSION: 0.0.60
   MCP_TALOS_VERSION: 1.1.0
+  # knowledge:* tool pins — KEEP IN SYNC with .tool-versions and the
+  # docs-lint.yml env block. Checksums from the projects' released
+  # checksum files (verified 2026-07-11).
+  OPENKNOWLEDGE_VERSION: 0.5.0
+  OPENKNOWLEDGE_SHA256_DARWIN_ARM64: 8316f6206943e42973f6645b9deebba46299038f223cc1b1fe42d5cb2fac2150
+  OPENKNOWLEDGE_SHA256_DARWIN_AMD64: 29801d38436903b043812d04e0a5e364f167c54ab54760cc6cc87a933292f834
+  OPENKNOWLEDGE_SHA256_LINUX_AMD64: 0f58de81e52f064fbf52aac5289e0b1b6dc0e58de2f47c4e043263e9e927cb27
+  LYCHEE_VERSION: 0.24.2
+  LYCHEE_SHA256_DARWIN_ARM64: c9d3740ea2d891854d37116c9fba840f37b6e7c89d330e7db84ac333631c4977
+  LYCHEE_SHA256_DARWIN_AMD64: 887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978
+  LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
 
 tasks:
   default:
@@ -228,7 +239,66 @@ tasks:
       rm -f .work/oci-check.tar.gz
 
   # ===========================================================================
-  # mcp:* — MCP server binary management (see docs/mcp-setup.md)
+  # knowledge:* — OKF knowledge bundle (knowledge/) authoring + validation
+  # ===========================================================================
+  knowledge:validate:
+    desc: Validate the knowledge/ OKF bundle (openknowledge + offline link check)
+    cmd: |
+      set -e
+      command -v openknowledge >/dev/null 2>&1 || { echo "ERROR: 'openknowledge' not installed — run 'task knowledge:install-cli'"; exit 1; }
+      command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
+      openknowledge validate knowledge/
+      # Offline link-resolution gate: intra-repo markdown links must resolve.
+      # Scope: the bundle, root orientation files, contracts/. CHANGELOG.md is
+      # a historical record and excluded by design.
+      lychee --offline --no-progress --exclude-path CHANGELOG.md \
+        'knowledge/**/*.md' './*.md' 'contracts/*.md'
+
+  knowledge:new:
+    desc: "Scaffold a new knowledge concept (usage: task knowledge:new FILE=reference/foo.md TYPE=reference)"
+    requires:
+      vars: [FILE, TYPE]
+    cmd: |
+      set -e
+      target="knowledge/{{.FILE}}"
+      [ -e "$target" ] && { echo "ERROR: $target already exists"; exit 1; }
+      mkdir -p "$(dirname "$target")"
+      printf -- '---\ntype: {{.TYPE}}\ntitle: TODO\ndescription: TODO one sentence.\ntags: [TODO]\ntimestamp: %s\nsources:\n  - TODO\n---\n\n# TODO\n' "$(date +%Y-%m-%d)" > "$target"
+      echo "Created $target — fill frontmatter, then run 'task knowledge:validate'."
+
+  knowledge:install-cli:
+    desc: Install pinned openknowledge + lychee binaries into ~/.local/bin (checksum-verified)
+    cmd: |
+      set -e
+      os="{{OS}}"; arch="{{ARCH}}"
+      case "$os-$arch" in
+        darwin-arm64) ok_sha="{{.OPENKNOWLEDGE_SHA256_DARWIN_ARM64}}"; ly_sha="{{.LYCHEE_SHA256_DARWIN_ARM64}}"; ok_asset="openknowledge_darwin_arm64.tar.gz"; ly_asset="lychee-aarch64-apple-darwin.tar.gz" ;;
+        darwin-amd64) ok_sha="{{.OPENKNOWLEDGE_SHA256_DARWIN_AMD64}}"; ly_sha="{{.LYCHEE_SHA256_DARWIN_AMD64}}"; ok_asset="openknowledge_darwin_amd64.tar.gz"; ly_asset="lychee-x86_64-apple-darwin.tar.gz" ;;
+        linux-amd64)  ok_sha="{{.OPENKNOWLEDGE_SHA256_LINUX_AMD64}}";  ly_sha="{{.LYCHEE_SHA256_LINUX_AMD64}}";  ok_asset="openknowledge_linux_amd64.tar.gz"; ly_asset="lychee-x86_64-unknown-linux-gnu.tar.gz" ;;
+        *) echo "ERROR: unsupported platform $os-$arch — install openknowledge {{.OPENKNOWLEDGE_VERSION}} + lychee {{.LYCHEE_VERSION}} manually"; exit 1 ;;
+      esac
+      # sha256sum on Linux, shasum on macOS — match whichever is present so
+      # the local path verifies with the same tool class as CI.
+      if command -v sha256sum >/dev/null 2>&1; then shatool="sha256sum"; else shatool="shasum -a 256"; fi
+      tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+      curl -fsSLo "$tmp/ok.tar.gz" "https://github.com/openknowledge-sh/openknowledge/releases/download/v{{.OPENKNOWLEDGE_VERSION}}/$ok_asset"
+      echo "$ok_sha  $tmp/ok.tar.gz" | $shatool -c - >/dev/null
+      tar -xzf "$tmp/ok.tar.gz" -C "$tmp"
+      curl -fsSLo "$tmp/ly.tar.gz" "https://github.com/lycheeverse/lychee/releases/download/lychee-v{{.LYCHEE_VERSION}}/$ly_asset"
+      echo "$ly_sha  $tmp/ly.tar.gz" | $shatool -c - >/dev/null
+      tar -xzf "$tmp/ly.tar.gz" -C "$tmp"
+      # lychee release tarballs nest the binary per-target (e.g.
+      # lychee-aarch64-apple-darwin/lychee); openknowledge ships it flat.
+      ly_bin="$(find "$tmp" -type f -name lychee | head -1)"
+      [ -n "$ly_bin" ] || { echo "ERROR: lychee binary not found in release tarball"; exit 1; }
+      mkdir -p "$HOME/.local/bin"
+      install -m 0755 "$tmp/openknowledge" "$HOME/.local/bin/openknowledge"
+      install -m 0755 "$ly_bin" "$HOME/.local/bin/lychee"
+      echo "Installed openknowledge $(openknowledge version) + lychee {{.LYCHEE_VERSION}} to ~/.local/bin"
+      echo "Verify pins: task dev:verify-tools"
+
+  # ===========================================================================
+  # mcp:* — MCP server binary management (see knowledge/workflows/mcp-setup.md)
   # ===========================================================================
   mcp:install:
     desc: Install MCP server binaries (per-OS) and register wrapper symlink in ~/.local/bin

@@ -72,6 +72,6 @@ locals {
   # An atom is "provisioned" iff some catalog profile `provides` it (self-contained;
   # equal by construction to the registry's discovery_source: talos-machine-config
   # set — a CI cross-reference gate guards the equivalence). The module does NOT
-  # read docs/platform-hardware-features.yaml at plan time.
+  # read platform-hardware-features.yaml at plan time.
   provisioned_atoms = distinct(flatten([for p in local.provisioning_profiles : p.provides]))
 }

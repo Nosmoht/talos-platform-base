@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Nosmoht/talos-platform-base/schemas/cluster.schema.json",
+  "title": "Consumer cluster.yaml — declarative cluster Source-of-Truth",
+  "description": "Shape of a consumer cluster.yaml (see cluster.yaml.example). Mirrors the tofu/modules/talos-cluster variable validations for the structured surface (images / hardware-capabilities / nodes / identity / versions). The free-form Talos config_patches and the per-tool substrate.*.values_override passthroughs are deliberately NOT content-validated here: structural validity of patch content is Talos' concern at apply time, and any secret-leak risk in them is gitleaks' (AGENTS.md §Tool-Agnostic Safety Invariants), not this schema's. Secrets (sops_age_key, cilium_ipsec_key) have no schema slot by design. A reserved hardware-feature.* label forged inside a free-form config_patches block is the downstream-Kyverno boundary, not a schema concern.",
+  "$comment": "No schema_version field by design: cluster.yaml carries none, and the schema is versioned by its $id + the base OCI tag (a breaking shape change bumps the next tag's MAJOR per AGENTS.md/CHANGELOG). Migration signal = OCI tag, not an in-file version.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cluster", "repo", "talos", "kubernetes", "images", "nodes"],
+  "properties": {
+    "cluster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "endpoint"],
+      "properties": {
+        "name": {
+          "description": "Talos cluster name (PKI CN) and ArgoCD Application/Project name. Lowercase RFC-1123 label.",
+          "type": "string",
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+        },
+        "endpoint": {
+          "description": "Kubernetes API endpoint, an https:// URL including the port.",
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "overlay": {
+          "description": "kustomize overlay name under kubernetes/overlays/ (read by task bootstrap:argocd).",
+          "type": "string"
+        },
+        "target_revision": {
+          "description": "git branch/tag for the ArgoCD root Application (read by task bootstrap:argocd).",
+          "type": "string"
+        },
+        "pod_cidr": {
+          "description": "Pod network CIDR(s). One entry single-stack; v4+v6 when dual_stack.",
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "service_cidr": {
+          "description": "Service network CIDR(s).",
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "dual_stack": { "type": "boolean" },
+        "allow_scheduling_on_controlplanes": { "type": "boolean" }
+      }
+    },
+    "repo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "description": "Consumer cluster repo URL (read by task bootstrap:argocd).",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "talos": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": {
+          "description": "Talos machine-config schema pin — v-prefixed semver, fixed at bootstrap.",
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+"
+        },
+        "install_version": {
+          "description": "Installer-image tag for OS upgrades. Empty = matches talos.version.",
+          "type": "string",
+          "pattern": "^(v[0-9]+\\.[0-9]+\\.[0-9]+.*)?$"
+        }
+      }
+    },
+    "kubernetes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": {
+          "description": "Kubernetes version — v-prefixed semver.",
+          "type": "string",
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+"
+        }
+      }
+    },
+    "images": {
+      "description": "Per-image installer base. Key = image id referenced by node.image.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/image" }
+    },
+    "hardware-capabilities": {
+      "description": "Composable, tool-agnostic node capabilities. Key = capability id referenced by node.hardware_capabilities. May be empty.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/capability" }
+    },
+    "nodes": {
+      "description": "Bare-metal cluster members.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "config_patches": {
+      "description": "Cluster-wide Talos machine-config patches (free-form YAML maps).",
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "controlplane_config_patches": {
+      "description": "Controlplane-only Talos machine-config patches (free-form YAML maps).",
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "worker_config_patches": {
+      "description": "Worker-only Talos machine-config patches (free-form YAML maps).",
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "substrate": {
+      "description": "Layer-1 substrate delivery. Cilium + ArgoCD are the ONLY cluster.yaml-configurable substrate tools — the consumer yamldecode shim reads only substrate.cilium and substrate.argocd; cert-approver is always-on substrate (a controlplane inlineManifest seed, adr-0013) with no cluster.yaml knobs. Closed (additionalProperties:false) so a typo'd sibling key (e.g. argo_cd:) is caught at lint time instead of being silently dropped by the shim. The per-tool inner long tail (values_override, encryption, …) stays loosely typed. A future configurable substrate tool ships a schema update in the same base OCI tag.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cilium": { "type": "object" },
+        "argocd": { "type": "object" }
+      }
+    }
+  },
+  "$defs": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu_vendor"],
+      "properties": {
+        "architecture": {
+          "description": "Installer-image architecture. Defaults to amd64 in the module when omitted.",
+          "type": "string",
+          "enum": ["amd64", "arm64"]
+        },
+        "cpu_vendor": {
+          "description": "Resolves a profile's vendor variants (e.g. iommu intel vs amd). REQUIRED, no default.",
+          "type": "string",
+          "enum": ["intel", "amd", "arm"]
+        },
+        "extensions": {
+          "description": "Baseline Image-Factory system extensions baked on every node of this image.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "overlay": {
+          "description": "ARM single-board-computer board overlay. Null/omitted for x86/metal nodes.",
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["name", "image"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "image": { "type": "string", "minLength": 1 },
+            "options": { "type": ["object", "null"] }
+          }
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["emits_label"],
+      "properties": {
+        "requires_features": {
+          "description": "Layer-C atom ids for scheduling / labels.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "provisioning_profiles": {
+          "description": "Ids of base catalog profiles to apply (drbd, iommu, nvidia-lts, …). Explicit.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "emits_label": {
+          "description": "Node label set when a node holds this capability. MUST be in the platform.io/hardware-capability.* namespace (reserved hardware-feature.* labels come only from a profile's provides).",
+          "type": "string",
+          "pattern": "^platform\\.io/hardware-capability\\."
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostname", "ip", "role", "image"],
+      "properties": {
+        "hostname": {
+          "description": "Unique node hostname; keys the per-node apply resource.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ip": {
+          "description": "Unique node IP reachable on the Talos API port.",
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "description": "Kubernetes node role. Hardware specialisation is a capability, NOT a role.",
+          "type": "string",
+          "enum": ["controlplane", "worker"]
+        },
+        "image": {
+          "description": "Must be a key in images.",
+          "type": "string",
+          "minLength": 1
+        },
+        "hardware_capabilities": {
+          "description": "Set of capability ids (keys in hardware-capabilities) this node holds.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "config_patches": {
+          "description": "Per-node Talos machine-config patches (free-form YAML maps).",
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      }
+    }
+  }
+}
