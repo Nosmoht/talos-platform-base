@@ -2,7 +2,7 @@
 # https://taskfile.dev
 #
 # Scope: this Taskfile is the SOLE runner for the repository. The Makefile was
-# retired at v3.0.0 (see docs/adr-0012-makefile-retirement.md); every former target
+# retired at v3.0.0 (see knowledge/decisions/0012-makefile-retirement.md); every former target
 # folds into a namespaced task here:
 #
 #   tofu:*         — OpenTofu cluster-lifecycle module (tofu/) validation
@@ -295,7 +295,7 @@ tasks:
       echo "Verify pins: task dev:verify-tools"
 
   # ===========================================================================
-  # mcp:* — MCP server binary management (see docs/mcp-setup.md)
+  # mcp:* — MCP server binary management (see knowledge/workflows/mcp-setup.md)
   # ===========================================================================
   mcp:install:
     desc: Install MCP server binaries (per-OS) and register wrapper symlink in ~/.local/bin

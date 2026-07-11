@@ -51,5 +51,5 @@ Both files are valid and necessary (the slim seed cannot depend on steady-state 
 
 ## See also
 
-- [`docs/rendered-manifests.md`](../../../../docs/rendered-manifests.md) — how this component is rendered into `_rendered/manifests.yaml`
+- [`knowledge/reference/manifest-pipeline.md`](../../../../knowledge/reference/manifest-pipeline.md) — how this component is rendered into `_rendered/manifests.yaml`
 - [`UPGRADING.md`](../../../../UPGRADING.md) — release-to-release migration steps

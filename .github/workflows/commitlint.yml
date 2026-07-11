@@ -6,7 +6,7 @@ name: Commit Lint
 # `requireScope: false`: scope is a soft house-style preference per CONTRIBUTING.md,
 # not mandatory (scope-less subjects like `docs: fix typo` are valid).
 # Note: this gates PRs only; direct-main commits bypass it (repo convention is
-# PR-merged). The release approval gate is the backstop. See docs/release-automation.md.
+# PR-merged). The release approval gate is the backstop. See knowledge/workflows/release-process.md.
 
 on:
   pull_request:

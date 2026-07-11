@@ -815,7 +815,7 @@ data "talos_cluster_health" "this" {
 # itself); a third-party `kubectl_manifest` provider trades a kubectl binary for a
 # third-party provider dependency + ~1.8 MB of state bloat in a substrate module
 # (worse footprint). Full rationale + alternatives:
-# docs/adr-0006-opentofu-cluster-lifecycle.md (2026-06-03 amendment) and the README.
+# knowledge/decisions/0006-opentofu-cluster-lifecycle.md (2026-06-03 amendment) and the README.
 # CONTRACT: every apply host MUST ship `kubectl` — a workstation has it via
 # devbox; the Crossplane provider-terraform runner image MUST include it.
 # OPEN: #104 item 2 (boot proof — CP boots, ArgoCD pods Ready once CRDs land)

@@ -20,7 +20,7 @@ constitutive as the OS (Talos) and the CNI (Cilium), **not** a Day-2 app.
 it approves the `kubernetes.io/kubelet-serving` CSRs the base's default-on kubelet
 serving-cert rotation triggers (client-kubelet CSRs auto-approve, so the cluster
 boots without it; metrics-server / `kubectl logs|exec|top` need it). Delivered as
-a controlplane `inlineManifest` seed (`docs/adr-0013-kubelet-serving-cert-rotation.md`),
+a controlplane `inlineManifest` seed (`knowledge/decisions/0013-kubelet-serving-cert-rotation.md`),
 not a fourth pillar.
 Because ArgoCD is core substrate it is delivered as part of standing the
 cluster up — **opt-out, never an opt-in Day-2 add-on**; classifying
@@ -31,7 +31,7 @@ signed OCI artifacts. Consumer cluster repos **compose** — they pin a base
 tag for the substrate and serve themselves from the apps catalog by
 referencing exactly the OCI components they need. Routing rule: if it is not
 substrate, it belongs in the apps catalog, never in base. See
-[`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) and the
+[`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md) and the
 platform layer model (recorded in the platform architecture decision records).
 
 ## Project Structure & Module Organization
@@ -39,18 +39,18 @@ platform layer model (recorded in the platform architecture decision records).
 - `kubernetes/base/infrastructure/`: base Helm values and namespace/kustomization manifests per infrastructure component.
 - `kubernetes/bootstrap/argocd/`: parameterized bootstrap templates (`*.tmpl`) consumed by `task bootstrap:argocd`.
 - `kubernetes/bootstrap/cilium/`: reference Cilium Helm values + `extras.yaml` (GatewayClass) for optional Day-2 self-management. Cilium itself is delivered by the `talos-cluster` module as a controlplane `inlineManifest` seed (`deploy_cilium`); the former consumer-side render path is retired.
-- `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-node composed Image-Factory installer — content-hash-deduped, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root that is a thin `yamldecode` shim over the declarative `cluster.yaml` SoT. See [`docs/adr-0006-opentofu-cluster-lifecycle.md`](docs/adr-0006-opentofu-cluster-lifecycle.md) and [`docs/adr-0007-cluster-yaml-sot.md`](docs/adr-0007-cluster-yaml-sot.md).
+- `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-node composed Image-Factory installer — content-hash-deduped, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root that is a thin `yamldecode` shim over the declarative `cluster.yaml` SoT. See [`knowledge/decisions/0006-opentofu-cluster-lifecycle.md`](knowledge/decisions/0006-opentofu-cluster-lifecycle.md) and [`knowledge/decisions/0007-cluster-yaml-sot.md`](knowledge/decisions/0007-cluster-yaml-sot.md).
 - `policies/`: conftest Rego policies for kustomize-rendered manifests.
 - `scripts/`: cluster-agnostic validation, render and helper scripts.
-- `docs/`: platform-base reference docs. See [`docs/README.md`](docs/README.md) for the navigable map (architecture, contract cookbook, ADRs, workflow refs).
+- `knowledge/`: the OKF v0.1 knowledge bundle — architecture, reference, workflows, decision records (ADRs), glossary. Entry point: [`knowledge/index.md`](knowledge/index.md). Machine-consumed contracts live OUTSIDE the bundle: `schemas/`, `contracts/`, `platform-hardware-features.yaml` (repo root).
 
 ## Build, Test, and Development Commands
 
-- `task cluster:init-yaml`: copies `cluster.yaml.example` to `cluster.yaml` (gitignored) — the declarative cluster Source-of-Truth (identity, versions, endpoint, network, nodes, images, hardware-capabilities, machine-config patches, substrate). `task bootstrap:argocd` reads only the bootstrap-identity subset (`cluster.{name,overlay,target_revision}` + `repo.url`); the consumer's OpenTofu root is a thin `yamldecode` shim that maps the full file onto the `tofu/modules/talos-cluster` typed interface. tofu is the executor, not the SoT. See [`docs/adr-0007-cluster-yaml-sot.md`](docs/adr-0007-cluster-yaml-sot.md).
-- `task gitops:validate`: kustomize-render + SOPS check + conftest + kubeconform across all rendered manifests.
+- `task cluster:init-yaml`: copies `cluster.yaml.example` to `cluster.yaml` (gitignored) — the declarative cluster Source-of-Truth (identity, versions, endpoint, network, nodes, images, hardware-capabilities, machine-config patches, substrate). `task bootstrap:argocd` reads only the bootstrap-identity subset (`cluster.{name,overlay,target_revision}` + `repo.url`); the consumer's OpenTofu root is a thin `yamldecode` shim that maps the full file onto the `tofu/modules/talos-cluster` typed interface. tofu is the executor, not the SoT. See [`knowledge/decisions/0007-cluster-yaml-sot.md`](knowledge/decisions/0007-cluster-yaml-sot.md).
+- `task gitops:validate`: kustomize-render + SOPS check + conftest + kubeconform + ArgoCD substrate invariants across all rendered manifests.
 - `task mcp:install` / `task mcp:verify`: install and verify MCP server binaries.
 - `task tofu:ci` (devbox): `tofu fmt -check` + `tofu validate` + `tflint` + render-determinism fence over the `tofu/` cluster-lifecycle module and its examples.
-- **go-task is the single runner — the `Makefile` was retired at v3.0.0.** Every former `make` target folds into a namespaced task in `Taskfile.yml`: `tofu:*` (OpenTofu validation), `gitops:*` (`validate`, `render-component`, `render-all`, `verify-rendered`), `bootstrap:*` (`argocd`, `argocd-password`), `cluster:init-yaml`, `supply-chain:oci-allowlist`, `mcp:*`, `dev:*`. Run `task --list` for the full set. A `Makefile` deprecation stub remains for one release cycle: any `make <target>` prints the migration mapping and exits non-zero. `chart-pull` and `grafana-dashboards-check` were dropped (no replacement). Decision: [`docs/adr-0012-makefile-retirement.md`](docs/adr-0012-makefile-retirement.md) (supersedes [`docs/adr-0008-task-runner-consolidation.md`](docs/adr-0008-task-runner-consolidation.md)).
+- **go-task is the single runner — the `Makefile` was retired at v3.0.0.** Every former `make` target folds into a namespaced task in `Taskfile.yml`: `tofu:*` (OpenTofu validation), `gitops:*` (`validate`, `render-component`, `render-all`, `verify-rendered`), `bootstrap:*` (`argocd`, `argocd-password`), `cluster:init-yaml`, `supply-chain:oci-allowlist`, `mcp:*`, `dev:*`. Run `task --list` for the full set. A `Makefile` deprecation stub remains for one release cycle: any `make <target>` prints the migration mapping and exits non-zero. `chart-pull` and `grafana-dashboards-check` were dropped (no replacement). Decision: [`knowledge/decisions/0012-makefile-retirement.md`](knowledge/decisions/0012-makefile-retirement.md) (supersedes [`knowledge/decisions/0008-task-runner-consolidation.md`](knowledge/decisions/0008-task-runner-consolidation.md)).
 
 This base is consumed by cluster repos via OCI artifact (`oras pull
 ghcr.io/nosmoht/talos-platform-base:<tag>`) into a gitignored `vendor/base/`
@@ -102,10 +102,10 @@ These are universal cluster invariants. CLAUDE.md imports this file via
 `@AGENTS.md`. Both tools treat this section as canonical. Do NOT relax these
 without repo-maintainer approval.
 
-- **No SecureBoot** — `metal-installer-secureboot`, the bare `metal-secureboot`, and the Image-Factory `installer-secureboot` URL form all cause boot loops; always use the non-secureboot installer. The `tofu/modules/talos-cluster` module enforces this in code (selects `urls.installer`, never `urls.installer_secureboot`). CI gate: `hard-constraints-check.yml` greps `(metal-secureboot|installer-secureboot)` over `tofu/**`. Decision: [`docs/adr-0011-substrate-hard-constraints.md`](docs/adr-0011-substrate-hard-constraints.md).
-- **No `debugfs=off`** — causes "failed to create root filesystem" boot loop in Talos (with Cilium). Decision: [`docs/adr-0011-substrate-hard-constraints.md`](docs/adr-0011-substrate-hard-constraints.md).
+- **No SecureBoot** — `metal-installer-secureboot`, the bare `metal-secureboot`, and the Image-Factory `installer-secureboot` URL form all cause boot loops; always use the non-secureboot installer. The `tofu/modules/talos-cluster` module enforces this in code (selects `urls.installer`, never `urls.installer_secureboot`). CI gate: `hard-constraints-check.yml` greps `(metal-secureboot|installer-secureboot)` over `tofu/**`. Decision: [`knowledge/decisions/0011-substrate-hard-constraints.md`](knowledge/decisions/0011-substrate-hard-constraints.md).
+- **No `debugfs=off`** — causes "failed to create root filesystem" boot loop in Talos (with Cilium). Decision: [`knowledge/decisions/0011-substrate-hard-constraints.md`](knowledge/decisions/0011-substrate-hard-constraints.md).
 - **Gateway API only** — no `kind: Ingress` or Ingress controllers; use HTTPRoute/TLSRoute
-- **EndpointSlices only** — `kind: Endpoints` deprecated since Kubernetes v1.33.0; use `EndpointSlice` (GA since v1.21). Decision: [`docs/adr-0011-substrate-hard-constraints.md`](docs/adr-0011-substrate-hard-constraints.md).
+- **EndpointSlices only** — `kind: Endpoints` deprecated since Kubernetes v1.33.0; use `EndpointSlice` (GA since v1.21). Decision: [`knowledge/decisions/0011-substrate-hard-constraints.md`](knowledge/decisions/0011-substrate-hard-constraints.md).
 - **Commit and push every successful tested change immediately** — do not batch at end of session
 - **NEVER `kubectl apply` ArgoCD-managed resources** — commit to git, push, let ArgoCD sync; only exception: one-time bootstrap AppProjects (`kubernetes/bootstrap/`)
 - **Kubernetes recommended labels on all resources** — `app.kubernetes.io/{name,instance,version,component,part-of,managed-by}`
@@ -115,7 +115,7 @@ without repo-maintainer approval.
 
 Curated subset for agent-context loading. Full definitions and the long
 tail (Rendered Manifests Pattern, Right altitude, …) live in
-[`docs/glossary.md`](docs/glossary.md); cite that file for terms not in
+[`knowledge/glossary.md`](knowledge/glossary.md); cite that file for terms not in
 this list.
 
 - **AppProject** — ArgoCD RBAC boundary scoping repos/namespaces an Application can deploy to.
@@ -131,7 +131,7 @@ this list.
 |---|---|---|
 | AWS/GitHub tokens in any file | pre-commit `gitleaks` hook | Credential leak prevention |
 | `git commit --no-verify` bypass | CI `gitleaks` CLI in `gitops-validate.yml` `secret-scan` job (required PR check) | Last backstop — blocks merge even if local hooks bypassed |
-| Forbidden Kubernetes kinds (Ingress, Endpoints) | CI `hard-constraints-check.yml` (required PR check) | Server-side enforcement of §Hard Constraints |
+| Forbidden Kubernetes kinds (Ingress, Endpoints) | CI `hard-constraints-check.yml` on every PR (not yet a branch-protection required context — follow-up) | Server-side enforcement of §Hard Constraints |
 | SOPS plaintext leak (consumer-side) | pre-commit + Claude Code PreToolUse hook (consumer repo) | Plaintext secrets must never reach git |
 
 `*.sops.yaml` does not exist in this base repo. Consumer cluster repos add
@@ -147,7 +147,7 @@ rule file is present in the working repo before relying on it.
 
 All three MCP servers (github, kubernetes-mcp-server, talos) use **bare
 PATH-resolved command names**. Run `task mcp:install` once after cloning to
-install the binaries and register the wrapper symlink. See `docs/mcp-setup.md`
+install the binaries and register the wrapper symlink. See `knowledge/workflows/mcp-setup.md`
 for full instructions.
 
 `.mcp.json` (Claude Code) and consumer-side `.codex/config.toml` (Codex CLI)
@@ -169,7 +169,7 @@ At session start, scan the GitHub Issues backlog. Use the `github` MCP server.
 2. `mcp__github__list_issues(state="open", labels=["status: in-progress"])`
 3. **Status gate**: only the `status: ready` label authorizes work to begin.
 
-See `docs/issue-workflow.md` for the full issue lifecycle.
+See `knowledge/workflows/issue-lifecycle.md` for the full issue lifecycle.
 
 ## Deltas vs Claude Code (For Codex CLI Users)
 
@@ -182,7 +182,7 @@ See `docs/issue-workflow.md` for the full issue lifecycle.
 
 Operative decisions an agent here must honor that the sections above do not yet spell out:
 
-- **Namespace ownership** ([`docs/adr-0002-namespace-ownership-rendered-manifests.md`](docs/adr-0002-namespace-ownership-rendered-manifests.md)) — one Application owns each namespace (the component itself); a consumer `root` Application MUST NOT track platform (vendor-shipped) namespaces, and no `Prune=false` is set on a platform namespace. `argocd` is the only chicken-and-egg exception.
-- **Signed-OCI producer obligation** (per the platform architecture decision records) — the base OCI artifact is cosign-signed (keyless OIDC), carries SLSA build provenance and a CycloneDX SBOM attestation, produced on every tag push by [`.github/workflows/oci-publish.yml`](.github/workflows/oci-publish.yml). Consumer-side verification is documented in [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md). (The layer-model reference under §Repository Purpose covers *what* base produces; this is the supply-chain *how*.)
-- **Node capability composition** ([`docs/adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md)) — per-node provisioning is DECOUPLED from hardware detection; the per-node provisioning-profile catalog is base-owned/module-local (a consumer cannot redefine it). A consumer `emits_label` MUST land in `platform.io/hardware-capability.*`, never `hardware-feature.*` (Layer-C atomic, Talos-only). These are the mechanical anti-forgery / anti-override invariants a composing agent must honor; the Layer-C vocabulary lives in [`docs/adr-0003-three-layer-capability-architecture.md`](docs/adr-0003-three-layer-capability-architecture.md) and [`docs/platform-hardware-features.yaml`](docs/platform-hardware-features.yaml). Enforcement of the reserved Layer-C labels is consumer-cluster Kyverno (the base ships no admission policy).
-- **Capability-layer model & PNI dissolution** (recorded in the platform architecture decision records) — capability = stable interface, tool = swappable implementation. The base-resident PNI / Layer-A network-trust surface **was removed** at the substrate-only ablation (v2.0.0): per [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) it dissolved into apps-CI Conftest + consumer-cluster Kyverno. Only the Layer-C hardware-feature/capability vocabulary (`base:three-layer-capability-architecture`) remains base-resident, because the `tofu/modules/talos-cluster` composition model depends on it.
+- **Namespace ownership** ([`knowledge/decisions/0002-namespace-ownership-rendered-manifests.md`](knowledge/decisions/0002-namespace-ownership-rendered-manifests.md)) — one Application owns each namespace (the component itself); a consumer `root` Application MUST NOT track platform (vendor-shipped) namespaces, and no `Prune=false` is set on a platform namespace. `argocd` is the only chicken-and-egg exception.
+- **Signed-OCI producer obligation** (per the platform architecture decision records) — the base OCI artifact is cosign-signed (keyless OIDC), carries SLSA build provenance and a CycloneDX SBOM attestation, produced on every tag push by [`.github/workflows/oci-publish.yml`](.github/workflows/oci-publish.yml). Consumer-side verification is documented in [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md). (The layer-model reference under §Repository Purpose covers *what* base produces; this is the supply-chain *how*.)
+- **Node capability composition** ([`knowledge/decisions/0009-node-capability-composition.md`](knowledge/decisions/0009-node-capability-composition.md)) — per-node provisioning is DECOUPLED from hardware detection; the per-node provisioning-profile catalog is base-owned/module-local (a consumer cannot redefine it). A consumer `emits_label` MUST land in `platform.io/hardware-capability.*`, never `hardware-feature.*` (Layer-C atomic, Talos-only). These are the mechanical anti-forgery / anti-override invariants a composing agent must honor; the Layer-C vocabulary lives in [`knowledge/decisions/0003-three-layer-capability-architecture.md`](knowledge/decisions/0003-three-layer-capability-architecture.md) and [`platform-hardware-features.yaml`](platform-hardware-features.yaml). Enforcement of the reserved Layer-C labels is consumer-cluster Kyverno (the base ships no admission policy).
+- **Capability-layer model & PNI dissolution** (recorded in the platform architecture decision records) — capability = stable interface, tool = swappable implementation. The base-resident PNI / Layer-A network-trust surface **was removed** at the substrate-only ablation (v2.0.0): per [`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md) it dissolved into apps-CI Conftest + consumer-cluster Kyverno. Only the Layer-C hardware-feature/capability vocabulary (`base:three-layer-capability-architecture`) remains base-resident, because the `tofu/modules/talos-cluster` composition model depends on it.

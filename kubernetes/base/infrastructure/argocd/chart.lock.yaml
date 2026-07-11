@@ -1,4 +1,4 @@
-# Pin file for the argo-cd Helm chart. See docs/rendered-manifests.md.
+# Pin file for the argo-cd Helm chart. See knowledge/reference/manifest-pipeline.md.
 chart:
   repo: https://argoproj.github.io/argo-helm
   name: argo-cd

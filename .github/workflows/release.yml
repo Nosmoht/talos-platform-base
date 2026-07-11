@@ -12,7 +12,7 @@ name: Release
 # cosign-signed OCI assets to the Release. oci-publish.yml is unchanged, so the
 # signing identity + consumer verification regex are preserved.
 #
-# See docs/release-automation.md for the full design, the one-time GitHub App +
+# See knowledge/workflows/release-process.md for the full design, the one-time GitHub App +
 # Environment setup, and the commit-message (BREAKING CHANGE footer) discipline.
 
 on:

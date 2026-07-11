@@ -11,8 +11,9 @@ description:
 
 arc42 sections 5 (Building Block View) and 6 (Runtime View) are covered
 by the C4 L2 and "Key flows" sections respectively; section 9
-(Architecture Decisions) is covered by the [ADR set](docs/) (`adr-*.md`)
-under MADR 3.0 frontmatter.
+(Architecture Decisions) is covered by the
+[decision records](knowledge/decisions/index.md) under MADR-derived OKF
+frontmatter.
 
 [c4]: https://c4model.com/
 [arc42]: https://arc42.org/
@@ -70,32 +71,32 @@ captured in a separate ADR with MADR 3.0 frontmatter:
 
 | Strategy | Realised by | ADR |
 |---|---|---|
-| **Goal 1** (reusable) — separate cluster identity from platform code | Three-role split: base / harness-plugin / consumer-cluster | [`adr-0001-multi-repo-platform-split.md`](docs/adr-0001-multi-repo-platform-split.md) |
-| **Goal 2** (auditable) — every artifact carries cryptographic provenance | OCI artifact + cosign + SLSA + CycloneDX SBOM, all keyless OIDC | [`SECURITY.md`](SECURITY.md) §"Supply chain" + [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) |
-| **Goal 3** (no cluster identity) — base is fully cluster-agnostic | Rendered manifests pattern + consumer-side overlays own namespace creation | [`adr-0002-namespace-ownership-rendered-manifests.md`](docs/adr-0002-namespace-ownership-rendered-manifests.md) |
+| **Goal 1** (reusable) — separate cluster identity from platform code | Three-role split: base / harness-plugin / consumer-cluster | [`adr-0001-multi-repo-platform-split.md`](knowledge/decisions/0001-multi-repo-platform-split.md) |
+| **Goal 2** (auditable) — every artifact carries cryptographic provenance | OCI artifact + cosign + SLSA + CycloneDX SBOM, all keyless OIDC | [`SECURITY.md`](SECURITY.md) §"Supply chain" + [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md) |
+| **Goal 3** (no cluster identity) — base is fully cluster-agnostic | Rendered manifests pattern + consumer-side overlays own namespace creation | [`adr-0002-namespace-ownership-rendered-manifests.md`](knowledge/decisions/0002-namespace-ownership-rendered-manifests.md) |
 
 A further decision — the substrate-only scope itself — keeps everything
 above Talos + Cilium + ArgoCD (plus `cert-approver` serving-cert glue) out of the
 base; non-substrate components live in the
 [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
 catalog (see
-[`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md)).
+[`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md)).
 
 The one capability surface that *stays* in the substrate is **Layer C —
 per-node hardware capability composition**, which decides which Talos
 Image-Factory schematic each node receives. It is independent of the
 dissolved network-trust contract:
 
-- **Hardware Features Registry** (`docs/platform-hardware-features.yaml`,
+- **Hardware Features Registry** (`platform-hardware-features.yaml`,
   schema-validated against
-  `docs/schemas/hardware-features.schema.json`): the catalogue of atomic
+  `schemas/hardware-features.schema.json`): the catalogue of atomic
   hardware predicates (GPU, NVMe, IOMMU, SBC overlay, …) that a node's
   provisioning profiles compose into a schematic.
 
 The decision is captured in
-[`adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md)
+[`adr-0009-node-capability-composition.md`](knowledge/decisions/0009-node-capability-composition.md)
 and the broader layer model in
-[`adr-0003-three-layer-capability-architecture.md`](docs/adr-0003-three-layer-capability-architecture.md).
+[`adr-0003-three-layer-capability-architecture.md`](knowledge/decisions/0003-three-layer-capability-architecture.md).
 
 ## L1 — System Context
 
@@ -149,7 +150,7 @@ flowchart LR
     Talos["tofu/modules/talos-cluster/<br/>OpenTofu cluster-lifecycle module<br/>(per-class Image-Factory + bootstrap,<br/>Cilium + ArgoCD + cert-approver inlineManifest seeds)"]
     Pol["policies/<br/>conftest Rego"]
     Scripts["scripts/<br/>render + lint helpers"]
-    Docs["docs/<br/>ADRs + reference"]
+    Docs["knowledge/<br/>OKF bundle: decisions + reference"]
     CI[".github/workflows/<br/>gitops-validate<br/>oci-publish<br/>hard-constraints-check"]
 
     Make --> Pol
@@ -192,7 +193,7 @@ sequenceDiagram
   Cluster->>Cluster: ArgoCD reconciles, applies merged manifests
 ```
 
-See [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md)
+See [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md)
 for the verification recipe.
 
 ## Sync-wave order
@@ -221,12 +222,12 @@ backed by a load-bearing mechanism in the repo today.
 
 | Quality | Target | Mechanism |
 |---|---|---|
-| **Supply-chain integrity** | Every release verifiable to commit SHA via OIDC chain | cosign + SLSA + CycloneDX 1.6 SBOM in [`docs/oci-artifact-verification.md`](docs/oci-artifact-verification.md) |
+| **Supply-chain integrity** | Every release verifiable to commit SHA via OIDC chain | cosign + SLSA + CycloneDX 1.6 SBOM in [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md) |
 | **Reproducibility** | `chart.lock.yaml` + `values.yaml` → identical rendered output | `verify-rendered.sh` (CI required); idempotent renderer |
 | **Cluster-agnostic** | A second cluster pins a tag and bootstraps without base edits | `make day0` flow in consumer repo; `.base-version` pin; no IPs/FQDNs in base |
 | **CI-required gates** | No broken main; no silent regression | conftest, kubeconform, REUSE lint, hard-constraints-check, hardware-features-check |
 | **Multi-maintainer-ready** | New contributor can land a non-trivial change in ≤ 4 h human time | `CONTRIBUTING.md`, `MAINTAINERS.md`, per-component READMEs, MADR ADR template |
-| **Operator-facing docs** | Audience is platform operators, not end-users — content is at operator altitude | Diátaxis-organised `docs/`; arc42 §1 explicitly excludes end-user audience |
+| **Operator-facing docs** | Audience is platform operators, not end-users — content is at operator altitude | OKF-organised `knowledge/` bundle; arc42 §1 explicitly excludes end-user audience |
 
 ## 11. Risks and Technical Debt
 
@@ -237,7 +238,7 @@ this list grow silently.
 | Risk / debt | Severity | Mitigation / tracking |
 |---|---|---|
 | **Pre-release tags v0.2–v0.4 exist without GitHub Releases.** Consumers pinning to them get the OCI artifact but no human-readable changelog. | low | Documented in [`UPGRADING.md`](UPGRADING.md) §"Note on prior git tags"; v0.5.0 is the first canonical release |
-| **OpenSSF Best Practices Badge not yet enrolled.** Self-assessment lives at [`docs/openssf-best-practices.md`](docs/openssf-best-practices.md); external enrolment is a manual step. | low | Will be addressed in a follow-up by the maintainer; badge appears in README only once project ID is assigned |
+| **OpenSSF Best Practices Badge not yet enrolled.** Self-assessment lives at [`knowledge/project/openssf-self-assessment.md`](knowledge/project/openssf-self-assessment.md); external enrolment is a manual step. | low | Will be addressed in a follow-up by the maintainer; badge appears in README only once project ID is assigned |
 | **Multi-cluster reuse exercised against only one consumer.** Second-consumer validation is desk-only. | medium | Issue #32 tracks an E2E Multi-Source demo against a second test cluster |
 | **Single maintainer.** Bus factor = 1; review coverage on changes is human + automated gates, not multi-reviewer. | medium | OpenSSF Scorecard `Code-Review` check will score low by design; mitigated by aggressive CI gating and adversarial reviewer subagent dispatch on risky diffs |
 | **`kubernetes/base/` tree duplicated in a consumer repo is a Phase-1.5 migration leftover.** | low | Tracked consumer-side; not a base-repo concern |
@@ -246,14 +247,14 @@ this list grow silently.
 ## 12. Glossary
 
 The cross-domain vocabulary used in this document lives in
-[`docs/glossary.md`](docs/glossary.md) (per Diátaxis "Reference"
+[`knowledge/glossary.md`](knowledge/glossary.md) (per Diátaxis "Reference"
 quadrant). AGENTS.md §"Key Terms" carries the curated subset
 auto-loaded into agent contexts.
 
 ## See also
 
-- [`docs/README.md`](docs/README.md) — full documentation index (Diátaxis-organised)
-- [`docs/adr-0004-substrate-only-base.md`](docs/adr-0004-substrate-only-base.md) — substrate / apps-catalog boundary
-- [`docs/adr-0009-node-capability-composition.md`](docs/adr-0009-node-capability-composition.md) — Layer-C per-node hardware capability composition
+- [`knowledge/index.md`](knowledge/index.md) — full documentation index (Diátaxis-organised)
+- [`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md) — substrate / apps-catalog boundary
+- [`knowledge/decisions/0009-node-capability-composition.md`](knowledge/decisions/0009-node-capability-composition.md) — Layer-C per-node hardware capability composition
 - [`AGENTS.md`](AGENTS.md) — tool-agnostic SOT (canonical for agents)
-- [`docs/openssf-best-practices.md`](docs/openssf-best-practices.md) — self-assessment against OpenSSF Passing-level criteria
+- [`knowledge/project/openssf-self-assessment.md`](knowledge/project/openssf-self-assessment.md) — self-assessment against OpenSSF Passing-level criteria

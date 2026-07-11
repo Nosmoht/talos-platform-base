@@ -2,7 +2,7 @@
 # render-component-readmes.sh — generate per-component README.md files
 # under kubernetes/base/infrastructure/<comp>/.
 #
-# Per docs/issue-workflow.md issue #35: each component dir must contain
+# Per knowledge/workflows/issue-lifecycle.md issue #35: each component dir must contain
 # a README with sections (Purpose, Upstream chart, Namespace,
 # Helm-value overrides, Upgrade gotchas).
 #
@@ -110,7 +110,7 @@ $gotchas
 
 ## See also
 
-- [\`docs/rendered-manifests.md\`](../../../../docs/rendered-manifests.md) — how this component is rendered into \`_rendered/manifests.yaml\`
+- [\`knowledge/reference/manifest-pipeline.md\`](../../../../knowledge/reference/manifest-pipeline.md) — how this component is rendered into \`_rendered/manifests.yaml\`
 - [\`UPGRADING.md\`](../../../../UPGRADING.md) — release-to-release migration steps
 EOF
 
