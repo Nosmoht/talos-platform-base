@@ -34,6 +34,8 @@ extract_version() {
     conftest)    conftest --version 2>/dev/null | awk '/^Version:/ {print $2}' | sed -E 's/^v//' ;;
     kubeconform) kubeconform -v 2>/dev/null | sed -E 's/^v//' ;;
     yq)          yq --version 2>/dev/null | awk '{print $NF}' | sed -E 's/^v//' ;;
+    openknowledge) openknowledge version 2>/dev/null | sed -E 's/^v//' ;;
+    lychee)      lychee --version 2>/dev/null | awk '{print $2}' | sed -E 's/^v//' ;;
     *) echo "" ;;
   esac
 }

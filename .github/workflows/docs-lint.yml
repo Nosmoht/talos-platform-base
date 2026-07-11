@@ -7,16 +7,30 @@ on:
       - '.markdownlint.yaml'
       - '.markdownlintignore'
       - '.github/workflows/docs-lint.yml'
+      - 'knowledge/openknowledge.toml'
+      - '.tool-versions'
   push:
     branches: [main]
     paths:
       - '**/*.md'
       - '.markdownlint.yaml'
       - '.markdownlintignore'
+      - 'knowledge/openknowledge.toml'
+      - '.tool-versions'
 
 jobs:
   markdownlint:
     runs-on: ubuntu-latest
+    env:
+      # Tool versions — KEEP IN SYNC with .tool-versions and the Taskfile
+      # knowledge:* vars block. Checksums from the projects' released
+      # checksum files. If the upstream release disappears, this job fails
+      # for docs-path PRs until the pin is bumped — bump version + checksum
+      # here, in Taskfile.yml, and in .tool-versions together.
+      OPENKNOWLEDGE_VERSION: "0.5.0"
+      OPENKNOWLEDGE_SHA256_LINUX_AMD64: 0f58de81e52f064fbf52aac5289e0b1b6dc0e58de2f47c4e043263e9e927cb27
+      LYCHEE_VERSION: "0.24.2"
+      LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
     steps:
       - uses: actions/checkout@v4
 
@@ -25,3 +39,41 @@ jobs:
 
       - name: Lint Markdown
         run: markdownlint '**/*.md' --ignore-path .markdownlintignore
+
+      - name: Install openknowledge (pinned + checksum)
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          curl -fsSLo "$tmp/ok.tar.gz" \
+            "https://github.com/openknowledge-sh/openknowledge/releases/download/v${OPENKNOWLEDGE_VERSION}/openknowledge_linux_amd64.tar.gz"
+          echo "${OPENKNOWLEDGE_SHA256_LINUX_AMD64}  $tmp/ok.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/ok.tar.gz" -C "$tmp"
+          sudo install -m 0755 "$tmp/openknowledge" /usr/local/bin/openknowledge
+          openknowledge version
+
+      - name: Validate knowledge bundle (OKF + binding link-target rule)
+        # knowledge/openknowledge.toml raises link-target to error, so a
+        # broken or bundle-escaping link fails this step (exit 1).
+        run: openknowledge validate knowledge/
+
+      - name: Install lychee (pinned + checksum)
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          curl -fsSLo "$tmp/ly.tar.gz" \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${LYCHEE_SHA256_LINUX_AMD64}  $tmp/ly.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/ly.tar.gz" -C "$tmp"
+          # Release tarballs may nest the binary in a per-target directory.
+          ly_bin="$(find "$tmp" -type f -name lychee | head -1)"
+          test -n "$ly_bin"
+          sudo install -m 0755 "$ly_bin" /usr/local/bin/lychee
+          lychee --version
+
+      - name: Offline link-resolution gate
+        # Intra-repo markdown links must resolve (file existence). External
+        # (network) links are out of scope by design — --offline checks only
+        # local targets. CHANGELOG.md is a historical record and excluded.
+        run: |
+          lychee --offline --no-progress --exclude-path CHANGELOG.md \
+            'knowledge/**/*.md' './*.md' 'contracts/*.md'
