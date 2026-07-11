@@ -247,13 +247,13 @@ this list grow silently.
 ## 12. Glossary
 
 The cross-domain vocabulary used in this document lives in
-[`knowledge/glossary.md`](knowledge/glossary.md) (per Diátaxis "Reference"
-quadrant). AGENTS.md §"Key Terms" carries the curated subset
+[`knowledge/glossary.md`](knowledge/glossary.md) (the bundle's reference
+vocabulary). AGENTS.md §"Key Terms" carries the curated subset
 auto-loaded into agent contexts.
 
 ## See also
 
-- [`knowledge/index.md`](knowledge/index.md) — full documentation index (Diátaxis-organised)
+- [`knowledge/index.md`](knowledge/index.md) — full documentation index (OKF v0.1 bundle)
 - [`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md) — substrate / apps-catalog boundary
 - [`knowledge/decisions/0009-node-capability-composition.md`](knowledge/decisions/0009-node-capability-composition.md) — Layer-C per-node hardware capability composition
 - [`AGENTS.md`](AGENTS.md) — tool-agnostic SOT (canonical for agents)

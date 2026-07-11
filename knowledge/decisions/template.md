@@ -10,6 +10,7 @@ deciders:
 consulted: []
 informed: []
 supersedes: []
+superseded_by: []
 related: []
 tags: [adr, template]
 ---

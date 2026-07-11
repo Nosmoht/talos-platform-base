@@ -132,8 +132,8 @@ The aggregate validation task chains five scripts plus kubeconform
    kustomization directories under `kubernetes/overlays/`,
    `kubernetes/bootstrap/`, and one-level-deep component dirs in
    `kubernetes/base/infrastructure/` (avoiding chart-internal
-   kustomizations), excluding `.git/`, `docs/`, `vendor/`, `third_party/`,
-   generated Talos output, and `resources/` subpaths. Output:
+   kustomizations), excluding `.git/`, `knowledge/`, `vendor/`,
+   `third_party/`, generated Talos output, and `resources/` subpaths. Output:
    `.work/kustomize-targets.txt`.
 2. **Safe render** — `scripts/render_kustomize_safe.sh` classifies each
    target: directories whose kustomization references

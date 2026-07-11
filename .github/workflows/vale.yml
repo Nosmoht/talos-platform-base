@@ -23,14 +23,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install Vale (pinned)
+      - name: Install Vale (pinned + checksum)
         env:
           VALE_VERSION: "3.14.2"
+          # From the project's released vale_3.14.2_checksums.txt.
+          VALE_SHA256_LINUX_AMD64: 469cf88ec58a374dca14b2564c4391d2c9a1c632210aa0b642758b794082e05f
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
           curl -fsSLo "$tmp/vale.tar.gz" \
             "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
+          echo "${VALE_SHA256_LINUX_AMD64}  $tmp/vale.tar.gz" | sha256sum -c -
           tar -xzf "$tmp/vale.tar.gz" -C "$tmp" vale
           sudo install -m 0755 "$tmp/vale" /usr/local/bin/vale
           vale --version

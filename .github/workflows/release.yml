@@ -89,6 +89,22 @@ jobs:
                 echo "$base_values_changed"
                 echo '```'
               fi
+              # Second breaking-change class: the published artifact/contract
+              # surface (tarball allowlist, schemas, the Layer-C registry).
+              # A path or layout change here breaks tarball consumers without
+              # touching any Helm value — the prompt above stays silent for it,
+              # which is how a squash-merge that drops the `!` marker could
+              # ship a breaking base as a MINOR unnoticed.
+              artifact_surface_changed="$(git diff --name-only "${last_tag}..HEAD" -- '.ci-oci-tarball-include.txt' '.ci-oci-tarball-expected.txt' 'schemas/**' 'platform-hardware-features.yaml' 'contracts/**' || true)"
+              if [ -n "$artifact_surface_changed" ]; then
+                echo ""
+                echo "> ⚠️ **Published artifact/contract surface changed since \`${last_tag}\`** (tarball allowlist, schemas, registry, contracts) — confirm the computed version above is MAJOR if the layout or paths moved. A squash-merge strips \`type!:\` subjects of branch commits; the marker must survive on the mainline commit."
+                echo ""
+                echo "Changed artifact-surface files:"
+                echo '```'
+                echo "$artifact_surface_changed"
+                echo '```'
+              fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

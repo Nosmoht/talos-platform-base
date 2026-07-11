@@ -1,38 +1,54 @@
 name: docs-lint
 
+# No paths: filter — deliberately runs on every PR/push. Two reasons:
+# (1) the offline link gate checks links whose TARGETS are non-markdown
+#     files (scripts, schemas, contracts) — a PR deleting a target without
+#     touching *.md must still trigger the gate;
+# (2) an unfiltered job is safe to promote to a required branch-protection
+#     context later (a path-filtered required check hangs non-matching PRs
+#     as "Expected — waiting"). The job is cheap (~seconds).
 on:
   pull_request:
-    paths:
-      - '**/*.md'
-      - '.markdownlint.yaml'
-      - '.markdownlintignore'
-      - '.github/workflows/docs-lint.yml'
-      - 'knowledge/openknowledge.toml'
-      - '.tool-versions'
   push:
     branches: [main]
-    paths:
-      - '**/*.md'
-      - '.markdownlint.yaml'
-      - '.markdownlintignore'
-      - 'knowledge/openknowledge.toml'
-      - '.tool-versions'
+
+permissions:
+  contents: read
 
 jobs:
   markdownlint:
     runs-on: ubuntu-latest
     env:
       # Tool versions — KEEP IN SYNC with .tool-versions and the Taskfile
-      # knowledge:* vars block. Checksums from the projects' released
-      # checksum files. If the upstream release disappears, this job fails
-      # for docs-path PRs until the pin is bumped — bump version + checksum
-      # here, in Taskfile.yml, and in .tool-versions together.
+      # knowledge:* vars block (drift-checked against .tool-versions below).
+      # Checksums from the projects' released checksum files. If the
+      # upstream release disappears, this job fails until the pin is
+      # bumped — bump version + checksum here, in Taskfile.yml, and in
+      # .tool-versions together.
       OPENKNOWLEDGE_VERSION: "0.5.0"
       OPENKNOWLEDGE_SHA256_LINUX_AMD64: 0f58de81e52f064fbf52aac5289e0b1b6dc0e58de2f47c4e043263e9e927cb27
       LYCHEE_VERSION: "0.24.2"
       LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify env tool-versions match .tool-versions
+        # Same drift-detector pattern as gitops-validate.yml — the env
+        # block above and .tool-versions must agree.
+        run: |
+          set -eu
+          fail=0
+          tv() { awk -v k="$1" '$1==k {print $2}' .tool-versions; }
+          assert() {
+            if [ "$2" != "$3" ]; then
+              echo "DRIFT:    $1 .tool-versions=$2 workflow-env=$3"; fail=1
+            else
+              echo "OK:       $1 $2"
+            fi
+          }
+          assert openknowledge "$(tv openknowledge)" "$OPENKNOWLEDGE_VERSION"
+          assert lychee        "$(tv lychee)"        "$LYCHEE_VERSION"
+          exit "$fail"
 
       - name: Install markdownlint-cli
         run: npm install -g markdownlint-cli@0.42.0
@@ -74,6 +90,11 @@ jobs:
         # Intra-repo markdown links must resolve (file existence). External
         # (network) links are out of scope by design — --offline checks only
         # local targets. CHANGELOG.md is a historical record and excluded.
+        # The two tofu READMEs ship in the OCI tarball and carry relative
+        # links into knowledge/ — checked here so a decision rename cannot
+        # rot them silently.
         run: |
           lychee --offline --no-progress --exclude-path CHANGELOG.md \
-            'knowledge/**/*.md' './*.md' 'contracts/*.md'
+            'knowledge/**/*.md' './*.md' 'contracts/*.md' \
+            'tofu/modules/talos-cluster/README.md' \
+            'tofu/modules/talos-cluster/test/README.md'

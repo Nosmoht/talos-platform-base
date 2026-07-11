@@ -227,7 +227,7 @@ the base, not application developers or end-users.
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Open a PR |
 | [`AGENTS.md`](AGENTS.md) | Configure an agentic tool against the repo |
 
-Full Diátaxis index: [`knowledge/index.md`](knowledge/index.md).
+Full knowledge-bundle index (OKF v0.1): [`knowledge/index.md`](knowledge/index.md).
 
 ## Contributing
 
