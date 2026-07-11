@@ -28,7 +28,7 @@
 # `default` (upstream design) — the approver emits its audit Events into `default`,
 # not into its own namespace; operators triaging approve/deny decisions look there.
 #
-# Security model (see docs/adr-0013): isRequestConform validates Org==system:nodes,
+# Security model (see knowledge/decisions/0013-kubelet-serving-cert-rotation.md): isRequestConform validates Org==system:nodes,
 # CN prefix system:node:, CN==CSR.username, no email/URI SANs, usages — but does
 # NOT bind requested DNS/IP SANs to the requesting node. SAN-to-node binding is a
 # consumer-cluster Kyverno defense-in-depth obligation (ADR-0004 §kubelet-serving).

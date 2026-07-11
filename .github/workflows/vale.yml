@@ -46,7 +46,7 @@ jobs:
 
       - name: Vale lint (root-level docs)
         # Scope matches .vale.ini's section glob — root-level Markdown
-        # files only for the initial pass. Widening to docs/** is a
+        # files only for the initial pass. Widening to knowledge/** is a
         # follow-up once the existing corpus is consistent.
         run: |
           vale --no-wrap --output=line \

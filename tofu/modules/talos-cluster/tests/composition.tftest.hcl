@@ -182,7 +182,7 @@ run "argocd_namespace_seed_carries_psa_floor_and_recommended_labels" {
 }
 
 # Kubelet serving-cert rotation (serverTLSBootstrap) + cert-approver substrate
-# seed — docs/adr-0013. Binds both deliverables to the EXACT per-role patch lists
+# seed — knowledge/decisions/0013-kubelet-serving-cert-rotation.md. Binds both deliverables to the EXACT per-role patch lists
 # the data.talos_machine_configuration sources receive (via the named locals
 # main.tf exposes through outputs). Red-green: drop [local.base_kubelet_rotation_patch]
 # from a role's concat in main.tf and that role's rotation assert fails; drop
