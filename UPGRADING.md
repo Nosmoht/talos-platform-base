@@ -42,6 +42,54 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
+## `v4.0.0` — docs/ replaced by the knowledge/ OKF bundle; machine contracts relocated (MAJOR — path-consumer-facing)
+
+**Type:** MAJOR. Two path surfaces changed: (1) two OCI-tarball members
+moved, so a vendored tree's references to them break; (2) the `docs/` tree
+no longer exists, so any deep link or hardcoded path into `docs/**` breaks.
+Rendered manifests, the module interface, and all Helm values are
+UNCHANGED — no cluster-runtime impact.
+
+**Old → new path table:**
+
+| Old | New |
+|---|---|
+| `docs/platform-hardware-features.yaml` (ships in tarball) | `platform-hardware-features.yaml` (repo root) |
+| `docs/schemas/hardware-features.schema.json` (ships in tarball) | `schemas/hardware-features.schema.json` |
+| `docs/schemas/cluster.schema.json` | `schemas/cluster.schema.json` |
+| `docs/schemas/fixtures/cluster.invalid.yaml` | `schemas/fixtures/cluster.invalid.yaml` |
+| `docs/primitive-contract.md` (machine-read by external harnesses) | `contracts/primitive-contract.md` |
+| `docs/README.md` (doc index) | `knowledge/index.md` |
+| `docs/adr-NNNN-<slug>.md` (13 ADRs) | `knowledge/decisions/NNNN-<slug>.md` |
+| `docs/rendered-manifests.md` | `knowledge/reference/manifest-pipeline.md` |
+| `docs/tutorial-first-consumer-cluster.md` | `knowledge/workflows/first-consumer-cluster.md` |
+| `docs/oci-artifact-verification.md` | `knowledge/workflows/verify-release.md` |
+| `docs/release-automation.md` | `knowledge/workflows/release-process.md` |
+| `docs/issue-workflow.md` | `knowledge/workflows/issue-lifecycle.md` |
+| `docs/mcp-setup.md` | `knowledge/workflows/mcp-setup.md` |
+| `docs/day-zero-pattern.md` | `knowledge/architecture/day-zero-bootstrap.md` |
+| `docs/component-dependencies.md` | dissolved into `knowledge/architecture/substrate.md` |
+| `docs/glossary.md` | `knowledge/glossary.md` |
+| `docs/{vision,openssf-best-practices,harness-plugin-integration}.md` | `knowledge/project/{vision,openssf-self-assessment,harness-plugin-contract}.md` |
+
+**Migration:**
+
+1. Re-vendor at `v4.0.0` (the tarball now carries
+   `platform-hardware-features.yaml` and
+   `schemas/hardware-features.schema.json` at their new paths); update any
+   consumer script that referenced the two old tarball paths.
+2. If an external harness reads the diagnostics primitive contract at a
+   hardcoded path, repoint it: `docs/primitive-contract.md` →
+   `contracts/primitive-contract.md` (the lookup is fail-closed — an
+   unrepointed harness returns `PRECONDITION_NOT_MET` on every Phase-1a
+   primitive until updated).
+3. Repoint any bookmarks, runbooks, or docs deep-linking `docs/**` per the
+   table above. The JSON Schema `$id` URLs changed with the paths; the
+   schemas are versioned by `$id` + OCI tag, so this bump is the migration
+   signal.
+
+---
+
 ## `v3.0.0` — go-task single runner + Makefile retired; kubelet serving-cert rotation default-on + cert-approver seed (MAJOR — dev-facing + consumer-facing)
 
 **Type:** MAJOR (dev-facing). The `Makefile` is retired and go-task is the sole

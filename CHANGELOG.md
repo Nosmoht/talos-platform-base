@@ -5,7 +5,42 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+<!-- Release checklist: before approving the v4.0.0 release, rename this
+     heading to "## v4.0.0 — <date>" (exact form: two spaces around the
+     em dash is NOT required, but the tag MUST be followed by a space —
+     oci-publish.yml extracts release notes via awk prefix "## v4.0.0 "
+     and silently falls back to --generate-notes on mismatch; that is how
+     v3.0.0 lost its hand-written notes). -->
+
+### Changed
+
+- **Documentation replaced by an Open Knowledge Format (OKF v0.1) bundle at
+  `knowledge/` — the `docs/` tree is deleted (BREAKING for path consumers).**
+  All prose documentation was regenerated from repository source (or, for
+  decision records and project docs, migrated with per-claim verification)
+  into `knowledge/` — architecture, reference, workflows, `decisions/`
+  (the 13 ADRs, MADR frontmatter mapped to OKF), glossary. Entry point:
+  `knowledge/index.md`. `openknowledge validate` (link-target raised to
+  error via `knowledge/openknowledge.toml`) plus an offline lychee
+  link-resolution pass gate the bundle in `docs-lint.yml` and locally via
+  `task knowledge:validate`.
+- **Machine-consumed contracts relocated out of `docs/` (BREAKING — OCI
+  tarball layout changed).** `docs/platform-hardware-features.yaml` →
+  `platform-hardware-features.yaml` (repo root);
+  `docs/schemas/*` → `schemas/*`; `docs/primitive-contract.md` →
+  `contracts/primitive-contract.md`. Both JSON Schema `$id` URLs updated
+  accordingly. Consumers vendoring the tarball must repoint the two moved
+  member paths; external harnesses reading the primitive contract at its
+  hardcoded `docs/` path must repoint to `contracts/`. Migration table:
+  `UPGRADING.md` §v4.0.0.
+
 ### Added
+
+- **`knowledge:*` task namespace + pinned validation toolchain.**
+  `task knowledge:validate` (OKF validate + offline link check),
+  `task knowledge:new` (concept scaffold), `task knowledge:install-cli`
+  (sha256-verified install of `openknowledge` 0.5.0 + `lychee` 0.24.2,
+  pinned in `.tool-versions` and mirrored in `docs-lint.yml`).
 
 - **Cilium Gateway API honors Service `appProtocol: kubernetes.io/h2c` (#132, #133).**
   `gatewayAPI.enableAppProtocol: true` is now set in the computed Gateway-API
