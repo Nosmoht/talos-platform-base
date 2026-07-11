@@ -3,14 +3,7 @@
 This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
-
-<!-- Release checklist: before approving the v4.0.0 release, rename this
-     heading to "## v4.0.0 — <date>" (exact form: two spaces around the
-     em dash is NOT required, but the tag MUST be followed by a space —
-     oci-publish.yml extracts release notes via awk prefix "## v4.0.0 "
-     and silently falls back to --generate-notes on mismatch; that is how
-     v3.0.0 lost its hand-written notes). -->
+## v4.0.0 — 2026-07-11
 
 ### Changed
 
@@ -41,6 +34,14 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `task knowledge:new` (concept scaffold), `task knowledge:install-cli`
   (sha256-verified install of `openknowledge` 0.5.0 + `lychee` 0.24.2,
   pinned in `.tool-versions` and mirrored in `docs-lint.yml`).
+
+## v3.0.0 — 2026-07-01
+
+<!-- Backfilled 2026-07-11: these entries accrued under "Unreleased" and were
+     released as v3.0.0, but the heading was never renamed — which is also why
+     the v3.0.0 GitHub Release fell back to auto-generated notes. -->
+
+### Added
 
 - **Cilium Gateway API honors Service `appProtocol: kubernetes.io/h2c` (#132, #133).**
   `gatewayAPI.enableAppProtocol: true` is now set in the computed Gateway-API
