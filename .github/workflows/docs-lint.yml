@@ -29,6 +29,9 @@ jobs:
       OPENKNOWLEDGE_SHA256_LINUX_AMD64: 0f58de81e52f064fbf52aac5289e0b1b6dc0e58de2f47c4e043263e9e927cb27
       LYCHEE_VERSION: "0.24.2"
       LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+      # npm-distributed; installed with --ignore-scripts, so no checksum
+      # (the SHA pattern above is for curl-fetched binaries).
+      OPENSPEC_VERSION: "1.6.0"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -48,6 +51,12 @@ jobs:
           }
           assert openknowledge "$(tv openknowledge)" "$OPENKNOWLEDGE_VERSION"
           assert lychee        "$(tv lychee)"        "$LYCHEE_VERSION"
+          assert openspec      "$(tv openspec)"      "$OPENSPEC_VERSION"
+          # Third pin copy: the Taskfile spec:* vars block. Normalized
+          # (quotes stripped) before compare so YAML quoting cannot mask
+          # or fake drift.
+          taskfile_openspec="$(awk '/^  OPENSPEC_VERSION:/ {gsub(/"/, ""); print $2}' Taskfile.yml)"
+          assert openspec-taskfile "$taskfile_openspec" "$OPENSPEC_VERSION"
           exit "$fail"
 
       - name: Install markdownlint-cli
@@ -86,6 +95,19 @@ jobs:
           sudo install -m 0755 "$ly_bin" /usr/local/bin/lychee
           lychee --version
 
+      - name: Install openspec (pinned, lifecycle scripts disabled)
+        # npm postinstall scripts (incl. transitive deps) are disabled —
+        # supply-chain control consistent with the release toolchain's
+        # `npm ci --ignore-scripts`.
+        run: |
+          npm install -g --ignore-scripts "@fission-ai/openspec@${OPENSPEC_VERSION}"
+          openspec --version
+
+      - name: Validate behavioral specs (strict, fail-closed)
+        # Verified against 1.6.0: --strict exits non-zero on a malformed
+        # directly-authored spec under openspec/specs/.
+        run: openspec validate --all --strict --no-interactive
+
       - name: Offline link-resolution gate
         # Intra-repo markdown links must resolve (file existence). External
         # (network) links are out of scope by design — --offline checks only
@@ -95,6 +117,6 @@ jobs:
         # rot them silently.
         run: |
           lychee --offline --no-progress --exclude-path CHANGELOG.md \
-            'knowledge/**/*.md' './*.md' 'contracts/*.md' \
+            'knowledge/**/*.md' './*.md' 'contracts/*.md' 'openspec/**/*.md' \
             'tofu/modules/talos-cluster/README.md' \
             'tofu/modules/talos-cluster/test/README.md'

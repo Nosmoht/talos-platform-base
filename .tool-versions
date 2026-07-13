@@ -21,3 +21,5 @@ kubeconform 0.6.7
 yq 4.53.2
 openknowledge 0.5.0
 lychee 0.24.2
+# npm-managed (no asdf plugin): install via `task spec:install-cli`.
+openspec 1.6.0

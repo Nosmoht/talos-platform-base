@@ -44,6 +44,10 @@ vars:
   LYCHEE_SHA256_DARWIN_ARM64: c9d3740ea2d891854d37116c9fba840f37b6e7c89d330e7db84ac333631c4977
   LYCHEE_SHA256_DARWIN_AMD64: 887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978
   LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+  # spec:* tool pin — KEEP IN SYNC with .tool-versions and the docs-lint.yml
+  # env block (drift-asserted there). npm-distributed; installed with
+  # --ignore-scripts, so no SHA triplet (that pattern is for curl-fetched binaries).
+  OPENSPEC_VERSION: 1.6.0
 
 tasks:
   default:
@@ -296,6 +300,47 @@ tasks:
       install -m 0755 "$ly_bin" "$HOME/.local/bin/lychee"
       echo "Installed openknowledge $(openknowledge version) + lychee {{.LYCHEE_VERSION}} to ~/.local/bin"
       echo "Verify pins: task dev:verify-tools"
+
+  # ===========================================================================
+  # spec:* — OpenSpec behavioral specs (openspec/). NOT the same tool as
+  # knowledge:* (openknowledge validates the OKF bundle; openspec validates
+  # behavioral capability specs). See knowledge/workflows/spec-driven-development.md.
+  # ===========================================================================
+  spec:validate:
+    desc: Validate the openspec/ behavioral specs (strict) + offline link check
+    cmd: |
+      set -e
+      command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
+      command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
+      openspec validate --all --strict --no-interactive
+      lychee --offline --no-progress 'openspec/**/*.md'
+
+  spec:install-cli:
+    desc: Install the pinned openspec CLI (npm, lifecycle scripts disabled)
+    cmd: |
+      set -e
+      command -v npm >/dev/null 2>&1 || { echo "ERROR: 'npm' required — https://nodejs.org"; exit 1; }
+      npm install -g --ignore-scripts @fission-ai/openspec@{{.OPENSPEC_VERSION}}
+      echo "Installed openspec $(openspec --version)"
+      echo "Verify pins: task dev:verify-tools"
+
+  spec:update:
+    desc: Regenerate OpenSpec tool integrations (.claude/, .codex/) after a CLI upgrade
+    cmd: |
+      set -e
+      command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
+      openspec update
+      # Completeness gate: regeneration may emit NEW paths the .gitignore
+      # negation list does not cover yet — generated content must never be
+      # silently ignored (ADR-0014 commits regenerable artifacts).
+      ignored="$(git status --ignored=matching --porcelain .claude/ .codex/ | grep '^!!' | grep -vE '\.claude/(settings\.local\.json|worktrees/)' || true)"
+      if [ -n "$ignored" ]; then
+        echo "ERROR: openspec update produced content still matched by .gitignore:"
+        echo "$ignored"
+        echo "Extend the negation list in .gitignore (see ADR-0014), then re-run."
+        exit 1
+      fi
+      echo "Regenerated. Review 'git status .claude/ .codex/' and commit."
 
   # ===========================================================================
   # mcp:* — MCP server binary management (see knowledge/workflows/mcp-setup.md)
