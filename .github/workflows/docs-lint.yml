@@ -26,6 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Full history: the staleness gate diffs against the PR base ref.
+          fetch-depth: 0
 
       - name: Install go-task
         uses: arduino/setup-task@v2
@@ -39,14 +42,10 @@ jobs:
       - name: task dev:verify-pins (Taskfile vars ↔ .tool-versions)
         run: task dev:verify-pins
 
-      - name: task docs:install-cli (markdownlint, pinned)
-        run: task docs:install-cli
-
-      - name: task knowledge:install-cli (openknowledge + lychee, pinned + checksum)
-        run: task knowledge:install-cli
-
-      - name: task spec:install-cli (openspec, pinned, lifecycle scripts disabled)
-        run: task spec:install-cli
+      - name: task install-cli (markdownlint + openspec via npm ci lockfile; openknowledge + lychee pinned + checksum)
+        # One task invocation so the shared `npm ci --ignore-scripts`
+        # (dev:npm-ci, run: once) executes exactly once for both npm tools.
+        run: task docs:install-cli spec:install-cli knowledge:install-cli
 
       - name: task docs:lint
         run: task docs:lint
@@ -66,3 +65,17 @@ jobs:
         # (whole-tree delta; catches added/modified/deleted files). Parity
         # only — instruction-body review stays mandatory (ADR-0014).
         run: task spec:check-regen
+
+      - name: task spec:check-staleness (PR only)
+        # ADR-0015 staleness convention, CI-enforced: a PR touching a
+        # spec's primary source must also touch the owning spec. Escape
+        # for verified no-behavior-change diffs: the 'Spec-Impact: none'
+        # trailer on EVERY commit touching the file (per-commit scope;
+        # reviewer judges the claim).
+        if: github.event_name == 'pull_request'
+        env:
+          # env-bound (not inline-interpolated into `run:`): github.base_ref
+          # is on GitHub's untrusted-input list — inline expansion would let
+          # a metacharacter-named base branch inject into the runner shell.
+          BASE_REF: ${{ github.base_ref }}
+        run: task spec:check-staleness BASE="origin/${BASE_REF}"

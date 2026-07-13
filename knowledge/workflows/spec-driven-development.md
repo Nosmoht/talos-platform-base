@@ -57,18 +57,32 @@ the pattern.
 - CI: `docs-lint.yml` runs exactly these Taskfile targets on every PR —
   the local chain and the remote chain are the same commands by
   construction.
-- Staleness convention: a PR touching a spec's `primary` source file
-  updates the owning spec (frontmatter `sources:`; not yet CI-enforced).
+- Staleness gate (CI-enforced on PRs): a diff touching a spec's `primary`
+  source must also touch the owning spec — `task spec:check-staleness`
+  (`scripts/check-spec-staleness.py`, driven by the frontmatter
+  `sources:` ownership map). Fragment-keyed sources
+  (`Taskfile.yml#bootstrap:argocd`) fire at fragment granularity: only a
+  diff inside the named YAML-key block counts (unresolvable fragments
+  fail closed), so unrelated edits to a shared file never force a spec
+  touch. For verified no-behavior-change diffs (comment-only edits,
+  refactors) the `Spec-Impact: none` trailer — in the commit BODY, never
+  the subject — downgrades the failure to a warning, scoped per commit:
+  EVERY commit touching the violating file must carry it. The PR
+  reviewer judges the no-behavior-change claim.
 
 ## Tool pin and upgrades
 
 The CLI is npm-distributed and pinned (`.tool-versions` is the SoT; the
-Taskfile vars block is the only other copy — `task dev:verify-pins`
-asserts the pair, locally and in CI). Install: `task spec:install-cli`
-(always `--ignore-scripts`). Upgrading:
+committed `package.json` + `package-lock.json` carry the installable
+copy with integrity hashes — `task dev:verify-pins` asserts the pair,
+locally and in CI). Install: `task spec:install-cli` (`npm ci
+--ignore-scripts` against the lockfile, then a `~/.local/bin` symlink —
+the lockfile's integrity hashes are the supply-chain control;
+`--ignore-scripts` additionally disables lifecycle scripts). Upgrading:
 
-1. Bump the pin in `.tool-versions` and `Taskfile.yml` together
-   (`dev:verify-pins` fails on a partial bump).
+1. Bump the pin in `.tool-versions` and `package.json` together, then
+   refresh the lockfile via `npm install --package-lock-only
+   --ignore-scripts` (`dev:verify-pins` fails on a partial bump).
 2. `task spec:install-cli`, then `task spec:update` — regenerates the
    committed Claude/Codex integration trees and fails if the regeneration
    emitted paths the `.gitignore` negation list does not cover.

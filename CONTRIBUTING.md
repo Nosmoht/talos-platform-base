@@ -93,6 +93,10 @@ footer, or the change ships as a non-breaking release. See
 ```bash
 task gitops:validate             # kustomize + conftest + kubeconform
 task spec:validate               # when openspec/ or a spec's primary source changed
+task spec:check-staleness        # primary-source diff must touch the owning spec
+                                 # (escape for no-behavior-change diffs:
+                                 #  'Spec-Impact: none' trailer on EVERY commit
+                                 #  touching the file)
 ```
 
 For changes touching a single component:

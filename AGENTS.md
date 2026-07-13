@@ -166,10 +166,15 @@ and describe observable outcomes.
   `openspec/changes/` (propose → apply → archive); direct edits to
   `openspec/specs/` are reserved for the one-time backfill.
 - Validate locally with `task spec:validate` (+ `task spec:check-regen` for
-  the tool trees); CI (`docs-lint.yml`) runs exactly these Taskfile
-  targets, so the local chain equals the remote one.
+  the tool trees, `task spec:check-staleness` for the ownership gate); CI
+  (`docs-lint.yml`) runs exactly these Taskfile targets — the local and
+  remote commands are identical (`spec:check-staleness` runs on PR events
+  only).
 - A PR touching a spec's `primary` source file (frontmatter `sources:`)
-  updates the owning spec.
+  updates the owning spec — CI-enforced by `task spec:check-staleness`;
+  verified no-behavior-change diffs escape via the `Spec-Impact: none`
+  trailer on EVERY commit touching the file (per-commit scope; the PR
+  reviewer judges the claim).
 - Full workflow incl. tool-pin upgrades:
   [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
 - Do not confuse the tools: `openspec` validates behavioral specs

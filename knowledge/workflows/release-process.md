@@ -45,8 +45,9 @@ and `@semantic-release/release-notes-generator` (both with the
 (`successComment` and `failComment` disabled). The toolchain is pinned in
 `package.json` (`semantic-release` 25.0.5,
 `conventional-changelog-conventionalcommits` 9.3.1) — the repo is **not** a
-Node project; the manifest exists only to pin the release toolchain and is
-excluded from the OCI tarball.
+Node project; the manifest exists only to pin npm-distributed tooling
+(it also carries the `openspec`/`markdownlint-cli` gate pins, see the
+spec-driven-development workflow) and is excluded from the OCI tarball.
 
 No custom `releaseRules` are declared, so the commit-analyzer defaults apply:
 

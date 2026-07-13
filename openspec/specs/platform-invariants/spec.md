@@ -103,55 +103,70 @@ denies each violation.
   `resources.requests`, or `resources.limits`
 - **THEN** the policy emits a deny naming the workload and container
 
-### Requirement: ArgoCD Application targeting (with disclosed chart-omission evasion)
+### Requirement: ArgoCD Application targeting and source classifiability
 
 Every rendered ArgoCD Application SHALL set `spec.project`, a destination
 namespace (unless allowlisted as namespace-optional), and a destination
-`server` or `name`; every Helm source SHALL set `repoURL` and
-`targetRevision`, and `policies/conftest/argocd.rego` denies an empty
-`repoURL` or `targetRevision` on a Helm source. **Known enforcement gap
-(not a satisfied invariant):** the policy classifies a source as Helm only
-when `chart` is non-empty, so a source omitting `chart` falls to the
-git-source rules and evades the Helm pinning checks entirely — the
-policy's textual chart-omission rule is dead code that cannot fire.
-Fixing the classifier is a tracked follow-up; until then this requirement
-is enforced only for sources that do set `chart`.
+`server` or `name`; every source SHALL set `repoURL` and SHALL be
+explicitly classifiable — a non-empty `chart` (Helm repository source),
+`path` (git directory source), `ref` (multi-source values anchor), or a
+`plugin` block (config-management plugin, which legitimately runs at the
+repo root) — a source carrying a `helm:` block SHALL additionally set
+`chart` or `path`, and every Helm source SHALL set `targetRevision`;
+`policies/conftest/argocd.rego` denies each violation. Together with the all-sources floating-revision deny
+(next requirement) this narrows the former evasion where a source omitting
+`chart` fell through to the weaker git-source rules. **Disclosed
+residual:** a chart-less source that sets `path` is classified as a git
+source — whether its `repoURL` is a Helm repository is not mechanically
+decidable, so the Helm exact-version requirement applies only to
+chart-bearing sources. The floating-revision deny catches only the
+literal floating markers (`latest`, `*`, `HEAD`); a mutable branch or
+tag name (`stable`, `main`, `v1`) on a git-classified source passes
+mechanically and remains a review concern, not an enforced invariant.
 
 #### Scenario: Underspecified Application is denied
 
 - **WHEN** conftest evaluates an Application missing its project or
-  destination, or a Helm source with an empty `repoURL` or
-  `targetRevision`
+  destination, a source with an empty `repoURL`, or a Helm source with an
+  empty `targetRevision`
 - **THEN** the policy emits a deny naming the Application and the missing
   field
 
-#### Scenario: Chart-less Helm-shaped source evades the pinning checks (known gap)
+#### Scenario: Unclassifiable source is denied
 
 - **WHEN** conftest evaluates an Application whose source carries a
-  `helm:` values block and a `repoURL` but omits `chart`
-- **THEN** the source is classified as a git source and NO Helm pinning
-  deny fires — a disclosed, unresolved gap in
-  `policies/conftest/argocd.rego`, not enforced behavior
+  `helm:` values block and a `repoURL` but none of `chart`, `path`,
+  `ref`, or `plugin`
+- **THEN** the policy emits a deny naming the Application and requiring
+  `chart`, `path`, `ref`, or `plugin`
+
+#### Scenario: Helm-shaped source with only a values anchor is denied
+
+- **WHEN** conftest evaluates an Application whose source carries a
+  `helm:` block and a `ref` but neither `chart` nor `path`
+- **THEN** the policy emits a deny naming the Application and requiring
+  `chart` or `path` alongside the `helm:` block
 
 ### Requirement: Pinned source revisions
 
-Rendered ArgoCD Applications SHALL pin their sources: a Helm
-`targetRevision` is an exact version (floating values such as `latest` or
-`*` are denied, non-exact values only via the explicit per-Application
-allowlist), and a git `targetRevision` is never `HEAD`;
+Rendered ArgoCD Applications SHALL pin their sources: the literal
+floating markers `latest`, `*`, and `HEAD` are denied as `targetRevision`
+on EVERY source independent of its helm/git classification, and a Helm
+`targetRevision` is additionally an exact version (non-exact values only
+via the explicit per-Application allowlist);
 `policies/conftest/argocd.rego` denies each violation.
 
-#### Scenario: Floating Helm revision is denied
+#### Scenario: Floating revision is denied on any source
 
-- **WHEN** conftest evaluates an Application whose Helm `targetRevision` is
-  floating or not an exact version (and the Application is not allowlisted)
+- **WHEN** conftest evaluates an Application whose source — regardless of
+  classification — carries a `targetRevision` of `latest`, `*`, or `HEAD`
 - **THEN** the policy emits a deny naming the Application and the revision
 
-#### Scenario: Floating git ref is denied
+#### Scenario: Non-exact Helm revision is denied
 
-- **WHEN** conftest evaluates an Application whose git `targetRevision` is
-  `HEAD`
-- **THEN** the policy emits a deny naming the Application
+- **WHEN** conftest evaluates an Application whose Helm `targetRevision` is
+  not an exact version (and the Application is not allowlisted)
+- **THEN** the policy emits a deny naming the Application and the revision
 
 ### Requirement: Sync-safety guards
 

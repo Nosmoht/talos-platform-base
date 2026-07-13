@@ -6,6 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: argocd
     app.kubernetes.io/instance: ${CLUSTER_NAME}
+    app.kubernetes.io/version: ${TARGET_REVISION_LABEL}
     app.kubernetes.io/component: root-application
     app.kubernetes.io/part-of: ${CLUSTER_NAME}
     app.kubernetes.io/managed-by: bootstrap

@@ -88,23 +88,35 @@ terraform-docs-generated (inject mode) and exempt from this map.
 - Positive: 14 substrate capabilities carry testable requirements with
   scenario-level observability; future behavior changes travel as spec
   deltas through `openspec/changes/`.
-- Negative: backfilled specs are descriptive of current code; nothing
-  forces them to track reality except the convention below. This is the
-  owner-accepted residual.
+- Negative: backfilled specs are descriptive of current code; the
+  CI staleness gate (below) forces a *touch* of the owning spec, not the
+  *correctness* of the update. This is the owner-accepted residual.
 - Negative: a second validator (`openspec`) joins `openknowledge` — the
   near-identical names are a standing confusion hazard (disambiguated in
   Taskfile namespace comments and the workflow doc).
-- Follow-up: staleness convention — a PR touching a spec's `primary`
-  source updates the owning spec. Not CI-enforced yet; a CI mapping of
-  source-diff → owning spec is the named follow-up candidate.
+- Follow-up (closed 2026-07-13): staleness convention — a PR touching a
+  spec's `primary` source must also touch the owning spec. CI-enforced
+  via `task spec:check-staleness` (`scripts/check-spec-staleness.py`) in
+  `docs-lint.yml`; fragment-keyed sources fire at fragment granularity
+  (fail-closed on unresolvable fragments) so shared files like
+  `Taskfile.yml` do not produce chronic false positives; escape for
+  verified no-behavior-change diffs is the `Spec-Impact: none` trailer
+  in the body of every commit touching the file (per-commit scope),
+  judged by the PR reviewer. Scope: PR events — a direct push to a
+  protected `main` bypasses the gate by construction; the PR path is the
+  enforced contribution path. The gate forces a *touch* of the owning
+  spec, not the *correctness* of the update.
 - Follow-up: `markdownlint` exempts the generated tool trees; the
   hand-authored specs stay lint-clean (no `openspec/` exemption was
   needed at adoption).
-- Follow-up: the npm install is exact-version-pinned with lifecycle
-  scripts disabled, but carries no artifact-integrity hash (unlike the
-  checksum-verified curl-fetched sibling tools). A lockfile-based install
-  (`npm ci --ignore-scripts` against a committed lockfile) is the named
-  follow-up.
+- Follow-up (closed 2026-07-13): npm artifact integrity — `openspec` and
+  `markdownlint-cli` are pinned in the committed `package.json` +
+  `package-lock.json` and installed via `npm ci --ignore-scripts`. Scope:
+  the integrity hashes pin the fetch to the reviewed lockfile
+  (registry/MITM tampering) and `dev:verify-pins` asserts
+  registry.npmjs.org provenance of every resolved URL; unlike the
+  checksum-verified curl-fetched sibling tools the hash set is authored
+  in-PR, so lockfile diffs remain human review surface.
 
 ## Pros and Cons of the Options
 
@@ -136,15 +148,18 @@ re-proven by a committed malformed fixture that must fail validation
 to the script's enumerated substrate source universe — extending the
 universe is part of adding a new source class; an unknown-module drift
 guard catches the most likely omission). The pin lives in
-`.tool-versions` (SoT) plus the Taskfile vars block, asserted by
+`.tool-versions` (SoT) plus the committed `package.json` +
+`package-lock.json` (the installable, integrity-hashed copy), asserted by
 `task dev:verify-pins`; `task spec:check-regen` keeps the committed tool
 trees equal to the pinned generator's output (parity, not benignity —
-instruction-body review stays mandatory). The `docs-lint.yml` CI job runs
-exactly these Taskfile targets, so the local and remote validation chains
-are the same commands by construction.
-The decision is wrong if specs rot despite the staleness convention —
-the trigger to revisit is a merged behavior change whose owning spec was
-not updated.
+instruction-body review stays mandatory); `task spec:check-staleness`
+fails a PR whose diff touches a spec's `primary` source without touching
+the owning spec. The `docs-lint.yml` CI job runs exactly these Taskfile
+targets, so the local and remote validation chains are the same commands
+by construction.
+The decision is wrong if specs rot despite the staleness gate — the
+trigger to revisit is a merged behavior change whose owning spec carries
+a stale description (the gate forces a touch, not a correct one).
 
 ## Links
 

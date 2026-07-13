@@ -19,47 +19,15 @@ Exit 0 iff all assertions hold.
 """
 import glob
 import os
-import posixpath
 import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from spec_lib import declares_primary, frontmatter, normalize, primary_sources  # noqa: E402
+
 REPO = sys.argv[1] if len(sys.argv) > 1 else "."
 os.chdir(REPO)
-
-def frontmatter(path):
-    text = open(path, encoding="utf-8").read()
-    m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
-    return m.group(1) if m else ""
-
-def normalize(p):
-    p = p.strip().rstrip("/")
-    if p.startswith("./"):
-        p = p[2:]
-    return posixpath.normpath(p) if p else p
-
-def primary_sources(fm):
-    """Parse the sources.primary list (also accepts a bare sources: list)."""
-    out, in_sources, in_secondary = [], False, False
-    for line in fm.splitlines():
-        if re.match(r"^sources:", line):
-            in_sources, in_secondary = True, False
-            continue
-        if re.match(r"^\S", line):  # next top-level key
-            in_sources = False
-            continue
-        if not in_sources:
-            continue
-        if re.match(r"^\s+primary:", line):
-            in_secondary = False
-            continue
-        if re.match(r"^\s+secondary:", line):
-            in_secondary = True
-            continue
-        m = re.match(r"^\s+-\s+(.+?)\s*$", line)
-        if m and not in_secondary:
-            out.append(m.group(1))
-    return [s for s in (x.strip() for x in out) if s]
 
 def tracked(globpat):
     r = subprocess.run(["git", "ls-files", globpat], capture_output=True,
@@ -103,7 +71,17 @@ for spec in specs:
     if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", sid):
         print(f"FAIL kebab-case: {sid}")
         fail = 1
-    for src in primary_sources(frontmatter(spec)):
+    fm = frontmatter(spec)
+    spec_sources = primary_sources(fm)
+    # A declared primary list that parses to zero entries is a parser/
+    # frontmatter defect — backstops any sources: style the parser cannot
+    # read (the staleness gate would otherwise silently lose this spec's
+    # ownership). Secondary-only specs (region views of a file owned
+    # elsewhere) legitimately have no primary sources.
+    if declares_primary(fm) and not spec_sources:
+        print(f"FAIL primary sources declared but none parsed: {spec}")
+        fail = 1
+    for src in spec_sources:
         file_part, sep, frag = src.partition("#")
         key = normalize(file_part) + (sep + frag if sep else "")
         owners.setdefault(key, []).append(sid)

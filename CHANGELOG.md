@@ -13,12 +13,64 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   from the implementation by explicit owner decision); future behavior
   changes travel as spec deltas via `openspec/changes/`. New `spec:*`
   task namespace (`validate` incl. bite-check + source-partition assert,
-  `check-regen`, `install-cli`, `update`), `docs:lint`/`docs:install-cli`,
-  and `dev:verify-pins`; `docs-lint.yml` now runs exactly these Taskfile
-  targets, so the local validation chain equals the remote one (pins live
-  in `.tool-versions` + the Taskfile vars block only; npm installs run
-  `--ignore-scripts`). The OCI tarball payload is unchanged — `openspec/`
-  and the tool trees stay outside the allowlist.
+  `check-regen`, `check-staleness`, `install-cli`, `update`),
+  `docs:lint`/`docs:install-cli`, and `dev:verify-pins`; `docs-lint.yml`
+  now runs exactly these Taskfile targets, so the local validation chain
+  equals the remote one (pins live in `.tool-versions`, the Taskfile
+  vars block, and — for the npm-distributed tools — `package.json` +
+  `package-lock.json` with integrity hashes). The OCI tarball payload is
+  unchanged — `openspec/` and the tool trees stay outside the allowlist.
+- **Spec staleness gate, CI-enforced**: a PR whose diff touches a spec's
+  `primary` source without touching the owning spec fails
+  `docs-lint.yml` (`task spec:check-staleness`,
+  `scripts/check-spec-staleness.py`). Escape for verified
+  no-behavior-change diffs: the `Spec-Impact: none` trailer on every
+  commit touching the file (per-commit scope), judged by the PR
+  reviewer.
+
+### Fixed
+
+- **conftest ArgoCD policy — chart-omission evasion hardened**
+  (`policies/conftest/argocd.rego`): every Application source must set
+  `repoURL` and be explicitly classifiable (`chart`, `path`, `ref`, or a
+  `plugin` block); a `helm:` block requires `chart` or `path` (a
+  throwaway `ref` no longer dodges classification); and the literal
+  floating markers (`latest`, `*`, `HEAD`) are denied as
+  `targetRevision` on EVERY source independent of classification.
+  Previously a source omitting `chart` fell through to the weaker
+  git-source rules and skipped all Helm pinning checks; the textual
+  chart-omission rule that could never fire (dead code) is removed.
+  Disclosed residual: a chart-less source carrying `path` is classified
+  as a git source — helm-vs-git repoURL discrimination is not
+  mechanically decidable, and the floating deny catches only the literal
+  markers; a mutable branch/tag name on a git-classified source stays a
+  review concern. The denies are bound red-green by a committed negative
+  fixture in `task gitops:validate`.
+- **Duplicate hardware-feature ids are now rejected**:
+  `scripts/lint-hardware-features.sh` gained a mechanical duplicate-id
+  gate; the former schema-level `uniqueItemProperties` keyword (an
+  AJV-only extension that `check-jsonschema` silently ignores) is
+  removed from `schemas/hardware-features.schema.json`.
+- **Version patterns fully anchored** in `schemas/cluster.schema.json`
+  and the mirrored `tofu/modules/talos-cluster` validations:
+  `talos.version`, `talos.install_version`, and `kubernetes.version` now
+  reject trailing text after the PATCH segment (a `-`/`+` pre-release or
+  build suffix stays accepted). **Consumer note (validation
+  tightening):** values the former start-anchored patterns accepted —
+  e.g. `v1.13.0.4` or `v1.13.0_hardened` — are now rejected at lint and
+  plan time; such values never resolved to a valid Talos/Kubernetes
+  release, but a consumer carrying one must fix it before upgrading.
+  Bound red-green by `schemas/fixtures/cluster.invalid.yaml` (CI) and
+  the offline `tests/input-validation.tftest.hcl` suite.
+- **OCI publish membership gate is fail-closed**: a missing
+  `.ci-oci-tarball-expected.txt` now aborts the publication instead of
+  skipping the diff with a notice (parity with
+  `task supply-chain:oci-allowlist`).
+- **Bootstrap manifests carry the full recommended label set**: both
+  `kubernetes/bootstrap/argocd/*.tmpl` templates gained
+  `app.kubernetes.io/version`, set to a label-safe form of the rendered
+  `target_revision` (sanitized/truncated — a slash-bearing branch name
+  stays valid; `spec.source.targetRevision` keeps the raw value).
 
 ### Changed
 

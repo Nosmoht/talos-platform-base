@@ -61,20 +61,23 @@ jobs:
       - name: Verify tarball contents
         # Catch the class of regression where an excluded path is
         # accidentally included (or vice versa) — diff against an
-        # expected fixture committed to the repo.
+        # expected fixture committed to the repo. Fail-closed: a missing
+        # fixture aborts the publication (a deleted fixture would
+        # otherwise silently disable the membership gate); parity with
+        # `task supply-chain:oci-allowlist`.
         run: |
           set -euo pipefail
           mkdir -p .work
           tar -tzf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" \
             | sed 's|^\./||' | LC_ALL=C sort | sed 's|^|./|' > .work/tarball-contents.txt
-          if [ -f .ci-oci-tarball-expected.txt ]; then
-            if ! diff -u .ci-oci-tarball-expected.txt .work/tarball-contents.txt; then
-              echo "::error::Tarball contents diverge from .ci-oci-tarball-expected.txt"
-              echo "If the divergence is intentional, update the fixture: \`mv .work/tarball-contents.txt .ci-oci-tarball-expected.txt\`"
-              exit 1
-            fi
-          else
-            echo "::notice::No .ci-oci-tarball-expected.txt fixture present; skipping diff. Run \`mv .work/tarball-contents.txt .ci-oci-tarball-expected.txt\` to lock it in."
+          [ -f .ci-oci-tarball-expected.txt ] || {
+            echo "::error::.ci-oci-tarball-expected.txt missing at the tagged commit — the membership diff is a required gate. Recovery: commit the fixture (verify locally via task supply-chain:oci-allowlist) and cut a NEW tag; this tag cannot be republished from a commit lacking the fixture."
+            exit 1
+          }
+          if ! diff -u .ci-oci-tarball-expected.txt .work/tarball-contents.txt; then
+            echo "::error::Tarball contents diverge from .ci-oci-tarball-expected.txt"
+            echo "If the divergence is intentional, update the fixture: \`mv .work/tarball-contents.txt .ci-oci-tarball-expected.txt\`"
+            exit 1
           fi
 
       - name: Generate checksums

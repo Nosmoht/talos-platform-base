@@ -65,14 +65,14 @@
       "required": ["version"],
       "properties": {
         "version": {
-          "description": "Talos machine-config schema pin — v-prefixed semver, fixed at bootstrap.",
+          "description": "Talos machine-config schema pin — v-prefixed semver (optional pre-release/build suffix), fixed at bootstrap.",
           "type": "string",
-          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+"
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$"
         },
         "install_version": {
           "description": "Installer-image tag for OS upgrades. Empty = matches talos.version.",
           "type": "string",
-          "pattern": "^(v[0-9]+\\.[0-9]+\\.[0-9]+.*)?$"
+          "pattern": "^(v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?)?$"
         }
       }
     },
@@ -82,9 +82,9 @@
       "required": ["version"],
       "properties": {
         "version": {
-          "description": "Kubernetes version — v-prefixed semver.",
+          "description": "Kubernetes version — v-prefixed semver (optional pre-release/build suffix).",
           "type": "string",
-          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+"
+          "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$"
         }
       }
     },

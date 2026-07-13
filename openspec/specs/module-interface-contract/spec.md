@@ -54,12 +54,22 @@ required under the default toggles.
 The module SHALL reject at plan time a `cluster_name` that is not a
 lowercase RFC-1123 label, a `cluster_endpoint` that is not an `https://`
 URL, and any of `talos_version`, `kubernetes_version`, or a non-empty
-`talos_install_version` that is not a v-prefixed semantic version.
+`talos_install_version` that is not a v-prefixed MAJOR.MINOR.PATCH
+version with at most a hyphen- or plus-introduced pre-release/build
+suffix (the same anchored pattern as `schemas/cluster.schema.json`;
+regex-dialect edge: the schema validator's `$` tolerates one trailing
+newline, the module's does not — no plain YAML scalar carries one).
 
 #### Scenario: Malformed identity input is rejected
 
 - **WHEN** `cluster_name` contains characters outside the lowercase
   RFC-1123 label set, or `cluster_endpoint` lacks the `https://` scheme
+- **THEN** variable validation fails with the variable's error message
+
+#### Scenario: Version with trailing garbage is rejected
+
+- **WHEN** a version input carries trailing text after the PATCH segment
+  that is not a `-`/`+`-introduced suffix
 - **THEN** variable validation fails with the variable's error message
 
 ### Requirement: Topology input validation

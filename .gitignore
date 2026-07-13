@@ -23,6 +23,9 @@
 .work/
 Plans/
 
+# Python bytecode cache (scripts/*.py import scripts/spec_lib.py).
+__pycache__/
+
 # MCP config local overrides and pre-apply snapshots
 .mcp.json.local
 .mcp.json.bak-*

@@ -57,17 +57,18 @@ or `external-bios-or-firmware`, and `name`, `description`, and
 ### Requirement: Unique feature ids
 
 Each entry's `id` SHALL be unique across the registry; lookup is by id,
-and array order is non-significant. Uniqueness is a documented
-convention, declared in the schema via the `uniqueItemProperties`
-keyword — an AJV-only extension that `check-jsonschema` (the validator
-behind `scripts/lint-hardware-features.sh`) silently ignores — and is
-NOT enforced by the repo's lint gate.
+and array order is non-significant. Because JSON Schema 2020-12 cannot
+express per-property uniqueness inside an array (the former
+`uniqueItemProperties` keyword is an AJV-only extension the validator
+silently ignores), the uniqueness gate lives in
+`scripts/lint-hardware-features.sh` itself, which fails on any
+duplicated id.
 
-#### Scenario: Duplicate id passes the lint gate
+#### Scenario: Duplicate id fails the lint gate
 
 - **WHEN** two `hardware_features` entries declare the same `id`
-- **THEN** the `task`-level lint currently passes — `check-jsonschema`
-  ignores `uniqueItemProperties` — and uniqueness relies on review
+- **THEN** `scripts/lint-hardware-features.sh` exits non-zero and names
+  the duplicated id
 
 ### Requirement: Discovery-conditional label key
 

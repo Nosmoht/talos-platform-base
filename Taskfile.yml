@@ -21,6 +21,12 @@ version: '3'
 # themselves write to the console, not their own invocation echo.
 silent: true
 
+env:
+  # openspec bundles a posthog-node telemetry client (anonymous command+version;
+  # auto-disabled when CI=true, verified in its dist/telemetry/index.js).
+  # Explicit opt-out keeps LOCAL task runs network-quiet too.
+  OPENSPEC_TELEMETRY: "0"
+
 vars:
   # Declarative cluster SoT consumed by bootstrap:* (override per invocation:
   # `task bootstrap:argocd ENV=other.yaml`).
@@ -44,14 +50,14 @@ vars:
   LYCHEE_SHA256_DARWIN_ARM64: c9d3740ea2d891854d37116c9fba840f37b6e7c89d330e7db84ac333631c4977
   LYCHEE_SHA256_DARWIN_AMD64: 887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978
   LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
-  # spec:*/docs:* tool pins — KEEP IN SYNC with .tool-versions
-  # (`task dev:verify-pins` asserts the pair). npm-distributed.
-  # --ignore-scripts disables lifecycle scripts only — it is NOT an
-  # integrity control; the exact registry pin is the current integrity
-  # posture (lockfile-based install is the tracked follow-up, see
-  # ADR-0015 Consequences).
-  OPENSPEC_VERSION: 1.6.0
-  MARKDOWNLINT_VERSION: 0.42.0
+  # spec:*/docs:* tool pins (openspec, markdownlint-cli) live in
+  # package.json + package-lock.json — installed via `npm ci
+  # --ignore-scripts`. Scope of the control: the lockfile's integrity
+  # hashes pin the FETCH to the reviewed lockfile (registry/MITM
+  # tampering); they do not vouch for the lockfile's own content —
+  # lockfile diffs stay review surface. `task dev:verify-pins` asserts
+  # package.json ↔ .tool-versions plus registry-host provenance of every
+  # resolved URL; --ignore-scripts disables lifecycle scripts.
 
 tasks:
   default:
@@ -139,6 +145,19 @@ tasks:
         echo "kubeconform: $f"
         kubeconform -strict -ignore-missing-schemas "$f"
       done
+      # conftest bite-check: the committed invalid-Application fixture must be
+      # DENIED with each expected message — relaxing a source-classification/
+      # pinning rule in policies/conftest/argocd.rego turns this red.
+      if conftest test --all-namespaces --policy policies/conftest scripts/fixtures/argocd-invalid-applications.yaml >/dev/null 2>&1; then
+        echo "ERROR: conftest bite-check — the invalid-Application fixture was not denied"; exit 1
+      fi
+      bite_out=$(conftest test --all-namespaces --policy policies/conftest scripts/fixtures/argocd-invalid-applications.yaml 2>&1 || true)
+      for m in "must set chart (helm), path (git), ref (values anchor) or plugin" "helm block but neither chart nor path" "is floating"; do
+        if ! printf '%s\n' "$bite_out" | grep -qF "$m"; then
+          echo "ERROR: conftest bite-check — expected deny \"$m\" did not fire:"; printf '%s\n' "$bite_out"; exit 1
+        fi
+      done
+      echo "conftest bite-check OK: all three source-classification/pinning denies fire"
       ./scripts/check-argocd-substrate-invariants.sh
 
   gitops:render-component:
@@ -177,12 +196,20 @@ tasks:
       for v in "$CLUSTER_NAME" "$REPO_URL" "$OVERLAY" "$TARGET_REVISION"; do
         case "$v" in *\$*) echo "ERROR: cluster.yaml value contains '\$' which is unsafe for envsubst: $v"; exit 1;; esac
       done
+      # Label-safe form of the revision for app.kubernetes.io/version: a git
+      # ref may carry '/' etc., but a label VALUE is limited to 63 chars of
+      # [A-Za-z0-9_.-] with alphanumeric ends. spec.source.targetRevision
+      # keeps the raw value.
+      TARGET_REVISION_LABEL=$(printf '%s' "$TARGET_REVISION" | LC_ALL=C tr -c 'A-Za-z0-9_.-' '_' | cut -c1-63 | sed -e 's/^[^A-Za-z0-9]*//' -e 's/[^A-Za-z0-9]*$//')
+      if [ -z "$TARGET_REVISION_LABEL" ]; then
+        echo "ERROR: cluster.target_revision '$TARGET_REVISION' yields an empty label-safe value for app.kubernetes.io/version"; exit 1
+      fi
       mkdir -p kubernetes/bootstrap/argocd/_out
-      export CLUSTER_NAME REPO_URL OVERLAY TARGET_REVISION
-      envsubst '$CLUSTER_NAME $REPO_URL $OVERLAY $TARGET_REVISION' \
+      export CLUSTER_NAME REPO_URL OVERLAY TARGET_REVISION TARGET_REVISION_LABEL
+      envsubst '$CLUSTER_NAME $REPO_URL $OVERLAY $TARGET_REVISION $TARGET_REVISION_LABEL' \
         < kubernetes/bootstrap/argocd/root-application.yaml.tmpl \
         > kubernetes/bootstrap/argocd/_out/root-application.yaml
-      envsubst '$CLUSTER_NAME $REPO_URL' \
+      envsubst '$CLUSTER_NAME $REPO_URL $TARGET_REVISION_LABEL' \
         < kubernetes/bootstrap/argocd/root-project.yaml.tmpl \
         > kubernetes/bootstrap/argocd/_out/root-project.yaml
 
@@ -324,12 +351,14 @@ tasks:
       markdownlint '**/*.md' --ignore-path .markdownlintignore
 
   docs:install-cli:
-    desc: Install the pinned markdownlint-cli (npm, lifecycle scripts disabled)
+    desc: Install the lockfile-pinned markdownlint-cli (npm ci, integrity-verified, lifecycle scripts disabled)
+    deps: [dev:npm-ci]
     cmd: |
       set -e
-      command -v npm >/dev/null 2>&1 || { echo "ERROR: 'npm' required — https://nodejs.org"; exit 1; }
-      npm install -g --ignore-scripts markdownlint-cli@{{.MARKDOWNLINT_VERSION}}
-      echo "Installed markdownlint $(markdownlint --version)"
+      mkdir -p "$HOME/.local/bin"
+      ln -sf "{{.ROOT_DIR}}/node_modules/.bin/markdownlint" "$HOME/.local/bin/markdownlint"
+      [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      echo "Installed markdownlint $("$HOME/.local/bin/markdownlint" --version) (lockfile-pinned)"
 
   # ===========================================================================
   # spec:* — OpenSpec behavioral specs (openspec/). NOT the same tool as
@@ -355,18 +384,24 @@ tasks:
         echo "ERROR: strict validate passed a malformed spec — the gate no longer bites"; exit 1
       fi
       rm -rf "$bitetmp"; trap - EXIT
+      # spec_lib parser red-green: the flow-style branches and the
+      # declares-primary detector have no committed spec exercising them —
+      # this unit test is their only binding.
+      python3 scripts/test/test_spec_lib.py >/dev/null || { echo "ERROR: spec_lib parser self-test failed"; python3 scripts/test/test_spec_lib.py; exit 1; }
       # Source-ownership partition: exclusivity + completeness over the
       # enumerated substrate source universe (ADR-0015 ownership model).
       python3 scripts/check-spec-partition.py .
       lychee --offline --no-progress 'openspec/**/*.md'
 
   spec:install-cli:
-    desc: Install the pinned openspec CLI (npm, lifecycle scripts disabled)
+    desc: Install the lockfile-pinned openspec CLI (npm ci, integrity-verified, lifecycle scripts disabled)
+    deps: [dev:npm-ci]
     cmd: |
       set -e
-      command -v npm >/dev/null 2>&1 || { echo "ERROR: 'npm' required — https://nodejs.org"; exit 1; }
-      npm install -g --ignore-scripts @fission-ai/openspec@{{.OPENSPEC_VERSION}}
-      echo "Installed openspec $(openspec --version)"
+      mkdir -p "$HOME/.local/bin"
+      ln -sf "{{.ROOT_DIR}}/node_modules/.bin/openspec" "$HOME/.local/bin/openspec"
+      [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      echo "Installed openspec $("$HOME/.local/bin/openspec" --version) (lockfile-pinned)"
       echo "Verify pins: task dev:verify-tools"
 
   spec:check-regen:
@@ -397,6 +432,10 @@ tasks:
         exit 1
       fi
       echo "OK: committed tool trees match the pinned generator's output."
+
+  spec:check-staleness:
+    desc: "Staleness gate: a diff touching a spec's primary source must also touch the owning spec (escape: 'Spec-Impact: none' commit trailer). Usage: task spec:check-staleness [BASE=origin/main]"
+    cmd: python3 scripts/check-spec-staleness.py --base '{{.BASE | default "origin/main"}}'
 
   spec:update:
     desc: Regenerate OpenSpec tool integrations (.claude/, .codex/) after a CLI upgrade
@@ -498,6 +537,16 @@ tasks:
   # ===========================================================================
   # dev:* — contributor hygiene
   # ===========================================================================
+  dev:npm-ci:
+    internal: true
+    # `run: once` dedupes the install when several install-cli tasks run in
+    # ONE task invocation (e.g. `task docs:install-cli spec:install-cli`).
+    run: once
+    cmd: |
+      set -e
+      command -v npm >/dev/null 2>&1 || { echo "ERROR: 'npm' required — https://nodejs.org"; exit 1; }
+      npm ci --ignore-scripts
+
   dev:install-pre-commit:
     desc: Install pre-commit hooks and run them once across the repo
     cmd: |
@@ -510,20 +559,35 @@ tasks:
     cmd: ./scripts/verify-tools.sh
 
   dev:verify-pins:
-    desc: Assert the Taskfile vars block agrees with .tool-versions (pin SoT)
+    desc: Assert the Taskfile vars block + package.json agree with .tool-versions (pin SoT)
     cmd: |
       set -eu
+      command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 required for the package.json pin assertions"; exit 2; }
       fail=0
       tv() { awk -v k="$1" '$1==k {print $2}' .tool-versions; }
+      # npm-distributed pins live in package.json (locked via
+      # package-lock.json); python3 is used because the assert must run
+      # BEFORE any install task (yq/jq availability is not guaranteed).
+      pj() { python3 -c 'import json,sys; print(json.load(open("package.json"))["devDependencies"][sys.argv[1]])' "$1"; }
       assert() {
         if [ "$2" != "$3" ]; then
-          echo "DRIFT: $1 .tool-versions=$2 Taskfile=$3"; fail=1
+          echo "DRIFT: $1 .tool-versions=$2 other=$3"; fail=1
         else
           echo "OK:    $1 $2"
         fi
       }
       assert openknowledge "$(tv openknowledge)" "{{.OPENKNOWLEDGE_VERSION}}"
       assert lychee        "$(tv lychee)"        "{{.LYCHEE_VERSION}}"
-      assert openspec      "$(tv openspec)"      "{{.OPENSPEC_VERSION}}"
-      assert markdownlint  "$(tv markdownlint)"  "{{.MARKDOWNLINT_VERSION}}"
+      assert openspec      "$(tv openspec)"      "$(pj @fission-ai/openspec)"
+      assert markdownlint  "$(tv markdownlint)"  "$(pj markdownlint-cli)"
+      # Lockfile provenance: every resolved URL must point at the official
+      # npm registry over https — a lockfile edit that redirects a transitive
+      # dependency to another host (typo-squat tarball with a self-consistent
+      # integrity hash) turns this red. Registry compromise stays out of
+      # scope; the integrity hashes pin the fetch to the reviewed lockfile.
+      if python3 -c 'import json,sys; d=json.load(open("package-lock.json"))["packages"]; bad=[(k,p["resolved"]) for k,p in d.items() if p.get("resolved") and not p["resolved"].startswith("https://registry.npmjs.org/")]; [print(f"DRIFT: package-lock.json {k} resolves outside registry.npmjs.org: {u}") for k,u in bad]; sys.exit(1 if bad else 0)'; then
+        echo "OK:    package-lock.json — all resolved URLs on registry.npmjs.org"
+      else
+        fail=1
+      fi
       exit "$fail"

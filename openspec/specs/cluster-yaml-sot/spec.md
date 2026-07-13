@@ -68,18 +68,25 @@ The `repo` section SHALL require a non-empty `url`.
 ### Requirement: Version pinning
 
 The schema SHALL require `talos.version` and `kubernetes.version` to be
-values beginning with a v-prefixed MAJOR.MINOR.PATCH version, and SHALL
-admit an optional `talos.install_version` that is either empty (matching
-`talos.version`) or begins the same way. Unpinned forms (`latest`, a
-missing v-prefix) are rejected; trailing suffixes after the PATCH segment
-are not rejected by the current start-anchored pattern.
+v-prefixed MAJOR.MINOR.PATCH versions with at most a hyphen- or
+plus-introduced pre-release/build suffix, and SHALL admit an optional
+`talos.install_version` that is either empty (matching `talos.version`)
+or the same version form. Unpinned or malformed forms (`latest`, a
+missing v-prefix, arbitrary trailing text after the PATCH segment) are
+rejected by the fully anchored pattern.
 
-#### Scenario: Unpinned version string is rejected
+#### Scenario: Unpinned or malformed version string is rejected
 
-- **WHEN** `talos.version` or `kubernetes.version` does not begin with a
-  v-prefixed MAJOR.MINOR.PATCH version (for example `latest`, or a
-  version missing the v-prefix)
+- **WHEN** `talos.version` or `kubernetes.version` is not a v-prefixed
+  MAJOR.MINOR.PATCH version (for example `latest`, a version missing the
+  v-prefix, or a version with trailing text outside a `-`/`+` suffix)
 - **THEN** schema validation fails on the version pattern
+
+#### Scenario: Pre-release suffix is accepted
+
+- **WHEN** `talos.version` or `talos.install_version` carries a
+  hyphen-introduced pre-release suffix
+- **THEN** schema validation accepts the value
 
 ### Requirement: Image catalog entries
 

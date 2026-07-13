@@ -2,6 +2,18 @@
 
 ## 2026-07-13
 
+- ADR-0015 follow-ups closed: spec staleness gate is CI-enforced
+  (`spec:check-staleness` + `scripts/check-spec-staleness.py`;
+  `Spec-Impact: none` trailer escape) and the npm-distributed gate tools
+  (`openspec`, `markdownlint-cli`) install lockfile-based via
+  `npm ci --ignore-scripts` (pins in `package.json`, integrity hashes in
+  `package-lock.json`); `workflows/spec-driven-development.md`,
+  `reference/tasks.md`, `workflows/release-process.md` updated.
+- Toolchain defects from the spec content review fixed (specs updated in
+  the same change): conftest source-classifiability deny replaces the
+  dead chart-omission rule; duplicate hardware-feature-id gate;
+  fully-anchored version patterns (schema + module); fail-closed OCI
+  expected-fixture; `app.kubernetes.io/version` on bootstrap templates.
 - ADR-0014 added (`decisions/0014-ship-ai-tool-artifacts.md`, accepted):
   reverses the "ships no `.claude/` tree" policy for tool-generated,
   regenerable artifacts.

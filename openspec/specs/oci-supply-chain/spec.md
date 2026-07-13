@@ -39,12 +39,11 @@ holding the tarball's SHA-256, both produced in the same workflow run.
 
 The release tarball SHALL contain exactly the paths listed in
 `.ci-oci-tarball-include.txt` — any path not listed is excluded by default —
-and the build SHALL fail when the include list is missing. When the
-committed `.ci-oci-tarball-expected.txt` fixture exists, the tarball
-listing SHALL be diffed against it and any divergence SHALL fail the
-publication; when the fixture is absent, the workflow currently emits a
-notice and continues without the membership diff — only the include
-list's absence hard-fails.
+and the build SHALL fail when the include list is missing. The tarball
+listing SHALL be diffed against the committed
+`.ci-oci-tarball-expected.txt` fixture, any divergence SHALL fail the
+publication, and an absent fixture SHALL itself fail the publication —
+deleting the fixture cannot disable the membership gate.
 
 #### Scenario: Unlisted path never ships
 
@@ -54,16 +53,16 @@ list's absence hard-fails.
 
 #### Scenario: Membership drift fails the build
 
-- **WHEN** `.ci-oci-tarball-expected.txt` is committed and the built
-  tarball's sorted listing differs from it
+- **WHEN** the built tarball's sorted listing differs from
+  `.ci-oci-tarball-expected.txt`
 - **THEN** the workflow exits non-zero before any push, sign, or attest step
   runs
 
-#### Scenario: Absent fixture skips the diff
+#### Scenario: Absent fixture fails the build
 
 - **WHEN** no `.ci-oci-tarball-expected.txt` fixture is committed
-- **THEN** the workflow emits a notice and continues without the
-  membership diff
+- **THEN** the workflow exits non-zero before any push, sign, or attest
+  step runs
 
 ### Requirement: Repo-internal surfaces stay outside the payload
 
