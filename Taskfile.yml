@@ -305,7 +305,11 @@ tasks:
       mkdir -p "$HOME/.local/bin"
       install -m 0755 "$tmp/openknowledge" "$HOME/.local/bin/openknowledge"
       install -m 0755 "$ly_bin" "$HOME/.local/bin/lychee"
-      echo "Installed openknowledge $(openknowledge version) + lychee {{.LYCHEE_VERSION}} to ~/.local/bin"
+      # On a GitHub runner, ~/.local/bin is not guaranteed on PATH for
+      # subsequent steps — persist it so later `task *:validate` steps
+      # resolve the binaries. No-op outside GitHub Actions.
+      [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      echo "Installed openknowledge $("$HOME/.local/bin/openknowledge" version) + lychee {{.LYCHEE_VERSION}} to ~/.local/bin"
       echo "Verify pins: task dev:verify-tools"
 
   # ===========================================================================
@@ -370,11 +374,16 @@ tasks:
     cmd: |
       set -e
       command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
+      # Refuse on dirty generated trees: --force would overwrite uncommitted
+      # edits there, and a pre-dirty generated file would mask real drift in
+      # the porcelain delta below.
+      if [ -n "$(git status --porcelain .claude/ .codex/)" ]; then
+        echo "ERROR: uncommitted changes under the generated trees — commit or discard them first."; exit 1
+      fi
       # Delta over the WHOLE tree: catches modified, deleted AND newly-added
       # (untracked) files, wherever the generator writes them. Delta-based so
-      # it also runs on a locally dirty tree; on a pristine CI checkout the
-      # delta equals the absolute drift. NOTE: --force overwrites any
-      # uncommitted edits inside the generated trees.
+      # it also runs on a locally dirty tree (outside the generated trees);
+      # on a pristine CI checkout the delta equals the absolute drift.
       # Scope note: this proves committed == pinned-generator output; it does
       # NOT prove the content is benign — instruction-body review stays
       # mandatory (ADR-0014; the trees are agent-loaded content).

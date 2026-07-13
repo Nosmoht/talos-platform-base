@@ -24,3 +24,6 @@ lychee 0.24.2
 # npm-managed (no asdf plugin): install via `task spec:install-cli` / `task docs:install-cli`.
 openspec 1.6.0
 markdownlint 0.42.0
+# go-task itself — the CI executor; KEEP IN SYNC with the
+# arduino/setup-task `version:` literals in .github/workflows/.
+task 3.48.0

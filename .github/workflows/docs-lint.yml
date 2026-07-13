@@ -30,7 +30,10 @@ jobs:
       - name: Install go-task
         uses: arduino/setup-task@v2
         with:
-          version: 3.x
+          # KEEP IN SYNC with the `task` pin in .tool-versions — the task
+          # binary is the executor of every check below; a floating 3.x
+          # would reintroduce local-vs-CI drift at the executor level.
+          version: 3.48.0
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: task dev:verify-pins (Taskfile vars ↔ .tool-versions)
