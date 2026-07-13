@@ -57,8 +57,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reject trailing text after the PATCH segment (a `-`/`+` pre-release or
   build suffix stays accepted). **Consumer note (validation
   tightening):** values the former start-anchored patterns accepted —
-  e.g. `v1.13.0.4` or `v1.13.0_hardened` — are now rejected at lint and
-  plan time; such values never resolved to a valid Talos/Kubernetes
+  for example `v1.13.0.4` or `v1.13.0_hardened` — are now rejected at
+  lint and plan time; such values never resolved to a valid Talos/Kubernetes
   release, but a consumer carrying one must fix it before upgrading.
   Bound red-green by `schemas/fixtures/cluster.invalid.yaml` (CI) and
   the offline `tests/input-validation.tftest.hcl` suite.
