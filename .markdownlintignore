@@ -4,6 +4,8 @@ charts/
 # linting would fight the generator — see knowledge/decisions/0015-openspec-adoption.md).
 .claude/
 .codex/
+# Deliberately malformed negative fixture for the openspec bite-check.
+scripts/fixtures/openspec-invalid-spec.md
 node_modules/
 .work/
 Plans/

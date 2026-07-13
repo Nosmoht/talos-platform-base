@@ -45,8 +45,10 @@ vars:
   LYCHEE_SHA256_DARWIN_AMD64: 887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978
   LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
   # spec:* tool pin — KEEP IN SYNC with .tool-versions and the docs-lint.yml
-  # env block (drift-asserted there). npm-distributed; installed with
-  # --ignore-scripts, so no SHA triplet (that pattern is for curl-fetched binaries).
+  # env block (drift-asserted there). npm-distributed. --ignore-scripts
+  # disables lifecycle scripts only — it is NOT an integrity control; the
+  # exact registry pin is the current integrity posture (lockfile-based
+  # install is the tracked follow-up, see ADR-0015 Consequences).
   OPENSPEC_VERSION: 1.6.0
 
 tasks:
@@ -307,12 +309,25 @@ tasks:
   # behavioral capability specs). See knowledge/workflows/spec-driven-development.md.
   # ===========================================================================
   spec:validate:
-    desc: Validate the openspec/ behavioral specs (strict) + offline link check
+    desc: Validate the openspec/ behavioral specs (strict + bite-check + source partition) + offline link check
     cmd: |
       set -e
       command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
       command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
       openspec validate --all --strict --no-interactive
+      # Bite-check: the strict validator must reject a malformed
+      # directly-authored spec (guards against a future openspec release
+      # going warn-only; fixture documents itself).
+      trap 'rm -rf openspec/specs/negative-fixture' EXIT
+      mkdir -p openspec/specs/negative-fixture
+      cp scripts/fixtures/openspec-invalid-spec.md openspec/specs/negative-fixture/spec.md
+      if openspec validate --all --strict --no-interactive >/dev/null 2>&1; then
+        echo "ERROR: strict validate passed a malformed spec — the gate no longer bites"; exit 1
+      fi
+      rm -rf openspec/specs/negative-fixture; trap - EXIT
+      # Source-ownership partition: exclusivity + completeness over the
+      # enumerated substrate source universe (ADR-0015 ownership model).
+      python3 scripts/check-spec-partition.py .
       lychee --offline --no-progress 'openspec/**/*.md'
 
   spec:install-cli:
@@ -329,18 +344,29 @@ tasks:
     cmd: |
       set -e
       command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
-      openspec update
-      # Completeness gate: regeneration may emit NEW paths the .gitignore
-      # negation list does not cover yet — generated content must never be
-      # silently ignored (ADR-0014 commits regenerable artifacts).
-      ignored="$(git status --ignored=matching --porcelain .claude/ .codex/ | grep '^!!' | grep -vE '\.claude/(settings\.local\.json|worktrees/)' || true)"
-      if [ -n "$ignored" ]; then
-        echo "ERROR: openspec update produced content still matched by .gitignore:"
-        echo "$ignored"
-        echo "Extend the negation list in .gitignore (see ADR-0014), then re-run."
+      # Completeness gate, DELTA-based: snapshot the ignored set before the
+      # regeneration and fail only on paths the regeneration ADDED to it —
+      # pre-existing operator/harness scratch under .claude/ (settings,
+      # agents/, hooks/, ...) is expected and must stay ignored. A git
+      # failure fails the task (the git call is separated from the greps
+      # so a non-zero git exit is never swallowed as "clean").
+      before="$(mktemp)"; after="$(mktemp)"; trap 'rm -f "$before" "$after"' EXIT
+      git status --ignored=matching --porcelain .claude/ .codex/ > "$before"
+      openspec update --force
+      git status --ignored=matching --porcelain .claude/ .codex/ > "$after"
+      grep '^!!' "$before" | sort > "$before.ign" || true
+      grep '^!!' "$after"  | sort > "$after.ign"  || true
+      new_ignored="$(comm -13 "$before.ign" "$after.ign")"
+      rm -f "$before.ign" "$after.ign"
+      if [ -n "$new_ignored" ]; then
+        echo "ERROR: the regeneration emitted content that .gitignore ignores:"
+        echo "$new_ignored"
+        echo "Generated artifacts must be committed (ADR-0014) — extend the"
+        echo "generated-subtree negations in .gitignore for THESE paths only."
         exit 1
       fi
-      echo "Regenerated. Review 'git status .claude/ .codex/' and commit."
+      echo "Regenerated. Review the diff as security-relevant content (agent-"
+      echo "loaded instructions, see ADR-0014) — then commit."
 
   # ===========================================================================
   # mcp:* — MCP server binary management (see knowledge/workflows/mcp-setup.md)

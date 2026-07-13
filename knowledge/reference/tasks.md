@@ -3,7 +3,7 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-timestamp: 2026-07-11
+timestamp: 2026-07-13
 sources:
   - Taskfile.yml
   - Makefile
@@ -108,6 +108,18 @@ Details of `bootstrap:argocd`:
 | `knowledge:validate` | Validate the `knowledge/` OKF bundle: `openknowledge validate` (with the binding `link-target = "error"` rule from `knowledge/openknowledge.toml`) plus an offline intra-repo link-resolution pass (`lychee --offline`) over the bundle, root Markdown files, and `contracts/`. Mirrors the CI gates in `docs-lint.yml`. |
 | `knowledge:new` | Scaffold a new concept file with the bundle's frontmatter convention (usage: `task knowledge:new FILE=reference/foo.md TYPE=reference`). |
 | `knowledge:install-cli` | Download the pinned, checksum-verified `openknowledge` + `lychee` release binaries for the host platform into `~/.local/bin`. |
+
+## `spec:*` — OpenSpec behavioral specs
+
+Not the same tool as `knowledge:*` — `openspec` validates the behavioral
+capability specs under `openspec/`; `openknowledge` validates the OKF
+bundle. See `knowledge/workflows/spec-driven-development.md`.
+
+| Task | Purpose |
+| --- | --- |
+| `spec:validate` | Strict `openspec validate` over `openspec/`, a bite-check (a committed malformed fixture must fail validation), the source-ownership partition assert (`scripts/check-spec-partition.py`: exclusivity + completeness per ADR-0015), and an offline `lychee` pass. Mirrors the CI gates in `docs-lint.yml`. Precondition: `task spec:install-cli` + `task knowledge:install-cli` (lychee). |
+| `spec:install-cli` | Install the pinned `openspec` CLI via npm with lifecycle scripts disabled (`--ignore-scripts`). Precondition: `npm`. |
+| `spec:update` | Regenerate the committed OpenSpec tool integrations (`.claude/`, `.codex/`) after a CLI upgrade; fails when the regeneration emitted paths `.gitignore` still ignores (delta-based gate). Regenerated diffs are security-relevant review surface (ADR-0014). |
 
 ## `mcp:*` — MCP server binary management
 

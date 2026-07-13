@@ -103,16 +103,19 @@ denies each violation.
   `resources.requests`, or `resources.limits`
 - **THEN** the policy emits a deny naming the workload and container
 
-### Requirement: Complete ArgoCD Application targeting
+### Requirement: ArgoCD Application targeting (with disclosed chart-omission evasion)
 
 Every rendered ArgoCD Application SHALL set `spec.project`, a destination
 namespace (unless allowlisted as namespace-optional), and a destination
 `server` or `name`; every Helm source SHALL set `repoURL` and
 `targetRevision`, and `policies/conftest/argocd.rego` denies an empty
-`repoURL` or `targetRevision` on a Helm source. The policy classifies a
-source as Helm only when `chart` is non-empty, so a source omitting
-`chart` falls to the git-source rules and evades the Helm pinning checks
-entirely — the policy's textual chart-omission rule cannot fire.
+`repoURL` or `targetRevision` on a Helm source. **Known enforcement gap
+(not a satisfied invariant):** the policy classifies a source as Helm only
+when `chart` is non-empty, so a source omitting `chart` falls to the
+git-source rules and evades the Helm pinning checks entirely — the
+policy's textual chart-omission rule is dead code that cannot fire.
+Fixing the classifier is a tracked follow-up; until then this requirement
+is enforced only for sources that do set `chart`.
 
 #### Scenario: Underspecified Application is denied
 
@@ -121,6 +124,14 @@ entirely — the policy's textual chart-omission rule cannot fire.
   `targetRevision`
 - **THEN** the policy emits a deny naming the Application and the missing
   field
+
+#### Scenario: Chart-less Helm-shaped source evades the pinning checks (known gap)
+
+- **WHEN** conftest evaluates an Application whose source carries a
+  `helm:` values block and a `repoURL` but omits `chart`
+- **THEN** the source is classified as a git source and NO Helm pinning
+  deny fires — a disclosed, unresolved gap in
+  `policies/conftest/argocd.rego`, not enforced behavior
 
 ### Requirement: Pinned source revisions
 

@@ -100,6 +100,11 @@ terraform-docs-generated (inject mode) and exempt from this map.
 - Follow-up: `markdownlint` exempts the generated tool trees; the
   hand-authored specs stay lint-clean (no `openspec/` exemption was
   needed at adoption).
+- Follow-up: the npm install is exact-version-pinned with lifecycle
+  scripts disabled, but carries no artifact-integrity hash (unlike the
+  checksum-verified curl-fetched sibling tools). A lockfile-based install
+  (`npm ci --ignore-scripts` against a committed lockfile) is the named
+  follow-up.
 
 ## Pros and Cons of the Options
 
@@ -123,10 +128,14 @@ terraform-docs-generated (inject mode) and exempt from this map.
 ## Validation
 
 `openspec validate --all --strict --no-interactive` is fail-closed for
-directly-authored specs (verified empirically against 1.6.0: malformed
-spec → exit 1) and runs in `docs-lint.yml` on every PR plus locally via
-`task spec:validate`. The pin (1.6.0) is drift-asserted across
-`.tool-versions`, the Taskfile vars block, and the docs-lint env block.
+directly-authored specs and runs in `docs-lint.yml` on every PR plus
+locally via `task spec:validate`; the fail-closed property is continuously
+re-proven by a committed malformed fixture that must fail validation
+(bite-check), and the `sources:` ownership model is enforced by
+`scripts/check-spec-partition.py` (exclusivity + completeness). The pin is
+drift-asserted across `.tool-versions`, the Taskfile vars block, and the
+docs-lint env block; a regeneration-parity CI step keeps the committed
+tool trees byte-identical to the pinned generator's output.
 The decision is wrong if specs rot despite the staleness convention —
 the trigger to revisit is a merged behavior change whose owning spec was
 not updated.

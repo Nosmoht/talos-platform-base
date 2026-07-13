@@ -62,6 +62,11 @@ subagents remain external-harness territory as before.
 
 - Positive: the `/opsx:*` workflow works identically on every checkout;
   integration upgrades are reviewable diffs.
+- Positive: CI enforces regeneration parity — `docs-lint.yml` re-runs the
+  pinned generator and rejects any divergence of the committed trees
+  (catches hand-edits, poisoned regenerations, and stale trees after a pin
+  bump mechanically). Diffs to the trees are security-relevant review
+  surface: they are instruction content agents auto-load.
 - Negative: the "regenerable-only" boundary is a documented convention —
   gitignore cannot distinguish generated from hand-dropped files inside an
   un-ignored directory. A hand-authored file placed in a committed

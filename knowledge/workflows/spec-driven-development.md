@@ -69,5 +69,10 @@ Install: `task spec:install-cli` (always `--ignore-scripts`). Upgrading:
 2. `task spec:install-cli`, then `task spec:update` — regenerates the
    committed Claude/Codex integration trees and fails if the regeneration
    emitted paths the `.gitignore` negation list does not cover.
-3. `task spec:validate`; review and commit the regenerated trees. Never
-   hand-edit them (ADR-0014).
+3. `task spec:validate`; review the regenerated trees as
+   **security-relevant content** — they are instruction files Claude Code /
+   Codex auto-load, so diff the instruction bodies, not just the paths
+   (a compromised generator release would enter exactly here). Then commit.
+   Never hand-edit the trees (ADR-0014); CI's regeneration-parity gate in
+   `docs-lint.yml` rejects any divergence between the committed trees and
+   what the pinned CLI generates.

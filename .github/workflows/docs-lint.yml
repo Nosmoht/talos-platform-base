@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Tool versions — KEEP IN SYNC with .tool-versions and the Taskfile
-      # knowledge:* vars block (drift-checked against .tool-versions below).
+      # knowledge:*/spec:* vars block (drift-checked against .tool-versions below).
       # Checksums from the projects' released checksum files. If the
       # upstream release disappears, this job fails until the pin is
       # bumped — bump version + checksum here, in Taskfile.yml, and in
@@ -29,8 +29,9 @@ jobs:
       OPENKNOWLEDGE_SHA256_LINUX_AMD64: 0f58de81e52f064fbf52aac5289e0b1b6dc0e58de2f47c4e043263e9e927cb27
       LYCHEE_VERSION: "0.24.2"
       LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
-      # npm-distributed; installed with --ignore-scripts, so no checksum
-      # (the SHA pattern above is for curl-fetched binaries).
+      # npm-distributed. --ignore-scripts disables lifecycle scripts only —
+      # NOT an integrity control; the exact registry pin is the current
+      # integrity posture (lockfile-based install is the tracked follow-up).
       OPENSPEC_VERSION: "1.6.0"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -107,6 +108,35 @@ jobs:
         # Verified against 1.6.0: --strict exits non-zero on a malformed
         # directly-authored spec under openspec/specs/.
         run: openspec validate --all --strict --no-interactive
+
+      - name: Bite-check the strict validator (negative fixture)
+        # A malformed spec MUST fail validation — guards against a future
+        # openspec release silently going warn-only/change-gated for
+        # directly-authored specs.
+        run: |
+          mkdir -p openspec/specs/negative-fixture
+          cp scripts/fixtures/openspec-invalid-spec.md openspec/specs/negative-fixture/spec.md
+          if openspec validate --all --strict --no-interactive; then
+            echo "ERROR: strict validate passed a malformed spec — the gate no longer bites"
+            exit 1
+          fi
+          rm -rf openspec/specs/negative-fixture
+
+      - name: Spec source-ownership partition (exclusivity + completeness)
+        # ADR-0015 ownership model: every primary source path has exactly one
+        # owning spec, and every file in the substrate source universe has an
+        # owner.
+        run: python3 scripts/check-spec-partition.py .
+
+      - name: Regeneration parity of committed tool trees
+        # The committed .claude/ and .codex/ trees must be byte-identical to
+        # what the PINNED openspec generates — catches hand-edits, poisoned
+        # regenerations, and stale trees after a pin bump. The trees are
+        # agent-loaded instruction content; diffs to them are security-
+        # relevant review surface (ADR-0014).
+        run: |
+          openspec update --force
+          git diff --exit-code .claude/ .codex/
 
       - name: Offline link-resolution gate
         # Intra-repo markdown links must resolve (file existence). External

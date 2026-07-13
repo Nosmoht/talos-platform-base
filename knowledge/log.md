@@ -15,6 +15,14 @@
   pointer notes added — normative behavioral requirements now live in the
   owning OpenSpec specs (SoT map in ADR-0015); the reference docs stay
   narrative.
+- `reference/tasks.md`: `spec:*` namespace added to the task inventory
+  (validate incl. bite-check + partition assert, install-cli, update).
+- `project/harness-plugin-contract.md`: "ships no `.claude/`" statements
+  scoped to hand-authored primitives — the committed OpenSpec-generated
+  trees (ADR-0014) are the regenerable exception.
+- `workflows/spec-driven-development.md`: upgrade procedure now frames
+  regenerated tool trees as security-relevant review surface; CI
+  regeneration-parity gate documented.
 
 ## 2026-07-11
 
