@@ -132,7 +132,10 @@ directly-authored specs and runs in `docs-lint.yml` on every PR plus
 locally via `task spec:validate`; the fail-closed property is continuously
 re-proven by a committed malformed fixture that must fail validation
 (bite-check), and the `sources:` ownership model is enforced by
-`scripts/check-spec-partition.py` (exclusivity + completeness). The pin is
+`scripts/check-spec-partition.py` (exclusivity, plus completeness relative
+to the script's enumerated substrate source universe — extending the
+universe is part of adding a new source class; an unknown-module drift
+guard catches the most likely omission). The pin is
 drift-asserted across `.tool-versions`, the Taskfile vars block, and the
 docs-lint env block; a regeneration-parity CI step keeps the committed
 tool trees byte-identical to the pinned generator's output.

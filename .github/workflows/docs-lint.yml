@@ -112,15 +112,18 @@ jobs:
       - name: Bite-check the strict validator (negative fixture)
         # A malformed spec MUST fail validation — guards against a future
         # openspec release silently going warn-only/change-gated for
-        # directly-authored specs.
+        # directly-authored specs. Runs against a temp COPY so the working
+        # tree is never mutated.
         run: |
-          mkdir -p openspec/specs/negative-fixture
-          cp scripts/fixtures/openspec-invalid-spec.md openspec/specs/negative-fixture/spec.md
-          if openspec validate --all --strict --no-interactive; then
+          tmp="$(mktemp -d)"
+          cp -R openspec "$tmp/"
+          mkdir -p "$tmp/openspec/specs/negative-fixture"
+          cp scripts/fixtures/openspec-invalid-spec.md "$tmp/openspec/specs/negative-fixture/spec.md"
+          if (cd "$tmp" && openspec validate --all --strict --no-interactive); then
             echo "ERROR: strict validate passed a malformed spec — the gate no longer bites"
             exit 1
           fi
-          rm -rf openspec/specs/negative-fixture
+          rm -rf "$tmp"
 
       - name: Spec source-ownership partition (exclusivity + completeness)
         # ADR-0015 ownership model: every primary source path has exactly one
@@ -129,14 +132,22 @@ jobs:
         run: python3 scripts/check-spec-partition.py .
 
       - name: Regeneration parity of committed tool trees
-        # The committed .claude/ and .codex/ trees must be byte-identical to
-        # what the PINNED openspec generates — catches hand-edits, poisoned
-        # regenerations, and stale trees after a pin bump. The trees are
-        # agent-loaded instruction content; diffs to them are security-
-        # relevant review surface (ADR-0014).
+        # Re-running the PINNED generator on the pristine checkout must
+        # leave the WHOLE tree unchanged: `git status --porcelain` with no
+        # pathspec catches modified AND deleted AND newly-ADDED (untracked)
+        # files, wherever the generator writes them — hand-edits, stale
+        # trees after a pin bump, and generator-added files all fail.
+        # Scope note: this proves committed == pinned-generator output; it
+        # does NOT prove the content is benign — instruction-body review
+        # stays mandatory (ADR-0014; the trees are agent-loaded content).
         run: |
           openspec update --force
-          git diff --exit-code .claude/ .codex/
+          drift="$(git status --porcelain)"
+          if [ -n "$drift" ]; then
+            echo "ERROR: regenerating with the pinned openspec changed the tree:"
+            echo "$drift"
+            exit 1
+          fi
 
       - name: Offline link-resolution gate
         # Intra-repo markdown links must resolve (file existence). External

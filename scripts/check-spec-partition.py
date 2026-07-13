@@ -1,12 +1,25 @@
 #!/usr/bin/env python3
-"""B2 partition assert: exclusivity + completeness of spec source ownership.
+"""Spec source-ownership partition assert (ADR-0015 ownership model).
 
-Exit 0 iff (a) every primary source path is owned by exactly one spec,
-(b) every file in the enumerated substrate source universe has a primary
-owner, (c) every spec dir is kebab-case.
+Asserts over the ENUMERATED substrate source universe below:
+  (a) exclusivity  — every primary source key is owned by exactly one spec;
+  (b) completeness — every universe file has a primary owner. Completeness
+      is relative to the enumeration: adding a NEW substrate source class
+      (a second module, a new schema format/location, a new top-level
+      source dir) requires extending the universe here in the same PR —
+      the unknown-module guard below catches the most likely drift case.
+  (c) spec ids are kebab-case.
+
+Source keys keep any `#fragment` (e.g. `Taskfile.yml#bootstrap:argocd`),
+so two specs owning DIFFERENT fragments of one file do not collide; the
+existence check applies to the file part. Paths are normalized before
+matching (leading `./`, trailing slashes, redundant separators).
+
+Exit 0 iff all assertions hold.
 """
 import glob
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -19,12 +32,18 @@ def frontmatter(path):
     m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
     return m.group(1) if m else ""
 
+def normalize(p):
+    p = p.strip().rstrip("/")
+    if p.startswith("./"):
+        p = p[2:]
+    return posixpath.normpath(p) if p else p
+
 def primary_sources(fm):
     """Parse the sources.primary list (also accepts a bare sources: list)."""
-    out, in_sources, in_primary, in_secondary = [], False, False, False
+    out, in_sources, in_secondary = [], False, False
     for line in fm.splitlines():
         if re.match(r"^sources:", line):
-            in_sources, in_primary, in_secondary = True, False, False
+            in_sources, in_secondary = True, False
             continue
         if re.match(r"^\S", line):  # next top-level key
             in_sources = False
@@ -32,59 +51,78 @@ def primary_sources(fm):
         if not in_sources:
             continue
         if re.match(r"^\s+primary:", line):
-            in_primary, in_secondary = True, False
+            in_secondary = False
             continue
         if re.match(r"^\s+secondary:", line):
-            in_primary, in_secondary = False, True
+            in_secondary = True
             continue
         m = re.match(r"^\s+-\s+(.+?)\s*$", line)
         if m and not in_secondary:
-            out.append(m.group(1).split("#")[0].strip())  # strip fragments
-    return [p for p in out if p]
+            out.append(m.group(1))
+    return [s for s in (x.strip() for x in out) if s]
 
 def tracked(globpat):
-    r = subprocess.run(["git", "ls-files", globpat], capture_output=True, text=True)
-    return [l for l in r.stdout.splitlines() if l]
+    r = subprocess.run(["git", "ls-files", globpat], capture_output=True,
+                       text=True, check=True)
+    return [normalize(l) for l in r.stdout.splitlines() if l]
 
 # --- enumerated substrate source universe -----------------------------------
 universe = set()
-universe |= {f for f in tracked("tofu/modules/talos-cluster/*.tf")}
-universe |= {f for f in tracked("tofu/modules/talos-cluster/helm/*.yaml")}
-universe |= {f for f in tracked("tofu/modules/talos-cluster/manifests/*.yaml")}
-universe |= {f for f in tracked("kubernetes/**") if not f.endswith(".gitkeep")}
-universe |= {f for f in tracked("schemas/*.json")}
+universe |= set(tracked("tofu/modules/talos-cluster/*.tf"))
+universe |= set(tracked("tofu/modules/talos-cluster/helm/*.yaml"))
+universe |= set(tracked("tofu/modules/talos-cluster/manifests/*.yaml"))
+universe |= set(tracked("kubernetes/**"))
+universe |= set(tracked("schemas/**"))
 universe |= {"platform-hardware-features.yaml"}
-universe |= {f for f in tracked("policies/**/*.rego")}
+universe |= set(tracked("policies/**/*.rego"))
 universe |= {".github/workflows/oci-publish.yml",
              ".ci-oci-tarball-include.txt", ".ci-oci-tarball-expected.txt"}
 # QA-class exclusions inside otherwise-covered trees (documented in ADR-0015):
-universe -= {f for f in universe if "/examples/" in f or "/tests/" in f or "/test/" in f}
+universe -= {f for f in universe
+             if "/examples/" in f or "/tests/" in f or "/test/" in f
+             or "/fixtures/" in f}
 # Markdown is documentation, never an enforcing/behavioral source.
 universe -= {f for f in universe if f.endswith(".md")}
 
-owners = {}   # source path -> [spec ids]
-specs = sorted(glob.glob("openspec/specs/*/spec.md"))
 fail = 0
+
+# Drift guard: a NEW module directory is a new source class the enumeration
+# above does not cover — extend the universe in the same PR.
+known_modules = {"talos-cluster"}
+module_dirs = {p.split("/")[2] for p in tracked("tofu/modules/**")
+               if p.count("/") >= 3}
+for unknown in sorted(module_dirs - known_modules):
+    print(f"FAIL universe drift: tofu/modules/{unknown}/ is not covered by "
+          f"the enumerated universe — extend scripts/check-spec-partition.py")
+    fail = 1
+
+owners = {}   # source key (normalized, fragment kept) -> [spec ids]
+specs = sorted(glob.glob("openspec/specs/*/spec.md"))
 for spec in specs:
     sid = spec.split("/")[2]
     if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", sid):
         print(f"FAIL kebab-case: {sid}")
         fail = 1
     for src in primary_sources(frontmatter(spec)):
-        owners.setdefault(src, []).append(sid)
+        file_part, sep, frag = src.partition("#")
+        key = normalize(file_part) + (sep + frag if sep else "")
+        owners.setdefault(key, []).append(sid)
 
-for src, sids in sorted(owners.items()):
+for key, sids in sorted(owners.items()):
     if len(sids) > 1:
-        print(f"FAIL exclusivity: {src} owned by {sids}")
+        print(f"FAIL exclusivity: {key} owned by {sids}")
         fail = 1
-    if not (os.path.exists(src) or src.startswith("Taskfile.yml")):
-        print(f"FAIL dangling source: {src} (owner {sids[0]})")
+    file_part = key.partition("#")[0]
+    if not os.path.exists(file_part):
+        print(f"FAIL dangling source: {key} (owner {sids[0]})")
         fail = 1
 
-unowned = sorted(universe - set(owners))
+owned_files = {k.partition("#")[0] for k in owners}
+unowned = sorted(universe - owned_files)
 for src in unowned:
     print(f"FAIL completeness: {src} has no primary owner")
     fail = 1
 
-print(f"specs={len(specs)} owned_paths={len(owners)} universe={len(universe)} -> {'FAIL' if fail else 'OK'}")
+print(f"specs={len(specs)} owned_keys={len(owners)} universe={len(universe)}"
+      f" -> {'FAIL' if fail else 'OK'}")
 sys.exit(fail)

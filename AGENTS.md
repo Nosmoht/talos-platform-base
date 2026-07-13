@@ -153,8 +153,9 @@ rule file is present in the working repo before relying on it.
 ## Spec-Driven Development (OpenSpec)
 
 `openspec/specs/` is the behavioral-requirements source of truth: one spec per
-substrate capability, covering the externally observable contracts enumerated
-in the 14 capability specs — never assume unlisted behavior is spec'd
+substrate capability, covering exactly the externally observable contracts
+enumerated by the spec directories under `openspec/specs/` — never assume
+unlisted behavior is spec'd
 (repo-internal QA is documented in
 `knowledge/`, not spec'd — scope principle in
 [`knowledge/decisions/0015-openspec-adoption.md`](knowledge/decisions/0015-openspec-adoption.md)).

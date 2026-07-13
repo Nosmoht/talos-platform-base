@@ -317,14 +317,16 @@ tasks:
       openspec validate --all --strict --no-interactive
       # Bite-check: the strict validator must reject a malformed
       # directly-authored spec (guards against a future openspec release
-      # going warn-only; fixture documents itself).
-      trap 'rm -rf openspec/specs/negative-fixture' EXIT
-      mkdir -p openspec/specs/negative-fixture
-      cp scripts/fixtures/openspec-invalid-spec.md openspec/specs/negative-fixture/spec.md
-      if openspec validate --all --strict --no-interactive >/dev/null 2>&1; then
+      # going warn-only). Runs against a temp COPY — the working tree is
+      # never mutated, so interrupts and concurrent runs are safe.
+      bitetmp="$(mktemp -d)"; trap 'rm -rf "$bitetmp"' EXIT
+      cp -R openspec "$bitetmp/"
+      mkdir -p "$bitetmp/openspec/specs/negative-fixture"
+      cp scripts/fixtures/openspec-invalid-spec.md "$bitetmp/openspec/specs/negative-fixture/spec.md"
+      if (cd "$bitetmp" && openspec validate --all --strict --no-interactive >/dev/null 2>&1); then
         echo "ERROR: strict validate passed a malformed spec — the gate no longer bites"; exit 1
       fi
-      rm -rf openspec/specs/negative-fixture; trap - EXIT
+      rm -rf "$bitetmp"; trap - EXIT
       # Source-ownership partition: exclusivity + completeness over the
       # enumerated substrate source universe (ADR-0015 ownership model).
       python3 scripts/check-spec-partition.py .
@@ -350,7 +352,10 @@ tasks:
       # agents/, hooks/, ...) is expected and must stay ignored. A git
       # failure fails the task (the git call is separated from the greps
       # so a non-zero git exit is never swallowed as "clean").
-      before="$(mktemp)"; after="$(mktemp)"; trap 'rm -f "$before" "$after"' EXIT
+      # NOTE: --force overwrites any uncommitted edits inside the generated
+      # trees — commit or discard tree changes before running.
+      before="$(mktemp)"; after="$(mktemp)"
+      trap 'rm -f "$before" "$after" "$before.ign" "$after.ign"' EXIT
       git status --ignored=matching --porcelain .claude/ .codex/ > "$before"
       openspec update --force
       git status --ignored=matching --porcelain .claude/ .codex/ > "$after"
