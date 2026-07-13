@@ -56,13 +56,18 @@ or `external-bios-or-firmware`, and `name`, `description`, and
 
 ### Requirement: Unique feature ids
 
-The schema SHALL reject a registry in which two entries share the same
-`id`; lookup is by id, and array order is non-significant.
+Each entry's `id` SHALL be unique across the registry; lookup is by id,
+and array order is non-significant. Uniqueness is a documented
+convention, declared in the schema via the `uniqueItemProperties`
+keyword — an AJV-only extension that `check-jsonschema` (the validator
+behind `scripts/lint-hardware-features.sh`) silently ignores — and is
+NOT enforced by the repo's lint gate.
 
-#### Scenario: Duplicate id is rejected
+#### Scenario: Duplicate id passes the lint gate
 
 - **WHEN** two `hardware_features` entries declare the same `id`
-- **THEN** schema validation fails the uniqueness constraint
+- **THEN** the `task`-level lint currently passes — `check-jsonschema`
+  ignores `uniqueItemProperties` — and uniqueness relies on review
 
 ### Requirement: Discovery-conditional label key
 
@@ -92,13 +97,15 @@ admission policy; the base ships the vocabulary, not the policy.
 - **WHEN** a registry entry documents a Layer-C mirror label in
   `alt_label_keys`
 - **THEN** the key takes the `platform.io/hardware-feature.<id>` form with
-  `<id>` equal to the entry's registry id
+  `<id>` equal to the entry's registry id — a documented convention the
+  schema does not mechanically check (`alt_label_keys` is informational)
 
 #### Scenario: Composite labels stay out of the atomic namespace
 
 - **WHEN** a downstream composite capability emits a node label
 - **THEN** the key lands in `platform.io/hardware-capability.*`, never in
-  the atomic `platform.io/hardware-feature.*` namespace
+  the atomic `platform.io/hardware-feature.*` namespace — a documented
+  convention the schema does not mechanically check
 
 ### Requirement: Lint gate behavior
 

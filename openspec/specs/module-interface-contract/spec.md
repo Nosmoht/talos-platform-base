@@ -30,17 +30,23 @@ as the machine-config schema pin fixed at bootstrap,
 pin, `kubernetes_version`); topology (`nodes`, `images`,
 `hardware_capabilities`); machine-config patches (all-nodes, per-role and
 per-node lists); substrate delivery (the ArgoCD and Cilium toggles with
-their chart-version, repository, namespace, values-override and
-secret-material knobs); cluster network (`pod_cidr`, `service_cidr`,
-`dual_stack`, `allow_scheduling_on_controlplanes`); and the cluster
-health timeout.
+their chart-version, namespace, values-override and secret-material
+knobs, plus a chart-repository knob for Cilium only — the ArgoCD chart
+repository is hardcoded in `main.tf`); cluster network (`pod_cidr`,
+`service_cidr`, `dual_stack`, `allow_scheduling_on_controlplanes`); and
+the cluster health timeout. Because `deploy_argocd` defaults to true and
+a plan-time precondition requires `sops_age_key` to be a valid age
+private key whenever ArgoCD is deployed, `sops_age_key` is de-facto
+required under the default toggles.
 
 #### Scenario: Optional groups fall back to documented defaults
 
 - **WHEN** a caller supplies only the required inputs (identity,
-  versions, nodes, images)
-- **THEN** both substrate toggles default to enabled, the network CIDRs
-  default to the Talos defaults, `talos_install_version` falls back to
+  versions, nodes, images) together with either a valid `sops_age_key`
+  or `deploy_argocd = false`
+- **THEN** the plan succeeds with the documented defaults: any substrate
+  toggle left unset defaults to enabled, the network CIDRs default to
+  the Talos defaults, `talos_install_version` falls back to
   `talos_version`, and the health timeout defaults to `"10m"`
 
 ### Requirement: Identity and version input validation

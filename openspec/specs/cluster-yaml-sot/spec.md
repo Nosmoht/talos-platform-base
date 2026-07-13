@@ -67,15 +67,18 @@ The `repo` section SHALL require a non-empty `url`.
 
 ### Requirement: Version pinning
 
-The schema SHALL require `talos.version` and `kubernetes.version` as
-v-prefixed semantic versions, and SHALL admit an optional
-`talos.install_version` that is either empty (matching `talos.version`) or a
-v-prefixed semantic version.
+The schema SHALL require `talos.version` and `kubernetes.version` to be
+values beginning with a v-prefixed MAJOR.MINOR.PATCH version, and SHALL
+admit an optional `talos.install_version` that is either empty (matching
+`talos.version`) or begins the same way. Unpinned forms (`latest`, a
+missing v-prefix) are rejected; trailing suffixes after the PATCH segment
+are not rejected by the current start-anchored pattern.
 
 #### Scenario: Unpinned version string is rejected
 
-- **WHEN** `talos.version` or `kubernetes.version` is not a v-prefixed
-  semantic version
+- **WHEN** `talos.version` or `kubernetes.version` does not begin with a
+  v-prefixed MAJOR.MINOR.PATCH version (for example `latest`, or a
+  version missing the v-prefix)
 - **THEN** schema validation fails on the version pattern
 
 ### Requirement: Image catalog entries

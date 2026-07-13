@@ -122,9 +122,14 @@ The module SHALL emit, per node, the `emits_label` of each held
 capability (in the `platform.io/hardware-capability.*` namespace) plus
 one `platform.io/hardware-feature.<atom>` label per atom provided by the
 node's resolved profiles. Reserved `platform.io/hardware-feature.*`
-labels SHALL derive only from the base catalog's `provides` lists, never
-from consumer input (normative anti-forgery invariant:
-`knowledge/decisions/0009-node-capability-composition.md`).
+labels SHALL derive only from the base catalog's `provides` lists, so
+they cannot be emitted through the typed capability path (normative
+anti-forgery invariant:
+`knowledge/decisions/0009-node-capability-composition.md`). A raw
+per-node `config_patches` string can still set `machine.nodeLabels`
+directly — the module does not parse patch content; enforcement of that
+vector is consumer-cluster Kyverno per
+`knowledge/decisions/0009-node-capability-composition.md`.
 
 #### Scenario: Held capability emits both label classes
 

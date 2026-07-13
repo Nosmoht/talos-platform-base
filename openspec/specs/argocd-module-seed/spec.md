@@ -14,9 +14,10 @@ references:
 
 The module-side ArgoCD delivery: gated on `deploy_argocd`, the
 `tofu/modules/talos-cluster` module renders a deliberately slim ArgoCD seed
-into a controlplane Talos `cluster.inlineManifests` entry and applies the
-chart's CRDs separately server-side, so the GitOps engine comes up as part
-of standing the cluster up rather than as a Day-2 add-on.
+into a controlplane Talos `cluster.inlineManifests` entry and, after the
+health gate, server-side-applies a full default-values chart render (CRDs
+included), so the GitOps engine comes up as part of standing the cluster
+up rather than as a Day-2 add-on.
 
 ## Requirements
 
@@ -89,27 +90,32 @@ re-seed requires an explicit resource replacement.
 - **THEN** the frozen seed output is unchanged and no machine-config
   re-push results
 
-### Requirement: CRDs applied separately server-side
+### Requirement: Full-chart render applied server-side after health
 
-The module SHALL render the chart's CRDs in a second render
-(`data.helm_template.argocd_crds`, frozen by
+The module SHALL run a second render (`data.helm_template.argocd_crds`)
+that renders the full argo-cd chart with `include_crds = true` under
+chart-default values (no values file), frozen by
 `terraform_data.argocd_crds_render` with `triggers_replace` on the chart
-version, namespace, and Kubernetes version) and apply the written render
-file with `kubectl apply --server-side --force-conflicts` via
-`null_resource.argocd_crds` after the cluster health gate, re-running on an
-intended input bump but not on render drift.
+version, namespace, and Kubernetes version, and SHALL apply the written
+render file with `kubectl apply --server-side --force-conflicts` via
+`null_resource.argocd_crds` after the cluster health gate, re-running on
+an intended input bump but not on render drift. Because the payload is
+the full chart render, the server-side apply delivers the CRDs and also
+converges the seeded application resources on every re-run — it is not a
+CRDs-only apply.
 
 #### Scenario: CRD apply follows cluster health
 
 - **WHEN** the module applies with `deploy_argocd = true`
-- **THEN** the CRD kubectl apply depends on the cluster health check and
-  runs server-side against the module-written kubeconfig
+- **THEN** the full-chart kubectl apply depends on the cluster health
+  check and runs server-side against the module-written kubeconfig,
+  delivering the CRDs and converging the seeded application resources
 
 #### Scenario: Version bump re-applies, drift does not
 
 - **WHEN** `argocd_chart_version` changes
-- **THEN** the frozen CRD render is replaced and the apply re-runs, while a
-  render-byte change at unchanged inputs triggers no re-apply
+- **THEN** the frozen full-chart render is replaced and the apply re-runs,
+  while a render-byte change at unchanged inputs triggers no re-apply
 
 ### Requirement: Seeded namespace labels and PSA floor
 

@@ -82,8 +82,8 @@ the node's own `config_patches`, and the CNI patch re-applied last.
 The module SHALL enable kubelet serving-certificate rotation on both
 roles by default via the KubeletConfiguration field
 `machine.kubelet.extraConfig.serverTLSBootstrap: true` — not the
-deprecated kubelet flag — placed first in each role's patch list so a
-caller patch can opt out.
+deprecated kubelet flag — placed before all caller patches (immediately
+after the base cluster patch) so a caller patch can opt out.
 
 #### Scenario: Rotation wired into both roles
 

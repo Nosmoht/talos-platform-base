@@ -97,12 +97,15 @@ a schematic overlay; the platform stays `metal`.
 
 ### Requirement: Installer availability gate
 
-The module SHALL fail at plan time when the Image Factory returns no
-metal-installer URL for a composed (schematic, architecture) pair.
+The module SHALL fail when the Image Factory returns no metal-installer
+URL for a composed (schematic, architecture) pair. The gate is a
+postcondition on a data source keyed by a managed schematic resource, so
+it evaluates at plan time only once the schematic exists in state; on
+first bootstrap it defers to apply.
 
 #### Scenario: Unproducible schematic/architecture combination fails the plan
 
 - **WHEN** a schematic and architecture combination resolves to an empty
   installer URL from the Image Factory
-- **THEN** the plan fails with an error naming the schematic hash and the
-  architecture
+- **THEN** the plan (or, on first bootstrap, the apply) fails with an
+  error naming the schematic hash and the architecture

@@ -15,8 +15,9 @@ references:
 Turn a freshly provisioned cluster into a GitOps-managed one: the one-time,
 direct-applied seed that hands control to ArgoCD. `task bootstrap:argocd`
 renders the two templates below from the consumer's `cluster.yaml`
-bootstrap-identity subset and applies them — the only sanctioned direct-apply
-path in the platform.
+bootstrap-identity subset and applies them — the ArgoCD entry point of the
+sanctioned direct-apply exception, which covers the whole
+`kubernetes/bootstrap/` tree (AGENTS.md).
 
 ## Requirements
 
@@ -51,9 +52,12 @@ namespace, bound to project `root-bootstrap`, sourcing
 
 ### Requirement: Kubernetes recommended labels on bootstrap resources
 
-Both rendered bootstrap resources SHALL carry the Kubernetes recommended
-labels with `app.kubernetes.io/managed-by: bootstrap` (normative label set:
-`AGENTS.md §Hard Constraints`).
+Both rendered bootstrap resources SHALL carry the five labels the
+templates set —
+`app.kubernetes.io/{name,instance,component,part-of,managed-by}` with
+`app.kubernetes.io/managed-by: bootstrap` (normative label set:
+`AGENTS.md §Hard Constraints`); `app.kubernetes.io/version` is not among
+them.
 
 #### Scenario: Labels present after render
 

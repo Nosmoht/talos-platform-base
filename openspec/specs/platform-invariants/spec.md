@@ -107,13 +107,18 @@ denies each violation.
 
 Every rendered ArgoCD Application SHALL set `spec.project`, a destination
 namespace (unless allowlisted as namespace-optional), and a destination
-`server` or `name`; every Helm source SHALL set `repoURL`, `chart`, and
-`targetRevision`; `policies/conftest/argocd.rego` denies each omission.
+`server` or `name`; every Helm source SHALL set `repoURL` and
+`targetRevision`, and `policies/conftest/argocd.rego` denies an empty
+`repoURL` or `targetRevision` on a Helm source. The policy classifies a
+source as Helm only when `chart` is non-empty, so a source omitting
+`chart` falls to the git-source rules and evades the Helm pinning checks
+entirely — the policy's textual chart-omission rule cannot fire.
 
 #### Scenario: Underspecified Application is denied
 
-- **WHEN** conftest evaluates an Application missing its project,
-  destination, or a Helm source field
+- **WHEN** conftest evaluates an Application missing its project or
+  destination, or a Helm source with an empty `repoURL` or
+  `targetRevision`
 - **THEN** the policy emits a deny naming the Application and the missing
   field
 

@@ -39,10 +39,12 @@ holding the tarball's SHA-256, both produced in the same workflow run.
 
 The release tarball SHALL contain exactly the paths listed in
 `.ci-oci-tarball-include.txt` — any path not listed is excluded by default —
-and the build SHALL fail when the include list is missing. The tarball
-listing SHALL be diffed against the committed
-`.ci-oci-tarball-expected.txt` fixture, and any divergence SHALL fail the
-publication.
+and the build SHALL fail when the include list is missing. When the
+committed `.ci-oci-tarball-expected.txt` fixture exists, the tarball
+listing SHALL be diffed against it and any divergence SHALL fail the
+publication; when the fixture is absent, the workflow currently emits a
+notice and continues without the membership diff — only the include
+list's absence hard-fails.
 
 #### Scenario: Unlisted path never ships
 
@@ -52,10 +54,16 @@ publication.
 
 #### Scenario: Membership drift fails the build
 
-- **WHEN** the built tarball's sorted listing differs from
-  `.ci-oci-tarball-expected.txt`
+- **WHEN** `.ci-oci-tarball-expected.txt` is committed and the built
+  tarball's sorted listing differs from it
 - **THEN** the workflow exits non-zero before any push, sign, or attest step
   runs
+
+#### Scenario: Absent fixture skips the diff
+
+- **WHEN** no `.ci-oci-tarball-expected.txt` fixture is committed
+- **THEN** the workflow emits a notice and continues without the
+  membership diff
 
 ### Requirement: Repo-internal surfaces stay outside the payload
 
@@ -84,7 +92,7 @@ tag. A failure to capture the digest SHALL fail the publication.
 ### Requirement: SLSA provenance and CycloneDX SBOM attestations
 
 The publication SHALL attach SLSA build provenance (pushed to the registry,
-subject keyed to the artifact digest) and a CycloneDX 1.6 JSON SBOM
+subject keyed to the artifact digest) and a CycloneDX JSON SBOM
 generated over the release tarball, attached as a cosign attestation of
 type `cyclonedx` keyed to the same digest.
 
