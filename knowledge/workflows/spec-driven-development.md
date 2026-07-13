@@ -50,22 +50,25 @@ the pattern.
 
 ## Validation
 
-- Locally: `task spec:validate` (strict validate + offline link check).
-- CI: `docs-lint.yml` runs `openspec validate --all --strict
-  --no-interactive` on every PR — fail-closed, verified empirically
-  (malformed spec → exit 1).
+- Locally: `task spec:validate` (strict validate, bite-check via the
+  committed malformed fixture, source-ownership partition, offline link
+  check) and `task spec:check-regen` (committed tool trees equal the
+  pinned generator's output).
+- CI: `docs-lint.yml` runs exactly these Taskfile targets on every PR —
+  the local chain and the remote chain are the same commands by
+  construction.
 - Staleness convention: a PR touching a spec's `primary` source file
   updates the owning spec (frontmatter `sources:`; not yet CI-enforced).
 
 ## Tool pin and upgrades
 
-The CLI is npm-distributed and pinned (`.tool-versions` is the SoT;
-Taskfile vars and the docs-lint env block are drift-asserted copies).
-Install: `task spec:install-cli` (always `--ignore-scripts`). Upgrading:
+The CLI is npm-distributed and pinned (`.tool-versions` is the SoT; the
+Taskfile vars block is the only other copy — `task dev:verify-pins`
+asserts the pair, locally and in CI). Install: `task spec:install-cli`
+(always `--ignore-scripts`). Upgrading:
 
-1. Bump the pin in `.tool-versions`, `Taskfile.yml`, and
-   `.github/workflows/docs-lint.yml` together (the drift assert fails CI
-   on a partial bump).
+1. Bump the pin in `.tool-versions` and `Taskfile.yml` together
+   (`dev:verify-pins` fails on a partial bump).
 2. `task spec:install-cli`, then `task spec:update` — regenerates the
    committed Claude/Codex integration trees and fails if the regeneration
    emitted paths the `.gitignore` negation list does not cover.

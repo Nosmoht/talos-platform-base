@@ -44,12 +44,14 @@ vars:
   LYCHEE_SHA256_DARWIN_ARM64: c9d3740ea2d891854d37116c9fba840f37b6e7c89d330e7db84ac333631c4977
   LYCHEE_SHA256_DARWIN_AMD64: 887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978
   LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
-  # spec:* tool pin — KEEP IN SYNC with .tool-versions and the docs-lint.yml
-  # env block (drift-asserted there). npm-distributed. --ignore-scripts
-  # disables lifecycle scripts only — it is NOT an integrity control; the
-  # exact registry pin is the current integrity posture (lockfile-based
-  # install is the tracked follow-up, see ADR-0015 Consequences).
+  # spec:*/docs:* tool pins — KEEP IN SYNC with .tool-versions
+  # (`task dev:verify-pins` asserts the pair). npm-distributed.
+  # --ignore-scripts disables lifecycle scripts only — it is NOT an
+  # integrity control; the exact registry pin is the current integrity
+  # posture (lockfile-based install is the tracked follow-up, see
+  # ADR-0015 Consequences).
   OPENSPEC_VERSION: 1.6.0
+  MARKDOWNLINT_VERSION: 0.42.0
 
 tasks:
   default:
@@ -255,10 +257,13 @@ tasks:
       command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
       openknowledge validate knowledge/
       # Offline link-resolution gate: intra-repo markdown links must resolve.
-      # Scope: the bundle, root orientation files, contracts/. CHANGELOG.md is
-      # a historical record and excluded by design.
+      # Scope: the bundle, root orientation files, contracts/, and the two
+      # tofu READMEs that ship in the OCI tarball and link into knowledge/.
+      # CHANGELOG.md is a historical record and excluded by design.
       lychee --offline --no-progress --exclude-path CHANGELOG.md \
-        'knowledge/**/*.md' './*.md' 'contracts/*.md'
+        'knowledge/**/*.md' './*.md' 'contracts/*.md' \
+        'tofu/modules/talos-cluster/README.md' \
+        'tofu/modules/talos-cluster/test/README.md'
 
   knowledge:new:
     desc: "Scaffold a new knowledge concept (usage: task knowledge:new FILE=reference/foo.md TYPE=reference)"
@@ -304,6 +309,25 @@ tasks:
       echo "Verify pins: task dev:verify-tools"
 
   # ===========================================================================
+  # docs:* — repo-wide markdown linting (mirrors the docs-lint.yml CI job;
+  # the workflow runs exactly these tasks so local == remote).
+  # ===========================================================================
+  docs:lint:
+    desc: markdownlint over the whole repo (same invocation as CI)
+    cmd: |
+      set -e
+      command -v markdownlint >/dev/null 2>&1 || { echo "ERROR: 'markdownlint' not installed — run 'task docs:install-cli'"; exit 1; }
+      markdownlint '**/*.md' --ignore-path .markdownlintignore
+
+  docs:install-cli:
+    desc: Install the pinned markdownlint-cli (npm, lifecycle scripts disabled)
+    cmd: |
+      set -e
+      command -v npm >/dev/null 2>&1 || { echo "ERROR: 'npm' required — https://nodejs.org"; exit 1; }
+      npm install -g --ignore-scripts markdownlint-cli@{{.MARKDOWNLINT_VERSION}}
+      echo "Installed markdownlint $(markdownlint --version)"
+
+  # ===========================================================================
   # spec:* — OpenSpec behavioral specs (openspec/). NOT the same tool as
   # knowledge:* (openknowledge validates the OKF bundle; openspec validates
   # behavioral capability specs). See knowledge/workflows/spec-driven-development.md.
@@ -340,6 +364,30 @@ tasks:
       npm install -g --ignore-scripts @fission-ai/openspec@{{.OPENSPEC_VERSION}}
       echo "Installed openspec $(openspec --version)"
       echo "Verify pins: task dev:verify-tools"
+
+  spec:check-regen:
+    desc: Regeneration parity — the committed tool trees must equal the pinned generator's output
+    cmd: |
+      set -e
+      command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
+      # Delta over the WHOLE tree: catches modified, deleted AND newly-added
+      # (untracked) files, wherever the generator writes them. Delta-based so
+      # it also runs on a locally dirty tree; on a pristine CI checkout the
+      # delta equals the absolute drift. NOTE: --force overwrites any
+      # uncommitted edits inside the generated trees.
+      # Scope note: this proves committed == pinned-generator output; it does
+      # NOT prove the content is benign — instruction-body review stays
+      # mandatory (ADR-0014; the trees are agent-loaded content).
+      before="$(mktemp)"; after="$(mktemp)"; trap 'rm -f "$before" "$after"' EXIT
+      git status --porcelain > "$before"
+      openspec update --force >/dev/null
+      git status --porcelain > "$after"
+      if ! cmp -s "$before" "$after"; then
+        echo "ERROR: regenerating with the pinned openspec changed the tree:"
+        diff "$before" "$after" | grep '^>' || true
+        exit 1
+      fi
+      echo "OK: committed tool trees match the pinned generator's output."
 
   spec:update:
     desc: Regenerate OpenSpec tool integrations (.claude/, .codex/) after a CLI upgrade
@@ -451,3 +499,22 @@ tasks:
   dev:verify-tools:
     desc: Confirm installed binaries match .tool-versions pins
     cmd: ./scripts/verify-tools.sh
+
+  dev:verify-pins:
+    desc: Assert the Taskfile vars block agrees with .tool-versions (pin SoT)
+    cmd: |
+      set -eu
+      fail=0
+      tv() { awk -v k="$1" '$1==k {print $2}' .tool-versions; }
+      assert() {
+        if [ "$2" != "$3" ]; then
+          echo "DRIFT: $1 .tool-versions=$2 Taskfile=$3"; fail=1
+        else
+          echo "OK:    $1 $2"
+        fi
+      }
+      assert openknowledge "$(tv openknowledge)" "{{.OPENKNOWLEDGE_VERSION}}"
+      assert lychee        "$(tv lychee)"        "{{.LYCHEE_VERSION}}"
+      assert openspec      "$(tv openspec)"      "{{.OPENSPEC_VERSION}}"
+      assert markdownlint  "$(tv markdownlint)"  "{{.MARKDOWNLINT_VERSION}}"
+      exit "$fail"

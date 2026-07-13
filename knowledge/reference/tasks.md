@@ -117,9 +117,17 @@ bundle. See `knowledge/workflows/spec-driven-development.md`.
 
 | Task | Purpose |
 | --- | --- |
-| `spec:validate` | Strict `openspec validate` over `openspec/`, a bite-check (a committed malformed fixture must fail validation), the source-ownership partition assert (`scripts/check-spec-partition.py`: exclusivity + completeness per ADR-0015), and an offline `lychee` pass. Mirrors the CI gates in `docs-lint.yml`. Precondition: `task spec:install-cli` + `task knowledge:install-cli` (lychee). |
+| `spec:validate` | Strict `openspec validate` over `openspec/`, a bite-check (a committed malformed fixture must fail validation, run against a temp copy), the source-ownership partition assert (`scripts/check-spec-partition.py`: exclusivity + completeness over the enumerated universe per ADR-0015), and an offline `lychee` pass. Run verbatim by `docs-lint.yml`. Precondition: `task spec:install-cli` + `task knowledge:install-cli` (lychee). |
+| `spec:check-regen` | Regeneration parity: whole-tree delta after `openspec update --force` must be empty — the committed tool trees equal the pinned generator's output (parity only, not benignity). Run verbatim by `docs-lint.yml`. Overwrites uncommitted edits inside the generated trees. |
 | `spec:install-cli` | Install the pinned `openspec` CLI via npm with lifecycle scripts disabled (`--ignore-scripts`). Precondition: `npm`. |
 | `spec:update` | Regenerate the committed OpenSpec tool integrations (`.claude/`, `.codex/`) after a CLI upgrade; fails when the regeneration emitted paths `.gitignore` still ignores (delta-based gate). Regenerated diffs are security-relevant review surface (ADR-0014). |
+
+## `docs:*` — repo-wide markdown lint
+
+| Task | Purpose |
+| --- | --- |
+| `docs:lint` | `markdownlint` over the whole repo with `.markdownlintignore`. Run verbatim by `docs-lint.yml`. Precondition: `task docs:install-cli`. |
+| `docs:install-cli` | Install the pinned `markdownlint-cli` via npm with lifecycle scripts disabled. |
 
 ## `mcp:*` — MCP server binary management
 
@@ -141,6 +149,7 @@ the pinned Taskfile vars above. See the MCP setup workflow
 | --- | --- |
 | `dev:install-pre-commit` | `uvx pre-commit install` + one advisory run across the repo. |
 | `dev:verify-tools` | Confirm installed binaries match the `.tool-versions` pins (`scripts/verify-tools.sh`). |
+| `dev:verify-pins` | Assert the Taskfile `vars:` pins agree with `.tool-versions` (openknowledge, lychee, openspec, markdownlint). Run verbatim by `docs-lint.yml`. |
 
 ## Makefile deprecation stub
 

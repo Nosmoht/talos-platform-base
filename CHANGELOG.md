@@ -12,11 +12,13 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   carries specs for the 14 enumerated substrate capabilities (backfilled
   from the implementation by explicit owner decision); future behavior
   changes travel as spec deltas via `openspec/changes/`. New `spec:*`
-  task namespace (`validate`, `install-cli`, `update`); strict
-  `openspec validate` gates every PR in `docs-lint.yml` (pin 1.6.0,
-  drift-asserted across `.tool-versions`, Taskfile, and workflow env;
-  npm installs run `--ignore-scripts`). The OCI tarball payload is
-  unchanged — `openspec/` and the tool trees stay outside the allowlist.
+  task namespace (`validate` incl. bite-check + source-partition assert,
+  `check-regen`, `install-cli`, `update`), `docs:lint`/`docs:install-cli`,
+  and `dev:verify-pins`; `docs-lint.yml` now runs exactly these Taskfile
+  targets, so the local validation chain equals the remote one (pins live
+  in `.tool-versions` + the Taskfile vars block only; npm installs run
+  `--ignore-scripts`). The OCI tarball payload is unchanged — `openspec/`
+  and the tool trees stay outside the allowlist.
 
 ### Changed
 

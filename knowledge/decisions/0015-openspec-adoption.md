@@ -135,10 +135,13 @@ re-proven by a committed malformed fixture that must fail validation
 `scripts/check-spec-partition.py` (exclusivity, plus completeness relative
 to the script's enumerated substrate source universe — extending the
 universe is part of adding a new source class; an unknown-module drift
-guard catches the most likely omission). The pin is
-drift-asserted across `.tool-versions`, the Taskfile vars block, and the
-docs-lint env block; a regeneration-parity CI step keeps the committed
-tool trees byte-identical to the pinned generator's output.
+guard catches the most likely omission). The pin lives in
+`.tool-versions` (SoT) plus the Taskfile vars block, asserted by
+`task dev:verify-pins`; `task spec:check-regen` keeps the committed tool
+trees equal to the pinned generator's output (parity, not benignity —
+instruction-body review stays mandatory). The `docs-lint.yml` CI job runs
+exactly these Taskfile targets, so the local and remote validation chains
+are the same commands by construction.
 The decision is wrong if specs rot despite the staleness convention —
 the trigger to revisit is a merged behavior change whose owning spec was
 not updated.

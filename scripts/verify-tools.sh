@@ -39,6 +39,7 @@ extract_version() {
     # openspec --version emits a bare version token (verified against 1.6.0);
     # flag form — the tool has no `version` subcommand.
     openspec)    openspec --version 2>/dev/null | sed -E 's/^v//' ;;
+    markdownlint) markdownlint --version 2>/dev/null | sed -E 's/^v//' ;;
     *) echo "" ;;
   esac
 }

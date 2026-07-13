@@ -7,6 +7,12 @@ name: docs-lint
 # (2) an unfiltered job is safe to promote to a required branch-protection
 #     context later (a path-filtered required check hangs non-matching PRs
 #     as "Expected — waiting"). The job is cheap (~seconds).
+#
+# Contract: every check step runs a Taskfile target, never inline shell —
+# the identical chain is runnable locally (`task docs:lint`,
+# `task knowledge:validate`, `task spec:validate`, `task spec:check-regen`,
+# `task dev:verify-pins`). Tool pins live in .tool-versions + the Taskfile
+# vars block only; `dev:verify-pins` asserts the pair.
 on:
   pull_request:
   push:
@@ -16,148 +22,44 @@ permissions:
   contents: read
 
 jobs:
-  markdownlint:
+  docs-lint:
     runs-on: ubuntu-latest
-    env:
-      # Tool versions — KEEP IN SYNC with .tool-versions and the Taskfile
-      # knowledge:*/spec:* vars block (drift-checked against .tool-versions below).
-      # Checksums from the projects' released checksum files. If the
-      # upstream release disappears, this job fails until the pin is
-      # bumped — bump version + checksum here, in Taskfile.yml, and in
-      # .tool-versions together.
-      OPENKNOWLEDGE_VERSION: "0.5.0"
-      OPENKNOWLEDGE_SHA256_LINUX_AMD64: 0f58de81e52f064fbf52aac5289e0b1b6dc0e58de2f47c4e043263e9e927cb27
-      LYCHEE_VERSION: "0.24.2"
-      LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
-      # npm-distributed. --ignore-scripts disables lifecycle scripts only —
-      # NOT an integrity control; the exact registry pin is the current
-      # integrity posture (lockfile-based install is the tracked follow-up).
-      OPENSPEC_VERSION: "1.6.0"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Verify env tool-versions match .tool-versions
-        # Same drift-detector pattern as gitops-validate.yml — the env
-        # block above and .tool-versions must agree.
-        run: |
-          set -eu
-          fail=0
-          tv() { awk -v k="$1" '$1==k {print $2}' .tool-versions; }
-          assert() {
-            if [ "$2" != "$3" ]; then
-              echo "DRIFT:    $1 .tool-versions=$2 workflow-env=$3"; fail=1
-            else
-              echo "OK:       $1 $2"
-            fi
-          }
-          assert openknowledge "$(tv openknowledge)" "$OPENKNOWLEDGE_VERSION"
-          assert lychee        "$(tv lychee)"        "$LYCHEE_VERSION"
-          assert openspec      "$(tv openspec)"      "$OPENSPEC_VERSION"
-          # Third pin copy: the Taskfile spec:* vars block. Normalized
-          # (quotes stripped) before compare so YAML quoting cannot mask
-          # or fake drift.
-          taskfile_openspec="$(awk '/^  OPENSPEC_VERSION:/ {gsub(/"/, ""); print $2}' Taskfile.yml)"
-          assert openspec-taskfile "$taskfile_openspec" "$OPENSPEC_VERSION"
-          exit "$fail"
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install markdownlint-cli
-        run: npm install -g markdownlint-cli@0.42.0
+      - name: task dev:verify-pins (Taskfile vars ↔ .tool-versions)
+        run: task dev:verify-pins
 
-      - name: Lint Markdown
-        run: markdownlint '**/*.md' --ignore-path .markdownlintignore
+      - name: task docs:install-cli (markdownlint, pinned)
+        run: task docs:install-cli
 
-      - name: Install openknowledge (pinned + checksum)
-        run: |
-          set -euo pipefail
-          tmp="$(mktemp -d)"
-          curl -fsSLo "$tmp/ok.tar.gz" \
-            "https://github.com/openknowledge-sh/openknowledge/releases/download/v${OPENKNOWLEDGE_VERSION}/openknowledge_linux_amd64.tar.gz"
-          echo "${OPENKNOWLEDGE_SHA256_LINUX_AMD64}  $tmp/ok.tar.gz" | sha256sum -c -
-          tar -xzf "$tmp/ok.tar.gz" -C "$tmp"
-          sudo install -m 0755 "$tmp/openknowledge" /usr/local/bin/openknowledge
-          openknowledge version
+      - name: task knowledge:install-cli (openknowledge + lychee, pinned + checksum)
+        run: task knowledge:install-cli
 
-      - name: Validate knowledge bundle (OKF + binding link-target rule)
+      - name: task spec:install-cli (openspec, pinned, lifecycle scripts disabled)
+        run: task spec:install-cli
+
+      - name: task docs:lint
+        run: task docs:lint
+
+      - name: task knowledge:validate
         # knowledge/openknowledge.toml raises link-target to error, so a
         # broken or bundle-escaping link fails this step (exit 1).
-        run: openknowledge validate knowledge/
+        run: task knowledge:validate
 
-      - name: Install lychee (pinned + checksum)
-        run: |
-          set -euo pipefail
-          tmp="$(mktemp -d)"
-          curl -fsSLo "$tmp/ly.tar.gz" \
-            "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz"
-          echo "${LYCHEE_SHA256_LINUX_AMD64}  $tmp/ly.tar.gz" | sha256sum -c -
-          tar -xzf "$tmp/ly.tar.gz" -C "$tmp"
-          # Release tarballs may nest the binary in a per-target directory.
-          ly_bin="$(find "$tmp" -type f -name lychee | head -1)"
-          test -n "$ly_bin"
-          sudo install -m 0755 "$ly_bin" /usr/local/bin/lychee
-          lychee --version
+      - name: task spec:validate
+        # Strict validate + bite-check (malformed fixture must fail) +
+        # source-ownership partition + offline link pass.
+        run: task spec:validate
 
-      - name: Install openspec (pinned, lifecycle scripts disabled)
-        # npm postinstall scripts (incl. transitive deps) are disabled —
-        # supply-chain control consistent with the release toolchain's
-        # `npm ci --ignore-scripts`.
-        run: |
-          npm install -g --ignore-scripts "@fission-ai/openspec@${OPENSPEC_VERSION}"
-          openspec --version
-
-      - name: Validate behavioral specs (strict, fail-closed)
-        # Verified against 1.6.0: --strict exits non-zero on a malformed
-        # directly-authored spec under openspec/specs/.
-        run: openspec validate --all --strict --no-interactive
-
-      - name: Bite-check the strict validator (negative fixture)
-        # A malformed spec MUST fail validation — guards against a future
-        # openspec release silently going warn-only/change-gated for
-        # directly-authored specs. Runs against a temp COPY so the working
-        # tree is never mutated.
-        run: |
-          tmp="$(mktemp -d)"
-          cp -R openspec "$tmp/"
-          mkdir -p "$tmp/openspec/specs/negative-fixture"
-          cp scripts/fixtures/openspec-invalid-spec.md "$tmp/openspec/specs/negative-fixture/spec.md"
-          if (cd "$tmp" && openspec validate --all --strict --no-interactive); then
-            echo "ERROR: strict validate passed a malformed spec — the gate no longer bites"
-            exit 1
-          fi
-          rm -rf "$tmp"
-
-      - name: Spec source-ownership partition (exclusivity + completeness)
-        # ADR-0015 ownership model: every primary source path has exactly one
-        # owning spec, and every file in the substrate source universe has an
-        # owner.
-        run: python3 scripts/check-spec-partition.py .
-
-      - name: Regeneration parity of committed tool trees
-        # Re-running the PINNED generator on the pristine checkout must
-        # leave the WHOLE tree unchanged: `git status --porcelain` with no
-        # pathspec catches modified AND deleted AND newly-ADDED (untracked)
-        # files, wherever the generator writes them — hand-edits, stale
-        # trees after a pin bump, and generator-added files all fail.
-        # Scope note: this proves committed == pinned-generator output; it
-        # does NOT prove the content is benign — instruction-body review
-        # stays mandatory (ADR-0014; the trees are agent-loaded content).
-        run: |
-          openspec update --force
-          drift="$(git status --porcelain)"
-          if [ -n "$drift" ]; then
-            echo "ERROR: regenerating with the pinned openspec changed the tree:"
-            echo "$drift"
-            exit 1
-          fi
-
-      - name: Offline link-resolution gate
-        # Intra-repo markdown links must resolve (file existence). External
-        # (network) links are out of scope by design — --offline checks only
-        # local targets. CHANGELOG.md is a historical record and excluded.
-        # The two tofu READMEs ship in the OCI tarball and carry relative
-        # links into knowledge/ — checked here so a decision rename cannot
-        # rot them silently.
-        run: |
-          lychee --offline --no-progress --exclude-path CHANGELOG.md \
-            'knowledge/**/*.md' './*.md' 'contracts/*.md' 'openspec/**/*.md' \
-            'tofu/modules/talos-cluster/README.md' \
-            'tofu/modules/talos-cluster/test/README.md'
+      - name: task spec:check-regen
+        # Committed tool trees must equal the pinned generator's output
+        # (whole-tree delta; catches added/modified/deleted files). Parity
+        # only — instruction-body review stays mandatory (ADR-0014).
+        run: task spec:check-regen

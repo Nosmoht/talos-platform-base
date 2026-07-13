@@ -165,8 +165,9 @@ and describe observable outcomes.
 - A change to platform behavior requires a spec delta via
   `openspec/changes/` (propose → apply → archive); direct edits to
   `openspec/specs/` are reserved for the one-time backfill.
-- Validate locally with `task spec:validate`; CI enforces
-  `openspec validate --all --strict --no-interactive` in `docs-lint.yml`.
+- Validate locally with `task spec:validate` (+ `task spec:check-regen` for
+  the tool trees); CI (`docs-lint.yml`) runs exactly these Taskfile
+  targets, so the local chain equals the remote one.
 - A PR touching a spec's `primary` source file (frontmatter `sources:`)
   updates the owning spec.
 - Full workflow incl. tool-pin upgrades:
