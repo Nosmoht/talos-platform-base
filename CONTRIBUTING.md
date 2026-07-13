@@ -92,6 +92,7 @@ footer, or the change ships as a non-breaking release. See
 
 ```bash
 task gitops:validate             # kustomize + conftest + kubeconform
+task spec:validate               # when openspec/ or a spec's primary source changed
 ```
 
 For changes touching a single component:
@@ -140,6 +141,9 @@ hard constraints), update **at minimum**:
 - `CHANGELOG.md` (Unreleased section — Added / Changed / Deprecated / Removed / Fixed / Security).
 - Either a decision record (decision-grade, `knowledge/decisions/`) or the
   matching `knowledge/` concept.
+- The owning OpenSpec spec (`openspec/specs/`) when the change alters
+  platform behavior — as a spec delta via `openspec/changes/`; see
+  [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
 
 If your change adds, removes, or renames a component in
 `kubernetes/base/infrastructure/`, or changes a service-DNS or

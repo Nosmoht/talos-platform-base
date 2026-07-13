@@ -3,6 +3,31 @@
 This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- **OpenSpec adopted as the behavioral-requirements surface**
+  (`knowledge/decisions/0015-openspec-adoption.md`). `openspec/specs/`
+  carries specs for the 14 enumerated substrate capabilities (backfilled
+  from the implementation by explicit owner decision); future behavior
+  changes travel as spec deltas via `openspec/changes/`. New `spec:*`
+  task namespace (`validate`, `install-cli`, `update`); strict
+  `openspec validate` gates every PR in `docs-lint.yml` (pin 1.6.0,
+  drift-asserted across `.tool-versions`, Taskfile, and workflow env;
+  npm installs run `--ignore-scripts`). The OCI tarball payload is
+  unchanged — `openspec/` and the tool trees stay outside the allowlist.
+
+### Changed
+
+- **The base now commits tool-generated AI artifacts**
+  (`knowledge/decisions/0014-ship-ai-tool-artifacts.md`): the OpenSpec
+  skill/command trees for Claude Code and Codex are committed
+  (regenerable via `task spec:update`); operator scratch under
+  `.claude/` stays gitignored via selective negation. Hand-authored
+  harness primitives remain external. This reverses the former
+  "ships no `.claude/` tree" policy in `CLAUDE.md`/`AGENTS.md`.
+
 ## v4.0.0 — 2026-07-11
 
 ### Changed
