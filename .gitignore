@@ -2,13 +2,14 @@
 # target_revision/repo.url); gitignored at the base, committed in consumer repos.
 /cluster.yaml
 /kubernetes/bootstrap/argocd/_out/
-# Claude Code harness runtime dir — agent scratch state; this base ships
-# no .claude/ tree by policy (see CLAUDE.md).
-.claude/
+# .claude/ — operator scratch stays ignored; ONLY the OpenSpec-generated
+# artifacts are committed (regenerable via `task spec:update`; see
+# knowledge/decisions/0014-ship-ai-tool-artifacts.md).
+.claude/*
+!.claude/commands/
+!.claude/skills/
 # Harness scratchpad (validation cache, conftest output, plan workspaces).
 .work/
-# Transitional: keep ignored until all developer workstations have run `make migrate-cluster-yaml`.
-.claude/environment.yaml
 Plans/
 
 # MCP config local overrides and pre-apply snapshots
