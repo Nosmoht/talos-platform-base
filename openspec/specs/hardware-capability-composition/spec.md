@@ -59,13 +59,26 @@ it exists, base ownership of the sink is total.) This is an authoring
 contract over the catalog, enforced at review rather than at plan time
 (`knowledge/decisions/0016-capability-profiles-predicate-only.md`).
 
-#### Scenario: The iommu profile carries only its predicate argument
+#### Scenario: A profile's argument set equals its predicate's argument set
 
-- **WHEN** a node whose image declares `cpu_vendor: intel` holds a
-  capability resolving to the `iommu` profile
-- **THEN** the composed schematic carries `intel_iommu=on` and no
-  host-DMA tuning argument — the `iommu` key is left unclaimed by the
-  catalog, so a future consumer kernel-argument path can own it
+- **WHEN** the catalog defines a profile that `provides` an atom
+- **THEN** the profile's `kernel_args` — and each vendor variant's
+  `kernel_args`, where variants exist — contain exactly the arguments that
+  atom's `presence_predicate` names, and no others
+
+#### Scenario: The iommu profile's variants carry exactly one argument each
+
+- **WHEN** the catalog's `iommu` profile is read
+- **THEN** its `intel` variant's `kernel_args` equal `["intel_iommu=on"]`
+  and its `amd` variant's equal `["amd_iommu=on"]` — set equality, so any
+  added argument violates this scenario regardless of what it does
+
+#### Scenario: A profile providing no atom carries no kernel argument
+
+- **WHEN** the catalog defines a profile whose `provides` is empty (an
+  NFD-detected atom has no machine-config predicate to satisfy)
+- **THEN** that profile's `kernel_args` are empty — there is no predicate
+  naming an argument for it to carry
 
 ### Requirement: Referential-integrity guards
 

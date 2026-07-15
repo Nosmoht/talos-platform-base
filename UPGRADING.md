@@ -42,6 +42,51 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
+## `v5.0.0` — the `iommu` profile stops baking `iommu=pt` (MAJOR — bare-metal-consumer-facing)
+
+Applies to you **only** if a node selects a capability resolving to the
+`iommu` provisioning profile. Everyone else: no action, no re-image.
+
+**What changed.** The profile's `intel`/`amd` variants now carry only
+`intel_iommu=on` / `amd_iommu=on` — the args the `iommu-enabled` Layer-C
+atom's `presence_predicate` names. `iommu=pt` was host-DMA tuning that
+entered the catalog from a README example and was never decided
+([`knowledge/decisions/0016-capability-profiles-predicate-only.md`](knowledge/decisions/0016-capability-profiles-predicate-only.md)).
+
+**What it does NOT change.** PCI passthrough itself. A device bound to
+`vfio-pci` is isolated by its own VFIO domain regardless of `iommu=pt`, so
+the `iommu-enabled` atom still delivers what it promises. What changes is
+DMA translation for the devices the **host** keeps: they move from
+bypass-by-default to the Talos kernel build's
+`CONFIG_IOMMU_DEFAULT_PASSTHROUGH` default. Expect a possible host-datapath
+throughput cost (SR-IOV PFs, NVMe, onboard NICs) in exchange for the DMA
+protection the bypass removed.
+
+**Consumer action required:**
+
+1. **Expect a one-time re-image** on every node holding the `iommu`
+   capability: the composed schematic content changes → new schematic id →
+   new installer URL. To see exactly which nodes, diff
+   `tofu output node_schematic_hashes` before and after the tag adoption;
+   every changed hash is a re-imaging node. The re-image rolls out via the
+   usual out-of-band `talosctl upgrade`.
+2. **You cannot keep `iommu=pt` in this tag.** The schematic kernel-arg sink
+   is fed exclusively by profile `kernel_args`; the module exposes no
+   consumer kernel-arg input, and `config_patches` reach
+   `machine.install.extraKernelArgs`, which is a **no-op** under the Talos
+   v1.10+ UKI/systemd-boot default — writing `iommu=pt` there applies cleanly
+   and has no effect. If you need it, wait for the consumer kernel-arg path
+   (#169) before adopting this tag.
+3. **If you migrated at `v2.0.0`**, re-read the note below: it told you to
+   drop your `class.config_patches` IOMMU kernel args because the `iommu`
+   profile "now actually bakes" them. That remains true for
+   `intel_iommu=on`/`amd_iommu=on` and is **no longer true for `iommu=pt`**.
+4. **Watch the first re-imaged node's boot.** Host-owned devices moving from
+   identity-mapped to translated DMA is the class that surfaces DMAR faults
+   on chassis with defective reserved-region (RMRR) reporting. If a storage
+   controller or NIC fails to initialise after the re-image, that is the
+   signal — and per (2) there is no in-tag mitigation, so roll back the tag.
+
 ## `v4.0.0` — docs/ replaced by the knowledge/ OKF bundle; machine contracts relocated (MAJOR — path-consumer-facing)
 
 **Type:** MAJOR. Two path surfaces changed: (1) two OCI-tarball members
@@ -239,6 +284,9 @@ Boot kernel args now bake into the Image Factory schematic
     provisioning profile selected via a `hardware_capabilities` composite
   - `class.config_patches` IOMMU/boot kernel args → the `iommu` profile (now
     actually bakes); other `class.config_patches` → role / node `config_patches`
+    — **superseded at `v5.0.0`:** the profile bakes `intel_iommu=on` /
+    `amd_iommu=on` but no longer `iommu=pt`. If you dropped an `iommu=pt` here
+    on this instruction, see the `v5.0.0` section.
   - `node.class` → `node.image` + `node.hardware_capabilities: [...]`
 - **`installer_images` output is now keyed by node hostname** (was per class).
   Update any consumer `talos:upgrade:cluster` task that reads it from tfplan JSON.
