@@ -278,4 +278,3 @@ value for it.
   node's image `extra_kernel_args` also sets that key to a different value
 - **THEN** the plan succeeds and both values survive into the node's
   composed kernel arguments
-

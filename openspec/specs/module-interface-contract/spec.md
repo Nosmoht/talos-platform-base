@@ -227,4 +227,3 @@ validation is not the only enforcement point.
 - **WHEN** an image's `extra_kernel_args` contains only elements with a
   non-empty key, no leading `-`, no whitespace, and no `debugfs` key
 - **THEN** the plan proceeds past this validation
-

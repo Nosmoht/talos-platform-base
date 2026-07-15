@@ -125,10 +125,10 @@ record; deep-dive pages are linked where they exist.
   rule.
 - **Schematic** — Talos Image Factory spec embedding system extensions,
   kernel args, and an optional SBC overlay into installer images. Derived per
-  node by the module: the image's baseline `extensions` + `extra_kernel_args`
-  + `overlay` unioned with the selected profiles' `extensions` +
-  `extraKernelArgs`, content-hash-deduplicated so identical nodes share one
-  schematic. See [capability-composition](architecture/capability-composition.md).
+  node by the module: the image's baseline `extensions` + `extra_kernel_args` +
+  `overlay` unioned with the selected profiles' `extensions` + `extraKernelArgs`,
+  content-hash-deduplicated so identical nodes share one schematic. See
+  [capability-composition](architecture/capability-composition.md).
 - **semantic-release** — the release automation configured in
   `.releaserc.json`: conventional-commit analysis on `main`, `v${version}`
   tags, GitHub releases; the resulting tag push triggers OCI publication.
