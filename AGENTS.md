@@ -261,6 +261,56 @@ At session start, scan the GitHub Issues backlog. Use the `github` MCP server.
 
 See `knowledge/workflows/issue-lifecycle.md` for the full issue lifecycle.
 
+## Issue-Interface
+
+The tracker is GitHub Issues. This table declares the project-local command
+implementing each tracker-agnostic vocabulary verb; agents dereference it at
+runtime instead of assuming a host. State transitions go through
+`scripts/issue-state.sh` — it encodes the guards, race handling, and label
+hygiene that ad-hoc `gh issue edit` calls skip. Reads and comments go through
+`gh` directly. Semantics of each transition (guards, exit codes, race
+behavior): `knowledge/workflows/issue-lifecycle.md` and the script header.
+
+### Required operations
+
+| Operation | Command |
+|---|---|
+| `issue:read` | `gh issue view ${N} --json title,body,labels` |
+| `issue:comment` | `gh issue comment ${N} --body-file -` |
+| `issue:read-comments` | `gh issue view ${N} --json comments --jq '.comments[].body'` |
+| `state:claim` | `scripts/issue-state.sh claim ${N}` |
+| `state:handoff` | `scripts/issue-state.sh handoff ${N}` |
+| `state:release` | `scripts/issue-state.sh release ${N}` |
+| `state:block` | `scripts/issue-state.sh block ${N} "${REASON}"` |
+| `state:close` | `gh pr merge ${PR_REF} --merge && scripts/issue-state.sh close ${N} --pr "${PR_REF}"` |
+| `pr:open` | `gh pr create --fill` |
+| `pr:list-by-branch` | `gh pr list --head "$(git rev-parse --abbrev-ref HEAD)" --json number --jq '.[0].number // empty'` |
+| `pr:status` | `gh pr checks ${PR_NUMBER} --required` |
+
+### Optional operations
+
+| Operation | Command |
+|---|---|
+| `issue:list-ready` | `gh issue list --state open --label 'status: ready'` |
+| `issue:label` | `gh issue edit ${N} --add-label "${LABEL}"` |
+| `issue:unlabel` | `gh issue edit ${N} --remove-label "${LABEL}"` |
+| `issue:close-as-wontfix` | `gh issue close ${N} --reason "not planned"` |
+| `issue:create` | `gh issue create --title "${TITLE}" --body-file -` |
+
+`ci:status` is **not declared**: CI here is PR-attached (`gitops-validate.yml`,
+`hard-constraints-check.yml`, `docs-lint.yml` all fire on pull-request events),
+so `pr:status` is the CI-status verb and a branch-scoped equivalent would report
+nothing. Consumers requiring push-triggered CI status degrade per their own
+contract.
+
+### Substitution conventions
+
+- `${N}` — issue number (decimal, no leading `#`)
+- `${PR_REF}` / `${PR_NUMBER}` — pull-request identifier
+- `${REASON}` — block reason string
+- `${TITLE}` — issue title
+- `${LABEL}` — label name
+
 ## Deltas vs Claude Code (For Codex CLI Users)
 
 1. **No PreToolUse interception**: Tool-agnostic safety begins at `git commit` (pre-commit framework).
