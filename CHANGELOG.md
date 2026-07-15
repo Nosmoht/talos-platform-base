@@ -5,8 +5,46 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — BREAKING
+
+- **`talos-cluster`: the `iommu` provisioning profile no longer bakes
+  `iommu=pt`.** The profile's `intel`/`amd` variants now carry only
+  `intel_iommu=on` / `amd_iommu=on` — the args the `iommu-enabled` Layer-C
+  atom's `presence_predicate` actually names. `iommu=pt` is a host-DMA
+  translation-policy default (kernel docs: "Equivalent to
+  `iommu.passthrough=1`" → "Bypass the IOMMU for DMA"), not part of the
+  capability; it entered the catalog by being copied out of a README example
+  and was never a decision. **Consumer impact:** a node selecting the `iommu`
+  capability gets a new schematic content hash → new installer URL →
+  **re-image**, and its host-owned devices revert from passthrough-by-default
+  to **lazy DMA translation** (Talos builds `CONFIG_IOMMU_DEFAULT_DMA_LAZY=y`
+  with `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` unset, verified across the v1.10 —
+  v1.12 kernel configs, amd64 and arm64 — so `iommu=pt` was doing real work
+  and this is not a no-op).
+  Passthrough itself is unaffected — a device bound to `vfio-pci` is isolated
+  by its own VFIO domain regardless of `iommu=pt`, so the `iommu-enabled`
+  atom still delivers what it promises; what changes is host-owned-device DMA
+  translation (a possible throughput cost on the host, in exchange for DMA
+  protection the bypass removed). **There is no way to keep the previous
+  behavior in this tag:** the schematic kernel-arg sink is fed exclusively by
+  profile `kernel_args`, the module exposes no consumer kernel-arg input, and
+  `config_patches` reach `machine.install.extraKernelArgs`, which is a no-op
+  under the Talos v1.10+ UKI/systemd-boot default. A consumer needing
+  `iommu=pt` must wait for the consumer kernel-arg path (#169). Decision:
+  [`knowledge/decisions/0016-capability-profiles-predicate-only.md`](knowledge/decisions/0016-capability-profiles-predicate-only.md).
+
 ### Added
 
+- **The provisioning-profile catalog's kernel arguments are now pinned by a
+  test** (`tofu/modules/talos-cluster/tests/profile-predicate-only.tftest.hcl`):
+  set equality on the `iommu` variants, and no kernel argument on a profile
+  that provides no atom. It runs offline against the real catalog via a
+  fixture that symlinks the shipped `profiles.tf`/`composition.tf`, so the new
+  `tofu:test:offline` target carries it inside `task tofu:ci` — the shipped
+  catalog is now checked by the offline chain, not only by the
+  network-dependent `tofu:test`. Previously no test asserted the literal
+  argument set, so a profile silently re-acquiring host tuning was visible
+  only through a schematic content hash.
 - **OpenSpec adopted as the behavioral-requirements surface**
   (`knowledge/decisions/0015-openspec-adoption.md`). `openspec/specs/`
   carries specs for the 14 enumerated substrate capabilities (backfilled

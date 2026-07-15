@@ -2,6 +2,22 @@
 
 ## 2026-07-15
 
+- `specs/hardware-capability-composition` (OpenSpec, outside this bundle)
+  gained the predicate-only profile-karg requirement, and ADR-0016 gained the
+  Talos `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` lookup it had declined to make
+  (unset — so `iommu=pt` was doing real work) plus the mechanical check that
+  now pins the catalog. `reference/tasks.md`: `tofu:test:offline` documented,
+  `tofu:ci` scope corrected; re-verified against `Taskfile.yml`.
+- `decisions/0016-capability-profiles-predicate-only.md` added: removes
+  `iommu=pt` from the `iommu` provisioning profile. A profile karg is
+  base-owned and consumer-unoverridable, so it must carry only what the
+  provided atom's `presence_predicate` names; `iommu=pt` is host-DMA tuning
+  that reached the catalog by being copied from a README example. Kernel-doc
+  wording verified at the primary source.
+- `decisions/index.md`: 0014 listed under §Accepted.
+- `architecture/capability-composition.md`: shipped-catalog description no
+  longer claims the `iommu` profile carries `iommu=pt`; re-verified against
+  `profiles.tf`.
 - `rules/talos-base-bundle.md` added: the bundle's authoring conventions as an
   OKF Rule document, rendered into the `AGENTS.md` managed block by
   `openknowledge rules apply`. It is the source of truth for them.

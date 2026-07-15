@@ -16,6 +16,7 @@ Frontmatter is canonical for status and dates.
 - [ADR: Kubelet serving-cert rotation as substrate default + cert-approver as a Talos seed](0013-kubelet-serving-cert-rotation.md) - serving-cert rotation default-on for all nodes; cert-approver seeded unconditionally via controlplane inlineManifest (accepted)
 - [ADR: Ship tool-generated AI artifacts in the base](0014-ship-ai-tool-artifacts.md) - the base commits tool-generated, regenerable AI-tool artifacts (OpenSpec skill/command trees); hand-authored harness primitives remain external (accepted)
 - [ADR: OpenSpec as the behavioral-requirements surface](0015-openspec-adoption.md) - adopts OpenSpec with a directly-authored backfill of 14 substrate capability specs; openspec/specs/ is normative for behavioral requirements, scoped to consumer-facing platform behavior (accepted)
+- [ADR: Capability profiles carry only their presence_predicate args — drop iommu=pt](0016-capability-profiles-predicate-only.md) - removes the host-DMA tuning arg `iommu=pt` from the `iommu` provisioning profile, returning the `iommu` kernel-arg key to consumer control (accepted)
 
 ## Proposed
 

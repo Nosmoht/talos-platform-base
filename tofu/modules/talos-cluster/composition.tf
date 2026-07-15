@@ -222,7 +222,7 @@ locals {
   }
   # Kernel-arg keys that legitimately carry multiple distinct values on one
   # cmdline (multi-value): two profiles contributing different values is NOT a
-  # conflict for these. Single-value keys (intel_iommu, iommu, …) still trip the
+  # conflict for these. Single-value keys (intel_iommu, …) still trip the
   # guard. Keeps the union correct for console=/blacklist= without false errors.
   _karg_multivalue_keys = ["console", "module_blacklist", "initcall_blacklist", "blacklist"]
   karg_conflicts = {

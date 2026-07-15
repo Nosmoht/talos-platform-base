@@ -43,6 +43,49 @@ modules and sysctls.
 - **THEN** the plan fails with an error naming the offending profiles and
   the catalog keys
 
+### Requirement: Profile kernel arguments are predicate-only
+
+A profile's kernel arguments (top-level or vendor-variant) SHALL be
+limited to the arguments named by the `presence_predicate` of the atoms
+the profile `provides` (`platform-hardware-features.yaml`). Host tuning
+is consumer policy and SHALL NOT be carried by a capability profile: the
+schematic kernel-argument sink is fed exclusively by the union of the
+selected profiles' arguments — the module exposes no consumer
+kernel-argument input at all — so an argument a profile claims is one the
+consumer cannot set, override, or opt out of. (`karg_conflicts` guards
+profile-vs-profile collisions on one node; it takes no consumer input.
+A consumer kernel-argument path is proposed but not implemented — until
+it exists, base ownership of the sink is total.) This is an authoring
+contract over the catalog
+(`knowledge/decisions/0016-capability-profiles-predicate-only.md`). It is
+asserted mechanically for the shipped catalog by
+`tofu/modules/talos-cluster/tests/profile-predicate-only.tftest.hcl` (in
+`task tofu:ci`, offline); the predicate-to-argument mapping itself is
+read by a human, because a `presence_predicate` is prose — so a NEW
+profile's arguments are review-gated, while the existing ones are pinned
+by set equality.
+
+#### Scenario: A profile's argument set equals its predicate's argument set
+
+- **WHEN** the catalog defines a profile that `provides` an atom
+- **THEN** the profile's `kernel_args` — and each vendor variant's
+  `kernel_args`, where variants exist — contain exactly the arguments that
+  atom's `presence_predicate` names, and no others
+
+#### Scenario: The iommu profile's variants carry exactly one argument each
+
+- **WHEN** the catalog's `iommu` profile is read
+- **THEN** its `intel` variant's `kernel_args` equal `["intel_iommu=on"]`
+  and its `amd` variant's equal `["amd_iommu=on"]` — set equality, so any
+  added argument violates this scenario regardless of what it does
+
+#### Scenario: A profile providing no atom carries no kernel argument
+
+- **WHEN** the catalog defines a profile whose `provides` is empty (an
+  NFD-detected atom has no machine-config predicate to satisfy)
+- **THEN** that profile's `kernel_args` are empty — there is no predicate
+  naming an argument for it to carry
+
 ### Requirement: Referential-integrity guards
 
 The module SHALL fail the plan when a node references an image id absent
