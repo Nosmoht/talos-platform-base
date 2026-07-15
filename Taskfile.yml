@@ -458,14 +458,31 @@ tasks:
       # directly-authored spec (guards against a future openspec release
       # going warn-only). Runs against a temp COPY — the working tree is
       # never mutated, so interrupts and concurrent runs are safe.
-      bitetmp="$(mktemp -d)"; trap 'rm -rf "$bitetmp"' EXIT
+      bitetmp="$(mktemp -d)"; biteout="$(mktemp)"
+      trap 'rm -rf "$bitetmp" "$biteout"' EXIT
       cp -R openspec "$bitetmp/"
+      # Control run FIRST, on the copy WITHOUT the fixture: it must pass.
+      # Without this, the fixture run's non-zero exit is not evidence the
+      # fixture was rejected — ANY environmental failure (a CLI that errors
+      # outside a git root, a changed usage contract, a Node crash) exits
+      # non-zero too and would satisfy the check vacuously and permanently.
+      if ! (cd "$bitetmp" && openspec validate --all --strict --no-interactive) >"$biteout" 2>&1; then
+        echo "ERROR: the bite-check's control run failed — the validator does not"
+        echo "run cleanly against a pristine copy, so the fixture run below would"
+        echo "prove nothing. Its output was:"; cat "$biteout"; exit 1
+      fi
       mkdir -p "$bitetmp/openspec/specs/negative-fixture"
       cp scripts/fixtures/openspec-invalid-spec.md "$bitetmp/openspec/specs/negative-fixture/spec.md"
-      if (cd "$bitetmp" && openspec validate --all --strict --no-interactive >/dev/null 2>&1); then
+      if (cd "$bitetmp" && openspec validate --all --strict --no-interactive) >"$biteout" 2>&1; then
         echo "ERROR: strict validate passed a malformed spec — the gate no longer bites"; exit 1
       fi
-      rm -rf "$bitetmp"; trap - EXIT
+      # ...and it must have failed ON THE FIXTURE, not on something else.
+      grep -q 'negative-fixture' "$biteout" || {
+        echo "ERROR: strict validate failed, but its output never names the"
+        echo "negative fixture — the failure is environmental, so the bite-check"
+        echo "is not proving the validator rejects malformed specs. Output was:"
+        cat "$biteout"; exit 1; }
+      rm -rf "$bitetmp" "$biteout"; trap - EXIT
       # spec_lib parser red-green: the flow-style branches and the
       # declares-primary detector have no committed spec exercising them —
       # this unit test is their only binding.
