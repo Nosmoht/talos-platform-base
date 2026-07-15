@@ -461,27 +461,30 @@ tasks:
       bitetmp="$(mktemp -d)"; biteout="$(mktemp)"
       trap 'rm -rf "$bitetmp" "$biteout"' EXIT
       cp -R openspec "$bitetmp/"
-      # Control run FIRST, on the copy WITHOUT the fixture: it must pass.
-      # Without this, the fixture run's non-zero exit is not evidence the
-      # fixture was rejected — ANY environmental failure (a CLI that errors
-      # outside a git root, a changed usage contract, a Node crash) exits
-      # non-zero too and would satisfy the check vacuously and permanently.
-      if ! (cd "$bitetmp" && openspec validate --all --strict --no-interactive) >"$biteout" 2>&1; then
-        echo "ERROR: the bite-check's control run failed — the validator does not"
-        echo "run cleanly against a pristine copy, so the fixture run below would"
-        echo "prove nothing. Its output was:"; cat "$biteout"; exit 1
-      fi
       mkdir -p "$bitetmp/openspec/specs/negative-fixture"
       cp scripts/fixtures/openspec-invalid-spec.md "$bitetmp/openspec/specs/negative-fixture/spec.md"
-      if (cd "$bitetmp" && openspec validate --all --strict --no-interactive) >"$biteout" 2>&1; then
-        echo "ERROR: strict validate passed a malformed spec — the gate no longer bites"; exit 1
+      # Both runs target ONE spec by name, so each exit code is attributable
+      # to that spec alone. A whole-tree `validate --all` exit cannot be:
+      # it is non-zero for a failure anywhere, and its per-spec output names
+      # passing specs too, so neither the code nor a grep for the fixture's
+      # name distinguishes "rejected the fixture" from "died for an
+      # unrelated reason after listing it".
+      # Control run FIRST, on a spec known good: it must pass. Without it a
+      # non-zero from the fixture run is not evidence about the fixture —
+      # any environmental failure (a CLI erroring outside a git root, a
+      # changed usage contract, a Node crash) exits non-zero too and would
+      # satisfy the check vacuously and permanently.
+      if ! (cd "$bitetmp" && openspec validate node-image-composition --type spec \
+              --strict --no-interactive) >"$biteout" 2>&1; then
+        echo "ERROR: the bite-check's control run failed — the validator does not"
+        echo "accept a known-good spec, so the fixture run below would prove"
+        echo "nothing. Its output was:"; cat "$biteout"; exit 1
       fi
-      # ...and it must have failed ON THE FIXTURE, not on something else.
-      grep -q 'negative-fixture' "$biteout" || {
-        echo "ERROR: strict validate failed, but its output never names the"
-        echo "negative fixture — the failure is environmental, so the bite-check"
-        echo "is not proving the validator rejects malformed specs. Output was:"
-        cat "$biteout"; exit 1; }
+      if (cd "$bitetmp" && openspec validate negative-fixture --type spec \
+            --strict --no-interactive) >"$biteout" 2>&1; then
+        echo "ERROR: strict validate passed a malformed spec — the gate no longer bites"
+        cat "$biteout"; exit 1
+      fi
       rm -rf "$bitetmp" "$biteout"; trap - EXIT
       # spec_lib parser red-green: the flow-style branches and the
       # declares-primary detector have no committed spec exercising them —
@@ -530,14 +533,21 @@ tasks:
       # would churn on node_modules/ and every tool cache.
       before="$(mktemp)"; after="$(mktemp)"
       ignbefore="$(mktemp)"; ignafter="$(mktemp)"
-      trap 'rm -f "$before" "$after" "$ignbefore" "$ignafter"' EXIT
+      ignraw="$(mktemp)"
+      trap 'rm -f "$before" "$after" "$ignbefore" "$ignafter" "$ignraw"' EXIT
+      # The git call is separated from the greps: piping it straight into
+      # `grep | sort` would hand the pipeline sort's exit status, so a git
+      # failure (a build rejecting --ignored=matching, a pathspec error, a
+      # missing .codex/) would land as an empty snapshot on BOTH sides and
+      # this target would print OK having checked nothing. Same separation
+      # spec:update makes, for the same reason.
       git status --porcelain > "$before"
-      git status --ignored=matching --porcelain .claude/ .codex/ \
-        | grep '^!!' | sort > "$ignbefore" || true
+      git status --ignored=matching --porcelain .claude/ .codex/ > "$ignraw"
+      grep '^!!' "$ignraw" | sort > "$ignbefore" || true
       openspec update --force >/dev/null
       git status --porcelain > "$after"
-      git status --ignored=matching --porcelain .claude/ .codex/ \
-        | grep '^!!' | sort > "$ignafter" || true
+      git status --ignored=matching --porcelain .claude/ .codex/ > "$ignraw"
+      grep '^!!' "$ignraw" | sort > "$ignafter" || true
       if ! cmp -s "$before" "$after"; then
         echo "ERROR: regenerating with the pinned openspec changed the tree:"
         diff "$before" "$after" | grep '^>' || true
@@ -545,11 +555,15 @@ tasks:
       fi
       new_ignored="$(comm -13 "$ignbefore" "$ignafter")"
       if [ -n "$new_ignored" ]; then
-        echo "ERROR: the regeneration emitted content that .gitignore ignores —"
-        echo "the committed trees do NOT equal the generator's output:"
+        echo "ERROR: a gitignored path appeared under the generated trees during"
+        echo "the regeneration:"
         echo "$new_ignored"
-        echo "Generated artifacts must be committed (ADR-0014) — extend the"
-        echo "generated-subtree negations in .gitignore for THESE paths only."
+        echo "If openspec emitted it, the committed trees do NOT equal the"
+        echo "generator's output — generated artifacts must be committed"
+        echo "(ADR-0014), so extend the generated-subtree negations in"
+        echo ".gitignore for THOSE paths only. If an agent harness running"
+        echo "alongside wrote it (session state, settings.local.json, todos),"
+        echo "it is operator scratch: leave .gitignore alone and re-run."
         exit 1
       fi
       echo "OK: committed tool trees match the pinned generator's output."
