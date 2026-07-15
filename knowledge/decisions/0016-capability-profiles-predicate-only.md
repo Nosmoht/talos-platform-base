@@ -93,14 +93,18 @@ meaning or the vendor-resolution the profile exists to provide.
 - Negative: **breaking for bare-metal consumers who relied on the implicit
   `iommu=pt`.** Their node's schematic content hash changes (new schematic id
   → new installer URL → re-image), and their host-owned devices revert from
-  passthrough-by-default to the Talos kernel build's
-  `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` value. This ADR does **not** claim to
-  know that value. Nor can such a consumer restore the prior behavior in this
-  tag: there is no consumer kernel-arg input, and the machine-config sink is
-  a no-op for boot args under Talos v1.10+ — they must wait for #169. The
-  isolation of devices actually passed through is unaffected either way (a
-  `vfio-pci`-bound device is isolated by its own VFIO domain, not by the
-  default domain type); the exposure is host-owned-device DMA throughput.
+  passthrough-by-default to **lazy DMA translation** — Talos builds
+  `CONFIG_IOMMU_DEFAULT_DMA_LAZY=y` with `CONFIG_IOMMU_DEFAULT_PASSTHROUGH`
+  unset (§Validation), so this is a real change, not a no-op. Nor can such a
+  consumer restore the prior behavior in this tag: there is no consumer
+  kernel-arg input, and the machine-config sink is a no-op for boot args
+  under Talos v1.10+ — they must wait for #169. The isolation of devices
+  actually passed through is unaffected either way (a `vfio-pci`-bound device
+  is isolated by its own VFIO domain, not by the default domain type); the
+  exposure is host-owned-device DMA throughput. That exposure is the reason
+  to watch the first re-imaged node: host devices moving from identity-mapped
+  to translated DMA is the class that surfaces DMAR faults on chassis with
+  defective reserved-region (RMRR) reporting.
 - Follow-up: #169 (consumer-supplied schematic `extra_kernel_args`) is the
   supported path to re-add `iommu=pt` as an explicit consumer choice. The
   cloud/ARM scoping of the capability itself is tracked separately.
@@ -153,6 +157,29 @@ a summary):
 This establishes `iommu=pt` as a **default DMA-translation policy for
 host-owned devices**, not a switch that enables PCI passthrough. Devices
 bound to VFIO are isolated by the IOMMU either way.
+
+**The Talos build default, looked up rather than assumed.** The kernel-doc
+wording above makes the runtime effect conditional on
+`CONFIG_IOMMU_DEFAULT_PASSTHROUGH`, so the removal is a no-op if Talos
+already builds with it. It does not. `siderolabs/pkgs`
+`kernel/build/config-amd64` carries:
+
+```text
+# CONFIG_IOMMU_DEFAULT_DMA_STRICT is not set
+CONFIG_IOMMU_DEFAULT_DMA_LAZY=y
+# CONFIG_IOMMU_DEFAULT_PASSTHROUGH is not set
+```
+
+Identical on `config-arm64`, and unchanged across the `v1.10.0`, `v1.11.0`
+and `v1.12.0` tags plus `main` (kernel 6.18.38) — consistent with the
+upstream `drivers/iommu/Kconfig` choice default (`IOMMU_DEFAULT_DMA_LAZY if
+X86 || S390`), which Talos does not override. So `iommu=pt` was **not**
+restating the build default: it moved host-owned devices from lazy DMA
+translation to bypass. Its removal therefore has a real runtime effect —
+host-owned devices return to translated DMA — and the trade-off named in
+§Context is established rather than assumed. This also settles the
+alternative that would have made this ADR pointless: had the value been `y`,
+the change would force a re-image for a zero-behaviour delta.
 
 **How we know this decision is wrong:** a Tier-1 Intel or AMD source
 establishing `iommu=pt` as required for VT-d / AMD-Vi passthrough

@@ -17,7 +17,10 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and was never a decision. **Consumer impact:** a node selecting the `iommu`
   capability gets a new schematic content hash → new installer URL →
   **re-image**, and its host-owned devices revert from passthrough-by-default
-  to the Talos kernel build's `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` value.
+  to **lazy DMA translation** (Talos builds `CONFIG_IOMMU_DEFAULT_DMA_LAZY=y`
+  with `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` unset, verified across the v1.10 —
+  v1.12 kernel configs, amd64 and arm64 — so `iommu=pt` was doing real work
+  and this is not a no-op).
   Passthrough itself is unaffected — a device bound to `vfio-pci` is isolated
   by its own VFIO domain regardless of `iommu=pt`, so the `iommu-enabled`
   atom still delivers what it promises; what changes is host-owned-device DMA

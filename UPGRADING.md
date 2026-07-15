@@ -57,8 +57,10 @@ entered the catalog from a README example and was never decided
 `vfio-pci` is isolated by its own VFIO domain regardless of `iommu=pt`, so
 the `iommu-enabled` atom still delivers what it promises. What changes is
 DMA translation for the devices the **host** keeps: they move from
-bypass-by-default to the Talos kernel build's
-`CONFIG_IOMMU_DEFAULT_PASSTHROUGH` default. Expect a possible host-datapath
+bypass-by-default to **lazy DMA translation**. Talos builds
+`CONFIG_IOMMU_DEFAULT_DMA_LAZY=y` with `CONFIG_IOMMU_DEFAULT_PASSTHROUGH`
+unset (verified across the v1.10 — v1.12 kernel configs, amd64 and arm64),
+so `iommu=pt` was doing real work — expect a possible host-datapath
 throughput cost (SR-IOV PFs, NVMe, onboard NICs) in exchange for the DMA
 protection the bypass removed.
 
