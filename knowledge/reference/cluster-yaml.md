@@ -1,16 +1,22 @@
 ---
 type: reference
 title: cluster.yaml — Declarative Cluster SoT
-description: Shape, consumers, secret-handling rules, and lint gate of the declarative cluster.yaml Source-of-Truth a consumer cluster maintains.
+description: The two consumers of the declarative cluster.yaml Source-of-Truth, its secret-handling rules, and how CI wires the schema lint gate red-green.
 tags: [cluster-yaml, sot, schema, bootstrap]
-timestamp: 2026-07-11
+timestamp: 2026-07-15
 sources:
   - cluster.yaml.example
+  # Kept despite the schema-shape section moving to openspec/specs/cluster-yaml-sot/:
+  # the surviving prose still derives from this file (the deliberate absence of a
+  # schema_version, the unvalidated patch content, the structural exclusion of
+  # secrets), so it is still the trigger the bundle's re-verify rule needs — drop
+  # it and nothing tells a future reader those claims went stale.
   - schemas/cluster.schema.json
   - scripts/lint-cluster-yaml.sh
   - schemas/fixtures/cluster.invalid.yaml
   - Taskfile.yml
   - tofu/modules/talos-cluster/examples/complete/main.tf
+  - tofu/modules/talos-cluster/examples/complete/variables.tf
   - .github/workflows/gitops-validate.yml
 ---
 
@@ -20,30 +26,35 @@ sources:
 YAML document IS the cluster definition (identity, versions, network, images,
 capabilities, nodes, machine-config patches, substrate knobs). OpenTofu is the
 executor, not the SoT — the consumer's root module is a thin `yamldecode` shim
-that maps this file onto the typed interface of the
-[talos-cluster module](talos-cluster-module.md). The base ships only
-`cluster.yaml.example`; the real `cluster.yaml` is gitignored at the base and
-committed in consumer repos per repo convention.
+that maps this file onto the typed interface of the `talos-cluster` module
+(interface tables in `tofu/modules/talos-cluster/README.md`). The base ships
+only `cluster.yaml.example`; the real `cluster.yaml` is gitignored at the base
+and committed in consumer repos per repo convention.
 
-> **Normative requirements live in the OpenSpec spec**
-> `openspec/specs/cluster-yaml-sot/` (SoT map:
-> [ADR-0015](../decisions/0015-openspec-adoption.md)) — this document stays
-> narrative.
+> **The file's shape is normative in the spec, not here.** Required keys, field
+> types, patterns and the closed-root rule live in
+> `openspec/specs/cluster-yaml-sot/`, derived from
+> `schemas/cluster.schema.json`; the bootstrap-identity subset and the
+> envsubst containment guards live in
+> `openspec/specs/argocd-day-zero-bootstrap/` (SoT map:
+> [ADR-0015](../decisions/0015-openspec-adoption.md)). This document carries
+> only what those specs do not: why secrets have no slot and where they go
+> instead, the authoring notes the schema cannot express, and how CI binds the
+> lint gate.
 
 Seeding: `task cluster:init-yaml` copies `cluster.yaml.example` to
 `cluster.yaml` if (and only if) it does not already exist.
 
 ## Two consumers, two subsets
 
-1. **`task bootstrap:argocd`** reads only the **bootstrap-identity subset**,
-   extracted with `yq` in the internal `bootstrap:render-root` task:
-   `.cluster.name`, `.cluster.overlay`,
-   `.cluster.target_revision // "main"`, and `.repo.url`. The values are
-   `envsubst`-rendered into the App-of-Apps root templates under
-   `kubernetes/bootstrap/argocd/` (any value containing `$` is rejected as
-   unsafe for `envsubst`). The file is selected via the Taskfile `ENV`
-   variable (default `cluster.yaml`; override per invocation with
-   `task bootstrap:argocd ENV=other.yaml`).
+1. **`task bootstrap:argocd`** reads only the **bootstrap-identity subset** —
+   four fields, extracted with `yq` in the `bootstrap:render-root`
+   task and `envsubst`-rendered into the App-of-Apps root templates under
+   `kubernetes/bootstrap/argocd/`. The subset and the two guards that keep a
+   `cluster.yaml` value from expanding into anything but itself are normative
+   in `openspec/specs/argocd-day-zero-bootstrap/`. The file is selected via
+   the Taskfile `ENV` variable (default `cluster.yaml`; override per
+   invocation with `task bootstrap:argocd ENV=other.yaml`).
 2. **The consumer OpenTofu root** reads the **full file**. The worked shim is
    `tofu/modules/talos-cluster/examples/complete/main.tf`: it `yamldecode`s
    the file, re-encodes the structured patch maps (`config_patches`,
@@ -54,39 +65,7 @@ Seeding: `task cluster:init-yaml` copies `cluster.yaml.example` to
    module variables, applying the module defaults via `try()` for omitted
    keys.
 
-## Schema shape
-
-`schemas/cluster.schema.json` (JSON Schema draft 2020-12) validates the file.
-It mirrors the module's variable validations for the structured surface and is
-closed at the root (`additionalProperties: false`).
-
-- Required top-level keys: `cluster`, `repo`, `talos`, `kubernetes`,
-  `images`, `nodes`.
-- `cluster`: requires `name` (lowercase RFC-1123 label pattern) and
-  `endpoint` (`^https://`); optional `overlay`, `target_revision` (the
-  bootstrap-identity fields), `pod_cidr` / `service_cidr` (arrays,
-  `minItems: 1`), `dual_stack`, `allow_scheduling_on_controlplanes`.
-- `talos`: requires `version` (v-prefixed semver — the schema pin); optional
-  `install_version` (empty or v-prefixed semver).
-- `kubernetes`: requires `version` (v-prefixed semver).
-- `images`: object with `minProperties: 1`; each image requires `cpu_vendor`
-  (`intel|amd|arm`), optional `architecture` (`amd64|arm64`), `extensions`,
-  and a nullable SBC `overlay` (requires `name` + `image` when present).
-- `hardware-capabilities`: optional map; each entry requires `emits_label`
-  matching `^platform\.io/hardware-capability\.` and optionally carries
-  `requires_features` and `provisioning_profiles`.
-- `nodes`: array, `minItems: 1`; each node requires `hostname`, `ip`,
-  `role` (enum `controlplane|worker`), `image`; optional
-  `hardware_capabilities` and free-form `config_patches`.
-- `config_patches` / `controlplane_config_patches` /
-  `worker_config_patches`: arrays of free-form objects. Patch **content** is
-  deliberately not schema-validated — structural validity is Talos' concern
-  at apply time, and secret-leak risk in free-form blocks is gitleaks'
-  concern, not the schema's.
-- `substrate`: closed object (`additionalProperties: false`) with exactly two
-  loosely-typed members, `cilium` and `argocd` — a typo'd sibling key (e.g.
-  `argo_cd:`) fails lint instead of being silently dropped by the shim.
-  cert-approver is always-on substrate with no cluster.yaml knob.
+## Authoring notes behind the schema's choices
 
 The typed surface is deliberately limited to the common, irreversible, or
 foot-gun-prone set (network CIDRs, versions, substrate toggles); the long
@@ -101,10 +80,14 @@ Structured YAML patch values that must reach Talos as strings must be quoted
 (bare scalars like `30`, `on`, `no`, `0755` coerce to int/bool/octal and
 re-encode wrong through the shim's `yamlencode`).
 
+Patch **content** is deliberately not schema-validated — structural validity
+is Talos' concern at apply time, and secret-leak risk in free-form blocks is
+gitleaks' concern, not the schema's.
+
 ## What must never be in it
 
 Secrets have **no schema slot** — they are structurally excluded, not merely
-discouraged:
+discouraged. Where they go instead:
 
 - `sops_age_key` (ArgoCD ksops repoServer) → `TF_VAR_sops_age_key` /
   gitignored tfvars / SOPS.
@@ -119,23 +102,13 @@ non-functional ksops key. The free-form escape hatches (`config_patches`,
 machine config — never paste secret material into them; cluster.yaml is
 committed in consumer repos and gitleaks is the backstop, not a substitute.
 
-## Lint gate
+## How CI binds the lint gate
 
 `scripts/lint-cluster-yaml.sh` validates a cluster.yaml against the schema
-using `check-jsonschema` (PATH binary preferred, `uvx` fallback), always
-passing `--default-filetype yaml` because the default target
-`cluster.yaml.example` does not end in `.yaml`.
-
-- Usage: `scripts/lint-cluster-yaml.sh [file]` — no argument lints
-  `cluster.yaml.example`; consumer repos point it at their committed
-  `cluster.yaml`.
-- Exit codes: `0` pass, `1` at least one schema violation, `2`
-  environment/argument error (file or schema missing, no runner on PATH).
-- On success it prints a summary line with node and image counts (via `yq`,
-  best-effort).
-
-CI wires the gate in the `hardware-features-check` job of
-`.github/workflows/gitops-validate.yml`:
+(behavior, arguments and exit codes are spec'd in
+`openspec/specs/cluster-yaml-sot/`). CI wires it in the
+`hardware-features-check` job of `.github/workflows/gitops-validate.yml`, and
+the wiring is what makes the gate bite:
 
 1. Positive step: `scripts/lint-cluster-yaml.sh cluster.yaml.example` must
    pass.

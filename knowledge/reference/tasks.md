@@ -42,7 +42,7 @@ Conventions declared in `Taskfile.yml`:
 | `tofu:fmt:check` | Verify `tofu/` formatting; CI-safe, non-mutating (`-check -diff`). |
 | `tofu:validate` | `tofu init -backend=false` + `tofu validate` per tofu dir (modules + examples). |
 | `tofu:lint` | `tflint --chdir=.` per tofu dir (modules + examples). |
-| `tofu:docs` | Regenerate module README input/output tables via terraform-docs. |
+| `tofu:docs` | Regenerate a module README's terraform-docs block — **refuses today**: no module README carries `BEGIN_TF_DOCS` markers, so their Inputs/Outputs tables are hand-maintained and must be edited by hand. Running `terraform-docs --output-mode inject` against a marker-less README appends a second, competing generated table set instead of updating one (verified, terraform-docs v0.22.0; [ADR-0015](../decisions/0015-openspec-adoption.md) correction). |
 | `tofu:lint:yaml` | yamllint (relaxed) + markdownlint over `tofu/` — advisory (`\|\| true`). |
 | `tofu:check:render-determinism` | CI fence: Cilium/ArgoCD/CRD helm renders must use frozen `terraform_data` (`ignore_changes`), not live `data.helm_template`. Runs `scripts/check-render-determinism.sh`. |
 | `tofu:test` | `tofu test` — the full suite, including the node-capability composition regression tests. **Network-dependent** (resolves the live Image Factory), so deliberately NOT part of `tofu:ci`. Superset of `tofu:test:offline`. |
@@ -86,11 +86,14 @@ Details of `bootstrap:argocd`:
   `kubectl` context. A persistent CRD `NotFound` means the apply did not
   finish its CRD step; recovery command:
   `tofu apply -replace=null_resource.argocd_crds[0]`.
-- **Input subset:** an internal `bootstrap:render-root` dependency reads only
-  `cluster.{name,overlay,target_revision}` (revision defaults to `main`) and
-  `repo.url` from the `ENV` file, rejects any value containing `$` (unsafe
-  for `envsubst`), and renders
+- **Input subset:** the `bootstrap:render-root` dependency reads a narrow
+  bootstrap-identity subset of the `ENV` file and renders
   `kubernetes/bootstrap/argocd/*.tmpl` into `kubernetes/bootstrap/argocd/_out/`.
+  Which fields, the `main` default, and the guards that reject a value before
+  it reaches a manifest are normative in
+  `openspec/specs/argocd-day-zero-bootstrap/` and asserted by
+  `task bootstrap:check-render` — not restated here, so this inventory cannot
+  drift from them.
 
 ## `cluster:*` — declarative cluster SoT init
 

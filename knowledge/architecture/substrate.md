@@ -31,10 +31,11 @@ and layer their own identity on top (see
 The substrate core is **Talos + Cilium + ArgoCD**, and the code treats all
 three as constitutive:
 
-- **Talos** — the `tofu/modules/talos-cluster` module (see
-  [talos-cluster-module](../reference/talos-cluster-module.md)) is the sole
-  cluster-lifecycle path: machine secrets, per-node composed Image-Factory
-  installer, config apply, bootstrap, kubeconfig.
+- **Talos** — the `tofu/modules/talos-cluster` module (interface tables in
+  `tofu/modules/talos-cluster/README.md`; requirements in
+  `openspec/specs/module-interface-contract/`) is the sole cluster-lifecycle
+  path: machine secrets, per-node composed Image-Factory installer, config
+  apply, bootstrap, kubeconfig.
 - **Cilium** — delivered by the same module as a controlplane
   `cluster.inlineManifests` seed (`deploy_cilium`, default `true`), which
   simultaneously disables the Talos default CNI (`cni: none`) and, with

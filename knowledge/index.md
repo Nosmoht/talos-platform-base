@@ -31,9 +31,8 @@ for tooling config, not a general licence to move contracts into the bundle.
 
 ## Reference
 
-- [cluster.yaml — Declarative Cluster SoT](reference/cluster-yaml.md) - Shape, consumers, secret-handling rules, and lint gate of the declarative cluster.yaml Source-of-Truth a consumer cluster maintains.
+- [cluster.yaml — Declarative Cluster SoT](reference/cluster-yaml.md) - The two consumers of the declarative cluster.yaml Source-of-Truth, its secret-handling rules, and how CI wires the schema lint gate red-green.
 - [Manifest Pipeline](reference/manifest-pipeline.md) - How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
-- [talos-cluster Module Interface](reference/talos-cluster-module.md) - Typed variable and output contract of the tofu/modules/talos-cluster OpenTofu module, plus the invariants the module enforces in code.
 - [Task Runner Surface](reference/tasks.md) - Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 
 ## Workflows

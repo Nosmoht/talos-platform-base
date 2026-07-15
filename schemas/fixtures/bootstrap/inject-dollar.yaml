@@ -1,0 +1,21 @@
+# Bootstrap-render fixture: a `$`-bearing value.
+# The render rejects it before any template is read, because envsubst would
+# otherwise expand it against the render host's environment.
+cluster:
+  name: fixture-cluster
+  overlay: prod-${HOME}
+  endpoint: https://192.0.2.1:6443
+repo:
+  url: https://example.invalid/consumer-repo.git
+talos:
+  version: v1.12.6
+kubernetes:
+  version: v1.35.0
+images:
+  intel:
+    cpu_vendor: intel
+nodes:
+  - hostname: cp-1
+    ip: 192.0.2.10
+    role: controlplane
+    image: intel

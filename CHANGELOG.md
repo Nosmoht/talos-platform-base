@@ -33,7 +33,88 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `iommu=pt` must wait for the consumer kernel-arg path (#169). Decision:
   [`knowledge/decisions/0016-capability-profiles-predicate-only.md`](knowledge/decisions/0016-capability-profiles-predicate-only.md).
 
+- **`task bootstrap:argocd` now rejects `cluster.yaml` identity values that it
+  previously rendered.** The bootstrap-identity values (`cluster.name`,
+  `repo.url`, `cluster.overlay`, `cluster.target_revision`) are refused when
+  empty, whitespace-only, line-break-bearing, not a string, or carrying YAML
+  syntax that means something else once substituted. `cluster.overlay` is
+  additionally bound to a single kustomize directory name
+  (`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`) — the schema now carries the same
+  pattern.
+
+  **Consumer impact — read this even if your `cluster.yaml` passes lint, and
+  especially if you have never run it:** `scripts/lint-cluster-yaml.sh` does
+  NOT run on the render path, so a file that never passed the schema could
+  still render before. Two classes are affected:
+  - **Was already schema-invalid, rendered anyway:** a non-string identity
+    value. `target_revision: 2024` or `1.5` parse as int/float — the schema
+    types all four as `string`, so these never passed lint, but the render
+    accepted them (`1.10` silently rendered as `targetRevision: 1.1`). Quote
+    them: `target_revision: "2024"`.
+  - **Was schema-valid, rendered, and should not have:** an `overlay` that is
+    not a plain directory name, and any line-break- or YAML-syntax-bearing
+    value. See §Security.
+
+  A `cluster.yaml` that passes the updated schema renders byte-identically to
+  before. Every rejection names the offending value.
+
+### Security
+
+- **The App-of-Apps bootstrap render no longer lets a `cluster.yaml` value
+  escape its YAML position.** Two shipped defects, both reachable from a
+  schema-valid file, both closed:
+  - A value containing a **line break** was substituted verbatim by `envsubst`,
+    so its trailing lines became sibling YAML. A `repo.url` of
+    `"https://ok\n    - '*'"` rendered an AppProject with
+    `sourceRepos: ['https://ok', '*']` — ArgoCD's RBAC boundary widened to
+    every repository, from a diff that reads as a URL change. `repo.url` and
+    `target_revision` carry no schema pattern (`cluster.name` does), and no
+    lint gate runs on the render path. Both YAML line breaks are rejected: a
+    lone `\r` broke the rendered document just as `\n` did.
+  - An **empty** `cluster.overlay` rendered `path: kubernetes/overlays/` on a
+    root Application with `prune: true` + `selfHeal: true` — pointing it at the
+    entire overlay tree. A **whitespace-only** overlay reached the same state
+    (YAML strips the trailing space), and `overlay: ".."` reached a **worse**
+    one: `path: kubernetes/overlays/..` is `kubernetes/`, handing that
+    self-healing, pruning Application the whole tree including
+    `kubernetes/bootstrap/`. `overlay` is now bound to a plain directory name
+    in both the schema and the render.
+  - A value that is a well-formed string and still **means** something else:
+    `repo.url: "'*'"` rendered `sourceRepos: ['*']` — the AppProject trusting
+    every repository, with no line break, no `$`, and the correct type. Values
+    must now survive a YAML round-trip as themselves.
+
+  Non-string values (a mapping serializing its subtree into the value) are
+  rejected for the same class of reason. Additionally: `ENV` is now bound
+  through go-task's `env:` block rather than interpolated into the command
+  string. Quoting alone was **not** sufficient — go-task renders `{{.ENV}}` as
+  raw text before the shell parses it, and command substitution expands inside
+  double quotes, so `ENV='$(cmd)'` still executed `cmd` (verified). The render
+  also aborts explicitly via `set -e` rather than relying on the runner's shell
+  default, and renders to a temp dir so a failure cannot leave a half-populated
+  `_out/` for `kubectl apply -f`.
+
+  Behaviour is normative in `openspec/specs/argocd-day-zero-bootstrap/` and
+  asserted per-guard by `task bootstrap:check-render` (in `task gitops:validate`
+  and CI). Known residual, stated rather than implied: these guards bound the
+  four identity values. They are not a general YAML-injection defense for the
+  templates, and they do not validate values semantically — a well-formed but
+  wrong repo URL renders happily.
+
 ### Added
+
+- **The bootstrap render's spec scenarios are now mechanically bound**
+  (`scripts/check-bootstrap-render.sh`, `task bootstrap:check-render`, in the
+  `hardware-features-check` CI job). Offline — the render is `yq` + `envsubst`
+  and contacts no cluster. Removing any single guard turns it red. Also
+  **`task tofu:check:readme-parity`** (in `task tofu:ci`): every module
+  variable and output must appear in its hand-maintained README table, which
+  is what keeps the module README from silently drifting now that the second
+  copy of the interface under `knowledge/reference/` is gone.
+
+- **`task bootstrap:render-root` is now a public target** (was `internal:`) —
+  renders the two root manifests from `cluster.yaml` without contacting a
+  cluster. Useful as a dry-run; it is also what makes the render testable.
 
 - **The provisioning-profile catalog's kernel arguments are now pinned by a
   test** (`tofu/modules/talos-cluster/tests/profile-predicate-only.tftest.hcl`):

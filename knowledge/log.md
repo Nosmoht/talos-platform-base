@@ -2,6 +2,58 @@
 
 ## 2026-07-15
 
+- `reference/talos-cluster-module.md` REMOVED. Its requirement-bearing
+  sections (variable/output/version tables, module-enforced invariants,
+  the provisioning-profile catalog) are carried by the owning OpenSpec
+  specs; its narrative sections (fresh-PKI adoption warning,
+  schema-pin/install-pin Day-2 pattern, examples entry point) by
+  `tofu/modules/talos-cluster/README.md`, which sits next to the code and
+  ships in the release artifact where this bundle does not. Two sections did
+  NOT survive the first attempt and were restored to the README as part of
+  this change: the full output list (the README carried 11 of 19) and the
+  catalog enumeration. The known cost is recorded in the ADR-0015 correction:
+  no spec owns a README, so no staleness gate fires on it — `task
+  tofu:check:readme-parity` (new, in `tofu:ci`) is the compensating gate, and
+  it reproduces the 8-output gap when the fix is reverted.
+- `decisions/0015-openspec-adoption.md`: dated correction block added below
+  the accepted §SoT map, which is left standing verbatim. It records two
+  errors: the exemption of the module README's tables as
+  "terraform-docs-generated (inject mode)" is false (no `BEGIN_TF_DOCS`
+  markers — the tables are hand-maintained), and a first correction's claim
+  that `task tofu:docs` is "a no-op that swallows the miss" is **also**
+  false. Verified by running it: terraform-docs v0.22.0 APPENDS a 114-line
+  generated block and exits 0, leaving two competing table sets. `tofu:docs`
+  now refuses on a marker-less README instead of corrupting it.
+- `reference/tasks.md`: `tofu:docs` row rewritten to its true behavior;
+  `bootstrap:argocd` input-subset bullet now cites
+  `openspec/specs/argocd-day-zero-bootstrap/` instead of restating the
+  subset — it was a second un-gated copy of the same contract, which the
+  spec-gap proposal originally missed.
+- `reference/cluster-yaml.md`: §Two consumers now cites
+  `openspec/specs/argocd-day-zero-bootstrap/` for the bootstrap-identity
+  subset instead of carrying it. The subset and the value-containment guards
+  moved into that spec via the first `openspec/changes/` proposal (archived
+  `2026-07-15-spec-bootstrap-identity-subset`). Review of that proposal
+  surfaced two shipped defects the docs had described as covered — a
+  schema-valid newline injecting YAML into the rendered AppProject, and an
+  empty overlay rendering the whole overlay tree — both now closed in the
+  render and bound by `task bootstrap:check-render`.
+- `reference/cluster-yaml.md`: schema-shape section removed — all eight
+  `openspec/specs/cluster-yaml-sot/` requirements were re-checked against it
+  first, `substrate` included, and they carry every point normatively from
+  the same `schemas/cluster.schema.json` this doc cited. Kept what no
+  requirement carries: the two-consumer subsets, where secrets go instead of
+  the file, the notes behind the schema's choices, and the CI red-green
+  wiring of the lint gate. `schemas/cluster.schema.json` STAYS in `sources`
+  — the surviving prose still derives from it, so dropping it would have
+  removed the bundle's re-verify trigger in the very change arguing that
+  ungated copies rot.
+- `workflows/spec-driven-development.md`: third lane documented —
+  "spec-gap backfill", for an `ADDED`-only delta against already-shipped
+  behavior, with the four conditions that keep an empty apply phase from
+  becoming a way to narrate a review that never happened.
+- `index.md`: `reference/talos-cluster-module.md` entry dropped;
+  `reference/cluster-yaml.md` description re-synced.
 - `specs/hardware-capability-composition` (OpenSpec, outside this bundle)
   gained the predicate-only profile-karg requirement, and ADR-0016 gained the
   Talos `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` lookup it had declined to make

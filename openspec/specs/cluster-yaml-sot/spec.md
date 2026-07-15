@@ -54,6 +54,14 @@ fields `pod_cidr` and `service_cidr` (non-empty string arrays) and
 `dual_stack` (boolean), plus `allow_scheduling_on_controlplanes` (boolean).
 The `repo` section SHALL require a non-empty `url`.
 
+`overlay` is optional **to the document**, not to every consumer of it: a
+cluster driven only through the OpenTofu root never needs one, while the
+App-of-Apps bootstrap refuses to render without it
+(`argocd-day-zero-bootstrap`, Requirement "Bootstrap-identity subset read from
+cluster.yaml"). Schema-conformance is therefore necessary but not sufficient
+for a given path — this file's shape is one contract, and what each consumer
+demands of it is another.
+
 #### Scenario: Invalid cluster name is rejected
 
 - **WHEN** `cluster.name` contains characters outside the lowercase

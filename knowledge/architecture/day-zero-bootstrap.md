@@ -184,4 +184,5 @@ against `kubernetes/base/infrastructure/argocd/chart.lock.yaml`. Consumer
 it). Day-2 boundaries follow from the seed semantics: ArgoCD upgrades itself
 via GitOps, Kubernetes upgrades run out-of-band via `talosctl upgrade-k8s`,
 and OS upgrades flow through `talos_install_version` plus an out-of-band
-`talosctl upgrade` per node ([talos-cluster-module](../reference/talos-cluster-module.md)).
+`talosctl upgrade` per node (the schema-pin/install-pin split is worked
+through in `tofu/modules/talos-cluster/README.md`).

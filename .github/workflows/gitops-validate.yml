@@ -212,6 +212,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       YQ_VERSION: 4.53.2
+      # go-task runs the bootstrap render the check below asserts. Pinned for
+      # the same reason as docs-lint.yml: an unpinned payload behind a pinned
+      # installer is still an unpinned gate. KEEP IN SYNC with .tool-versions
+      # (asserted by the drift step below).
+      TASK_VERSION: "3.48.0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -267,6 +272,33 @@ jobs:
             fi
           done
           echo "OK: malformed cluster.yaml fixture rejected with both expected violations (role enum + anchored version pattern)"
+
+      - name: Verify TASK_VERSION matches .tool-versions
+        # Inline by necessity — it guards the pin of the binary that runs the
+        # target below, so it cannot itself be a Taskfile target. Same
+        # drift-detector as docs-lint.yml.
+        run: |
+          set -eu
+          tv="$(awk '$1=="task" {print $2}' .tool-versions)"
+          [ -n "$tv" ] || { echo "FAIL: no 'task' pin in .tool-versions"; exit 1; }
+          if [ "$tv" != "$TASK_VERSION" ]; then
+            echo "DRIFT: task .tool-versions=$tv workflow-env=$TASK_VERSION"; exit 1
+          fi
+          echo "OK: task $tv"
+
+      - name: Install go-task (pinned to a commit)
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: task bootstrap:check-render (bootstrap render ↔ argocd-day-zero-bootstrap spec)
+        # The mechanical binding for the render's spec scenarios: the subset it
+        # reads, the `main` default, and the containment guards — none of which
+        # are visible in the rendered output for well-formed input, so nothing
+        # else in CI would catch their removal. Offline: the render is yq +
+        # envsubst; kubectl lives only in bootstrap:argocd's own cmds.
+        run: task bootstrap:check-render
 
   reuse-compliance:
     name: REUSE 3.3 compliance

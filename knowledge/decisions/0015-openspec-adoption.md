@@ -74,7 +74,7 @@ outcomes (pure reference, zero restatement).
 
 **SoT map vs `knowledge/reference/`.** Specs are normative for
 requirements; reference docs stay narrative:
-[talos-cluster-module](../reference/talos-cluster-module.md) → interface
+`knowledge/reference/talos-cluster-module.md` → interface
 requirements in `module-interface-contract`, composition in
 `hardware-capability-composition`, machine-config in
 `machine-config-generation`, bootstrap flow in
@@ -82,6 +82,54 @@ requirements in `module-interface-contract`, composition in
 `node-image-composition`; [cluster-yaml](../reference/cluster-yaml.md) →
 `cluster-yaml-sot`. The module README's variable/output tables are
 terraform-docs-generated (inject mode) and exempt from this map.
+
+**Correction (2026-07-15).** The paragraph above is left standing, wording
+intact, because it is what was decided. Two things about it are wrong, and
+this block — not an edit to the accepted text — records what is true. (The
+one mechanical change to it: its `talos-cluster-module` markdown link is now
+an inline code span, because the target no longer exists and
+`openknowledge.toml` raises `link-target` to error, so the file could not
+otherwise validate. The sentence is unchanged.)
+
+1. *"The module README's variable/output tables are terraform-docs-generated
+   (inject mode)"* — **false**. `tofu/modules/talos-cluster/README.md`
+   carries no `BEGIN_TF_DOCS` markers; its Inputs and Outputs tables are
+   hand-maintained. The exemption rested on an automation that never ran, so
+   the same contract was carried by hand three times: the module README,
+   `knowledge/reference/talos-cluster-module.md`, and the specs.
+2. `knowledge/reference/talos-cluster-module.md` no longer exists — it was
+   removed on 2026-07-15 (see below).
+
+What `task tofu:docs` actually does, **verified by running it** on
+2026-07-15 (terraform-docs v0.22.0, the devbox pin): it is *not* a no-op.
+`terraform-docs --output-mode inject` **appends** a full generated block —
+`BEGIN_TF_DOCS` markers plus Requirements/Providers/Inputs/Outputs tables,
+114 lines — when the markers are absent, and exits 0. Running it today
+therefore leaves the README carrying two competing, divergent table sets,
+and the `|| true` swallows nothing because nothing failed. A first correction
+of this ADR asserted the command was "a no-op that swallows the miss"; that
+was also wrong, and inferred rather than executed. The lesson is the one
+`rules/verification-discipline.md` states: re-run the command, do not reason
+about it.
+
+Consequently `task tofu:docs` is **not** the way to refresh those tables as
+the repo stands (see `knowledge/reference/tasks.md` for its true behavior).
+Making the generation real — committing the markers, accepting a generated
+table shape, and dropping the `|| true` — would collapse the remaining
+hand-maintained duplication, and is a separate decision this correction does
+not take.
+
+`knowledge/reference/talos-cluster-module.md` was removed on 2026-07-15: its
+requirement-bearing sections are carried by the owning specs above, and its
+narrative sections by the module README, which additionally ships in the
+release artifact (`.ci-oci-tarball-include.txt`) where the bundle does not.
+The known cost, recorded rather than glossed: the surviving README is a
+primary source of no spec, so no staleness gate fires on it when
+`variables.tf` changes — the deleted copy at least carried `sources:` + a
+`timestamp` under the bundle's re-verify convention. Gating the README is
+tracked as follow-up work; the precedent for it is
+`openspec/specs/argocd-substrate/spec.md`, which already declares a README as
+a primary source.
 
 ### Consequences
 

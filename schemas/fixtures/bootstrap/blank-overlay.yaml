@@ -1,0 +1,23 @@
+# Bootstrap-render fixture: a whitespace-only overlay.
+# Not shell-empty, so the empty guard does not fire; a space is 0x20, not a
+# control character. YAML 1.2 strips trailing whitespace from a plain scalar, so
+# `path: kubernetes/overlays/ ` parses to `kubernetes/overlays/` — byte-for-byte
+# the state empty-overlay.yaml exists to prevent. Caught by the round-trip check.
+cluster:
+  name: fixture-cluster
+  overlay: " "
+  endpoint: https://192.0.2.1:6443
+repo:
+  url: https://example.invalid/consumer-repo.git
+talos:
+  version: v1.12.6
+kubernetes:
+  version: v1.35.0
+images:
+  intel:
+    cpu_vendor: intel
+nodes:
+  - hostname: cp-1
+    ip: 192.0.2.10
+    role: controlplane
+    image: intel

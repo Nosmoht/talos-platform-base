@@ -1,0 +1,42 @@
+# Bootstrap-render fixture: the differential twin of valid.yaml.
+# The four bootstrap-identity fields are IDENTICAL to valid.yaml; every other
+# field differs. Binds the "no other cluster.yaml field influences the output"
+# scenario: rendering both must produce byte-identical manifests. Without this
+# twin that scenario is unfalsifiable prose.
+cluster:
+  name: fixture-cluster
+  overlay: prod
+  endpoint: https://198.51.100.9:6443
+  pod_cidr: ["10.244.0.0/16"]
+  service_cidr: ["10.96.0.0/12"]
+  allow_scheduling_on_controlplanes: true
+repo:
+  url: https://example.invalid/consumer-repo.git
+talos:
+  version: v1.11.0
+  install_version: v1.12.6
+kubernetes:
+  version: v1.34.0
+images:
+  amd:
+    cpu_vendor: amd
+    architecture: amd64
+    extensions: ["siderolabs/nvme-cli"]
+hardware-capabilities:
+  virt:
+    emits_label: platform.io/hardware-capability.virt
+    requires_features: ["iommu-enabled"]
+    provisioning_profiles: ["iommu"]
+nodes:
+  - hostname: totally-different-host
+    ip: 198.51.100.10
+    role: controlplane
+    image: amd
+    hardware_capabilities: ["virt"]
+  - hostname: worker-9
+    ip: 198.51.100.11
+    role: worker
+    image: amd
+substrate:
+  cilium:
+    routing_mode: native
