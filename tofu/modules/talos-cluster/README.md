@@ -95,6 +95,23 @@ tool-agnostic — a node declares `storage-replicated`, not `drbd`; the base
 provisioning-profile catalog maps each to extensions / kernel args / modules. See
 [`knowledge/decisions/0009-node-capability-composition.md`](../../../knowledge/decisions/0009-node-capability-composition.md).
 
+### The provisioning-profile catalog
+
+[`profiles.tf`](profiles.tf) is a module-local **constant**, not a variable: a
+consumer selects profiles by id through a capability's
+`provisioning_profiles`, but cannot author or redefine one (the anti-override
+invariant in ADR-0009). `profiles.tf` is the source of truth; the catalog at
+this tag is:
+
+| Profile id | Provides (Layer-C atom) | What it bakes |
+|---|---|---|
+| `drbd` | `drbd-kernel-module` | DRBD extension + kernel module — the replication layer LINSTOR builds on |
+| `iommu` | `iommu-enabled` | vendor-variant kernel args only: `intel_iommu=on` / `amd_iommu=on`, selected by the node image's `cpu_vendor`. Predicate-only — no host tuning (ADR-0016) |
+| `nvidia-lts` | *(nothing)* | open GPU kernel modules + container toolkit. Provides no atom because `nvidia-gpu` is NFD-detected at runtime, not asserted by machine config |
+
+A profile's kernel args are limited to what its atom's `presence_predicate`
+names — asserted by `tests/profile-predicate-only.tftest.hcl` in `task tofu:ci`.
+
 ## Usage
 
 ```hcl
@@ -235,6 +252,23 @@ overlay's job.
 | `distinct_schematic_count` | no | number of distinct schematics after content-hash dedup |
 | `talos_install_version` | no | effective installer version |
 | `cluster_health` | no | `"healthy (…)"` — references `data.talos_cluster_health`, so any consumer reading it blocks until the cluster is online |
+
+Audit-shaped outputs. These exist as binding points for the composition
+regression suite (`tests/composition.tftest.hcl`, via `task tofu:test` —
+network-bound, not part of `task tofu:ci`); they are secret-free and safe to
+read. Full semantics live in each output's `description` in
+[`outputs.tf`](outputs.tf).
+
+| Name | Sensitive | Description |
+|---|---|---|
+| `argocd_namespace_labels` | no | PSA floor + recommended labels the argocd namespace seed bakes |
+| `cert_approver_namespace_labels` | no | PSA-restricted floor + labels of the cert-approver namespace seed |
+| `cert_approver_seeded` | no | red-green binding: cert-approver seed wired into the controlplane patch list |
+| `kubelet_serving_cert_rotation` | no | per-role booleans: rotation patch present in each role's patch list |
+| `kubelet_rotation_setting` | no | decoded rotation patch — proves the mechanism is `machine.kubelet.extraConfig.serverTLSBootstrap`, not the deprecated `--rotate-server-certificates` flag |
+| `cert_approver_approve_resource_names` | no | RBAC scope of the vendored approver's `approve` verb — must equal `["kubernetes.io/kubelet-serving"]`, never `["*"]` |
+| `cert_approver_seed_missing_labels` | no | recommended-label gaps across the vendored seed manifest — must be empty |
+| `controlplane_base_is_prefix_of_final` | no | asserts the sensitive argocd/cilium seeds are only appended after the non-sensitive base patch list, never reordered before it |
 
 ## Versions: schema-pin vs install-pin (Day-2 pattern)
 

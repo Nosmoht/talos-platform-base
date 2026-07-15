@@ -1,0 +1,28 @@
+# Bootstrap-render fixture: YAML-structure injection through a schema-VALID value.
+# repo.url is a multi-line scalar. It carries no `$`, so the envsubst guard does
+# not fire; the schema types it `string, minLength: 1` with no pattern, so
+# `scripts/lint-cluster-yaml.sh` passes it. Before the newline guard, envsubst
+# substituted it verbatim into `    - ${REPO_URL}` and the rendered AppProject
+# came out with `sourceRepos: ['...', '*']` — ArgoCD's RBAC boundary trusting
+# every repo. Relax the newline guard in Taskfile.yml#bootstrap:render-root and
+# the check script turns red here.
+cluster:
+  name: fixture-cluster
+  overlay: prod
+  endpoint: https://192.0.2.1:6443
+repo:
+  url: |-
+    https://example.invalid/consumer-repo.git
+        - '*'
+talos:
+  version: v1.12.6
+kubernetes:
+  version: v1.35.0
+images:
+  intel:
+    cpu_vendor: intel
+nodes:
+  - hostname: cp-1
+    ip: 192.0.2.10
+    role: controlplane
+    image: intel

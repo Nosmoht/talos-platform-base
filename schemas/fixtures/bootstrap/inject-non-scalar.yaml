@@ -1,0 +1,28 @@
+# Bootstrap-render fixture: a non-scalar where a string belongs.
+#
+# FLOW STYLE ON PURPOSE. `overlay: {a: b}` serializes to the SINGLE LINE
+# `{a: b}`, so the newline guard does not fire on it — only
+# `select(type == "!!str")` rejects it. A block-style mapping would serialize
+# multi-line and be caught by the newline guard instead, leaving
+# `select(type)` unbound: verified by deleting the select from
+# Taskfile.yml#bootstrap:render-root, which then renders
+# `path: kubernetes/overlays/{a: b}` from this fixture while a block-style one
+# still failed. Keep this flow-style.
+cluster:
+  name: fixture-cluster
+  overlay: {a: b}
+  endpoint: https://192.0.2.1:6443
+repo:
+  url: https://example.invalid/consumer-repo.git
+talos:
+  version: v1.12.6
+kubernetes:
+  version: v1.35.0
+images:
+  intel:
+    cpu_vendor: intel
+nodes:
+  - hostname: cp-1
+    ip: 192.0.2.10
+    role: controlplane
+    image: intel

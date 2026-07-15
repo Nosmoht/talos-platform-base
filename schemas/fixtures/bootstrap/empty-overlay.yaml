@@ -1,0 +1,23 @@
+# Bootstrap-render fixture: an empty overlay.
+# Schema-valid (cluster.overlay is `type: string` with no minLength) and `yq -e`
+# does not fire on "" — it fires on null/false only. Before the empty guard this
+# rendered `path: kubernetes/overlays/` on a root Application carrying
+# prune: true + selfHeal: true, pointing it at the WHOLE overlay tree.
+cluster:
+  name: fixture-cluster
+  overlay: ""
+  endpoint: https://192.0.2.1:6443
+repo:
+  url: https://example.invalid/consumer-repo.git
+talos:
+  version: v1.12.6
+kubernetes:
+  version: v1.35.0
+images:
+  intel:
+    cpu_vendor: intel
+nodes:
+  - hostname: cp-1
+    ip: 192.0.2.10
+    role: controlplane
+    image: intel

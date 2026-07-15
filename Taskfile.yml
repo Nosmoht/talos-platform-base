@@ -31,7 +31,9 @@ vars:
   # Declarative cluster SoT consumed by bootstrap:* (override per invocation:
   # `task bootstrap:argocd ENV=other.yaml`).
   ENV: cluster.yaml
-  # Module directories (one per module) — terraform-docs targets these READMEs.
+  # Module directories (one per module) — the tofu:* targets iterate these.
+  # NOT terraform-docs-generated: no module README carries BEGIN_TF_DOCS
+  # markers, so their tables are hand-maintained (see tofu:docs).
   TOFU_MODULES:
     sh: find tofu/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort
   # MCP server versions — pinned to verified official sources
@@ -118,11 +120,41 @@ tasks:
       done
 
   tofu:docs:
-    desc: Regenerate module READMEs' input/output tables via terraform-docs
+    # Fail-closed, and NOT the way to refresh the current tables. No module
+    # README carries BEGIN_TF_DOCS markers today — their Inputs/Outputs tables
+    # are hand-maintained. `--output-mode inject` does not no-op on a
+    # marker-less file: it APPENDS a full generated block (markers +
+    # Requirements/Providers/Inputs/Outputs, ~114 lines) and exits 0, leaving
+    # the README with two competing, divergent table sets. The former `|| true`
+    # hid nothing, because nothing failed — it just made the damage silent.
+    # Verified by running it (terraform-docs v0.22.0) on 2026-07-15; ADR-0015's
+    # dated correction records the finding.
+    #
+    # So: refuse rather than corrupt. Adopting generated tables is a real
+    # change — commit the markers, accept the generated shape, reconcile the
+    # hand-written prose around them — not something a doc-refresh command
+    # should do as a side effect.
+    desc: "Regenerate module READMEs' terraform-docs block. Requires BEGIN_TF_DOCS markers; refuses on a marker-less README, whose tables are hand-maintained (see knowledge/reference/tasks.md)."
     cmd: |
+      set -e
       for m in {{.TOFU_MODULES}}; do
-        terraform-docs markdown table --output-file README.md --output-mode inject "$m" || true
+        if ! grep -q 'BEGIN_TF_DOCS' "$m/README.md" 2>/dev/null; then
+          echo "ERROR: $m/README.md carries no BEGIN_TF_DOCS markers." >&2
+          echo "  Its Inputs/Outputs tables are hand-maintained — edit them by hand." >&2
+          echo "  Running terraform-docs --output-mode inject here would APPEND a second," >&2
+          echo "  competing generated table set rather than update anything." >&2
+          exit 1
+        fi
+        terraform-docs markdown table --output-file README.md --output-mode inject "$m"
       done
+
+  tofu:check:readme-parity:
+    # The gate the deleted knowledge/reference/talos-cluster-module.md was
+    # removed in favour of. That deletion argued an ungated copy rots; this
+    # keeps the surviving copy from being one. No spec owns a README, so
+    # spec:check-staleness cannot cover it.
+    desc: "CI fence: every module variable/output appears in its (hand-maintained) README table"
+    cmd: scripts/check-module-readme-parity.sh
 
   tofu:lint:yaml:
     desc: yamllint + markdownlint over tofu/ (module READMEs, example manifests)
@@ -162,6 +194,7 @@ tasks:
       - task: tofu:validate
       - task: tofu:lint
       - task: tofu:check:render-determinism
+      - task: tofu:check:readme-parity
       - task: tofu:test:offline
 
   # ===========================================================================
@@ -221,14 +254,53 @@ tasks:
   # bootstrap:argocd task only seeds the consumer-identity App-of-Apps root
   # (root-project + root-application), which the module does NOT deliver.
   bootstrap:render-root:
-    internal: true
+    # Public (was internal) so the render is invocable without the kubectl
+    # apply path that follows it in bootstrap:argocd — that is what lets
+    # scripts/check-bootstrap-render.sh bind the render's spec scenarios
+    # offline in CI. It is also a useful dry-run: render and inspect the two
+    # root manifests without touching a cluster.
+    desc: "Render the App-of-Apps root manifests from cluster.yaml into kubernetes/bootstrap/argocd/_out/ (no cluster contact). Usage: task bootstrap:render-root [ENV=cluster.yaml]"
     cmd: |
-      CLUSTER_NAME=$(yq -e '.cluster.name' {{.ENV}})
-      REPO_URL=$(yq -e '.repo.url' {{.ENV}})
-      OVERLAY=$(yq -e '.cluster.overlay' {{.ENV}})
-      TARGET_REVISION=$(yq -e '.cluster.target_revision // "main"' {{.ENV}})
+      # Explicit, not inherited: every guard below is fail-closed only while a
+      # failing statement aborts the block. Without this, that property rests
+      # on the go-task runner's shell defaulting to errexit — a runner bump
+      # would silently turn "reject the value" into "render an empty field".
+      # The repo sets it explicitly in gitops:validate / tofu:validate /
+      # knowledge:validate / spec:validate for the same reason.
+      set -e
+      # {{.ENV}} is quoted: go-task renders it as RAW TEXT into this command
+      # string before sh parses it, so a bare interpolation makes
+      # `ENV='cluster.yaml; cmd'` execute cmd. Quoting also fixes paths with
+      # spaces.
+      #
+      # `select(type == "!!str")` with -e: a non-scalar key (map/sequence)
+      # would otherwise serialize its whole subtree into the value and inject
+      # YAML structure below. -e turns the empty select result into exit 1.
+      CLUSTER_NAME=$(yq -e '.cluster.name | select(type == "!!str")' "{{.ENV}}")
+      REPO_URL=$(yq -e '.repo.url | select(type == "!!str")' "{{.ENV}}")
+      OVERLAY=$(yq -e '.cluster.overlay | select(type == "!!str")' "{{.ENV}}")
+      TARGET_REVISION=$(yq -e '(.cluster.target_revision // "main") | select(type == "!!str")' "{{.ENV}}")
+      # Containment of the value inside its YAML scalar position. envsubst
+      # substitutes text, not YAML, so a value carrying a newline breaks out
+      # of its field and injects sibling keys/list items — e.g. a repo.url of
+      # "https://ok\n    - '*'" widens the AppProject's sourceRepos to every
+      # repo. The schema cannot catch it: repo.url/overlay/target_revision are
+      # plain strings, and nothing runs the schema before this render anyway.
+      # An empty value is rejected for the same class of reason: `overlay: ""`
+      # is schema-valid and renders `path: kubernetes/overlays/`, pointing the
+      # root Application at the whole overlay tree with prune+selfHeal on.
+      # The newline test is `wc -l`, not a `case` glob against a captured
+      # newline: `nl=$(printf '\n')` yields an EMPTY string (command
+      # substitution strips trailing newlines), and `*""*` matches every
+      # value — a guard that rejects everything, including the happy path.
       for v in "$CLUSTER_NAME" "$REPO_URL" "$OVERLAY" "$TARGET_REVISION"; do
-        case "$v" in *\$*) echo "ERROR: cluster.yaml value contains '\$' which is unsafe for envsubst: $v"; exit 1;; esac
+        case "$v" in
+          "") echo "ERROR: cluster.yaml value is empty; the rendered manifest would carry an empty field"; exit 1;;
+          *\$*) echo "ERROR: cluster.yaml value contains '\$' which is unsafe for envsubst: $v"; exit 1;;
+        esac
+        if [ "$(printf '%s' "$v" | wc -l)" -ne 0 ]; then
+          echo "ERROR: cluster.yaml value contains a newline, which would inject YAML structure into the rendered manifest: $v"; exit 1
+        fi
       done
       # Label-safe form of the revision for app.kubernetes.io/version: a git
       # ref may carry '/' etc., but a label VALUE is limited to 63 chars of
@@ -238,14 +310,29 @@ tasks:
       if [ -z "$TARGET_REVISION_LABEL" ]; then
         echo "ERROR: cluster.target_revision '$TARGET_REVISION' yields an empty label-safe value for app.kubernetes.io/version"; exit 1
       fi
-      mkdir -p kubernetes/bootstrap/argocd/_out
       export CLUSTER_NAME REPO_URL OVERLAY TARGET_REVISION TARGET_REVISION_LABEL
+      # Render into a temp dir and move only once BOTH renders succeeded: a
+      # `>` redirect truncates its target before the command runs, so
+      # rendering straight into _out/ would leave the first manifest behind
+      # when the second render fails — a half-populated _out/ that the next
+      # `kubectl apply -f` would happily consume.
+      #
+      # The envsubst SHELL-FORMAT argument is an allowlist over the TEMPLATE
+      # text: only these names expand, so a $NAME a template picks up
+      # elsewhere stays literal instead of resolving against the render host's
+      # environment. It does NOT protect the substituted VALUES — envsubst is
+      # single-pass and never rescans what it inserted; that is why the
+      # guards above operate on the values themselves.
+      tmp=$(mktemp -d)
+      trap 'rm -rf "$tmp"' EXIT
       envsubst '$CLUSTER_NAME $REPO_URL $OVERLAY $TARGET_REVISION $TARGET_REVISION_LABEL' \
         < kubernetes/bootstrap/argocd/root-application.yaml.tmpl \
-        > kubernetes/bootstrap/argocd/_out/root-application.yaml
+        > "$tmp/root-application.yaml"
       envsubst '$CLUSTER_NAME $REPO_URL $TARGET_REVISION_LABEL' \
         < kubernetes/bootstrap/argocd/root-project.yaml.tmpl \
-        > kubernetes/bootstrap/argocd/_out/root-project.yaml
+        > "$tmp/root-project.yaml"
+      mkdir -p kubernetes/bootstrap/argocd/_out
+      mv "$tmp/root-application.yaml" "$tmp/root-project.yaml" kubernetes/bootstrap/argocd/_out/
 
   bootstrap:argocd:
     desc: "Seed the consumer App-of-Apps root (root-project + root-application). Preconditions: deploy_argocd=true AND a completed `tofu apply` (it seeds ArgoCD + applies its CRDs server-side). Usage: task bootstrap:argocd [ENV=cluster.yaml]"
@@ -267,6 +354,10 @@ tasks:
       - kubectl wait --for=condition=available -n argocd deployment/argocd-server --timeout=300s
       - kubectl apply -f kubernetes/bootstrap/argocd/_out/root-project.yaml
       - kubectl apply -f kubernetes/bootstrap/argocd/_out/root-application.yaml
+
+  bootstrap:check-render:
+    desc: "CI gate: assert bootstrap:render-root satisfies the argocd-day-zero-bootstrap spec scenarios (offline — yq + envsubst only, no cluster)"
+    cmd: scripts/check-bootstrap-render.sh
 
   bootstrap:argocd-password:
     desc: Print the initial ArgoCD admin password (rotate after first login)
