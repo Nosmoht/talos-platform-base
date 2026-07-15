@@ -43,6 +43,27 @@ modules and sysctls.
 - **THEN** the plan fails with an error naming the offending profiles and
   the catalog keys
 
+### Requirement: Profile kernel arguments are predicate-only
+
+A profile's kernel arguments (top-level or vendor-variant) SHALL be
+limited to the arguments named by the `presence_predicate` of the atoms
+the profile `provides` (`platform-hardware-features.yaml`). Host tuning
+is consumer policy and SHALL NOT be carried by a capability profile: a
+profile argument reaches the schematic base-owned, and the
+`karg_conflicts` precondition fails the plan on any consumer argument
+setting the same key to a different value — so every key a profile
+claims is a key the consumer permanently loses. This is an authoring
+contract over the catalog, enforced at review rather than at plan time
+(`knowledge/decisions/0016-capability-profiles-predicate-only.md`).
+
+#### Scenario: The iommu profile carries only its predicate argument
+
+- **WHEN** a node whose image declares `cpu_vendor: intel` holds a
+  capability resolving to the `iommu` profile
+- **THEN** the composed schematic carries `intel_iommu=on` and no
+  host-DMA tuning argument — the `iommu` kernel-argument key stays free
+  for consumer policy
+
 ### Requirement: Referential-integrity guards
 
 The module SHALL fail the plan when a node references an image id absent
