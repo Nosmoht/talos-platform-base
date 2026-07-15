@@ -52,3 +52,9 @@ MD004:
 # structure, not accidental duplication.
 MD024:
   siblings_only: true
+
+# Table column style (introduced in markdownlint > 0.42): the repo's
+# established convention is the compact separator row (|---|). Disabled
+# explicitly so newer local linters and the pinned CI version agree —
+# local `task docs:lint` must behave exactly like CI.
+MD060: false

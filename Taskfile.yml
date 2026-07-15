@@ -21,6 +21,12 @@ version: '3'
 # themselves write to the console, not their own invocation echo.
 silent: true
 
+env:
+  # openspec bundles a posthog-node telemetry client (anonymous command+version;
+  # auto-disabled when CI=true, verified in its dist/telemetry/index.js).
+  # Explicit opt-out keeps LOCAL task runs network-quiet too.
+  OPENSPEC_TELEMETRY: "0"
+
 vars:
   # Declarative cluster SoT consumed by bootstrap:* (override per invocation:
   # `task bootstrap:argocd ENV=other.yaml`).
@@ -44,6 +50,14 @@ vars:
   LYCHEE_SHA256_DARWIN_ARM64: c9d3740ea2d891854d37116c9fba840f37b6e7c89d330e7db84ac333631c4977
   LYCHEE_SHA256_DARWIN_AMD64: 887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978
   LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+  # spec:*/docs:* tool pins (openspec, markdownlint-cli) live in
+  # package.json + package-lock.json — installed via `npm ci
+  # --ignore-scripts`. Scope of the control: the lockfile's integrity
+  # hashes pin the FETCH to the reviewed lockfile (registry/MITM
+  # tampering); they do not vouch for the lockfile's own content —
+  # lockfile diffs stay review surface. `task dev:verify-pins` asserts
+  # package.json ↔ .tool-versions plus registry-host provenance of every
+  # resolved URL; --ignore-scripts disables lifecycle scripts.
   # Rule set rendered into AGENTS.md's managed block. Single source for both
   # knowledge:rules-apply and knowledge:rules-check — a divergence between the
   # two would make the fence prescribe a regeneration that drops content.
@@ -149,6 +163,19 @@ tasks:
         echo "kubeconform: $f"
         kubeconform -strict -ignore-missing-schemas "$f"
       done
+      # conftest bite-check: the committed invalid-Application fixture must be
+      # DENIED with each expected message — relaxing a source-classification/
+      # pinning rule in policies/conftest/argocd.rego turns this red.
+      if conftest test --all-namespaces --policy policies/conftest scripts/fixtures/argocd-invalid-applications.yaml >/dev/null 2>&1; then
+        echo "ERROR: conftest bite-check — the invalid-Application fixture was not denied"; exit 1
+      fi
+      bite_out=$(conftest test --all-namespaces --policy policies/conftest scripts/fixtures/argocd-invalid-applications.yaml 2>&1 || true)
+      for m in "must set chart (helm), path (git), ref (values anchor) or plugin" "helm block but neither chart nor path" "is floating"; do
+        if ! printf '%s\n' "$bite_out" | grep -qF "$m"; then
+          echo "ERROR: conftest bite-check — expected deny \"$m\" did not fire:"; printf '%s\n' "$bite_out"; exit 1
+        fi
+      done
+      echo "conftest bite-check OK: all three source-classification/pinning denies fire"
       ./scripts/check-argocd-substrate-invariants.sh
 
   gitops:render-component:
@@ -187,12 +214,20 @@ tasks:
       for v in "$CLUSTER_NAME" "$REPO_URL" "$OVERLAY" "$TARGET_REVISION"; do
         case "$v" in *\$*) echo "ERROR: cluster.yaml value contains '\$' which is unsafe for envsubst: $v"; exit 1;; esac
       done
+      # Label-safe form of the revision for app.kubernetes.io/version: a git
+      # ref may carry '/' etc., but a label VALUE is limited to 63 chars of
+      # [A-Za-z0-9_.-] with alphanumeric ends. spec.source.targetRevision
+      # keeps the raw value.
+      TARGET_REVISION_LABEL=$(printf '%s' "$TARGET_REVISION" | LC_ALL=C tr -c 'A-Za-z0-9_.-' '_' | cut -c1-63 | sed -e 's/^[^A-Za-z0-9]*//' -e 's/[^A-Za-z0-9]*$//')
+      if [ -z "$TARGET_REVISION_LABEL" ]; then
+        echo "ERROR: cluster.target_revision '$TARGET_REVISION' yields an empty label-safe value for app.kubernetes.io/version"; exit 1
+      fi
       mkdir -p kubernetes/bootstrap/argocd/_out
-      export CLUSTER_NAME REPO_URL OVERLAY TARGET_REVISION
-      envsubst '$CLUSTER_NAME $REPO_URL $OVERLAY $TARGET_REVISION' \
+      export CLUSTER_NAME REPO_URL OVERLAY TARGET_REVISION TARGET_REVISION_LABEL
+      envsubst '$CLUSTER_NAME $REPO_URL $OVERLAY $TARGET_REVISION $TARGET_REVISION_LABEL' \
         < kubernetes/bootstrap/argocd/root-application.yaml.tmpl \
         > kubernetes/bootstrap/argocd/_out/root-application.yaml
-      envsubst '$CLUSTER_NAME $REPO_URL' \
+      envsubst '$CLUSTER_NAME $REPO_URL $TARGET_REVISION_LABEL' \
         < kubernetes/bootstrap/argocd/root-project.yaml.tmpl \
         > kubernetes/bootstrap/argocd/_out/root-project.yaml
 
@@ -379,8 +414,218 @@ tasks:
       mkdir -p "$HOME/.local/bin"
       install -m 0755 "$tmp/openknowledge" "$HOME/.local/bin/openknowledge"
       install -m 0755 "$ly_bin" "$HOME/.local/bin/lychee"
-      echo "Installed openknowledge $(openknowledge version) + lychee {{.LYCHEE_VERSION}} to ~/.local/bin"
+      # On a GitHub runner, ~/.local/bin is not guaranteed on PATH for
+      # subsequent steps — persist it so later `task *:validate` steps
+      # resolve the binaries. No-op outside GitHub Actions.
+      [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      echo "Installed openknowledge $("$HOME/.local/bin/openknowledge" version) + lychee {{.LYCHEE_VERSION}} to ~/.local/bin"
       echo "Verify pins: task dev:verify-tools"
+
+  # ===========================================================================
+  # docs:* — repo-wide markdown linting (mirrors the docs-lint.yml CI job;
+  # the workflow runs exactly these tasks so local == remote).
+  # ===========================================================================
+  docs:lint:
+    desc: markdownlint over the whole repo (same invocation as CI)
+    cmd: |
+      set -e
+      command -v markdownlint >/dev/null 2>&1 || { echo "ERROR: 'markdownlint' not installed — run 'task docs:install-cli'"; exit 1; }
+      markdownlint '**/*.md' --ignore-path .markdownlintignore
+
+  docs:install-cli:
+    desc: Install the lockfile-pinned markdownlint-cli (npm ci, integrity-verified, lifecycle scripts disabled)
+    deps: [dev:npm-ci]
+    cmd: |
+      set -e
+      mkdir -p "$HOME/.local/bin"
+      ln -sf "{{.ROOT_DIR}}/node_modules/.bin/markdownlint" "$HOME/.local/bin/markdownlint"
+      [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      echo "Installed markdownlint $("$HOME/.local/bin/markdownlint" --version) (lockfile-pinned)"
+
+  # ===========================================================================
+  # spec:* — OpenSpec behavioral specs (openspec/). NOT the same tool as
+  # knowledge:* (openknowledge validates the OKF bundle; openspec validates
+  # behavioral capability specs). See knowledge/workflows/spec-driven-development.md.
+  # ===========================================================================
+  spec:validate:
+    desc: Validate the openspec/ behavioral specs (strict + bite-check + source partition) + offline link check
+    cmd: |
+      set -e
+      command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
+      command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
+      openspec validate --all --strict --no-interactive
+      # Bite-check: the strict validator must reject a malformed
+      # directly-authored spec (guards against a future openspec release
+      # going warn-only). Runs against a temp COPY — the working tree is
+      # never mutated, so interrupts and concurrent runs are safe.
+      bitetmp="$(mktemp -d)"; biteout="$(mktemp)"
+      trap 'rm -rf "$bitetmp" "$biteout"' EXIT
+      cp -R openspec "$bitetmp/"
+      mkdir -p "$bitetmp/openspec/specs/negative-fixture"
+      cp scripts/fixtures/openspec-invalid-spec.md "$bitetmp/openspec/specs/negative-fixture/spec.md"
+      # Both runs target ONE spec by name, so each exit code is attributable
+      # to that spec alone. A whole-tree `validate --all` exit cannot be:
+      # it is non-zero for a failure anywhere, and its per-spec output names
+      # passing specs too, so neither the code nor a grep for the fixture's
+      # name distinguishes "rejected the fixture" from "died for an
+      # unrelated reason after listing it".
+      # Control run FIRST, on a spec known good: it must pass. Without it a
+      # non-zero from the fixture run is not evidence about the fixture —
+      # any environmental failure (a CLI erroring outside a git root, a
+      # changed usage contract, a Node crash) exits non-zero too and would
+      # satisfy the check vacuously and permanently.
+      if ! (cd "$bitetmp" && openspec validate node-image-composition --type spec \
+              --strict --no-interactive) >"$biteout" 2>&1; then
+        echo "ERROR: the bite-check's control run failed — the validator does not"
+        echo "accept a known-good spec, so the fixture run below would prove"
+        echo "nothing. Its output was:"; cat "$biteout"; exit 1
+      fi
+      if (cd "$bitetmp" && openspec validate negative-fixture --type spec \
+            --strict --no-interactive) >"$biteout" 2>&1; then
+        echo "ERROR: strict validate passed a malformed spec — the gate no longer bites"
+        cat "$biteout"; exit 1
+      fi
+      rm -rf "$bitetmp" "$biteout"; trap - EXIT
+      # spec_lib parser red-green: the flow-style branches and the
+      # declares-primary detector have no committed spec exercising them —
+      # this unit test is their only binding.
+      python3 scripts/test/test_spec_lib.py >/dev/null || { echo "ERROR: spec_lib parser self-test failed"; python3 scripts/test/test_spec_lib.py; exit 1; }
+      # Source-ownership partition: exclusivity + completeness over the
+      # enumerated substrate source universe (ADR-0015 ownership model).
+      python3 scripts/check-spec-partition.py .
+      lychee --offline --no-progress 'openspec/**/*.md'
+
+  spec:install-cli:
+    desc: Install the lockfile-pinned openspec CLI (npm ci, integrity-verified, lifecycle scripts disabled)
+    deps: [dev:npm-ci]
+    cmd: |
+      set -e
+      mkdir -p "$HOME/.local/bin"
+      ln -sf "{{.ROOT_DIR}}/node_modules/.bin/openspec" "$HOME/.local/bin/openspec"
+      [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      echo "Installed openspec $("$HOME/.local/bin/openspec" --version) (lockfile-pinned)"
+      echo "Verify pins: task dev:verify-tools"
+
+  spec:check-regen:
+    desc: Regeneration parity — the committed tool trees must equal the pinned generator's output
+    cmd: |
+      set -e
+      command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
+      # Refuse on dirty generated trees: --force would overwrite uncommitted
+      # edits there, and a pre-dirty generated file would mask real drift in
+      # the porcelain delta below.
+      if [ -n "$(git status --porcelain .claude/ .codex/)" ]; then
+        echo "ERROR: uncommitted changes under the generated trees — commit or discard them first."; exit 1
+      fi
+      # Delta over the WHOLE tree: catches modified, deleted AND newly-added
+      # (untracked) files, wherever the generator writes them. Delta-based so
+      # it also runs on a locally dirty tree (outside the generated trees);
+      # on a pristine CI checkout the delta equals the absolute drift.
+      # Scope note: this proves committed == pinned-generator output; it does
+      # NOT prove the content is benign — instruction-body review stays
+      # mandatory (ADR-0014; the trees are agent-loaded content).
+      # The ignored set is snapshotted separately: plain --porcelain omits
+      # ignored paths, so generator output landing on a path .gitignore
+      # covers (.gitignore ignores .claude/* with narrow negations) would be
+      # invisible to the delta below and this target would print OK over
+      # real drift. Same delta shape as spec:update's completeness gate —
+      # scoped to the generated trees, because a repo-wide ignored snapshot
+      # would churn on node_modules/ and every tool cache.
+      #
+      # Two disclosed residuals, both bounded to the LOCAL run — on the
+      # pristine CI checkout that actually gates merges, neither applies:
+      #   - --ignored=matching COLLAPSES an ignored directory to one entry
+      #     and does not enumerate its contents (git-status documents this).
+      #     So a write into a PRE-EXISTING ignored dir under .claude/
+      #     (agents/, hooks/, operator scratch) does not move the delta.
+      #     In CI those dirs do not exist, so a first creation is caught.
+      #   - the ignored set outside .claude//.codex/ (.work/, .mcp.json.local,
+      #     ...) is in neither snapshot. Bounded by openspec's write scope,
+      #     which is an assumption a CLI upgrade can break — the same class
+      #     of upgrade this target exists to detect.
+      # Closing either needs a content snapshot (find + hash) rather than a
+      # git-status delta; tracked as a follow-up, not silently assumed away.
+      before="$(mktemp)"; after="$(mktemp)"
+      ignbefore="$(mktemp)"; ignafter="$(mktemp)"
+      ignraw="$(mktemp)"
+      trap 'rm -f "$before" "$after" "$ignbefore" "$ignafter" "$ignraw"' EXIT
+      # The git call is separated from the greps: piping it straight into
+      # `grep | sort` would hand the pipeline sort's exit status, so a git
+      # failure (a build rejecting --ignored=matching, a pathspec error, a
+      # missing .codex/) would land as an empty snapshot on BOTH sides and
+      # this target would print OK having checked nothing. Same separation
+      # spec:update makes, for the same reason.
+      git status --porcelain > "$before"
+      git status --ignored=matching --porcelain .claude/ .codex/ > "$ignraw"
+      grep '^!!' "$ignraw" | sort > "$ignbefore" || true
+      openspec update --force >/dev/null
+      git status --porcelain > "$after"
+      git status --ignored=matching --porcelain .claude/ .codex/ > "$ignraw"
+      grep '^!!' "$ignraw" | sort > "$ignafter" || true
+      if ! cmp -s "$before" "$after"; then
+        echo "ERROR: regenerating with the pinned openspec changed the tree:"
+        diff "$before" "$after" | grep '^>' || true
+        exit 1
+      fi
+      new_ignored="$(comm -13 "$ignbefore" "$ignafter")"
+      if [ -n "$new_ignored" ]; then
+        echo "ERROR: a gitignored path appeared under the generated trees during"
+        echo "the regeneration:"
+        echo "$new_ignored"
+        echo "If openspec emitted it, the committed trees do NOT equal the"
+        echo "generator's output — generated artifacts must be committed"
+        echo "(ADR-0014), so extend the generated-subtree negations in"
+        echo ".gitignore for THOSE paths only. If an agent harness running"
+        echo "alongside wrote it (session state, settings.local.json, todos),"
+        echo "it is operator scratch: leave .gitignore alone and re-run."
+        exit 1
+      fi
+      echo "OK: committed tool trees match the pinned generator's output."
+
+  spec:check-staleness:
+    desc: "Staleness gate: a diff touching a spec's primary source must also touch the owning spec (escape: 'Spec-Impact: none' commit trailer). Usage: task spec:check-staleness [BASE=origin/main]"
+    # BASE reaches the script through the environment, never through the
+    # template. go-task renders {{.BASE}} as raw TEXT into the command string
+    # before its shell parses it, so the single quotes around a templated
+    # value are part of the template, not an escape: a BASE containing a
+    # single quote closes them and injects. docs-lint.yml feeds this from
+    # github.base_ref — env-binding it there closes the Actions-expression
+    # layer only; this closes the shell layer. Verified both directions.
+    env:
+      SPEC_BASE: '{{.BASE | default "origin/main"}}'
+    cmd: python3 scripts/check-spec-staleness.py --base "$SPEC_BASE"
+
+  spec:update:
+    desc: Regenerate OpenSpec tool integrations (.claude/, .codex/) after a CLI upgrade
+    cmd: |
+      set -e
+      command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
+      # Completeness gate, DELTA-based: snapshot the ignored set before the
+      # regeneration and fail only on paths the regeneration ADDED to it —
+      # pre-existing operator/harness scratch under .claude/ (settings,
+      # agents/, hooks/, ...) is expected and must stay ignored. A git
+      # failure fails the task (the git call is separated from the greps
+      # so a non-zero git exit is never swallowed as "clean").
+      # NOTE: --force overwrites any uncommitted edits inside the generated
+      # trees — commit or discard tree changes before running.
+      before="$(mktemp)"; after="$(mktemp)"
+      trap 'rm -f "$before" "$after" "$before.ign" "$after.ign"' EXIT
+      git status --ignored=matching --porcelain .claude/ .codex/ > "$before"
+      openspec update --force
+      git status --ignored=matching --porcelain .claude/ .codex/ > "$after"
+      grep '^!!' "$before" | sort > "$before.ign" || true
+      grep '^!!' "$after"  | sort > "$after.ign"  || true
+      new_ignored="$(comm -13 "$before.ign" "$after.ign")"
+      rm -f "$before.ign" "$after.ign"
+      if [ -n "$new_ignored" ]; then
+        echo "ERROR: the regeneration emitted content that .gitignore ignores:"
+        echo "$new_ignored"
+        echo "Generated artifacts must be committed (ADR-0014) — extend the"
+        echo "generated-subtree negations in .gitignore for THESE paths only."
+        exit 1
+      fi
+      echo "Regenerated. Review the diff as security-relevant content (agent-"
+      echo "loaded instructions, see ADR-0014) — then commit."
 
   # ===========================================================================
   # mcp:* — MCP server binary management (see knowledge/workflows/mcp-setup.md)
@@ -450,6 +695,16 @@ tasks:
   # ===========================================================================
   # dev:* — contributor hygiene
   # ===========================================================================
+  dev:npm-ci:
+    internal: true
+    # `run: once` dedupes the install when several install-cli tasks run in
+    # ONE task invocation (e.g. `task docs:install-cli spec:install-cli`).
+    run: once
+    cmd: |
+      set -e
+      command -v npm >/dev/null 2>&1 || { echo "ERROR: 'npm' required — https://nodejs.org"; exit 1; }
+      npm ci --ignore-scripts
+
   dev:install-pre-commit:
     desc: Install pre-commit hooks and run them once across the repo
     cmd: |
@@ -460,3 +715,37 @@ tasks:
   dev:verify-tools:
     desc: Confirm installed binaries match .tool-versions pins
     cmd: ./scripts/verify-tools.sh
+
+  dev:verify-pins:
+    desc: Assert the Taskfile vars block + package.json agree with .tool-versions (pin SoT)
+    cmd: |
+      set -eu
+      command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 required for the package.json pin assertions"; exit 2; }
+      fail=0
+      tv() { awk -v k="$1" '$1==k {print $2}' .tool-versions; }
+      # npm-distributed pins live in package.json (locked via
+      # package-lock.json); python3 is used because the assert must run
+      # BEFORE any install task (yq/jq availability is not guaranteed).
+      pj() { python3 -c 'import json,sys; print(json.load(open("package.json"))["devDependencies"][sys.argv[1]])' "$1"; }
+      assert() {
+        if [ "$2" != "$3" ]; then
+          echo "DRIFT: $1 .tool-versions=$2 other=$3"; fail=1
+        else
+          echo "OK:    $1 $2"
+        fi
+      }
+      assert openknowledge "$(tv openknowledge)" "{{.OPENKNOWLEDGE_VERSION}}"
+      assert lychee        "$(tv lychee)"        "{{.LYCHEE_VERSION}}"
+      assert openspec      "$(tv openspec)"      "$(pj @fission-ai/openspec)"
+      assert markdownlint  "$(tv markdownlint)"  "$(pj markdownlint-cli)"
+      # Lockfile provenance: every resolved URL must point at the official
+      # npm registry over https — a lockfile edit that redirects a transitive
+      # dependency to another host (typo-squat tarball with a self-consistent
+      # integrity hash) turns this red. Registry compromise stays out of
+      # scope; the integrity hashes pin the fetch to the reviewed lockfile.
+      if python3 -c 'import json,sys; d=json.load(open("package-lock.json"))["packages"]; bad=[(k,p["resolved"]) for k,p in d.items() if p.get("resolved") and not p["resolved"].startswith("https://registry.npmjs.org/")]; [print(f"DRIFT: package-lock.json {k} resolves outside registry.npmjs.org: {u}") for k,u in bad]; sys.exit(1 if bad else 0)'; then
+        echo "OK:    package-lock.json — all resolved URLs on registry.npmjs.org"
+      else
+        fail=1
+      fi
+      exit "$fail"

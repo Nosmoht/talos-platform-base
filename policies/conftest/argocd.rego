@@ -103,22 +103,42 @@ deny contains msg if {
   msg := sprintf("Application %s must set spec.destination.server or spec.destination.name", [app_name(input)])
 }
 
+# Every source references a repository — an empty repoURL is never a valid
+# ArgoCD source of any classification.
 deny contains msg if {
   is_application(input)
   src := all_sources(input)[_]
-  is_helm_source(src)
-  repo := object.get(src, "repoURL", "")
-  is_empty_string(repo)
-  msg := sprintf("Application %s helm source must set repoURL", [app_name(input)])
+  is_empty_string(object.get(src, "repoURL", ""))
+  msg := sprintf("Application %s source must set repoURL", [app_name(input)])
 }
 
+# Classification completeness: every source must be explicitly classifiable —
+# `chart` (Helm repository source), `path` (git directory source), `ref`
+# (multi-source values anchor) or `plugin` (config-management plugin, which
+# legitimately runs at the repo root without a path). Without this deny, a
+# source that omits `chart` silently falls through to the weaker git-source
+# rules and evades the Helm exact-version pinning checks entirely.
 deny contains msg if {
   is_application(input)
   src := all_sources(input)[_]
-  is_helm_source(src)
-  chart := object.get(src, "chart", "")
-  is_empty_string(chart)
-  msg := sprintf("Application %s helm source must set chart", [app_name(input)])
+  is_empty_string(object.get(src, "chart", ""))
+  is_empty_string(object.get(src, "path", ""))
+  is_empty_string(object.get(src, "ref", ""))
+  object.get(src, "plugin", null) == null
+  msg := sprintf("Application %s source must set chart (helm), path (git), ref (values anchor) or plugin", [app_name(input)])
+}
+
+# A `helm:` block only makes sense on a chart source (chart from a Helm
+# repository) or a git-hosted chart (path into a git repo). On a source with
+# neither it marks a Helm-shaped source that dodged classification via a
+# throwaway `ref` — deny it instead of letting it ride the git rules.
+deny contains msg if {
+  is_application(input)
+  src := all_sources(input)[_]
+  object.get(src, "helm", null) != null
+  is_empty_string(object.get(src, "chart", ""))
+  is_empty_string(object.get(src, "path", ""))
+  msg := sprintf("Application %s source carries a helm block but neither chart nor path", [app_name(input)])
 }
 
 deny contains msg if {
@@ -130,15 +150,8 @@ deny contains msg if {
   msg := sprintf("Application %s helm source must set targetRevision", [app_name(input)])
 }
 
-deny contains msg if {
-  is_application(input)
-  src := all_sources(input)[_]
-  is_helm_source(src)
-  rev := object.get(src, "targetRevision", "")
-  is_floating_revision(rev)
-  msg := sprintf("Application %s helm targetRevision %q is floating", [app_name(input), rev])
-}
-
+# (The former helm-only floating deny is subsumed by the all-sources
+# floating deny below the git rules.)
 deny contains msg if {
   is_application(input)
   src := all_sources(input)[_]
@@ -151,13 +164,24 @@ deny contains msg if {
   msg := sprintf("Application %s helm targetRevision %q must be an exact version", [app, rev])
 }
 
+# Floating revisions (`latest`, `*`, `HEAD`) are denied on EVERY source,
+# independent of its helm/git classification — a chart-less source must not
+# gain a floating marker by being classified as git (classification never
+# weakens pinning).
 deny contains msg if {
   is_application(input)
   src := all_sources(input)[_]
-  is_git_source(src)
+  rev := object.get(src, "targetRevision", "")
+  is_floating_revision(rev)
+  msg := sprintf("Application %s targetRevision %q is floating", [app_name(input), rev])
+}
+
+deny contains msg if {
+  is_application(input)
+  src := all_sources(input)[_]
   rev := object.get(src, "targetRevision", "")
   is_floating_git_ref(rev)
-  msg := sprintf("Application %s git targetRevision %q is not allowed", [app_name(input), rev])
+  msg := sprintf("Application %s targetRevision %q is floating", [app_name(input), rev])
 }
 
 warn contains msg if {

@@ -1,0 +1,58 @@
+# INTENTIONALLY INVALID ArgoCD Applications — negative fixture for the
+# conftest.argocd source-classification/pinning denies. `task gitops:validate`
+# asserts conftest DENIES every document below and that each expected deny
+# message appears (bite-check). Relax a rule in policies/conftest/argocd.rego
+# and the gate turns red. Values are synthetic examples, not a deployable app.
+#
+# Doc 1 — unclassifiable source: neither chart (helm), path (git) nor ref
+# (values anchor). Binds the classifiability deny.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: invalid-unclassifiable
+spec:
+  project: infrastructure
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: example
+  source:
+    repoURL: https://charts.example.com
+    targetRevision: 1.2.3
+    helm:
+      values: |
+        replicas: 1
+---
+# Doc 2 — helm block on a source with neither chart nor path (throwaway ref
+# dodges classification). Binds the helm-block classifiability deny.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: invalid-helm-shaped-ref-only
+spec:
+  project: infrastructure
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: example
+  source:
+    repoURL: https://charts.example.com
+    targetRevision: 1.2.3
+    ref: values
+    helm:
+      values: |
+        replicas: 1
+---
+# Doc 3 — floating targetRevision on a git-classified source. Binds the
+# all-sources floating-revision deny (classification never weakens pinning).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: invalid-floating-git
+spec:
+  project: infrastructure
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: example
+  source:
+    repoURL: https://git.example.com/org/repo.git
+    targetRevision: latest
+    path: manifests/example

@@ -10,13 +10,19 @@
 # file disagree.
 #
 # Update workflow: bump the version here, then update every place that pins
-# it. There are three classes:
+# it. There are four classes:
 #   - render tools    -> .github/workflows/{gitops-validate,oci-publish}.yml
-#   - openknowledge,  -> .github/workflows/docs-lint.yml env block AND the
-#     lychee              knowledge:* vars in Taskfile.yml (version + the
-#                         per-platform checksums)
-#   - task            -> the setup-task step in docs-lint.yml
-# Then run `task dev:verify-tools` locally to confirm.
+#   - openknowledge,  -> the knowledge:* vars in Taskfile.yml (version + the
+#     lychee              per-platform checksums). NOT the docs-lint.yml env
+#                         block — that pins only `task`; these two reach CI
+#                         via `task knowledge:install-cli`.
+#   - openspec,       -> package.json + package-lock.json (integrity-hashed),
+#     markdownlint        installed via `npm ci --ignore-scripts`
+#   - task            -> the TASK_VERSION env in docs-lint.yml (drift-checked
+#                         there against this file) AND the setup-task
+#                         `version:` literal in tofu-validate.yml
+# `task dev:verify-pins` asserts the Taskfile vars + package.json against this
+# file; run `task dev:verify-tools` to confirm the installed binaries match.
 #
 # After an openknowledge bump, also run `task knowledge:rules-apply` and
 # commit the regenerated AGENTS.md block, and read the block's diff: the
@@ -31,4 +37,11 @@ kubeconform 0.6.7
 yq 4.53.2
 openknowledge 0.5.0
 lychee 0.24.2
+# npm-managed (no asdf plugin): pinned in package.json + package-lock.json
+# (integrity-hashed); install via `task spec:install-cli` / `task docs:install-cli`.
+openspec 1.6.0
+markdownlint 0.42.0
+# go-task itself — the CI executor. Pinned via the TASK_VERSION env block in
+# docs-lint.yml (drift-checked there) and the setup-task `version:` literal
+# in tofu-validate.yml.
 task 3.48.0

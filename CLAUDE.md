@@ -4,12 +4,20 @@
 
 ## Claude-Code-Specific Additions
 
-This base ships no `.claude/` directory and ships no Claude-Code-specific
-primitives. Treat `AGENTS.md` as the sole, tool-agnostic source of operational
-knowledge, and assume no rule, hook, subagent, or skill is available unless you
-have verified it in the working repo. Any such primitives come from an external
-harness that an individual operator or a consumer cluster repo chooses to
-install; they live and are versioned outside this base.
+This base commits exactly the OpenSpec-GENERATED tool artifacts — the
+`.claude/` skill/command trees and their Codex counterpart, regenerable via
+`task spec:update` (decision:
+[`knowledge/decisions/0014-ship-ai-tool-artifacts.md`](knowledge/decisions/0014-ship-ai-tool-artifacts.md)).
+The `/opsx:*` slash commands they provide drive the spec-driven workflow
+(`AGENTS.md §Spec-Driven Development`). Never hand-edit those trees.
+
+Everything else is unchanged: treat `AGENTS.md` as the canonical, tool-agnostic
+source of operational knowledge (`openspec/config.yaml` carries only a pointer
+to it, never parallel truth), and assume no hand-authored rule, hook, subagent,
+or other skill is available unless you have verified it in the working repo.
+Such primitives come from an external harness that an individual operator or a
+consumer cluster repo chooses to install; they live and are versioned outside
+this base.
 
 ### Context Architecture
 

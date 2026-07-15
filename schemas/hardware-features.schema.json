@@ -14,10 +14,10 @@
     },
     "hardware_features": {
       "description": "Array of atomic hardware feature definitions. Order is non-significant; lookup is by id.",
+      "$comment": "id uniqueness cannot be expressed in JSON Schema 2020-12 (the former uniqueItemProperties keyword is an AJV-only extension that check-jsonschema silently ignores); it is enforced mechanically by scripts/lint-hardware-features.sh.",
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/hardwareFeature" },
-      "uniqueItemProperties": ["id"]
+      "items": { "$ref": "#/$defs/hardwareFeature" }
     }
   },
   "$defs": {
