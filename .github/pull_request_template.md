@@ -42,13 +42,14 @@ These run automatically; PR is blocked until all are green.
 - [ ] `gitops-validate` — full render + lint + policy pipeline
 - [ ] `hard-constraints-check` — no `Ingress`, no `Endpoints`, no SecureBoot installer, no `debugfs=off`
 - [ ] `secret-scan` (gitleaks) — last backstop on bypassed pre-commit
-- [ ] `docs-lint` — markdownlint
+- [ ] `docs-lint` — markdownlint + OKF bundle validation + offline link gate + AGENTS.md managed-block drift
 - [ ] `hardware-features-check` — Layer-C hardware-feature schema + provisioning-catalog refs (if Layer-C touching)
 
 ## Documentation
 
 - [ ] CHANGELOG.md `[Unreleased]` updated (Added / Changed / Deprecated / Removed / Fixed / Security)
 - [ ] If a public interface changed (Helm values, `tofu/modules/talos-cluster` interface, Layer-C hardware-feature schema, hard constraints): either a decision record (`knowledge/decisions/`) or the matching `knowledge/` concept updated
+- [ ] If `knowledge/rules/` changed: ran `task knowledge:rules-apply` and committed the regenerated `AGENTS.md` block (never hand-edited)
 
 ## Consumer impact
 

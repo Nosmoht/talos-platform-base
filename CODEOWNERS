@@ -21,6 +21,18 @@
 /contracts/                                      @nosmoht
 /platform-hardware-features.yaml                 @nosmoht
 
+# Bundle tooling contracts. openknowledge renders these documents verbatim
+# into the AGENTS.md managed block, so their bullets ARE agent instructions
+# despite sitting on a docs-shaped path. Read them at AGENTS.md's bar.
+#
+# Marker, not a gate: `required_pull_request_reviews` is unset on main, and
+# every entry in this file resolves to the same owner as the `*` catch-all
+# above — so no line here blocks anything. The enforcing control is
+# `task knowledge:rules-check` (Taskfile.yml), which fails unless the
+# regenerated AGENTS.md rides in the same diff.
+/knowledge/rules/                                @nosmoht
+/knowledge/openknowledge.toml                    @nosmoht
+
 # OCI publish surface — supply-chain critical.
 /.github/workflows/oci-publish.yml               @nosmoht
 /knowledge/workflows/verify-release.md           @nosmoht
