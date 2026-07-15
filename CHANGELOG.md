@@ -17,10 +17,17 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and was never a decision. **Consumer impact:** a node selecting the `iommu`
   capability gets a new schematic content hash → new installer URL →
   **re-image**, and its host-owned devices revert from passthrough-by-default
-  to the Talos kernel build's `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` value. To
-  keep the previous behavior, set `iommu=pt` explicitly as consumer policy —
-  the `iommu` kernel-arg key is now free, so it no longer collides with the
-  profile. Decision:
+  to the Talos kernel build's `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` value.
+  Passthrough itself is unaffected — a device bound to `vfio-pci` is isolated
+  by its own VFIO domain regardless of `iommu=pt`, so the `iommu-enabled`
+  atom still delivers what it promises; what changes is host-owned-device DMA
+  translation (a possible throughput cost on the host, in exchange for DMA
+  protection the bypass removed). **There is no way to keep the previous
+  behavior in this tag:** the schematic kernel-arg sink is fed exclusively by
+  profile `kernel_args`, the module exposes no consumer kernel-arg input, and
+  `config_patches` reach `machine.install.extraKernelArgs`, which is a no-op
+  under the Talos v1.10+ UKI/systemd-boot default. A consumer needing
+  `iommu=pt` must wait for the consumer kernel-arg path (#169). Decision:
   [`knowledge/decisions/0016-capability-profiles-predicate-only.md`](knowledge/decisions/0016-capability-profiles-predicate-only.md).
 
 ### Added

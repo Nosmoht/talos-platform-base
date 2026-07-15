@@ -31,10 +31,14 @@ not in the contract.
 Two facts made that mismatch load-bearing rather than cosmetic:
 
 1. **A profile karg is base-owned and consumer-unoverridable.** Kargs reach
-   the schematic sink only from selected profiles, and the `karg_conflicts`
-   precondition fails the plan when a consumer arg sets the same key to a
-   different value. Every arg a profile claims is therefore a key the
+   the schematic sink only from selected profiles — the module exposes no
+   consumer kernel-arg input at all, so the ownership is total rather than
+   merely guarded. Every arg a profile claims is therefore a key the
    consumer permanently loses — spent whether or not the capability needs it.
+   (`karg_conflicts` is a profile-vs-profile collision guard on one node; it
+   takes no consumer input. Issue #169 proposes a consumer karg path, and
+   would be the change that turns this from "no path exists" into "a guard
+   must exist" — see §Consequences.)
 2. **`iommu=pt` is not a neutral default.** It changes the host's DMA
    translation policy (see §Validation for the verbatim kernel wording), a
    real security/performance trade-off the base was making silently on every
@@ -91,8 +95,12 @@ meaning or the vendor-resolution the profile exists to provide.
   → new installer URL → re-image), and their host-owned devices revert from
   passthrough-by-default to the Talos kernel build's
   `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` value. This ADR does **not** claim to
-  know that value — consumers who want the prior behavior should set
-  `iommu=pt` explicitly.
+  know that value. Nor can such a consumer restore the prior behavior in this
+  tag: there is no consumer kernel-arg input, and the machine-config sink is
+  a no-op for boot args under Talos v1.10+ — they must wait for #169. The
+  isolation of devices actually passed through is unaffected either way (a
+  `vfio-pci`-bound device is isolated by its own VFIO domain, not by the
+  default domain type); the exposure is host-owned-device DMA throughput.
 - Follow-up: #169 (consumer-supplied schematic `extra_kernel_args`) is the
   supported path to re-add `iommu=pt` as an explicit consumer choice. The
   cloud/ARM scoping of the capability itself is tracked separately.

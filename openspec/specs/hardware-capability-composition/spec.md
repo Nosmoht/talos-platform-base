@@ -48,11 +48,14 @@ modules and sysctls.
 A profile's kernel arguments (top-level or vendor-variant) SHALL be
 limited to the arguments named by the `presence_predicate` of the atoms
 the profile `provides` (`platform-hardware-features.yaml`). Host tuning
-is consumer policy and SHALL NOT be carried by a capability profile: a
-profile argument reaches the schematic base-owned, and the
-`karg_conflicts` precondition fails the plan on any consumer argument
-setting the same key to a different value — so every key a profile
-claims is a key the consumer permanently loses. This is an authoring
+is consumer policy and SHALL NOT be carried by a capability profile: the
+schematic kernel-argument sink is fed exclusively by the union of the
+selected profiles' arguments — the module exposes no consumer
+kernel-argument input at all — so an argument a profile claims is one the
+consumer cannot set, override, or opt out of. (`karg_conflicts` guards
+profile-vs-profile collisions on one node; it takes no consumer input.
+A consumer kernel-argument path is proposed but not implemented — until
+it exists, base ownership of the sink is total.) This is an authoring
 contract over the catalog, enforced at review rather than at plan time
 (`knowledge/decisions/0016-capability-profiles-predicate-only.md`).
 
@@ -61,8 +64,8 @@ contract over the catalog, enforced at review rather than at plan time
 - **WHEN** a node whose image declares `cpu_vendor: intel` holds a
   capability resolving to the `iommu` profile
 - **THEN** the composed schematic carries `intel_iommu=on` and no
-  host-DMA tuning argument — the `iommu` kernel-argument key stays free
-  for consumer policy
+  host-DMA tuning argument — the `iommu` key is left unclaimed by the
+  catalog, so a future consumer kernel-argument path can own it
 
 ### Requirement: Referential-integrity guards
 
