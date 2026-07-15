@@ -15,6 +15,13 @@
   no `BEGIN_TF_DOCS` markers and `task tofu:docs` swallows the miss with
   `|| true`, so the tables are hand-maintained and the contract was carried
   by hand three times.
+- `reference/cluster-yaml.md`: §Two consumers now cites
+  `openspec/specs/argocd-day-zero-bootstrap/` for the bootstrap-identity
+  subset instead of carrying it. The subset and the two envsubst containment
+  guards moved into that spec via the first `openspec/changes/` proposal
+  (archived `2026-07-15-spec-bootstrap-identity-subset`) — they were shipped
+  behavior that only this doc described, on a Taskfile fragment the staleness
+  gate already watches.
 - `reference/cluster-yaml.md`: schema-shape section removed — all eight
   `openspec/specs/cluster-yaml-sot/` requirements were re-checked against it
   first, `substrate` included, and they carry every point normatively from

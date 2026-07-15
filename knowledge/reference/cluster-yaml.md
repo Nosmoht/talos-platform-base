@@ -28,25 +28,27 @@ and committed in consumer repos per repo convention.
 > **The file's shape is normative in the spec, not here.** Required keys, field
 > types, patterns and the closed-root rule live in
 > `openspec/specs/cluster-yaml-sot/`, derived from
-> `schemas/cluster.schema.json` (SoT map:
+> `schemas/cluster.schema.json`; the bootstrap-identity subset and the
+> envsubst containment guards live in
+> `openspec/specs/argocd-day-zero-bootstrap/` (SoT map:
 > [ADR-0015](../decisions/0015-openspec-adoption.md)). This document carries
-> only what the spec does not: who reads which subset, why secrets have no slot
-> and where they go instead, and how CI binds the lint gate.
+> only what those specs do not: why secrets have no slot and where they go
+> instead, the authoring notes the schema cannot express, and how CI binds the
+> lint gate.
 
 Seeding: `task cluster:init-yaml` copies `cluster.yaml.example` to
 `cluster.yaml` if (and only if) it does not already exist.
 
 ## Two consumers, two subsets
 
-1. **`task bootstrap:argocd`** reads only the **bootstrap-identity subset**,
-   extracted with `yq` in the internal `bootstrap:render-root` task:
-   `.cluster.name`, `.cluster.overlay`,
-   `.cluster.target_revision // "main"`, and `.repo.url`. The values are
-   `envsubst`-rendered into the App-of-Apps root templates under
-   `kubernetes/bootstrap/argocd/` (any value containing `$` is rejected as
-   unsafe for `envsubst`). The file is selected via the Taskfile `ENV`
-   variable (default `cluster.yaml`; override per invocation with
-   `task bootstrap:argocd ENV=other.yaml`).
+1. **`task bootstrap:argocd`** reads only the **bootstrap-identity subset** —
+   four fields, extracted with `yq` in the internal `bootstrap:render-root`
+   task and `envsubst`-rendered into the App-of-Apps root templates under
+   `kubernetes/bootstrap/argocd/`. The subset and the two guards that keep a
+   `cluster.yaml` value from expanding into anything but itself are normative
+   in `openspec/specs/argocd-day-zero-bootstrap/`. The file is selected via
+   the Taskfile `ENV` variable (default `cluster.yaml`; override per
+   invocation with `task bootstrap:argocd ENV=other.yaml`).
 2. **The consumer OpenTofu root** reads the **full file**. The worked shim is
    `tofu/modules/talos-cluster/examples/complete/main.tf`: it `yamldecode`s
    the file, re-encodes the structured patch maps (`config_patches`,
