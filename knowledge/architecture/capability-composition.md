@@ -3,7 +3,7 @@ type: architecture
 title: Capability Composition
 description: How per-node hardware capabilities compose Layer-C atoms, the base-owned provisioning-profile catalog, deduplicated schematics, and node labels in the talos-cluster module.
 tags: [layer-c, hardware-capabilities, talos, opentofu]
-timestamp: 2026-07-11
+timestamp: 2026-07-15
 sources:
   - tofu/modules/talos-cluster/composition.tf
   - tofu/modules/talos-cluster/profiles.tf
@@ -88,8 +88,8 @@ feature so they cannot drift:
 
 Shipped catalog: `drbd` (provides `drbd-kernel-module`; `siderolabs/drbd`
 extension + drbd modules), `iommu` (provides `iommu-enabled`; `vfio-pci`
-module + `intel`/`amd` variants carrying `intel_iommu=on`/`amd_iommu=on` with
-`iommu=pt`), and `nvidia-lts` (provides nothing — `nvidia-gpu` is an
+module + `intel`/`amd` variants carrying `intel_iommu=on`/`amd_iommu=on`),
+and `nvidia-lts` (provides nothing — `nvidia-gpu` is an
 NFD-detected presence atom; the profile bakes the LTS open-driver extensions,
 nvidia kernel modules, and a `net.core.bpf_jit_harden` sysctl).
 

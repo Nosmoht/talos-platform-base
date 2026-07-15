@@ -5,6 +5,24 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — BREAKING
+
+- **`talos-cluster`: the `iommu` provisioning profile no longer bakes
+  `iommu=pt`.** The profile's `intel`/`amd` variants now carry only
+  `intel_iommu=on` / `amd_iommu=on` — the args the `iommu-enabled` Layer-C
+  atom's `presence_predicate` actually names. `iommu=pt` is a host-DMA
+  translation-policy default (kernel docs: "Equivalent to
+  `iommu.passthrough=1`" → "Bypass the IOMMU for DMA"), not part of the
+  capability; it entered the catalog by being copied out of a README example
+  and was never a decision. **Consumer impact:** a node selecting the `iommu`
+  capability gets a new schematic content hash → new installer URL →
+  **re-image**, and its host-owned devices revert from passthrough-by-default
+  to the Talos kernel build's `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` value. To
+  keep the previous behavior, set `iommu=pt` explicitly as consumer policy —
+  the `iommu` kernel-arg key is now free, so it no longer collides with the
+  profile. Decision:
+  [`knowledge/decisions/0014-capability-profiles-predicate-only.md`](knowledge/decisions/0014-capability-profiles-predicate-only.md).
+
 ### Added
 
 - **The OKF bundle's maintenance contract is now rendered into `AGENTS.md`.**

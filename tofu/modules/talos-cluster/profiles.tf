@@ -12,7 +12,12 @@
 #                  provisions content for an NFD-DETECTED atom, e.g. nvidia)
 #   extensions     Image-Factory system extensions      -> schematic
 #   kernel_args    boot-time kernel cmdline args         -> schematic
-#                  customization.extraKernelArgs (the v1.10+ UKI-correct sink)
+#                  customization.extraKernelArgs (the v1.10+ UKI-correct sink).
+#                  Carries ONLY the args the provided atom's presence_predicate
+#                  names (platform-hardware-features.yaml). Host tuning is
+#                  consumer policy and does not belong in a capability profile:
+#                  a profile karg is base-owned and a consumer cannot override
+#                  it, so every arg here is a freedom the consumer loses.
 #   kernel_modules modules to load                       -> machine.kernel.modules
 #   sysctls        sysctl key/values                     -> machine.sysctls
 #   variants       vendor-specific kernel_args, resolved by the node image's
@@ -44,8 +49,8 @@ locals {
       kernel_modules = [{ name = "vfio-pci", parameters = [] }]
       sysctls        = {}
       variants = {
-        intel = { kernel_args = ["intel_iommu=on", "iommu=pt"] }
-        amd   = { kernel_args = ["amd_iommu=on", "iommu=pt"] }
+        intel = { kernel_args = ["intel_iommu=on"] }
+        amd   = { kernel_args = ["amd_iommu=on"] }
       }
     }
 
