@@ -24,17 +24,23 @@ maintainer's local workflow, not a public artefact. See
 [vision](vision.md) §"Harness plugin (separate repo)" for the honest
 read on what is in flight today.
 
-This base ships **no `.claude/`** by design; the harness plugin is the
-runtime executor for Claude-Code primitives. This file states the contract
-from the base's side.
+This base ships **no hand-authored `.claude/` primitives** by design; the
+harness plugin is the runtime executor for Claude-Code primitives. Since
+[ADR-0014](../decisions/0014-ship-ai-tool-artifacts.md) the base DOES commit
+the tool-GENERATED OpenSpec integration trees (`.claude/commands/opsx/`,
+`.claude/skills/openspec-*/` and the Codex counterpart, regenerable via
+`task spec:update`) — that reversal does not change this contract, which
+concerns hand-authored rules, subagents, and hooks. This file states the
+contract from the base's side.
 
 ## Why this exists
 
-`CLAUDE.md` enforces: this base ships no `.claude/` directory. That
-is deliberate — tool-namespaced directories belong to the runtime
-that consumes them. Claude Code is *one* runtime; Codex CLI reads
-`AGENTS.md` directly and needs no `.claude/`. Putting rules,
-subagents, or hooks under `.claude/` here would couple repo SOT to
+`CLAUDE.md` enforces: this base ships no hand-authored Claude-Code
+primitives (the committed OpenSpec-generated trees per ADR-0014 are the
+sole, regenerable exception). That is deliberate — tool-namespaced
+runtime content belongs to the runtime that consumes it. Claude Code is
+*one* runtime; Codex CLI reads `AGENTS.md` directly. Putting hand-authored
+rules, subagents, or hooks under `.claude/` here would couple repo SOT to
 Claude Code, which is a Right-Altitude violation (see CLAUDE.md
 operating rules in any consumer repo).
 
@@ -94,7 +100,8 @@ base, and availability in any given harness varies):
 
 > [2026-07-11 verification] The original claim "CLAUDE.md §Subagents lists
 > them" is stale — `CLAUDE.md` no longer contains a §Subagents section; it
-> now states the base ships no Claude-Code primitives at all. Of the table
+> states the base ships no hand-authored Claude-Code primitives (since
+> ADR-0014 the OpenSpec-generated trees are committed). Of the table
 > above, `researcher`, `builder-implementer` and `builder-evaluator` are
 > observable in the maintainer's harness at verification time;
 > `gitops-operator`, `talos-sre` and `platform-reliability-reviewer` were

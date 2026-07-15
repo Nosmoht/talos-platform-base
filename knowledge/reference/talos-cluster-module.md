@@ -27,6 +27,14 @@ gate, kubeconfig/talosconfig). It is backend- and caller-agnostic — no
 land in state). Decision background:
 [0006-opentofu-cluster-lifecycle](../decisions/0006-opentofu-cluster-lifecycle.md).
 
+> **Normative requirements live in the OpenSpec specs** (SoT map:
+> [ADR-0015](../decisions/0015-openspec-adoption.md)) — this document stays
+> narrative. Per section: interface → `openspec/specs/module-interface-contract/`,
+> capability composition → `openspec/specs/hardware-capability-composition/`,
+> machine-config → `openspec/specs/machine-config-generation/`, bootstrap flow →
+> `openspec/specs/cluster-bootstrap-lifecycle/`, installer/schematic surface →
+> `openspec/specs/node-image-composition/`.
+
 Hand-maintained per-variable/per-output tables live in
 `tofu/modules/talos-cluster/README.md`; this page summarizes the groups and
 the invariants instead of duplicating those tables. (The README carries no

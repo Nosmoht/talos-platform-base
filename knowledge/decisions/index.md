@@ -14,6 +14,8 @@ Frontmatter is canonical for status and dates.
 - [ADR: Node Capability Composition (γ') — composable per-node features over monolithic classes](0009-node-capability-composition.md) - composable per-node hardware capabilities with explicit base-owned provisioning profiles replace monolithic node classes (accepted)
 - [ADR: Retire the Makefile — go-task is the single runner](0012-makefile-retirement.md) - surviving targets fold into namespaced Taskfile tasks behind a one-release deprecation stub (accepted)
 - [ADR: Kubelet serving-cert rotation as substrate default + cert-approver as a Talos seed](0013-kubelet-serving-cert-rotation.md) - serving-cert rotation default-on for all nodes; cert-approver seeded unconditionally via controlplane inlineManifest (accepted)
+- [ADR: Ship tool-generated AI artifacts in the base](0014-ship-ai-tool-artifacts.md) - the base commits tool-generated, regenerable AI-tool artifacts (OpenSpec skill/command trees); hand-authored harness primitives remain external (accepted)
+- [ADR: OpenSpec as the behavioral-requirements surface](0015-openspec-adoption.md) - adopts OpenSpec with a directly-authored backfill of 14 substrate capability specs; openspec/specs/ is normative for behavioral requirements, scoped to consumer-facing platform behavior (accepted)
 
 ## Proposed
 

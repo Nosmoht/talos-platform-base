@@ -151,6 +151,7 @@ flowchart LR
     Pol["policies/<br/>conftest Rego"]
     Scripts["scripts/<br/>render + lint helpers"]
     Docs["knowledge/<br/>OKF bundle: decisions + reference"]
+    Specs["openspec/<br/>behavioral capability specs"]
     CI[".github/workflows/<br/>gitops-validate<br/>oci-publish<br/>hard-constraints-check"]
 
     Make --> Pol

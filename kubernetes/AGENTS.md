@@ -29,7 +29,7 @@ the rule catalogue.
 - **No `kind: Ingress`** — use `HTTPRoute`/`TLSRoute` (Gateway API)
 - **No `kind: Endpoints`** — use `EndpointSlice`
 - **No `kubectl apply` on ArgoCD-managed resources** — commit to git, push, let ArgoCD sync
-- **Labels**: all resources must carry `app.kubernetes.io/{name,instance,component,part-of,managed-by}`
+- **Labels**: all resources must carry `app.kubernetes.io/{name,instance,version,component,part-of,managed-by}`
 - **CNP naming**: `cnp-<component>.yaml` (namespace-scoped), `ccnp-<description>.yaml` (clusterwide)
 - **PNI first**: new consumer-to-platform connectivity must use PNI labels before ad-hoc CNPs
   - Required: `platform.io/network-interface-version: v1` + `platform.io/network-profile: restricted|managed|privileged`

@@ -29,8 +29,10 @@ Conventions declared in `Taskfile.yml`:
   `MCP_TALOS_VERSION: 1.1.0`).
 - Knowledge-bundle tool pins (`OPENKNOWLEDGE_VERSION: 0.5.0`,
   `LYCHEE_VERSION: 0.24.2`) plus their per-platform sha256 checksums are
-  Taskfile vars, kept in sync with `.tool-versions` and the
-  `docs-lint.yml` workflow env.
+  Taskfile vars, kept in sync with `.tool-versions` by
+  `task dev:verify-pins`. The npm-distributed pins (`openspec`,
+  `markdownlint-cli`) live in `package.json` + `package-lock.json`
+  (integrity-hashed) instead of Taskfile vars.
 
 ## `tofu:*` — OpenTofu cluster-lifecycle module validation
 
@@ -111,6 +113,27 @@ Details of `bootstrap:argocd`:
 | `knowledge:new` | Scaffold a new concept file with the bundle's frontmatter convention (usage: `task knowledge:new FILE=reference/foo.md TYPE=reference`). |
 | `knowledge:install-cli` | Download the pinned, checksum-verified `openknowledge` + `lychee` release binaries for the host platform into `~/.local/bin`. |
 
+## `spec:*` — OpenSpec behavioral specs
+
+Not the same tool as `knowledge:*` — `openspec` validates the behavioral
+capability specs under `openspec/`; `openknowledge` validates the OKF
+bundle. See `knowledge/workflows/spec-driven-development.md`.
+
+| Task | Purpose |
+| --- | --- |
+| `spec:validate` | Strict `openspec validate` over `openspec/`, a bite-check (a committed malformed fixture must fail validation, run against a temp copy), the source-ownership partition assert (`scripts/check-spec-partition.py`: exclusivity + completeness over the enumerated universe per ADR-0015), and an offline `lychee` pass. Run verbatim by `docs-lint.yml`. Precondition: `task spec:install-cli` + `task knowledge:install-cli` (lychee). |
+| `spec:check-regen` | Regeneration parity: whole-tree delta after `openspec update --force` must be empty — the committed tool trees equal the pinned generator's output (parity only, not benignity). Run verbatim by `docs-lint.yml`. Overwrites uncommitted edits inside the generated trees. |
+| `spec:install-cli` | Install the lockfile-pinned `openspec` CLI: shared `npm ci --ignore-scripts` (integrity-verified via `package-lock.json`) + `~/.local/bin` symlink. Precondition: `npm`. |
+| `spec:check-staleness` | Staleness gate: fail when the diff against `BASE` (default `origin/main`) touches a spec's `primary` source without touching the owning spec (`scripts/check-spec-staleness.py`; fragment-keyed sources fire at fragment granularity, fail-closed on unresolvable fragments). Escape for verified no-behavior-change diffs: `Spec-Impact: none` trailer in the BODY of every commit touching the file (per-commit scope). Run by `docs-lint.yml` on PRs. |
+| `spec:update` | Regenerate the committed OpenSpec tool integrations (`.claude/`, `.codex/`) after a CLI upgrade; fails when the regeneration emitted paths `.gitignore` still ignores (delta-based gate). Regenerated diffs are security-relevant review surface (ADR-0014). |
+
+## `docs:*` — repo-wide markdown lint
+
+| Task | Purpose |
+| --- | --- |
+| `docs:lint` | `markdownlint` over the whole repo with `.markdownlintignore`. Run verbatim by `docs-lint.yml`. Precondition: `task docs:install-cli`. |
+| `docs:install-cli` | Install the lockfile-pinned `markdownlint-cli`: shared `npm ci --ignore-scripts` + `~/.local/bin` symlink. |
+
 ## `mcp:*` — MCP server binary management
 
 | Task | Purpose |
@@ -131,6 +154,7 @@ the pinned Taskfile vars above. See the MCP setup workflow
 | --- | --- |
 | `dev:install-pre-commit` | `uvx pre-commit install` + one advisory run across the repo. |
 | `dev:verify-tools` | Confirm installed binaries match the `.tool-versions` pins (`scripts/verify-tools.sh`). |
+| `dev:verify-pins` | Assert the Taskfile `vars:` pins (openknowledge, lychee) and the `package.json` pins (openspec, markdownlint-cli) agree with `.tool-versions`. Run verbatim by `docs-lint.yml`. |
 
 ## Makefile deprecation stub
 

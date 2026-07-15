@@ -4,9 +4,28 @@ name: docs-lint
 # (1) the offline link gate checks links whose TARGETS are non-markdown
 #     files (scripts, schemas, contracts) — a PR deleting a target without
 #     touching *.md must still trigger the gate;
-# (2) an unfiltered job is safe to promote to a required branch-protection
-#     context later (a path-filtered required check hangs non-matching PRs
-#     as "Expected — waiting"). The job is cheap (~seconds).
+# (2) an unfiltered job is safe to be a required branch-protection context
+#     (a path-filtered required check hangs non-matching PRs as
+#     "Expected — waiting"). The job is cheap (~seconds).
+#
+# Contract: every CHECK step runs a Taskfile target, never inline shell —
+# the identical chain is runnable locally (`task dev:verify-pins`,
+# `task docs:lint`, `task knowledge:validate`, `task knowledge:rules-check`,
+# `task spec:validate`, `task spec:check-regen`, `task spec:check-staleness`).
+# Tool pins live in .tool-versions + the Taskfile vars block + package.json;
+# `dev:verify-pins` asserts those pairs.
+#
+# go-task's own pin is the one inline step, for a narrow reason: setup-task
+# installs the binary that runs every target below, so the assert has to sit
+# before any target can run. `dev:verify-tools` DOES cover the task pin (and
+# covers it more strongly — it reads `task --version`, i.e. the installed
+# binary, not a string in a file), but it asserts the FULL .tool-versions set
+# and this job installs only a subset, so it is red here by construction.
+# Honest scope of the inline assert: it proves this file and .tool-versions
+# agree. It does not observe the installed binary — a setup-task cache hit or
+# a PATH-shadowed `task` would satisfy it. Nor does it reach the two
+# setup-task pins in tofu-validate.yml, which stay comment-only. Both gaps
+# are tracked as follow-ups.
 on:
   pull_request:
   push:
@@ -16,102 +35,102 @@ permissions:
   contents: read
 
 jobs:
-  markdownlint:
-    # name: MUST stay "docs-lint" — branch protection requires the context
-    # "docs-lint". GitHub derives the context from a job's name: (falling back
-    # to the job ID), so without this the job reported as "markdownlint" and
-    # the required context could never be satisfied. Same contract as
-    # hard-constraints-check.yml. scripts/preflight-checks.sh asserts it.
+  docs-lint:
+    # name: MUST stay "docs-lint" — branch protection requires that context,
+    # and GitHub derives it from name: (falling back to the job id). Declared
+    # explicitly rather than riding the fallback, so a job-id rename cannot
+    # silently un-gate the check. Same contract as hard-constraints-check.yml;
+    # scripts/preflight-checks.sh asserts it.
     name: docs-lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      # Tool versions — KEEP IN SYNC with .tool-versions and the Taskfile
-      # knowledge:* vars block (drift-checked against .tool-versions below).
-      # Checksums from the projects' released checksum files. If the
-      # upstream release disappears, this job fails until the pin is
-      # bumped — bump version + checksum here, in Taskfile.yml, and in
-      # .tool-versions together.
-      OPENKNOWLEDGE_VERSION: "0.5.0"
-      OPENKNOWLEDGE_SHA256_LINUX_AMD64: 0f58de81e52f064fbf52aac5289e0b1b6dc0e58de2f47c4e043263e9e927cb27
-      LYCHEE_VERSION: "0.24.2"
-      LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+      # go-task — the executor of every gate below; an unpinned payload
+      # behind a pinned installer is still an unpinned gate. KEEP IN SYNC
+      # with .tool-versions (asserted by the drift step below).
       TASK_VERSION: "3.48.0"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Full history: the staleness gate diffs against the PR base ref.
+          fetch-depth: 0
 
-      - name: Verify env tool-versions match .tool-versions
-        # Same drift-detector pattern as gitops-validate.yml — the env
-        # block above and .tool-versions must agree.
+      - name: Verify TASK_VERSION matches .tool-versions
+        # The one inline check in this file, by necessity: it guards the pin
+        # of the binary that runs every Taskfile target below, so it cannot
+        # itself be a Taskfile target. Same drift-detector pattern as
+        # gitops-validate.yml. Every other tool pin is asserted by
+        # `task dev:verify-pins`.
         run: |
           set -eu
-          fail=0
-          tv() { awk -v k="$1" '$1==k {print $2}' .tool-versions; }
-          assert() {
-            if [ "$2" != "$3" ]; then
-              echo "DRIFT:    $1 .tool-versions=$2 workflow-env=$3"; fail=1
-            else
-              echo "OK:       $1 $2"
-            fi
-          }
-          assert openknowledge "$(tv openknowledge)" "$OPENKNOWLEDGE_VERSION"
-          assert lychee        "$(tv lychee)"        "$LYCHEE_VERSION"
-          assert task          "$(tv task)"          "$TASK_VERSION"
-          exit "$fail"
-
-      - name: Install markdownlint-cli
-        run: npm install -g markdownlint-cli@0.42.0
-
-      - name: Lint Markdown
-        run: markdownlint '**/*.md' --ignore-path .markdownlintignore
-
-      - name: Install openknowledge (pinned + checksum)
-        run: |
-          set -euo pipefail
-          tmp="$(mktemp -d)"
-          curl -fsSLo "$tmp/ok.tar.gz" \
-            "https://github.com/openknowledge-sh/openknowledge/releases/download/v${OPENKNOWLEDGE_VERSION}/openknowledge_linux_amd64.tar.gz"
-          echo "${OPENKNOWLEDGE_SHA256_LINUX_AMD64}  $tmp/ok.tar.gz" | sha256sum -c -
-          tar -xzf "$tmp/ok.tar.gz" -C "$tmp"
-          sudo install -m 0755 "$tmp/openknowledge" /usr/local/bin/openknowledge
-          openknowledge version
+          tv="$(awk '$1=="task" {print $2}' .tool-versions)"
+          [ -n "$tv" ] || { echo "FAIL: no 'task' pin in .tool-versions"; exit 1; }
+          if [ "$tv" != "$TASK_VERSION" ]; then
+            echo "DRIFT: task .tool-versions=$tv workflow-env=$TASK_VERSION"; exit 1
+          fi
+          echo "OK: task $tv"
 
       - name: Install go-task (pinned to a commit)
         # Two pins, both load-bearing. The action is SHA-pinned rather than
         # @v3 because this workflow pins every other input and is a required,
         # path-unfiltered context — a moving ref would reach every PR at once.
-        # The go-task VERSION is pinned exactly (not 3.x) because go-task
-        # executes the gates below: an unpinned payload behind a pinned
-        # installer is still an unpinned gate. tofu-validate.yml keeps the
-        # mutable @v2 ref; it is path-filtered and not required, and its
-        # alignment is a separate PR.
+        # The go-task VERSION is pinned exactly (not 3.x) for the reason in
+        # the env block above. tofu-validate.yml keeps the mutable @v2 ref;
+        # it is path-filtered and not required.
         uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
         with:
           version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install lychee (pinned + checksum)
-        run: |
-          set -euo pipefail
-          tmp="$(mktemp -d)"
-          curl -fsSLo "$tmp/ly.tar.gz" \
-            "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz"
-          echo "${LYCHEE_SHA256_LINUX_AMD64}  $tmp/ly.tar.gz" | sha256sum -c -
-          tar -xzf "$tmp/ly.tar.gz" -C "$tmp"
-          # Release tarballs may nest the binary in a per-target directory.
-          ly_bin="$(find "$tmp" -type f -name lychee | head -1)"
-          test -n "$ly_bin"
-          sudo install -m 0755 "$ly_bin" /usr/local/bin/lychee
-          lychee --version
+      - name: task dev:verify-pins (Taskfile vars + package.json ↔ .tool-versions)
+        run: task dev:verify-pins
 
-      - name: Validate knowledge bundle (OKF + offline link gate)
+      - name: task install-cli (markdownlint + openspec via npm ci lockfile; openknowledge + lychee pinned + checksum)
+        # One task invocation so the shared `npm ci --ignore-scripts`
+        # (dev:npm-ci, run: once) executes exactly once for both npm tools.
+        run: task docs:install-cli spec:install-cli knowledge:install-cli
+
+      - name: task docs:lint
+        run: task docs:lint
+
+      - name: task knowledge:validate
         # Both gates live in the Taskfile target so the local chain and the CI
         # chain are the same command. knowledge/openknowledge.toml raises
         # link-target and rule-catalog to error, so a broken link or a
         # malformed rule document fails this step.
         run: task knowledge:validate
 
-      - name: Check the AGENTS.md managed block for drift
+      - name: task knowledge:rules-check
         # The Open Knowledge maintenance block in AGENTS.md is generated from
         # knowledge/rules/. Fails if it was hand-edited or left stale.
         run: task knowledge:rules-check
+
+      - name: task spec:validate
+        # Strict validate + bite-check (malformed fixture must fail) +
+        # source-ownership partition + offline link pass.
+        run: task spec:validate
+
+      - name: task spec:check-regen
+        # Committed tool trees must equal the pinned generator's output
+        # (whole-tree delta; catches added/modified/deleted files). Parity
+        # only — instruction-body review stays mandatory (ADR-0014).
+        run: task spec:check-regen
+
+      - name: task spec:check-staleness (PR only)
+        # ADR-0015 staleness convention, CI-enforced: a PR touching a
+        # spec's primary source must also touch the owning spec. Escape
+        # for verified no-behavior-change diffs: the 'Spec-Impact: none'
+        # trailer on EVERY commit touching the file (per-commit scope;
+        # reviewer judges the claim).
+        if: github.event_name == 'pull_request'
+        env:
+          # env-bound (not inline-interpolated into `run:`): github.base_ref
+          # is on GitHub's untrusted-input list — inline expansion would let
+          # a metacharacter-named base branch inject into the runner shell.
+          # This closes the Actions-expression layer ONLY. The value then
+          # reaches go-task, which renders CLI vars as raw text into the
+          # command string — that second layer is closed in the Taskfile
+          # (spec:check-staleness passes BASE via env, never the template).
+          # Both are load-bearing; neither alone is sufficient.
+          BASE_REF: ${{ github.base_ref }}
+        run: task spec:check-staleness BASE="origin/${BASE_REF}"

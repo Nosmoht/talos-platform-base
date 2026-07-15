@@ -25,6 +25,11 @@ that maps this file onto the typed interface of the
 `cluster.yaml.example`; the real `cluster.yaml` is gitignored at the base and
 committed in consumer repos per repo convention.
 
+> **Normative requirements live in the OpenSpec spec**
+> `openspec/specs/cluster-yaml-sot/` (SoT map:
+> [ADR-0015](../decisions/0015-openspec-adoption.md)) — this document stays
+> narrative.
+
 Seeding: `task cluster:init-yaml` copies `cluster.yaml.example` to
 `cluster.yaml` if (and only if) it does not already exist.
 

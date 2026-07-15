@@ -33,8 +33,8 @@ variable "talos_version" {
   type        = string
 
   validation {
-    condition     = can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+", var.talos_version))
-    error_message = "talos_version must be a v-prefixed semver, e.g. v1.13.0."
+    condition     = can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$", var.talos_version))
+    error_message = "talos_version must be a v-prefixed semver (optional pre-release/build suffix), e.g. v1.13.0."
   }
 }
 
@@ -54,8 +54,8 @@ variable "talos_install_version" {
   default     = ""
 
   validation {
-    condition     = var.talos_install_version == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+", var.talos_install_version))
-    error_message = "talos_install_version must be empty (= falls back to talos_version) or a v-prefixed semver, e.g. v1.13.1."
+    condition     = var.talos_install_version == "" || can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$", var.talos_install_version))
+    error_message = "talos_install_version must be empty (= falls back to talos_version) or a v-prefixed semver (optional pre-release/build suffix), e.g. v1.13.1."
   }
 }
 
@@ -64,8 +64,8 @@ variable "kubernetes_version" {
   type        = string
 
   validation {
-    condition     = can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+", var.kubernetes_version))
-    error_message = "kubernetes_version must be a v-prefixed semver, e.g. v1.36.0."
+    condition     = can(regex("^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$", var.kubernetes_version))
+    error_message = "kubernetes_version must be a v-prefixed semver (optional pre-release/build suffix), e.g. v1.36.0."
   }
 }
 

@@ -1,9 +1,12 @@
 # INTENTIONALLY INVALID cluster.yaml — negative fixture for lint-cluster-yaml.sh
-# (issue #136 Task 3). Valid in every respect EXCEPT one node carries
-# role: master, which the schema's node.role enum (controlplane | worker) rejects.
-# CI asserts this file is REJECTED; relax the role enum in
-# schemas/cluster.schema.json and the negative CI step turns red.
-# Not a runnable cluster — RFC5737 documentation IPs.
+# (issue #136 Task 3). Valid in every respect EXCEPT two violations, each
+# binding one schema rule red-green (CI asserts BOTH are named in the output):
+#   1. node role: master — violates the node.role enum (controlplane | worker).
+#   2. talos.install_version: v1.12.6.4 — trailing garbage after the PATCH
+#      segment; violates the fully anchored version pattern (the former
+#      start-anchored pattern accepted this value).
+# Relax either rule in schemas/cluster.schema.json and the negative CI step
+# turns red. Not a runnable cluster — RFC5737 documentation IPs.
 cluster:
   name: bad-cluster
   endpoint: https://bad-cluster-api.example.com:6443
@@ -11,6 +14,7 @@ repo:
   url: https://github.com/example/bad-cluster.git
 talos:
   version: v1.12.6
+  install_version: v1.12.6.4 # INVALID: trailing garbage after the PATCH segment
 kubernetes:
   version: v1.35.0
 images:

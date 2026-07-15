@@ -92,6 +92,11 @@ footer, or the change ships as a non-breaking release. See
 
 ```bash
 task gitops:validate             # kustomize + conftest + kubeconform
+task spec:validate               # when openspec/ or a spec's primary source changed
+task spec:check-staleness        # primary-source diff must touch the owning spec
+                                 # (escape for no-behavior-change diffs:
+                                 #  'Spec-Impact: none' trailer on EVERY commit
+                                 #  touching the file)
 ```
 
 For changes touching a single component:
@@ -120,7 +125,7 @@ task tofu:ci   # tofu fmt -check + tofu validate + tflint
 | `gitops-validate` | full render+lint+policy pipeline |
 | `hard-constraints-check` | no Ingress/Endpoints kinds, etc. |
 | `secret-scan` (gitleaks) | last-backstop on bypassed pre-commit |
-| `docs-lint` | markdownlint, OKF bundle validation, offline link gate, AGENTS.md managed-block drift |
+| `docs-lint` | tool-pin drift, markdownlint, OKF bundle validation, offline link gate, AGENTS.md managed-block drift, OpenSpec strict validate (incl. bite-check + source-ownership partition), regeneration parity of the committed tool trees, and spec staleness (escape: a `Spec-Impact: none` trailer on every commit touching the file) |
 | `preflight` | asserts the required-check contexts are wired |
 | `oci-publish` dry-run (on tag PRs only) | confirms signing path works |
 
@@ -142,6 +147,9 @@ hard constraints), update **at minimum**:
 - `CHANGELOG.md` (Unreleased section — Added / Changed / Deprecated / Removed / Fixed / Security).
 - Either a decision record (decision-grade, `knowledge/decisions/`) or the
   matching `knowledge/` concept.
+- The owning OpenSpec spec (`openspec/specs/`) when the change alters
+  platform behavior — as a spec delta via `openspec/changes/`; see
+  [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
 
 The bundle's own authoring conventions — the closed `type` vocabulary, the
 `timestamp`/`sources` staleness contract, the link rule, and the `log.md`

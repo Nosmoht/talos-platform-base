@@ -246,16 +246,27 @@ jobs:
           # (env/arg error — schema/file missing, no check-jsonschema). Treating
           # any non-zero as "rejected" lets a broken toolchain pass vacuously.
           rc=0
-          scripts/lint-cluster-yaml.sh schemas/fixtures/cluster.invalid.yaml || rc=$?
+          out=$(scripts/lint-cluster-yaml.sh schemas/fixtures/cluster.invalid.yaml 2>&1) || rc=$?
           if [ "$rc" -eq 0 ]; then
             echo "FAIL: malformed cluster.yaml fixture passed schema validation" >&2
             exit 1
           fi
           if [ "$rc" -ne 1 ]; then
             echo "FAIL: linter errored (exit $rc), did not reach a schema verdict" >&2
+            printf '%s\n' "$out" >&2
             exit 1
           fi
-          echo "OK: malformed cluster.yaml fixture correctly rejected (exit 1)"
+          # Bind BOTH fixture violations individually: relaxing the role enum
+          # or de-anchoring the version pattern must each turn this step red,
+          # even while the other violation still fails the file.
+          for v in '$.nodes[0].role' '$.talos.install_version'; do
+            if ! printf '%s\n' "$out" | grep -qF "$v"; then
+              echo "FAIL: expected schema violation on $v was not reported — that rule no longer bites" >&2
+              printf '%s\n' "$out" >&2
+              exit 1
+            fi
+          done
+          echo "OK: malformed cluster.yaml fixture rejected with both expected violations (role enum + anchored version pattern)"
 
   reuse-compliance:
     name: REUSE 3.3 compliance

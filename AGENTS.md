@@ -41,6 +41,7 @@ platform layer model (recorded in the platform architecture decision records).
 - `kubernetes/bootstrap/cilium/`: reference Cilium Helm values + `extras.yaml` (GatewayClass) for optional Day-2 self-management. Cilium itself is delivered by the `talos-cluster` module as a controlplane `inlineManifest` seed (`deploy_cilium`); the former consumer-side render path is retired.
 - `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-node composed Image-Factory installer — content-hash-deduped, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root that is a thin `yamldecode` shim over the declarative `cluster.yaml` SoT. See [`knowledge/decisions/0006-opentofu-cluster-lifecycle.md`](knowledge/decisions/0006-opentofu-cluster-lifecycle.md) and [`knowledge/decisions/0007-cluster-yaml-sot.md`](knowledge/decisions/0007-cluster-yaml-sot.md).
 - `policies/`: conftest Rego policies for kustomize-rendered manifests.
+- `openspec/`: behavioral-requirements source of truth (OpenSpec) — one spec per substrate capability under `specs/`, change proposals under `changes/`. See §Spec-Driven Development.
 - `scripts/`: cluster-agnostic validation, render and helper scripts.
 - `knowledge/`: the OKF v0.1 knowledge bundle — architecture, reference, workflows, decision records (ADRs), glossary. Entry point: [`knowledge/index.md`](knowledge/index.md). Contracts a consumer parses live outside the bundle: `schemas/`, `contracts/`, `platform-hardware-features.yaml` (repo root); the bundle itself ships in no release artifact (`.ci-oci-tarball-include.txt`). `knowledge/rules/` is a narrow carve-out for contracts the bundle's own tooling reads: `openknowledge` renders them into this file's Open Knowledge Maintenance block.
 
@@ -69,6 +70,7 @@ referencing both the cluster repo and this base.
 - This repo has no live cluster. Validation is manifest-render and policy focused.
 - Required before opening a PR:
   - `task gitops:validate`
+  - `task spec:validate` when `openspec/` or a spec's `primary` source changed
   - `kubectl kustomize kubernetes/base/infrastructure/<component>/` for any touched component
 - Live runtime verification belongs in consumer cluster repos.
 
@@ -191,9 +193,45 @@ their own SOPS gate via pre-commit.
 
 ## Domain Rules — On-Demand Reference
 
-This base ships no `.claude/rules/` and depends on none. Any domain rules come
-from an external harness that an operator or consumer repo installs — verify a
+This base commits the OpenSpec-GENERATED tool integrations (the Claude Code
+and Codex skill/command trees produced by `openspec init`/`openspec update`;
+regenerable via `task spec:update` — see
+[`knowledge/decisions/0014-ship-ai-tool-artifacts.md`](knowledge/decisions/0014-ship-ai-tool-artifacts.md)).
+Never hand-edit those trees — the next regeneration overwrites them. It still
+ships no hand-authored rules, hooks, or subagents; any domain rules come from
+an external harness that an operator or consumer repo installs — verify a
 rule file is present in the working repo before relying on it.
+
+## Spec-Driven Development (OpenSpec)
+
+`openspec/specs/` is the behavioral-requirements source of truth: one spec per
+substrate capability, covering exactly the externally observable contracts
+enumerated by the spec directories under `openspec/specs/` — never assume
+unlisted behavior is spec'd
+(repo-internal QA is documented in
+`knowledge/`, not spec'd — scope principle in
+[`knowledge/decisions/0015-openspec-adoption.md`](knowledge/decisions/0015-openspec-adoption.md)).
+Normative constraints stay in §Hard Constraints and the ADRs; specs cite them
+and describe observable outcomes.
+
+- A change to platform behavior requires a spec delta via
+  `openspec/changes/` (propose → apply → archive); direct edits to
+  `openspec/specs/` are reserved for the one-time backfill.
+- Validate locally with `task spec:validate` (+ `task spec:check-regen` for
+  the tool trees, `task spec:check-staleness` for the ownership gate); CI
+  (`docs-lint.yml`) runs exactly these Taskfile targets — the local and
+  remote commands are identical (`spec:check-staleness` runs on PR events
+  only).
+- A PR touching a spec's `primary` source file (frontmatter `sources:`)
+  updates the owning spec — CI-enforced by `task spec:check-staleness`;
+  verified no-behavior-change diffs escape via the `Spec-Impact: none`
+  trailer on EVERY commit touching the file (per-commit scope; the PR
+  reviewer judges the claim).
+- Full workflow incl. tool-pin upgrades:
+  [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
+- Do not confuse the tools: `openspec` validates behavioral specs
+  (`spec:*` tasks); `openknowledge` validates the `knowledge/` bundle
+  (`knowledge:*` tasks).
 
 ## MCP Server Configuration
 
@@ -229,6 +267,7 @@ See `knowledge/workflows/issue-lifecycle.md` for the full issue lifecycle.
 2. **No auto-subagent dispatch**: any subagents come from an externally installed harness (not this base) and run only on explicit request.
 3. **No `paths:` rule auto-loading**: if an external harness or consumer repo provides rule files, read the relevant one on demand.
 4. **`--no-verify` bypass is possible locally**: Required PR checks (`gitleaks` CLI in `gitops-validate.yml`, `hard-constraints-check`) block merge server-side.
+5. **OpenSpec invocation differs per tool**: Claude Code uses the `/opsx:*` slash commands from the committed `.claude/commands/` tree; Codex CLI uses its committed skill tree or drives the `openspec` CLI directly (`openspec --help`).
 
 ## ADR-Abdeckung
 

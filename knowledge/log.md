@@ -31,6 +31,45 @@ regeneration, including one that changes the block's length. The renderer
 emits only a bullet's first physical line, so rule bullets are written
 unwrapped.
 
+## 2026-07-13
+
+- ADR-0015 follow-ups closed: spec staleness gate is CI-enforced
+  (`spec:check-staleness` + `scripts/check-spec-staleness.py`;
+  `Spec-Impact: none` trailer escape) and the npm-distributed gate tools
+  (`openspec`, `markdownlint-cli`) install lockfile-based via
+  `npm ci --ignore-scripts` (pins in `package.json`, integrity hashes in
+  `package-lock.json`); `workflows/spec-driven-development.md`,
+  `reference/tasks.md`, `workflows/release-process.md` updated.
+- Toolchain defects from the spec content review fixed (specs updated in
+  the same change): conftest source-classifiability deny replaces the
+  dead chart-omission rule; duplicate hardware-feature-id gate;
+  fully-anchored version patterns (schema + module); fail-closed OCI
+  expected-fixture; `app.kubernetes.io/version` on bootstrap templates.
+- ADR-0014 added (`decisions/0014-ship-ai-tool-artifacts.md`, accepted):
+  reverses the "ships no `.claude/` tree" policy for tool-generated,
+  regenerable artifacts.
+- ADR-0015 added (`decisions/0015-openspec-adoption.md`, accepted):
+  OpenSpec adoption with directly-authored backfill of 14 substrate
+  capability specs; scope principle and SoT-ownership map.
+- New workflow concept `workflows/spec-driven-development.md`: OpenSpec
+  change lifecycle, demarcation against this bundle, pinned-tool upgrade
+  procedure.
+- `reference/talos-cluster-module.md` and `reference/cluster-yaml.md`:
+  pointer notes added — normative behavioral requirements now live in the
+  owning OpenSpec specs (SoT map in ADR-0015); the reference docs stay
+  narrative.
+- `reference/tasks.md`: `spec:*` and `docs:*` namespaces added to the task
+  inventory (validate incl. bite-check + partition assert, check-regen,
+  install-cli, update; repo-wide markdownlint) plus `dev:verify-pins` —
+  `docs-lint.yml` now runs exactly these Taskfile targets (local CI chain
+  == remote CI chain).
+- `project/harness-plugin-contract.md`: "ships no `.claude/`" statements
+  scoped to hand-authored primitives — the committed OpenSpec-generated
+  trees (ADR-0014) are the regenerable exception.
+- `workflows/spec-driven-development.md`: upgrade procedure now frames
+  regenerated tool trees as security-relevant review surface; CI
+  regeneration-parity gate documented.
+
 ## 2026-07-11
 
 - Initial OKF v0.1 bundle. Replaces the retired `docs/` tree: architecture,

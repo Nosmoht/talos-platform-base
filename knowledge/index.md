@@ -42,6 +42,7 @@ for tooling config, not a general licence to move contracts into the bundle.
 - [Issue Lifecycle](workflows/issue-lifecycle.md) - The GitHub issue state machine — status labels, guarded transitions via the issue-state script, and the session-start ritual that gates agent work.
 - [MCP Setup](workflows/mcp-setup.md) - Installing and verifying the three MCP servers, and the wrapper security model that keeps the GitHub token out of shell environments.
 - [Release Process](workflows/release-process.md) - How a release moves from conventional commit through the semantic-release approval gate to a signed OCI artifact on ghcr.io.
+- [Spec-Driven Development (OpenSpec)](workflows/spec-driven-development.md) - How behavioral requirements are maintained in the OpenSpec surface — the change lifecycle, the scope demarcation against knowledge/, and the pinned-tool upgrade procedure.
 - [Verify a Base Release](workflows/verify-release.md) - Fail-closed verification of a published talos-platform-base OCI artifact — signature, provenance, SBOM attestation, and checksums — before vendoring.
 
 ## Project
