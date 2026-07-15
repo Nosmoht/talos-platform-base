@@ -15,7 +15,16 @@
   no `BEGIN_TF_DOCS` markers and `task tofu:docs` swallows the miss with
   `|| true`, so the tables are hand-maintained and the contract was carried
   by hand three times.
-- `index.md`: `reference/talos-cluster-module.md` entry dropped.
+- `reference/cluster-yaml.md`: schema-shape section removed — all eight
+  `openspec/specs/cluster-yaml-sot/` requirements were re-checked against it
+  first, `substrate` included, and they carry every point normatively from
+  the same `schemas/cluster.schema.json` this doc cited. Kept what no
+  requirement carries: the two-consumer subsets, where secrets go instead of
+  the file, the authoring notes the schema cannot express, and the CI
+  red-green wiring of the lint gate. `sources` and `timestamp` re-derived
+  from what remains.
+- `index.md`: `reference/talos-cluster-module.md` entry dropped;
+  `reference/cluster-yaml.md` description re-synced.
 - `specs/hardware-capability-composition` (OpenSpec, outside this bundle)
   gained the predicate-only profile-karg requirement, and ADR-0016 gained the
   Talos `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` lookup it had declined to make
