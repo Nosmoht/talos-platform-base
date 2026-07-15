@@ -73,8 +73,8 @@ through it, and never will (a base Hard Constraint). Only
    schematic id → new installer URL. Roll out via the usual out-of-band
    `talosctl upgrade`.
 3. **A single-value kernel-arg key your image sets that collides with a
-   selected profile's kernel arg for that key fails the plan** (e.g. setting
-   `intel_iommu=on,sm_on` on a node that also selects the `iommu` capability,
+   selected profile's kernel arg for that key fails the plan** (for example,
+   setting `intel_iommu=on,sm_on` on a node that also selects the `iommu` capability,
    whose profile sets `intel_iommu=on`) — this is a guard, not a defect;
    restate the profile's value verbatim if you want both applied (it collapses
    to one). A key no selected profile contributes (most tuning args, including
