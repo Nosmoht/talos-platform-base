@@ -62,6 +62,33 @@ run "valid_dedup_and_determinism" {
   }
 }
 
+# Issue #169 (AC1) — a node whose image sets extra_kernel_args: the rendered
+# schematic's customization.extraKernelArgs contains those args UNIONED with
+# the node's resolved profile kargs. Needs the network (unlike AC2/AC6 in
+# tests/image-kernel-args.tftest.hcl): the assert reads the actual rendered
+# talos_image_factory_schematic resource, not just the plan-time hash.
+# Red-green: drop the image leg from node_effective.kernel_args's concat
+# (composition.tf) and this assert fails — extraKernelArgs lacks
+# "hugepagesz=1G".
+run "image_extra_kernel_args_land_in_the_rendered_schematic" {
+  command = plan
+  variables {
+    images = {
+      intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucode"], extra_kernel_args = ["hugepagesz=1G"] }
+    }
+    nodes = [
+      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      { hostname = "w-1", ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["virt-passthrough"] },
+    ]
+  }
+  assert {
+    condition = alltrue([for a in ["hugepagesz=1G", "intel_iommu=on"] : contains(
+      try(yamldecode(talos_image_factory_schematic.this[output.node_schematic_hashes["w-1"]].schematic).customization.extraKernelArgs, []), a
+    )])
+    error_message = "w-1's rendered schematic customization.extraKernelArgs must contain BOTH the image's extra_kernel_args (hugepagesz=1G) and the resolved profile karg (intel_iommu=on from virt-passthrough -> iommu); got ${jsonencode(try(yamldecode(talos_image_factory_schematic.this[output.node_schematic_hashes["w-1"]].schematic).customization.extraKernelArgs, []))}"
+  }
+}
+
 # Symmetry FORWARD: a provisioned required-feature with no profile providing it.
 run "symmetry_forward_violation" {
   command = plan

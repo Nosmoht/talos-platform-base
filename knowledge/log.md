@@ -99,6 +99,43 @@ regeneration, including one that changes the block's length. The renderer
 emits only a bullet's first physical line, so rule bullets are written
 unwrapped.
 
+Issue #169 (consumer-supplied schematic `extra_kernel_args`) — a new
+per-image kernel-cmdline input reaching the UKI-correct schematic sink, and
+the kernel-arg conflict guard re-scoped to cross-source (profile-vs-image)
+collisions only:
+
+- `decisions/0017-consumer-image-kernel-args.md` NEW: the UKI root cause, the
+  two rejected alternatives, the cross-source guard-scoping decision and its
+  accepted consumer-vs-consumer residual, and the schema-mirror rationale.
+  Added to `decisions/index.md`.
+- `architecture/capability-composition.md`: §Consumer composites documents the
+  image's fourth axis (`extra_kernel_args`); §The composition pipeline
+  documents the schematic karg sink as the image's args UNION the profiles';
+  §Plan-time guards documents the cross-source scoping; §Base-owned catalog
+  gains the consumer-args counterpart to the hard-constraints-grep sentence;
+  §Module tests documents the new `image-kernel-args.tftest.hcl` suite and the
+  conflict-guards additions.
+- `reference/cluster-yaml.md`: §Authoring notes corrected — boot kernel args
+  are no longer routed through `config_patches` prose (that sink is a no-op
+  under UKI); they go to `images.<id>.extra_kernel_args`. The CI lint-gate
+  wiring section documents the six-way (was two-way) invalid-fixture red-green
+  binding and the new `examples/complete/cluster.yaml` lint step.
+- `glossary.md`: **Schematic** term's image side gains `extra_kernel_args`.
+- `workflows/first-consumer-cluster.md`: the OpenTofu-root bullet enumerating
+  what the full `cluster.yaml` definition carries now names the `images`
+  sub-attributes, including `extra_kernel_args`.
+- `architecture/day-zero-bootstrap.md`: re-verified against the changed
+  `cluster.yaml.example`; no claim went stale.
+- `reference/tasks.md`: `tofu:test:offline` row now names the fourth offline
+  suite (the consumer image-kernel-arg oracles).
+- `AGENTS.md` §Key Terms **Schematic** bullet: image side gains
+  `extra_kernel_args`, mirroring the glossary term.
+- `reference/manifest-pipeline.md`: the `hardware-features-check` CI-mapping
+  row now names the module's `examples/complete/cluster.yaml` lint step
+  alongside the existing `cluster.yaml.example` one (mechanical re-verify
+  check per the plan's scoping principle: this file enumerates the
+  schema-lint job's steps, and this change adds one).
+
 ## 2026-07-13
 
 - ADR-0015 follow-ups closed: spec staleness gate is CI-enforced

@@ -45,6 +45,15 @@ images:
       - siderolabs/i915
       - siderolabs/intel-ucode
       - siderolabs/nvme-cli
+  intel-virt: # the KubeVirt workers: same base as `intel` plus consumer boot tuning
+    architecture: amd64
+    cpu_vendor: intel
+    extensions:
+      - siderolabs/gvisor
+      - siderolabs/i915
+      - siderolabs/intel-ucode
+      - siderolabs/nvme-cli
+    extra_kernel_args: [hugepagesz=1G] # unioned with the iommu profile's intel_iommu=on
   intel-gpu: # the GPU node additionally carries Realtek NIC firmware
     architecture: amd64
     cpu_vendor: intel
@@ -87,10 +96,10 @@ nodes:
   - { hostname: node-cp-1, ip: 192.0.2.11, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
   - { hostname: node-cp-2, ip: 192.0.2.12, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
   - { hostname: node-cp-3, ip: 192.0.2.13, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
-  - { hostname: node-w-1, ip: 192.0.2.21, role: worker, image: intel, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
-  - { hostname: node-w-2, ip: 192.0.2.22, role: worker, image: intel, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
-  - { hostname: node-w-3, ip: 192.0.2.23, role: worker, image: intel, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
-  - { hostname: node-w-4, ip: 192.0.2.24, role: worker, image: intel, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  - { hostname: node-w-1, ip: 192.0.2.21, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  - { hostname: node-w-2, ip: 192.0.2.22, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  - { hostname: node-w-3, ip: 192.0.2.23, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  - { hostname: node-w-4, ip: 192.0.2.24, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
   - hostname: node-gpu-1
     ip: 192.0.2.31
     role: worker

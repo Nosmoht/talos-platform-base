@@ -174,7 +174,7 @@ this list.
 
 - **AppProject** — ArgoCD RBAC boundary scoping repos/namespaces an Application can deploy to.
 - **Sync-wave** — ArgoCD annotation for deploy order: `-1` (AppProjects) → `0` (infra) → `1` (apps).
-- **Schematic** — Talos Image Factory spec embedding system extensions (and optional SBC overlay) into installer images. Derived per node by the `tofu/modules/talos-cluster` module: the node's `image` (baseline `extensions` + `overlay` + `architecture`) unioned with the `extensions` + `extraKernelArgs` of the provisioning profiles its `hardware_capabilities` resolve to; content-hash-deduped so identical nodes share one schematic.
+- **Schematic** — Talos Image Factory spec embedding system extensions (and optional SBC overlay) into installer images. Derived per node by the `tofu/modules/talos-cluster` module: the node's `image` (baseline `extensions` + `extra_kernel_args` + `overlay` + `architecture`) unioned with the `extensions` + `extraKernelArgs` of the provisioning profiles its `hardware_capabilities` resolve to; content-hash-deduped so identical nodes share one schematic.
 - **DRBD** — Distributed Replicated Block Device — LINSTOR replication layer for persistent storage (apps-catalog component).
 - **Multi-Source Application** — ArgoCD Application with `spec.sources[base, cluster]` consuming this base alongside consumer cluster manifests.
 - **OCI artifact** — versioned tarball of this base published to `ghcr.io/nosmoht/talos-platform-base:<tag>` on every git tag push; consumed via `oras pull`.

@@ -203,6 +203,31 @@
             "type": "string"
           }
         },
+        "extra_kernel_args": {
+          "description": "Extra kernel command-line arguments baked into this image's UKI via the Image-Factory schematic (customization.extraKernelArgs) — the UKI-correct sink; machine.install.extraKernelArgs is ignored under systemd-boot. Unioned with the node's resolved provisioning-profile args. One argument per element.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "allOf": [
+              {
+                "$comment": "Rule W — mirrors variables.tf. The ASCII class is spelled out on purpose: the module side is RE2 [[:space:]] (ASCII-scoped), while a bare \\s here is Unicode-aware, which would make the two sides diverge.",
+                "not": { "pattern": "[ \\t\\n\\r\\f\\v]" }
+              },
+              {
+                "$comment": "Rule D — the karg removal spelling is a Non-Goal; the module's conflict guard cannot see it.",
+                "not": { "pattern": "^-" }
+              },
+              {
+                "$comment": "Rule E — empty key. Rejects the bare empty string and a leading '=', both of which key as \"\" and defeat the guard's =-keying.",
+                "not": { "pattern": "^=|^$" }
+              },
+              {
+                "$comment": "Rule B — the debugfs key at any value (AGENTS.md §Hard Constraints forbids the value that boot-loops Talos with Cilium).",
+                "not": { "pattern": "^debugfs($|=)" }
+              }
+            ]
+          }
+        },
         "overlay": {
           "description": "ARM single-board-computer board overlay. Null/omitted for x86/metal nodes.",
           "type": [

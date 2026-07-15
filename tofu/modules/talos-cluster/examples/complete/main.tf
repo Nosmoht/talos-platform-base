@@ -51,9 +51,10 @@ module "complete" {
   }]
 
   images = { for name, img in local.cfg.images : name => {
-    architecture = try(img.architecture, "amd64")
-    cpu_vendor   = img.cpu_vendor
-    extensions   = try(img.extensions, [])
+    architecture      = try(img.architecture, "amd64")
+    cpu_vendor        = img.cpu_vendor
+    extensions        = try(img.extensions, [])
+    extra_kernel_args = try(img.extra_kernel_args, [])
     overlay = try(img.overlay, null) == null ? null : {
       name    = img.overlay.name
       image   = img.overlay.image

@@ -3,7 +3,7 @@ type: workflow
 title: First Consumer Cluster
 description: End-to-end walk-through from verifying a published base release to a reconciling App-of-Apps root on a freshly provisioned Talos cluster.
 tags: [bootstrap, consumer, day-zero]
-timestamp: 2026-07-11
+timestamp: 2026-07-15
 sources:
   - README.md
   - Taskfile.yml
@@ -101,9 +101,10 @@ Two consumers read it:
 - `task bootstrap:argocd` reads only the bootstrap identity:
   `.cluster.name`, `.cluster.overlay`, `.cluster.target_revision`, `.repo.url`.
 - The OpenTofu root reads the full definition: endpoint, pod/service CIDR,
-  dual-stack, Talos/Kubernetes versions, `images`, `hardware-capabilities`,
-  `nodes`, machine-config patch tiers, and the `substrate` block
-  (Cilium + ArgoCD knobs).
+  dual-stack, Talos/Kubernetes versions, `images` (per-image architecture,
+  CPU vendor, baseline extensions, optional boot `extra_kernel_args`, optional
+  SBC overlay), `hardware-capabilities`, `nodes`, machine-config patch tiers,
+  and the `substrate` block (Cilium + ArgoCD knobs).
 
 Secrets are never in this file — it has no slot for them. `sops_age_key` and
 `cilium_ipsec_key` are supplied via `TF_VAR_*` / a gitignored tfvars / SOPS.

@@ -53,6 +53,7 @@ images:
     architecture: amd64 # amd64 | arm64 (arm64 unblocks ARM single-board computers)
     cpu_vendor: intel # intel | amd | arm — resolves a profile's vendor variants (e.g. iommu)
     extensions: [] # baseline extensions for every node of this image (e.g. siderolabs/intel-ucode)
+    extra_kernel_args: [] # boot kernel cmdline args for this image (unioned with the node's profile kargs; UKI-correct sink)
     # overlay:                       # ARM SBC board overlay only (omit for x86/metal)
     #   name: rpi_generic
     #   image: siderolabs/sbc-raspberrypi

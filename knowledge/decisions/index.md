@@ -17,6 +17,7 @@ Frontmatter is canonical for status and dates.
 - [ADR: Ship tool-generated AI artifacts in the base](0014-ship-ai-tool-artifacts.md) - the base commits tool-generated, regenerable AI-tool artifacts (OpenSpec skill/command trees); hand-authored harness primitives remain external (accepted)
 - [ADR: OpenSpec as the behavioral-requirements surface](0015-openspec-adoption.md) - adopts OpenSpec with a directly-authored backfill of 14 substrate capability specs; openspec/specs/ is normative for behavioral requirements, scoped to consumer-facing platform behavior (accepted)
 - [ADR: Capability profiles carry only their presence_predicate args — drop iommu=pt](0016-capability-profiles-predicate-only.md) - removes the host-DMA tuning arg `iommu=pt` from the `iommu` provisioning profile, returning the `iommu` kernel-arg key to consumer control (accepted)
+- [ADR: Consumer-supplied schematic extra_kernel_args, cross-source-scoped](0017-consumer-image-kernel-args.md) - adds an optional per-image `extra_kernel_args` input reaching the UKI-correct schematic sink, with the kernel-arg conflict guard scoped to cross-source (profile-vs-image) collisions only (accepted)
 
 ## Proposed
 

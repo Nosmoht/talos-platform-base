@@ -5,7 +5,8 @@
 #
 #   schematic sink:     customization.systemExtensions.officialExtensions
 #                       (images.<id>.extensions baseline UNION profile extensions),
-#                       customization.extraKernelArgs (UNION kernel_args),
+#                       customization.extraKernelArgs (images.<id>.extra_kernel_args
+#                       UNION profile kernel_args),
 #                       top-level overlay (from the image)
 #   machine-config sink: machine.kernel.modules (UNION), machine.sysctls (UNION),
 #                       machine.nodeLabels (capability emits_label + a
@@ -64,7 +65,17 @@ locals {
         try(var.images[n.image].extensions, []),
         flatten([for p in local.node_profile_resolved[n.hostname] : p.extensions]),
       )))
-      kernel_args = sort(distinct(flatten([for p in local.node_profile_resolved[n.hostname] : p.kernel_args])))
+      # kernel_args: image extra_kernel_args UNION selected-profile kernel_args
+      # (symmetric to the extensions union above). try(): an undefined
+      # node.image contributes nothing and the undefined_images precondition
+      # produces the clear error. sort(distinct(...)) collapses an exact
+      # duplicate, so a consumer restating a profile's arg verbatim is not a
+      # conflict (AC4) — only a differing value on the same single-value key
+      # is (karg_conflicts below).
+      kernel_args = sort(distinct(concat(
+        try(var.images[n.image].extra_kernel_args, []),
+        flatten([for p in local.node_profile_resolved[n.hostname] : p.kernel_args]),
+      )))
     }
   }
 
@@ -214,9 +225,20 @@ locals {
   sysctl_conflicts = {
     for n in var.nodes : n.hostname => [for k, vs in local._sysctl_by_key[n.hostname] : k if length(distinct(vs)) > 1]
   }
-  _karg_by_key = {
+  # Conflict iff a PROFILE and the IMAGE both set the same single-value key to
+  # differing values. Keys no profile contributes are the consumer's own — the
+  # repeatable-key class (hugepagesz=/hugepages=, acpi_osi=, …) is open-ended,
+  # so guarding them would need a bottomless allowlist. Profile-vs-profile
+  # collisions keep firing exactly as before (the image side contributes [] then).
+  _karg_profile_by_key = {
     for n in var.nodes : n.hostname => {
       for a in flatten([for p in local.node_profile_resolved[n.hostname] : p.kernel_args]) :
+      element(split("=", a), 0) => (a == element(split("=", a), 0) ? "" : trimprefix(a, "${element(split("=", a), 0)}="))...
+    }
+  }
+  _karg_image_by_key = {
+    for n in var.nodes : n.hostname => {
+      for a in try(var.images[n.image].extra_kernel_args, []) :
       element(split("=", a), 0) => (a == element(split("=", a), 0) ? "" : trimprefix(a, "${element(split("=", a), 0)}="))...
     }
   }
@@ -224,12 +246,23 @@ locals {
   # cmdline (multi-value): two profiles contributing different values is NOT a
   # conflict for these. Single-value keys (intel_iommu, …) still trip the
   # guard. Keeps the union correct for console=/blacklist= without false errors.
+  # Only ever consulted for a key a PROFILE contributes (see karg_conflicts).
   _karg_multivalue_keys = ["console", "module_blacklist", "initcall_blacklist", "blacklist"]
   karg_conflicts = {
     for n in var.nodes : n.hostname => [
-      for k, vs in local._karg_by_key[n.hostname] : k
-      if length(distinct(vs)) > 1 && !contains(local._karg_multivalue_keys, k)
+      for k, vs in local._karg_profile_by_key[n.hostname] : k
+      if !contains(local._karg_multivalue_keys, k) && length(distinct(concat(
+        vs, try(local._karg_image_by_key[n.hostname][k], [])
+      ))) > 1
     ]
+  }
+  _karg_conflict_detail = {
+    for n in var.nodes : n.hostname => {
+      for k in local.karg_conflicts[n.hostname] : k => {
+        profile = distinct(local._karg_profile_by_key[n.hostname][k])
+        image   = distinct(try(local._karg_image_by_key[n.hostname][k], []))
+      }
+    } if length(local.karg_conflicts[n.hostname]) > 0
   }
 }
 
@@ -274,7 +307,7 @@ resource "terraform_data" "composition_guards" {
     }
     precondition {
       condition     = length([for h, v in local.karg_conflicts : h if length(v) > 0]) == 0
-      error_message = "Two selected profiles set the same kernel arg to differing values. Offending (node => keys): ${jsonencode({ for h, v in local.karg_conflicts : h => v if length(v) > 0 })}."
+      error_message = "Kernel-arg conflict: a single-value kernel-arg key is set to differing values. The sources may be the node's selected provisioning profiles and/or its image's extra_kernel_args. Offending (node => key => {profile, image} values): ${jsonencode(local._karg_conflict_detail)}."
     }
   }
 }
