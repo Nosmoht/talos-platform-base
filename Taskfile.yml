@@ -289,17 +289,31 @@ tasks:
       # An empty value is rejected for the same class of reason: `overlay: ""`
       # is schema-valid and renders `path: kubernetes/overlays/`, pointing the
       # root Application at the whole overlay tree with prune+selfHeal on.
-      # The newline test is `wc -l`, not a `case` glob against a captured
-      # newline: `nl=$(printf '\n')` yields an EMPTY string (command
-      # substitution strips trailing newlines), and `*""*` matches every
-      # value — a guard that rejects everything, including the happy path.
+      # Control-character test by BYTE-LENGTH DIFFERENCE (strip [:cntrl:] and
+      # compare `wc -c`), because the three obvious forms are each wrong and
+      # each was tried here:
+      #   * `case "$v" in *"$nl"*)` where nl=$(printf '\n') — `nl` is EMPTY
+      #     (command substitution strips trailing newlines) so `*""*` matches
+      #     EVERY value: a guard that rejects the happy path too.
+      #   * `wc -l` — counts \n only. A lone CARRIAGE RETURN passed it and
+      #     rendered `path: kubernetes/overlays/prod<CR>    injected: yes`,
+      #     which YAML-parses as a broken document (verified: yq reports
+      #     "mapping values are not allowed in this context"). YAML 1.2 treats
+      #     \r as a line break too, so \n alone is the wrong test.
+      #   * `grep -q '[[:cntrl:]]'` — grep is LINE-oriented: a \n in the value
+      #     is the line separator and never appears as line CONTENT, so this
+      #     catches \r but silently misses \n. It is the inverse blind spot of
+      #     `wc -l`, and the fixtures caught it.
+      # `tr -d` operates on bytes, so it sees both. Tabs and the other C0 codes
+      # are swept in with them: none belongs in a cluster name, repo URL,
+      # overlay name or git ref.
       for v in "$CLUSTER_NAME" "$REPO_URL" "$OVERLAY" "$TARGET_REVISION"; do
         case "$v" in
           "") echo "ERROR: cluster.yaml value is empty; the rendered manifest would carry an empty field"; exit 1;;
           *\$*) echo "ERROR: cluster.yaml value contains '\$' which is unsafe for envsubst: $v"; exit 1;;
         esac
-        if [ "$(printf '%s' "$v" | wc -l)" -ne 0 ]; then
-          echo "ERROR: cluster.yaml value contains a newline, which would inject YAML structure into the rendered manifest: $v"; exit 1
+        if [ "$(printf '%s' "$v" | wc -c)" -ne "$(printf '%s' "$v" | LC_ALL=C tr -d '[:cntrl:]' | wc -c)" ]; then
+          echo "ERROR: cluster.yaml value contains a control character (line break or tab), which would break it out of its YAML scalar position in the rendered manifest: $v"; exit 1
         fi
       done
       # Label-safe form of the revision for app.kubernetes.io/version: a git

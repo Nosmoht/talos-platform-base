@@ -137,9 +137,11 @@ template, any read value that:
 
 1. contains `$` — `envsubst` would otherwise expand it against the render
    host's environment;
-2. contains a newline — `envsubst` substitutes text, not YAML, so a
+2. contains a control character — `envsubst` substitutes text, not YAML, so a
    line break carries the rest of the value out of its scalar position and
-   into sibling keys or list items;
+   into sibling keys or list items. Both YAML 1.2 line breaks count (`\n` and
+   a lone `\r`), and the remaining C0 codes are rejected with them: none
+   belongs in a cluster name, repo URL, overlay name or git ref;
 3. is empty — an empty substitution renders a manifest field that is
    syntactically valid and semantically wrong (an empty overlay names the
    whole overlay tree);
@@ -173,12 +175,12 @@ and contacts no cluster). Removing any single guard turns it red.
 - **THEN** the render fails with an error naming the offending value, and no
   bootstrap manifest is written or applied
 
-#### Scenario: A newline-bearing value fails the render
+#### Scenario: A line-break-bearing value fails the render
 
-- **WHEN** a read `cluster.yaml` value contains a line break — schema-valid,
-  since the identity fields carry no pattern
+- **WHEN** a read `cluster.yaml` value contains a line break — either `\n` or
+  a lone `\r`, both schema-valid, since the identity fields carry no pattern
 - **THEN** the render fails and no bootstrap manifest is written or applied,
-  rather than the trailing lines becoming sibling YAML in the manifest
+  rather than the trailing text becoming sibling YAML in the manifest
 
 #### Scenario: An empty or non-string value fails the render
 

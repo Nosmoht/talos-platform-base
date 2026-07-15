@@ -1,0 +1,30 @@
+# Bootstrap-render fixture: a lone CARRIAGE RETURN (\r), no newline.
+#
+# The reason this fixture exists separately from inject-newline.yaml: the first
+# version of the guard tested with `wc -l`, which counts \n only. This value
+# passed it and rendered
+#   path: kubernetes/overlays/prod<CR>    injected: yes
+# which YAML-parses as a broken document (yq: "mapping values are not allowed in
+# this context") — the value left its scalar position, which is exactly what the
+# containment requirement forbids. YAML 1.2 treats \r as a line break too, so \n
+# alone was the wrong test; the guard is now [[:cntrl:]] under LC_ALL=C.
+#
+# Narrow the guard back to \n and this fixture turns the check red.
+cluster:
+  name: fixture-cluster
+  overlay: "prod\r    injected: yes"
+  endpoint: https://192.0.2.1:6443
+repo:
+  url: https://example.invalid/consumer-repo.git
+talos:
+  version: v1.12.6
+kubernetes:
+  version: v1.35.0
+images:
+  intel:
+    cpu_vendor: intel
+nodes:
+  - hostname: cp-1
+    ip: 192.0.2.10
+    role: controlplane
+    image: intel

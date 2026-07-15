@@ -53,6 +53,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     `sourceRepos: ['https://ok', '*']` — ArgoCD's RBAC boundary widened to
     every repository, from a diff that reads as a URL change. The identity
     fields carry no schema pattern, and no lint gate runs on the render path.
+    Both YAML line breaks are rejected: a lone `\r` broke the rendered
+    document just as `\n` did.
   - An **empty** `cluster.overlay` rendered `path: kubernetes/overlays/` on a
     root Application with `prune: true` + `selfHeal: true` — pointing it at the
     entire overlay tree.

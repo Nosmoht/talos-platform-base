@@ -132,10 +132,15 @@ reject() {
 }
 
 printf 'containment guards\n'
-reject "a \$-bearing value is rejected"        "$FIXTURES/inject-dollar.yaml"     "unsafe for envsubst"
-reject "a newline-bearing value is rejected"   "$FIXTURES/inject-newline.yaml"    "would inject YAML structure"
-reject "an empty value is rejected"            "$FIXTURES/empty-overlay.yaml"     "is empty"
-reject "a non-scalar value is rejected"        "$FIXTURES/inject-non-scalar.yaml" ""
+reject "a \$-bearing value is rejected"          "$FIXTURES/inject-dollar.yaml"          "unsafe for envsubst"
+reject "a newline-bearing value is rejected"     "$FIXTURES/inject-newline.yaml"         "control character"
+# Separate from the newline case on purpose: a lone \r passes a \n-only test
+# (the guard's first version used `wc -l` and this got through).
+reject "a CR-bearing value is rejected"          "$FIXTURES/inject-carriage-return.yaml" "control character"
+reject "an empty value is rejected"              "$FIXTURES/empty-overlay.yaml"          "is empty"
+# No message assertion: yq itself rejects the non-scalar via `select(type)`, so
+# the error text is yq's, not ours. The assertion is exit-non-zero + no _out.
+reject "a non-scalar value is rejected"          "$FIXTURES/inject-non-scalar.yaml"      ""
 
 # The 2x3 matrix the scenario's "omits or nulls" claims. Generated from the
 # valid fixture rather than committed as six near-identical files: the cells
