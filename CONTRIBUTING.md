@@ -125,6 +125,8 @@ task tofu:ci   # tofu fmt -check + tofu validate + tflint
 | `gitops-validate` | full render+lint+policy pipeline |
 | `hard-constraints-check` | no Ingress/Endpoints kinds, etc. |
 | `secret-scan` (gitleaks) | last-backstop on bypassed pre-commit |
+| `docs-lint` | markdownlint, OKF bundle validation, offline link gate, AGENTS.md managed-block drift |
+| `preflight` | asserts the required-check contexts are wired |
 | `oci-publish` dry-run (on tag PRs only) | confirms signing path works |
 
 These are required PR checks and will block merge.
@@ -148,6 +150,17 @@ hard constraints), update **at minimum**:
 - The owning OpenSpec spec (`openspec/specs/`) when the change alters
   platform behavior — as a spec delta via `openspec/changes/`; see
   [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
+
+The bundle's own authoring conventions — the closed `type` vocabulary, the
+`timestamp`/`sources` staleness contract, the link rule, and the `log.md`
+maintenance rule — are stated in `knowledge/rules/talos-base-bundle.md`. Read
+that file rather than this section for them; it is the source of truth and is
+rendered into `AGENTS.md` for agents.
+
+The `## Open Knowledge Maintenance` block in `AGENTS.md` is generated from
+`knowledge/rules/` and sits between `openknowledge:rules` markers. Regenerate
+it with `task knowledge:rules-apply` after changing a rule document — do not
+hand-edit it, or `task knowledge:rules-check` (a required CI gate) fails.
 
 If your change adds, removes, or renames a component in
 `kubernetes/base/infrastructure/`, or changes a service-DNS or

@@ -4,15 +4,19 @@ name: docs-lint
 # (1) the offline link gate checks links whose TARGETS are non-markdown
 #     files (scripts, schemas, contracts) — a PR deleting a target without
 #     touching *.md must still trigger the gate;
-# (2) an unfiltered job is safe to promote to a required branch-protection
-#     context later (a path-filtered required check hangs non-matching PRs
-#     as "Expected — waiting"). The job is cheap (~seconds).
+# (2) an unfiltered job is safe to be a required branch-protection context
+#     (a path-filtered required check hangs non-matching PRs as
+#     "Expected — waiting"). The job is cheap (~seconds).
 #
-# Contract: every check step runs a Taskfile target, never inline shell —
-# the identical chain is runnable locally (`task docs:lint`,
-# `task knowledge:validate`, `task spec:validate`, `task spec:check-regen`,
-# `task dev:verify-pins`). Tool pins live in .tool-versions + the Taskfile
-# vars block only; `dev:verify-pins` asserts the pair.
+# Contract: every CHECK step runs a Taskfile target, never inline shell —
+# the identical chain is runnable locally (`task dev:verify-pins`,
+# `task docs:lint`, `task knowledge:validate`, `task knowledge:rules-check`,
+# `task spec:validate`, `task spec:check-regen`, `task spec:check-staleness`).
+# Tool pins live in .tool-versions + the Taskfile vars block + package.json;
+# `dev:verify-pins` asserts those pairs. go-task itself is the one exception
+# it cannot cover: setup-task runs BEFORE task exists, so its pin is the
+# TASK_VERSION env below, drift-checked against .tool-versions by the one
+# inline step in this file.
 on:
   pull_request:
   push:
@@ -23,23 +27,50 @@ permissions:
 
 jobs:
   docs-lint:
+    # Job id is the branch-protection context ("docs-lint"): GitHub derives
+    # the context from name: falling back to the job id. Renaming either
+    # silently un-gates the check — scripts/preflight-checks.sh asserts it.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # go-task — the executor of every gate below; an unpinned payload
+      # behind a pinned installer is still an unpinned gate. KEEP IN SYNC
+      # with .tool-versions (asserted by the drift step below).
+      TASK_VERSION: "3.48.0"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           # Full history: the staleness gate diffs against the PR base ref.
           fetch-depth: 0
 
-      - name: Install go-task
-        uses: arduino/setup-task@v2
+      - name: Verify TASK_VERSION matches .tool-versions
+        # The one inline check in this file, by necessity: it guards the pin
+        # of the binary that runs every Taskfile target below, so it cannot
+        # itself be a Taskfile target. Same drift-detector pattern as
+        # gitops-validate.yml. Every other tool pin is asserted by
+        # `task dev:verify-pins`.
+        run: |
+          set -eu
+          tv="$(awk '$1=="task" {print $2}' .tool-versions)"
+          [ -n "$tv" ] || { echo "FAIL: no 'task' pin in .tool-versions"; exit 1; }
+          if [ "$tv" != "$TASK_VERSION" ]; then
+            echo "DRIFT: task .tool-versions=$tv workflow-env=$TASK_VERSION"; exit 1
+          fi
+          echo "OK: task $tv"
+
+      - name: Install go-task (pinned to a commit)
+        # Two pins, both load-bearing. The action is SHA-pinned rather than
+        # @v3 because this workflow pins every other input and is a required,
+        # path-unfiltered context — a moving ref would reach every PR at once.
+        # The go-task VERSION is pinned exactly (not 3.x) for the reason in
+        # the env block above. tofu-validate.yml keeps the mutable @v2 ref;
+        # it is path-filtered and not required.
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
         with:
-          # KEEP IN SYNC with the `task` pin in .tool-versions — the task
-          # binary is the executor of every check below; a floating 3.x
-          # would reintroduce local-vs-CI drift at the executor level.
-          version: 3.48.0
+          version: ${{ env.TASK_VERSION }}
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: task dev:verify-pins (Taskfile vars ↔ .tool-versions)
+      - name: task dev:verify-pins (Taskfile vars + package.json ↔ .tool-versions)
         run: task dev:verify-pins
 
       - name: task install-cli (markdownlint + openspec via npm ci lockfile; openknowledge + lychee pinned + checksum)
@@ -51,9 +82,16 @@ jobs:
         run: task docs:lint
 
       - name: task knowledge:validate
-        # knowledge/openknowledge.toml raises link-target to error, so a
-        # broken or bundle-escaping link fails this step (exit 1).
+        # Both gates live in the Taskfile target so the local chain and the CI
+        # chain are the same command. knowledge/openknowledge.toml raises
+        # link-target and rule-catalog to error, so a broken link or a
+        # malformed rule document fails this step.
         run: task knowledge:validate
+
+      - name: task knowledge:rules-check
+        # The Open Knowledge maintenance block in AGENTS.md is generated from
+        # knowledge/rules/. Fails if it was hand-edited or left stale.
+        run: task knowledge:rules-check
 
       - name: task spec:validate
         # Strict validate + bite-check (malformed fixture must fail) +

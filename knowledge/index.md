@@ -10,8 +10,18 @@ bundle. Orientation and governance stay at the repository root (`README.md`,
 `ARCHITECTURE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`,
 `UPGRADING.md`, `MAINTAINERS.md`); everything deeper lives here.
 
-Machine-consumed contracts live OUTSIDE this bundle by design:
-`platform-hardware-features.yaml` (repo root), `schemas/`, `contracts/`.
+Contracts a consumer parses — the machine-readable interface of a release —
+live outside this bundle by design: `platform-hardware-features.yaml` (repo
+root), `schemas/`, `contracts/`. The bundle itself ships in no release
+artifact: the OCI tarball allowlist (`.ci-oci-tarball-include.txt`) names no
+path under `knowledge/`.
+
+`knowledge/rules/` holds contracts the bundle's own tooling reads, and only
+those — `openknowledge` renders them into the `AGENTS.md` Open Knowledge
+Maintenance block. The criterion for admitting a file here is that the
+bundle's tooling consumes it and no release consumer parses it;
+`openknowledge.toml` has always met the same test. This is a narrow carve-out
+for tooling config, not a general licence to move contracts into the bundle.
 
 ## Architecture
 
@@ -50,24 +60,34 @@ Machine-consumed contracts live OUTSIDE this bundle by design:
 - [Glossary](glossary.md) - Cross-domain vocabulary; cite this file when a term first appears.
 - [Changelog](log.md) - Date-grouped bundle change history.
 
+## Rules
+
+- [Bundle Conventions](rules/talos-base-bundle.md) - Repo-specific OKF bundle conventions layered on top of the built-in maintenance rules, rendered into the AGENTS.md managed block.
+
 ## Bundle conventions (repo convention on top of OKF v0.1)
 
-OKF v0.1 requires only `type` in concept frontmatter. This bundle
-additionally standardizes — enforced by review discipline, NOT by
-`openknowledge validate`:
+OKF v0.1 requires only `type` in concept frontmatter. The conventions this
+bundle adds on top are **normatively stated in
+[Bundle Conventions](rules/talos-base-bundle.md)** — the closed `type`
+vocabulary, the `title`/`description`/`tags`/`timestamp`/`sources` field set,
+the staleness contract, the link rule, and the `log.md` maintenance rule. That
+file is the source of truth, and `openknowledge` renders it into `AGENTS.md`
+so an agent reading only that file still sees the contract.
 
-- Closed `type` vocabulary: `architecture`, `reference`, `workflow`,
-  `decision`, `glossary`, `project`. A new type is added by editing this
-  section in the same PR.
-- `title`, `description` (one sentence; reused verbatim as the link
-  description in this index), `tags`, `timestamp` (date of last
-  substantive verification, not last typo fix).
-- `sources:` — the repo-relative paths a concept was generated from. This
-  is the staleness contract: re-verify a concept when its sources changed
-  since `timestamp`.
-- Links: files inside the bundle are linked relatively; files outside the
-  bundle are cited as inline code spans (`openknowledge.toml` raises
-  `link-target` to error, so escaping links fail validation).
-- Maintenance: every PR touching the bundle appends one bullet per changed
-  concept to [log.md](log.md) under today's date; ADR status transitions
-  and concept additions/removals are always logged.
+What follows is the reasoning behind those rules, for a human reader. It is
+**not normative** — when this section and the rule document disagree, the rule
+document wins:
+
+- Most of the contract is enforced by review discipline, NOT by
+  `openknowledge validate`. A green validation run means links resolve and
+  frontmatter parses; it is not evidence that a concept is still true.
+- `timestamp` is the date of the last *substantive verification*, not the last
+  typo fix. Bumping it for a wording change silently resets the staleness
+  clock, which is the failure this contract exists to prevent.
+- `sources` is what makes staleness checkable at all: it names the paths a
+  concept was derived from, so a reader can compare them against `timestamp`.
+  Nothing does this mechanically yet — it is a reading discipline.
+- `description` is reused verbatim as the link description in this index, so
+  it is written as one self-contained sentence.
+- The link rule has teeth: `openknowledge.toml` raises `link-target` to error,
+  so a link escaping the bundle fails validation rather than rotting quietly.

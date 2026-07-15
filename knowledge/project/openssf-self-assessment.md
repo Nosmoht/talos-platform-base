@@ -3,7 +3,7 @@ type: project
 title: OpenSSF Best Practices Self-Assessment
 description: Self-assessment against the OpenSSF Best Practices Passing-level criteria, serving as the source of truth for the external enrolment answers.
 tags: [project, supply-chain]
-timestamp: 2026-07-11
+timestamp: 2026-07-15
 migrated_from: docs/openssf-best-practices.md (deleted in the OKF migration; see git history)
 sources:
   - .github/workflows/gitops-validate.yml
@@ -98,10 +98,8 @@ source of truth for the answers that get submitted.
 > named the `Makefile` — retired at v3.0.0 in favour of go-task; a
 > deprecation stub remains for one release cycle. (2) The hardware-features
 > lint runs in the standalone `hardware-features-check` job of
-> `gitops-validate.yml`. (3) "all CI-required" overstated: the
-> branch-protection required status checks are `validate` and
-> `Secret Scan (gitleaks)` only; the other workflows run on every PR but are
-> not merge-blocking.
+> `gitops-validate.yml`. (3) "all CI-required" overstated: not every workflow
+> is merge-blocking — see the 2026-07-15 note below for the current set.
 
 ## Security
 
@@ -124,13 +122,30 @@ source of truth for the answers that get submitted.
 | --- | --- | --- |
 | Static code analysis | met | conftest Rego policies (`policies/conftest/`) over rendered Kubernetes manifests is the load-bearing static check for a YAML-based repo; supplemented by markdownlint, gitleaks, and the per-component schema validation |
 | Static analysis common vulnerabilities | met | gitleaks (credentials) + conftest Rego policy checks (structural correctness) |
-| Static analysis fixed | met | main branch protection requires the `validate` and `Secret Scan (gitleaks)` status checks; other CI workflows run but are not merge-blocking, and admin enforcement (`enforce_admins`) is disabled |
+| Static analysis fixed | met | main branch protection requires the `validate`, `Secret Scan (gitleaks)`, `Hard Constraints`, `preflight`, and `docs-lint` status checks; other CI workflows run but are not merge-blocking, and admin enforcement (`enforce_admins`) is disabled |
 | Dynamic analysis | n/a | Repo ships YAML manifests + Helm bases, not executable code. Dynamic analysis applies at the consumer-cluster runtime, not at the base. Documented as explicit n/a per Best-Practices guidance for non-executable-code repos. |
 
 > [2026-07-11 verification] "All CI checks required; broken main is
 > impossible by branch protection" corrected to the actual protection
 > configuration (verified via the GitHub branch-protection API): two required
 > contexts, `enforce_admins` off — an admin push can bypass the gate.
+>
+> [2026-07-15 verification] Re-read via the branch-protection API. Five
+> required contexts: `validate`, `Secret Scan (gitleaks)`, `Hard Constraints`,
+> `preflight`, `docs-lint`. The 2026-07-11 count of two was accurate for the
+> contexts that were *reporting*: `docs-lint` was listed in protection but no
+> job emitted that name (the workflow was named `docs-lint`, its job
+> `markdownlint`), so it stayed permanently pending and merges ran on admin
+> bypass. `Hard Constraints` and `preflight` have since been added to
+> protection. The job rename that makes `docs-lint` report is in the same
+> change as this note.
+>
+> Two limits stand, and neither is closed here: `enforce_admins` is off, so an
+> admin push still bypasses every gate; and `required_pull_request_reviews` is
+> unset, so `CODEOWNERS` routes review attention but blocks nothing. On a
+> single-maintainer repo the second is largely moot — GitHub does not let an
+> author approve their own PR — but the distinction matters for any claim that
+> CODEOWNERS is an enforcement control. It is not.
 
 ## External enrolment
 

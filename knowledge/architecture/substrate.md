@@ -3,7 +3,7 @@ type: architecture
 title: Substrate Boundary
 description: What talos-platform-base is and ships — the three-pillar substrate, the base/apps/consumer layer model, the tracked repo layout, and the fail-closed OCI artifact allowlist.
 tags: [substrate, layer-model, oci-artifact, boundaries]
-timestamp: 2026-07-11
+timestamp: 2026-07-15
 sources:
   - .ci-oci-tarball-include.txt
   - .ci-oci-tarball-expected.txt
@@ -86,7 +86,7 @@ base — see the note below):
                              tofu-validate, oci-publish, release, lint gates
 contracts/                   primitive-contract.md
 knowledge/                   this OKF bundle (architecture, reference,
-                             workflows, decisions, glossary)
+                             workflows, decisions, glossary, rules)
 kubernetes/base/infrastructure/argocd/
                              the ONE base kustomize component (namespace +
                              committed _rendered/ manifests + values.yaml)

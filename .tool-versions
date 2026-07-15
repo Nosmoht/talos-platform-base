@@ -4,14 +4,24 @@
 # tools to deterministic versions to prevent helm-template/kustomize-build
 # output drift between local developer machines and CI.
 #
-# CI workflows reference these versions via env vars; the `verify-tools`
-# Makefile target reads this file and confirms installed binaries match.
-# A drift-check step in gitops-validate.yml fails if the workflow env
-# vars and this file disagree.
+# CI workflows reference these versions via env vars; `task dev:verify-tools`
+# reads this file and confirms installed binaries match. Drift-check steps in
+# gitops-validate.yml and docs-lint.yml fail if the workflow env vars and this
+# file disagree.
 #
-# Update workflow: bump version here, then update matching env vars in
-# .github/workflows/{gitops-validate,oci-publish}.yml, then run
-# `make verify-tools` locally to confirm.
+# Update workflow: bump the version here, then update every place that pins
+# it. There are three classes:
+#   - render tools    -> .github/workflows/{gitops-validate,oci-publish}.yml
+#   - openknowledge,  -> .github/workflows/docs-lint.yml env block AND the
+#     lychee              knowledge:* vars in Taskfile.yml (version + the
+#                         per-platform checksums)
+#   - task            -> the setup-task step in docs-lint.yml
+# Then run `task dev:verify-tools` locally to confirm.
+#
+# After an openknowledge bump, also run `task knowledge:rules-apply` and
+# commit the regenerated AGENTS.md block, and read the block's diff: the
+# built-in rule text comes from that binary and lands verbatim in the file
+# agents treat as canonical. A bump is the only event that changes it.
 helm 3.20.2
 kustomize 5.3.0
 oras 1.2.0
@@ -25,6 +35,7 @@ lychee 0.24.2
 # (integrity-hashed); install via `task spec:install-cli` / `task docs:install-cli`.
 openspec 1.6.0
 markdownlint 0.42.0
-# go-task itself — the CI executor; KEEP IN SYNC with the
-# arduino/setup-task `version:` literals in .github/workflows/.
+# go-task itself — the CI executor. Pinned via the TASK_VERSION env block in
+# docs-lint.yml (drift-checked there) and the setup-task `version:` literal
+# in tofu-validate.yml.
 task 3.48.0

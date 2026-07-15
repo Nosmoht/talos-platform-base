@@ -43,7 +43,7 @@ platform layer model (recorded in the platform architecture decision records).
 - `policies/`: conftest Rego policies for kustomize-rendered manifests.
 - `openspec/`: behavioral-requirements source of truth (OpenSpec) — one spec per substrate capability under `specs/`, change proposals under `changes/`. See §Spec-Driven Development.
 - `scripts/`: cluster-agnostic validation, render and helper scripts.
-- `knowledge/`: the OKF v0.1 knowledge bundle — architecture, reference, workflows, decision records (ADRs), glossary. Entry point: [`knowledge/index.md`](knowledge/index.md). Machine-consumed contracts live OUTSIDE the bundle: `schemas/`, `contracts/`, `platform-hardware-features.yaml` (repo root).
+- `knowledge/`: the OKF v0.1 knowledge bundle — architecture, reference, workflows, decision records (ADRs), glossary. Entry point: [`knowledge/index.md`](knowledge/index.md). Contracts a consumer parses live outside the bundle: `schemas/`, `contracts/`, `platform-hardware-features.yaml` (repo root); the bundle itself ships in no release artifact (`.ci-oci-tarball-include.txt`). `knowledge/rules/` is a narrow carve-out for contracts the bundle's own tooling reads: `openknowledge` renders them into this file's Open Knowledge Maintenance block.
 
 ## Build, Test, and Development Commands
 
@@ -80,6 +80,58 @@ referencing both the cluster repo and this base.
 - Keep commits focused and logically grouped.
 - PRs include: what changed and why, impacted components, validation steps run, breaking-change notes (Helm-value defaults that downstream consumers need to be aware of).
 - A breaking change to base Helm values requires bumping the next OCI tag's MAJOR version per CHANGELOG.
+
+<!-- markdownlint-disable MD032 -->
+<!-- openknowledge:rules:start -->
+## Open Knowledge Maintenance
+
+This project has an Open Knowledge wiki at `knowledge`.
+
+This block is managed by `openknowledge rules apply`.
+
+Before relevant work:
+- Read `knowledge/index.md` and follow only links relevant to the task.
+- Treat the wiki as durable project memory, not as a scratchpad.
+- If the wiki is missing, stale, or wrong, say so instead of inventing facts.
+
+Enabled rules:
+- docs: Keep docs in sync with implementation.
+- decisions: Record important decisions.
+- schemas: Document APIs, data models, configs, and contracts.
+- talos-base-bundle: Repo-specific bundle conventions on top of the built-in maintenance rules.
+
+Docs rules:
+- When behavior, APIs, commands, configs, or examples change, update the matching docs in the same task.
+- Preserve source anchors or citations when docs depend on implementation details.
+- Keep docs focused on shipped behavior; label planned work clearly.
+
+Decisions rules:
+- When a meaningful technical or product decision is made, record the context, options, chosen path, and tradeoffs.
+- Link decisions to affected concepts, workflows, commands, systems, or source files.
+- Do not rewrite decision history to hide old context; append clarifications or superseding decisions.
+
+Schemas rules:
+- Create or update concepts for APIs, schemas, tables, config keys, data models, and contracts when their source changes.
+- Prefer source pointers over copying generated or code-derived truth into prose.
+- Keep schema docs linked to the authoritative source files, specs, or systems.
+
+Bundle Conventions rules:
+- Use the closed `type` vocabulary: `architecture`, `reference`, `workflow`, `decision`, `glossary`, `project`, `Rule`. Add a new type by editing this list and `knowledge/index.md` in the same change. `Rule` is capitalized because the CLI requires that spelling, not as a naming pattern to copy.
+- Set `timestamp` to the date of the last substantive verification, not the last typo fix, and keep `sources` pointing at the repo-relative paths the concept was derived from.
+- Re-verify a concept when any of its `sources` changed after its `timestamp`. A green validation run proves link and schema health, never freshness.
+- Omit `sources` on `decision` concepts: an ADR records a decision rather than deriving from source files. Their field contract, including `status`, `id`, `deciders`, and `supersedes`, lives in `knowledge/decisions/index.md`.
+- Link relatively inside the bundle, and cite anything outside it as an inline code span rather than a markdown link: `openknowledge.toml` raises `link-target` to error, so an escaping link fails validation.
+- Validate with `task knowledge:validate`, which runs `openknowledge validate` plus the offline link gate. Run `task knowledge:rules-check` as well after touching `knowledge/rules/`.
+- Record bundle changes in `knowledge/log.md`, one bullet per changed concept under today's date. User-facing changes belong in the root `CHANGELOG.md`. The two files have separate audiences and do not mirror each other.
+- Regenerate the `AGENTS.md` managed block with `task knowledge:rules-apply` after changing this file. Hand-editing the block fails `task knowledge:rules-check`.
+
+After wiki updates:
+- Keep non-reserved Markdown files OKF-valid with YAML frontmatter and a non-empty `type`.
+- Update `index.md` links when pages are added, moved, or removed.
+- Update `log.md` when durable wiki knowledge changes.
+- Run `openknowledge validate "knowledge"` before finishing.
+<!-- openknowledge:rules:end -->
+<!-- markdownlint-enable MD032 -->
 
 ## Codex CLI Operating Rules (Important)
 
@@ -133,7 +185,7 @@ this list.
 |---|---|---|
 | AWS/GitHub tokens in any file | pre-commit `gitleaks` hook | Credential leak prevention |
 | `git commit --no-verify` bypass | CI `gitleaks` CLI in `gitops-validate.yml` `secret-scan` job (required PR check) | Last backstop — blocks merge even if local hooks bypassed |
-| Forbidden Kubernetes kinds (Ingress, Endpoints) | CI `hard-constraints-check.yml` on every PR (not yet a branch-protection required context — follow-up) | Server-side enforcement of §Hard Constraints |
+| Forbidden Kubernetes kinds (Ingress, Endpoints) | CI `hard-constraints-check.yml` on every PR (required branch-protection context `Hard Constraints`) | Server-side enforcement of §Hard Constraints |
 | SOPS plaintext leak (consumer-side) | pre-commit + Claude Code PreToolUse hook (consumer repo) | Plaintext secrets must never reach git |
 
 `*.sops.yaml` does not exist in this base repo. Consumer cluster repos add

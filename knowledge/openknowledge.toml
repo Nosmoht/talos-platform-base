@@ -6,6 +6,18 @@
 # (exit 1). Consequence for authors: files outside knowledge/ are cited
 # as inline code spans, never markdown-linked.
 # Verified empirically against openknowledge v0.5.0 (2026-07-11).
+#
+# rule-catalog is raised for the same reason: a custom rule document that
+# loses its rule_id, summary, or instruction bullets would otherwise only
+# warn — while silently rendering a hollow contract into AGENTS.md.
+# Verified against v0.5.0 (2026-07-15): removing rule_id fails validation.
+#
+# No [rules] section: knowledge/rules/ is the CLI's built-in default location
+# for custom rule documents. Verified against v0.5.0 (2026-07-15) — rendering
+# into AGENTS.md and the rule-catalog validation behave identically with and
+# without an explicit [rules].paths = ["rules"], so declaring it would only
+# restate the default. [rules].paths is for ADDITIONAL directories.
 
 [validation.rules]
 link-target = "error"
+rule-catalog = "error"

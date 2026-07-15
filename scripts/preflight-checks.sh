@@ -89,7 +89,8 @@ else
   for line in "Hard Constraints Check / Hard Constraints|Hard Constraints" \
               "GitOps Validate / validate|validate" \
               "GitOps Validate / Secret Scan (gitleaks)|Secret Scan (gitleaks)" \
-              "Preflight / preflight|preflight"; do
+              "Preflight / preflight|preflight" \
+              "docs-lint / docs-lint|docs-lint"; do
     qualified="${line%|*}"
     bare="${line#*|}"
     if printf '%s\n' "$CONTEXTS" | grep -Fxq "$qualified"; then

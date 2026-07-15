@@ -3,7 +3,7 @@
 This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [Unreleased]
 
 ### Added
 
@@ -27,9 +27,36 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   no-behavior-change diffs: the `Spec-Impact: none` trailer on every
   commit touching the file (per-commit scope), judged by the PR
   reviewer.
+- **The OKF bundle's maintenance contract is now rendered into `AGENTS.md`.**
+  `knowledge/rules/talos-base-bundle.md` states the bundle's authoring
+  conventions (closed `type` vocabulary, the `timestamp`/`sources` staleness
+  contract, the link rule, the `log.md` vs `CHANGELOG.md` split), and
+  `openknowledge rules apply` renders them into a managed block in `AGENTS.md`
+  alongside the built-in `docs`, `decisions`, and `schemas` rules. Previously
+  the contract lived only in `CONTRIBUTING.md`, which is outside the
+  `AGENTS.md` load chain an agent reads. `task knowledge:rules-apply`
+  regenerates the block; `task knowledge:rules-check` fails on drift and runs
+  in `docs-lint`. The block is generated — hand-edits fail the check.
+- `knowledge/openknowledge.toml` raises `rule-catalog` to `error`, so a
+  malformed rule document fails validation instead of warning.
 
 ### Fixed
 
+- **`docs-lint` never actually gated merges.** Branch protection required the
+  context `docs-lint`, but the workflow's job reported as `markdownlint` — no
+  check run by that name ever existed, so the required context stayed pending
+  and merges relied on admin bypass. The job now declares `name: docs-lint`.
+  markdownlint, OKF validation, and the link gate were running and passing;
+  they simply were not blocking anything. `scripts/preflight-checks.sh` gained
+  the context, which catches a recurrence when a maintainer runs it locally —
+  in CI that check still skips, because the default `GITHUB_TOKEN` cannot read
+  branch protection.
+- Documentation of the required-check set corrected against the
+  branch-protection API in three places that disagreed with it and with each
+  other: `CONTRIBUTING.md` §Required (CI) omitted `docs-lint` and `preflight`;
+  `AGENTS.md` claimed `hard-constraints-check` was "not yet" required; and
+  `knowledge/project/openssf-self-assessment.md` recorded two required
+  contexts where there are five.
 - **conftest ArgoCD policy — chart-omission evasion hardened**
   (`policies/conftest/argocd.rego`): every Application source must set
   `repoURL` and be explicitly classifiable (`chart`, `path`, `ref`, or a
@@ -81,6 +108,13 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `.claude/` stays gitignored via selective negation. Hand-authored
   harness primitives remain external. This reverses the former
   "ships no `.claude/` tree" policy in `CLAUDE.md`/`AGENTS.md`.
+- `knowledge:validate` gained the two `tofu/modules/talos-cluster` READMEs
+  that the former inline CI step already checked.
+- `docs-lint.yml` pins `arduino/setup-task` by commit SHA and bounds the job
+  with `timeout-minutes: 10`.
+- `CODEOWNERS` covers `knowledge/rules/` and `knowledge/openknowledge.toml`:
+  their content reaches `AGENTS.md` verbatim, so they are reviewed at that
+  file's bar rather than a docs file's.
 
 ## v4.0.0 — 2026-07-11
 
