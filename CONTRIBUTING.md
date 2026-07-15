@@ -125,7 +125,7 @@ task tofu:ci   # tofu fmt -check + tofu validate + tflint
 | `gitops-validate` | full render+lint+policy pipeline |
 | `hard-constraints-check` | no Ingress/Endpoints kinds, etc. |
 | `secret-scan` (gitleaks) | last-backstop on bypassed pre-commit |
-| `docs-lint` | markdownlint, OKF bundle validation, offline link gate, AGENTS.md managed-block drift |
+| `docs-lint` | tool-pin drift, markdownlint, OKF bundle validation, offline link gate, AGENTS.md managed-block drift, OpenSpec strict validate (incl. bite-check + source-ownership partition), regeneration parity of the committed tool trees, and spec staleness (escape: a `Spec-Impact: none` trailer on every commit touching the file) |
 | `preflight` | asserts the required-check contexts are wired |
 | `oci-publish` dry-run (on tag PRs only) | confirms signing path works |
 

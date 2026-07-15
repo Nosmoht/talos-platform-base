@@ -27,9 +27,12 @@ permissions:
 
 jobs:
   docs-lint:
-    # Job id is the branch-protection context ("docs-lint"): GitHub derives
-    # the context from name: falling back to the job id. Renaming either
-    # silently un-gates the check — scripts/preflight-checks.sh asserts it.
+    # name: MUST stay "docs-lint" — branch protection requires that context,
+    # and GitHub derives it from name: (falling back to the job id). Declared
+    # explicitly rather than riding the fallback, so a job-id rename cannot
+    # silently un-gate the check. Same contract as hard-constraints-check.yml;
+    # scripts/preflight-checks.sh asserts it.
+    name: docs-lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
