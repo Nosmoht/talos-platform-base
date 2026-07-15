@@ -48,7 +48,7 @@ Seeding: `task cluster:init-yaml` copies `cluster.yaml.example` to
 ## Two consumers, two subsets
 
 1. **`task bootstrap:argocd`** reads only the **bootstrap-identity subset** —
-   four fields, extracted with `yq` in the internal `bootstrap:render-root`
+   four fields, extracted with `yq` in the `bootstrap:render-root`
    task and `envsubst`-rendered into the App-of-Apps root templates under
    `kubernetes/bootstrap/argocd/`. The subset and the two guards that keep a
    `cluster.yaml` value from expanding into anything but itself are normative

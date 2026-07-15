@@ -140,7 +140,18 @@ reject "a CR-bearing value is rejected"          "$FIXTURES/inject-carriage-retu
 reject "an empty value is rejected"              "$FIXTURES/empty-overlay.yaml"          "is empty"
 # No message assertion: yq itself rejects the non-scalar via `select(type)`, so
 # the error text is yq's, not ours. The assertion is exit-non-zero + no _out.
-reject "a non-scalar value is rejected"          "$FIXTURES/inject-non-scalar.yaml"      ""
+reject "a non-scalar value is rejected"          "$FIXTURES/inject-non-scalar.yaml"      "no matches found"
+# The case every guard above misses: `..` is well-formed by every negative
+# test and still points a prune+selfHeal Application at a parent directory.
+# Only the positive overlay bound catches it.
+reject "a path-traversing overlay is rejected"   "$FIXTURES/traverse-overlay.yaml"       "single lowercase kustomize directory name"
+# A value that is a plain !!str but carries YAML meaning: "'*'" renders as the
+# sourceRepos wildcard, widening the AppProject to every repo, with no line
+# break and no $.
+reject "a YAML-quoting value is rejected"        "$FIXTURES/inject-yaml-quoting.yaml"    "does not survive a YAML round-trip"
+# Whitespace-only: not shell-empty, not a control character. YAML strips the
+# trailing space, so it reproduces the empty-overlay defect exactly.
+reject "a whitespace-only value is rejected"     "$FIXTURES/blank-overlay.yaml"          "does not survive a YAML round-trip"
 
 # The 2x3 matrix the scenario's "omits or nulls" claims. Generated from the
 # valid fixture rather than committed as six near-identical files: the cells
@@ -202,8 +213,12 @@ fi
 # The probe above proves envsubst's allowlist semantics. This binds the render
 # to actually USING them: a refactor to bare `envsubst < … > …` leaves the probe
 # green (it calls envsubst itself) while the render loses template containment.
+# The denominator is NOT anchored to line start: `cat t | envsubst > out` and
+# `< t envsubst > out` are calls too, and an anchored count would leave them out
+# of the total while the ratio still balanced — the un-allowlisted call this
+# assertion exists to catch, walking past it.
 allowlisted_calls=$(grep -cF "envsubst '\$" Taskfile.yml || true)
-total_calls=$(grep -cE '^ *envsubst ' Taskfile.yml || true)
+total_calls=$(grep -cE '(^ *|[|;&(] *)envsubst ' Taskfile.yml || true)
 if [ "${allowlisted_calls:-0}" -ge 2 ] && [ "${allowlisted_calls:-0}" -eq "${total_calls:-0}" ]; then
   pass "every envsubst call in Taskfile.yml passes a SHELL-FORMAT allowlist ($allowlisted_calls/$total_calls)"
 else

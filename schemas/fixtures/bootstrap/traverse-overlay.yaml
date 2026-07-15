@@ -1,0 +1,33 @@
+# Bootstrap-render fixture: path traversal through a well-formed overlay.
+#
+# This is the case every NEGATIVE guard misses, and the reason the render also
+# bounds the overlay POSITIVELY. `..` is a plain !!str: non-empty, no `$`, no
+# control character, and it round-trips through YAML as itself. It renders
+#   path: kubernetes/overlays/..
+# which is `kubernetes/` — on a root Application carrying prune: true +
+# selfHeal: true, i.e. ArgoCD assuming ownership of the whole tree, including
+# the kubernetes/bootstrap/ AppProject that is meant to be its own RBAC
+# boundary. Strictly worse than the empty-overlay defect, at the same
+# schema-validity level, and it was schema-valid until this change added the
+# pattern.
+#
+# Relax the overlay pattern in Taskfile.yml#bootstrap:render-root and this
+# fixture turns the check red.
+cluster:
+  name: fixture-cluster
+  overlay: ".."
+  endpoint: https://192.0.2.1:6443
+repo:
+  url: https://example.invalid/consumer-repo.git
+talos:
+  version: v1.12.6
+kubernetes:
+  version: v1.35.0
+images:
+  intel:
+    cpu_vendor: intel
+nodes:
+  - hostname: cp-1
+    ip: 192.0.2.10
+    role: controlplane
+    image: intel

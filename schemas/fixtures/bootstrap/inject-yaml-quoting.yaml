@@ -1,0 +1,27 @@
+# Bootstrap-render fixture: a value that IS a plain !!str and still carries
+# YAML meaning. `'*'` is three characters; substituted into
+#   sourceRepos:
+#     - ${REPO_URL}
+# it renders `- '*'`, which parses to sourceRepos: ["*"] — the AppProject, i.e.
+# ArgoCD's RBAC boundary, trusting EVERY repository. No line break, no `$`, no
+# control character, non-empty, correct node type. Only the YAML round-trip
+# check catches it. Character-class filters cannot: the danger is meaning, not
+# syntax.
+cluster:
+  name: fixture-cluster
+  overlay: prod
+  endpoint: https://192.0.2.1:6443
+repo:
+  url: "'*'"
+talos:
+  version: v1.12.6
+kubernetes:
+  version: v1.35.0
+images:
+  intel:
+    cpu_vendor: intel
+nodes:
+  - hostname: cp-1
+    ip: 192.0.2.10
+    role: controlplane
+    image: intel

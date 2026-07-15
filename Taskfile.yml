@@ -226,6 +226,11 @@ tasks:
       done
       echo "conftest bite-check OK: all three source-classification/pinning denies fire"
       ./scripts/check-argocd-substrate-invariants.sh
+      # The bootstrap render is part of what this repo delivers to a consumer,
+      # so its gate belongs in the target AGENTS.md §Testing Guidelines names as
+      # the pre-PR requirement. Wired in CI only, a contributor following the
+      # documented checklist would never run it.
+      ./scripts/check-bootstrap-render.sh
 
   gitops:render-component:
     desc: 'Stage-1+2 render of one component. Usage: task gitops:render-component COMPONENT=<name>'
@@ -260,6 +265,16 @@ tasks:
     # offline in CI. It is also a useful dry-run: render and inspect the two
     # root manifests without touching a cluster.
     desc: "Render the App-of-Apps root manifests from cluster.yaml into kubernetes/bootstrap/argocd/_out/ (no cluster contact). Usage: task bootstrap:render-root [ENV=cluster.yaml]"
+    env:
+      # Bound through env:, NOT interpolated into the command string. go-task
+      # renders {{.ENV}} as RAW TEXT before sh parses it, so a bare `{{.ENV}}`
+      # made `ENV='cluster.yaml; cmd'` execute cmd — and merely QUOTING it
+      # ("{{.ENV}}") does not close that: command substitution expands inside
+      # double quotes, so `ENV='$(cmd)'` still executed (verified — the probe
+      # file appeared). Binding it here means the shell only ever sees the
+      # variable reference "$RENDER_ENV", which it does not re-parse.
+      # Same fix, same reason, as SPEC_BASE in spec:check-staleness.
+      RENDER_ENV: '{{.ENV}}'
     cmd: |
       # Explicit, not inherited: every guard below is fail-closed only while a
       # failing statement aborts the block. Without this, that property rests
@@ -268,18 +283,13 @@ tasks:
       # The repo sets it explicitly in gitops:validate / tofu:validate /
       # knowledge:validate / spec:validate for the same reason.
       set -e
-      # {{.ENV}} is quoted: go-task renders it as RAW TEXT into this command
-      # string before sh parses it, so a bare interpolation makes
-      # `ENV='cluster.yaml; cmd'` execute cmd. Quoting also fixes paths with
-      # spaces.
-      #
       # `select(type == "!!str")` with -e: a non-scalar key (map/sequence)
       # would otherwise serialize its whole subtree into the value and inject
       # YAML structure below. -e turns the empty select result into exit 1.
-      CLUSTER_NAME=$(yq -e '.cluster.name | select(type == "!!str")' "{{.ENV}}")
-      REPO_URL=$(yq -e '.repo.url | select(type == "!!str")' "{{.ENV}}")
-      OVERLAY=$(yq -e '.cluster.overlay | select(type == "!!str")' "{{.ENV}}")
-      TARGET_REVISION=$(yq -e '(.cluster.target_revision // "main") | select(type == "!!str")' "{{.ENV}}")
+      CLUSTER_NAME=$(yq -e '.cluster.name | select(type == "!!str")' "$RENDER_ENV")
+      REPO_URL=$(yq -e '.repo.url | select(type == "!!str")' "$RENDER_ENV")
+      OVERLAY=$(yq -e '.cluster.overlay | select(type == "!!str")' "$RENDER_ENV")
+      TARGET_REVISION=$(yq -e '(.cluster.target_revision // "main") | select(type == "!!str")' "$RENDER_ENV")
       # Containment of the value inside its YAML scalar position. envsubst
       # substitutes text, not YAML, so a value carrying a newline breaks out
       # of its field and injects sibling keys/list items — e.g. a repo.url of
@@ -315,7 +325,45 @@ tasks:
         if [ "$(printf '%s' "$v" | wc -c)" -ne "$(printf '%s' "$v" | LC_ALL=C tr -d '[:cntrl:]' | wc -c)" ]; then
           echo "ERROR: cluster.yaml value contains a control character (line break or tab), which would break it out of its YAML scalar position in the rendered manifest: $v"; exit 1
         fi
+        # Generic backstop: the value must survive a YAML round-trip AS ITSELF.
+        # The checks above are character-class filters, and a character class
+        # cannot express "means something else to a YAML parser". These are all
+        # plain !!str, non-empty, $-free and control-char-free, and each one
+        # changes meaning when substituted into a scalar position:
+        #   repo.url: "'*'"  -> renders `- '*'` -> sourceRepos: ["*"]
+        #                       — the AppProject trusts EVERY repo. No line
+        #                       break needed; this is the RBAC widening the
+        #                       newline guard was written for, by another road.
+        #   overlay: " "     -> renders `path: kubernetes/overlays/ `; YAML
+        #                       strips trailing space, so the parsed value is
+        #                       `kubernetes/overlays/` — the whole-overlay-tree
+        #                       defect the empty guard exists to stop.
+        #   overlay: "p #x"  -> the ` #` starts a comment; parses to `p`.
+        #   overlay: "&a"    -> an anchor; parses to empty.
+        # Round-tripping the value through the same parser that will read the
+        # manifest catches the class rather than enumerating its members.
+        if [ "$(printf '%s' "x: $v" | yq -r '.x' 2>/dev/null)" != "$v" ]; then
+          echo "ERROR: cluster.yaml value does not survive a YAML round-trip as itself — it carries YAML syntax (quoting, a comment, an anchor, an indicator) and would mean something else in the rendered manifest: $v"; exit 1
+        fi
       done
+      # POSITIVE bound on the overlay, because the guards above are all
+      # NEGATIVE (reject what looks dangerous) and the sink is a path:
+      # root-application.yaml.tmpl renders `path: kubernetes/overlays/${OVERLAY}`
+      # on an Application carrying prune: true + selfHeal: true. `overlay: ".."`
+      # is a plain, non-empty, $-free, control-char-free !!str that round-trips
+      # as itself — it passes every check above — and renders
+      # `path: kubernetes/overlays/..`, i.e. `kubernetes/`, handing ArgoCD
+      # ownership of the whole tree including kubernetes/bootstrap/. Escaping
+      # syntax was never the whole risk; the value can mean something dangerous
+      # while being perfectly well-formed.
+      # The overlay is a single kustomize directory NAME (schema description),
+      # so it takes cluster.name's alphabet. The schema now carries the same
+      # pattern, but the schema does not run on this path — bootstrap:argocd
+      # deps on this task alone — so the render bounds it itself.
+      case "$OVERLAY" in
+        *[!a-z0-9-]*|-*|*-|"")
+          echo "ERROR: cluster.overlay must be a single lowercase kustomize directory name matching ^[a-z0-9]([-a-z0-9]*[a-z0-9])?\$ — it is interpolated into the root Application's spec.source.path, so anything else (a path segment like '..', an absolute path, whitespace) points a prune+selfHeal Application somewhere it should not go. Got: $OVERLAY"; exit 1;;
+      esac
       # Label-safe form of the revision for app.kubernetes.io/version: a git
       # ref may carry '/' etc., but a label VALUE is limited to 63 chars of
       # [A-Za-z0-9_.-] with alphanumeric ends. spec.source.targetRevision

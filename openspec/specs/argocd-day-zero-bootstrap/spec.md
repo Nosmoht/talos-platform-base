@@ -131,9 +131,15 @@ the intended split rather than a contradiction between the two specs.
 ### Requirement: Containment of cluster.yaml values in the rendered manifest
 
 A `cluster.yaml` value SHALL reach a rendered bootstrap manifest as a scalar
-in its own YAML position, and SHALL NOT expand, or introduce YAML structure,
-into the manifest around it. The render SHALL reject, before reading any
-template, any read value that:
+in its own YAML position, meaning in the rendered manifest exactly what it
+means in `cluster.yaml`, and SHALL NOT expand or introduce YAML structure into
+the manifest around it. Escaping syntax is not the whole risk: a value can be
+perfectly well-formed and still be dangerous because of what it *denotes* —
+`overlay: ".."` is a plain string that resolves to a parent directory — so
+`cluster.overlay`, whose sink is a path, additionally SHALL be bound
+positively (below).
+
+The render SHALL reject, before reading any template, any read value that:
 
 1. contains `$` — `envsubst` would otherwise expand it against the render
    host's environment;
@@ -147,14 +153,34 @@ template, any read value that:
    whole overlay tree);
 4. is not a string — a mapping or sequence serializes its subtree into the
    value, which is (2) by another route and is not caught by (2) when the
-   node serializes to a single line.
+   node serializes to a single line;
+5. does not survive a YAML round-trip as itself — a value can be a plain,
+   non-empty, `$`-free, control-character-free string and still carry YAML
+   syntax that changes its meaning once substituted: `'*'` parses to `*`
+   (in `sourceRepos`, the wildcard that trusts every repository), a trailing
+   space is stripped, a space-then-hash starts a comment, `&a` is an
+   anchor. Checks 1–4
+   are character classes, and a character class cannot express "means
+   something else to a YAML parser"; round-tripping the value through the
+   same parser that will read the manifest catches the class instead of
+   enumerating its members.
+
+Additionally, `.cluster.overlay` SHALL match
+`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` — a positive bound, because checks 1–5 are
+all negative and its sink is a path. `path: kubernetes/overlays/${OVERLAY}`
+sits on an Application with prune and self-heal enabled, so `overlay: ".."`
+— which passes every check above — resolves to `kubernetes/`, handing that
+Application the whole tree. The document schema carries the same pattern; the
+render re-checks it because the schema does not run on this path.
 
 None of these is observable in the rendered output for well-formed input,
 which is why they are pinned here rather than left to the render's
-implementation. The bounds of the claim: the guards constrain the four
-identity VALUES. They are not a general YAML-injection defense for the
-templates, and they do not validate the values semantically — a syntactically
-clean but wrong repo URL renders happily.
+implementation. The bounds of the claim, stated so a reader does not infer
+more: the guards constrain the four identity values, and only
+`cluster.overlay` is bound positively. They are not a general YAML-injection
+defense for the templates. They do not make a value *correct* — a well-formed
+repo URL pointing at the wrong repository renders happily, and `repo.url` is
+bounded only by round-trip stability, not by a URL grammar.
 
 Separately, `envsubst` SHALL be invoked with an explicit allowlist of the
 substitution variable names the templates use, so a `$NAME` sequence a
@@ -178,7 +204,8 @@ and contacts no cluster). Removing any single guard turns it red.
 #### Scenario: A line-break-bearing value fails the render
 
 - **WHEN** a read `cluster.yaml` value contains a line break — either `\n` or
-  a lone `\r`, both schema-valid, since the identity fields carry no pattern
+  a lone `\r`; `repo.url` and `target_revision` admit one and stay
+  schema-valid, since neither carries a pattern
 - **THEN** the render fails and no bootstrap manifest is written or applied,
   rather than the trailing text becoming sibling YAML in the manifest
 
@@ -187,6 +214,23 @@ and contacts no cluster). Removing any single guard turns it red.
 - **WHEN** a read `cluster.yaml` value is the empty string, or is a mapping or
   sequence rather than a string
 - **THEN** the render fails and no bootstrap manifest is written or applied
+
+#### Scenario: A value carrying YAML syntax fails the render
+
+- **WHEN** a read `cluster.yaml` value is a plain string that does not survive
+  a YAML round-trip as itself — quoting (`'*'`), a trailing space, an inline
+  comment, or an anchor
+- **THEN** the render fails and no bootstrap manifest is written or applied,
+  rather than the value meaning something else in the rendered manifest
+
+#### Scenario: An overlay that is not a plain directory name fails the render
+
+- **WHEN** `.cluster.overlay` does not match
+  `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` — a path segment such as `..`, an absolute
+  path, or any other non-label value
+- **THEN** the render fails and no bootstrap manifest is written or applied,
+  rather than the root Application resolving its `path` outside
+  `kubernetes/overlays/`
 
 #### Scenario: Host environment does not leak into a rendered manifest
 
