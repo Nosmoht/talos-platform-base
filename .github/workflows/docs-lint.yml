@@ -13,10 +13,19 @@ name: docs-lint
 # `task docs:lint`, `task knowledge:validate`, `task knowledge:rules-check`,
 # `task spec:validate`, `task spec:check-regen`, `task spec:check-staleness`).
 # Tool pins live in .tool-versions + the Taskfile vars block + package.json;
-# `dev:verify-pins` asserts those pairs. go-task itself is the one exception
-# it cannot cover: setup-task runs BEFORE task exists, so its pin is the
-# TASK_VERSION env below, drift-checked against .tool-versions by the one
-# inline step in this file.
+# `dev:verify-pins` asserts those pairs.
+#
+# go-task's own pin is the one inline step, for a narrow reason: setup-task
+# installs the binary that runs every target below, so the assert has to sit
+# before any target can run. `dev:verify-tools` DOES cover the task pin (and
+# covers it more strongly — it reads `task --version`, i.e. the installed
+# binary, not a string in a file), but it asserts the FULL .tool-versions set
+# and this job installs only a subset, so it is red here by construction.
+# Honest scope of the inline assert: it proves this file and .tool-versions
+# agree. It does not observe the installed binary — a setup-task cache hit or
+# a PATH-shadowed `task` would satisfy it. Nor does it reach the two
+# setup-task pins in tofu-validate.yml, which stay comment-only. Both gaps
+# are tracked as follow-ups.
 on:
   pull_request:
   push:
@@ -118,5 +127,10 @@ jobs:
           # env-bound (not inline-interpolated into `run:`): github.base_ref
           # is on GitHub's untrusted-input list — inline expansion would let
           # a metacharacter-named base branch inject into the runner shell.
+          # This closes the Actions-expression layer ONLY. The value then
+          # reaches go-task, which renders CLI vars as raw text into the
+          # command string — that second layer is closed in the Taskfile
+          # (spec:check-staleness passes BASE via env, never the template).
+          # Both are load-bearing; neither alone is sufficient.
           BASE_REF: ${{ github.base_ref }}
         run: task spec:check-staleness BASE="origin/${BASE_REF}"

@@ -531,6 +531,20 @@ tasks:
       # real drift. Same delta shape as spec:update's completeness gate —
       # scoped to the generated trees, because a repo-wide ignored snapshot
       # would churn on node_modules/ and every tool cache.
+      #
+      # Two disclosed residuals, both bounded to the LOCAL run — on the
+      # pristine CI checkout that actually gates merges, neither applies:
+      #   - --ignored=matching COLLAPSES an ignored directory to one entry
+      #     and does not enumerate its contents (git-status documents this).
+      #     So a write into a PRE-EXISTING ignored dir under .claude/
+      #     (agents/, hooks/, operator scratch) does not move the delta.
+      #     In CI those dirs do not exist, so a first creation is caught.
+      #   - the ignored set outside .claude//.codex/ (.work/, .mcp.json.local,
+      #     ...) is in neither snapshot. Bounded by openspec's write scope,
+      #     which is an assumption a CLI upgrade can break — the same class
+      #     of upgrade this target exists to detect.
+      # Closing either needs a content snapshot (find + hash) rather than a
+      # git-status delta; tracked as a follow-up, not silently assumed away.
       before="$(mktemp)"; after="$(mktemp)"
       ignbefore="$(mktemp)"; ignafter="$(mktemp)"
       ignraw="$(mktemp)"
@@ -570,7 +584,16 @@ tasks:
 
   spec:check-staleness:
     desc: "Staleness gate: a diff touching a spec's primary source must also touch the owning spec (escape: 'Spec-Impact: none' commit trailer). Usage: task spec:check-staleness [BASE=origin/main]"
-    cmd: python3 scripts/check-spec-staleness.py --base '{{.BASE | default "origin/main"}}'
+    # BASE reaches the script through the environment, never through the
+    # template. go-task renders {{.BASE}} as raw TEXT into the command string
+    # before its shell parses it, so the single quotes around a templated
+    # value are part of the template, not an escape: a BASE containing a
+    # single quote closes them and injects. docs-lint.yml feeds this from
+    # github.base_ref — env-binding it there closes the Actions-expression
+    # layer only; this closes the shell layer. Verified both directions.
+    env:
+      SPEC_BASE: '{{.BASE | default "origin/main"}}'
+    cmd: python3 scripts/check-spec-staleness.py --base "$SPEC_BASE"
 
   spec:update:
     desc: Regenerate OpenSpec tool integrations (.claude/, .codex/) after a CLI upgrade
