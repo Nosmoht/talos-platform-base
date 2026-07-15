@@ -48,6 +48,38 @@ The one-time backfill of the 14 substrate capabilities was directly
 authored by explicit owner decision (ADR-0015); it is the exception, not
 the pattern.
 
+### Spec-gap backfill
+
+A third lane, for when an existing capability's spec turns out to be silent
+on behavior that already ships — the backfill closed, but a gap survived it.
+The delta is `ADDED`-only and step 2 has nothing to implement, so proposing
+and archiving land together. First use:
+`openspec/changes/archive/2026-07-15-spec-bootstrap-identity-subset/`.
+
+The hazard this lane exists to bound: *"the apply phase is empty because the
+behavior already ships"* is a self-certifying claim, and a PR that ships code
+and spec together could reach for it to narrate a review that never happened.
+So the lane is only available under all four conditions:
+
+- The delta is `ADDED`-only. A `MODIFIED` or `REMOVED` requirement means
+  behavior is changing — that is lane 1, and its review happens before the
+  code.
+- The proposal names the shipped implementation (file + fragment) each added
+  requirement describes, and carries the verification that proves the claim —
+  a run, not a reading.
+- Any code the change touches is a **fix for a defect the spec work
+  uncovered**, described as such in the proposal, and not a behavior change
+  the spec is being written around.
+- The requirements are mechanically bound before merge, or the proposal states
+  why they cannot be and what carries them instead. A spec-gap backfill whose
+  requirements nothing executes has moved prose from an unwatched file to a
+  watched one and called it a gate — see
+  [ADR-0016](../decisions/0016-capability-profiles-predicate-only.md) for why
+  that is not enough.
+
+If any condition fails, it is lane 1: propose, get the delta reviewed, then
+implement.
+
 ## Validation
 
 - Locally: `task spec:validate` (strict validate, bite-check via the

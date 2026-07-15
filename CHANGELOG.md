@@ -33,7 +33,54 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `iommu=pt` must wait for the consumer kernel-arg path (#169). Decision:
   [`knowledge/decisions/0016-capability-profiles-predicate-only.md`](knowledge/decisions/0016-capability-profiles-predicate-only.md).
 
+- **`task bootstrap:argocd` now rejects `cluster.yaml` identity values that it
+  previously rendered.** The bootstrap-identity values (`cluster.name`,
+  `repo.url`, `cluster.overlay`, `cluster.target_revision`) are refused when
+  empty, multi-line, or not a string — each was schema-valid and rendered
+  before. **Consumer impact:** a `cluster.yaml` relying on any of those forms
+  now fails the render with a message naming the value, instead of producing a
+  manifest. A well-formed `cluster.yaml` renders byte-identically. The forms
+  being rejected were defects, not features — see §Security below.
+
+### Security
+
+- **The App-of-Apps bootstrap render no longer lets a `cluster.yaml` value
+  escape its YAML position.** Two shipped defects, both reachable from a
+  schema-valid file, both closed:
+  - A value containing a **line break** was substituted verbatim by `envsubst`,
+    so its trailing lines became sibling YAML. A `repo.url` of
+    `"https://ok\n    - '*'"` rendered an AppProject with
+    `sourceRepos: ['https://ok', '*']` — ArgoCD's RBAC boundary widened to
+    every repository, from a diff that reads as a URL change. The identity
+    fields carry no schema pattern, and no lint gate runs on the render path.
+  - An **empty** `cluster.overlay` rendered `path: kubernetes/overlays/` on a
+    root Application with `prune: true` + `selfHeal: true` — pointing it at the
+    entire overlay tree.
+  Non-string values (a mapping serializing its subtree into the value) are
+  rejected for the same reason. Additionally: `{{.ENV}}` is now quoted
+  (go-task renders it as raw text before the shell parses it, so
+  `ENV='cluster.yaml; cmd'` executed `cmd` — operator-supplied only, but it
+  becomes a vector the moment the task is wired to an external input), the
+  render aborts explicitly via `set -e` rather than relying on the runner's
+  shell default, and it renders to a temp dir so a failure cannot leave a
+  half-populated `_out/` for `kubectl apply -f`.
+  Behaviour is normative in `openspec/specs/argocd-day-zero-bootstrap/` and
+  asserted per-guard by `task bootstrap:check-render`.
+
 ### Added
+
+- **The bootstrap render's spec scenarios are now mechanically bound**
+  (`scripts/check-bootstrap-render.sh`, `task bootstrap:check-render`, in the
+  `hardware-features-check` CI job). Offline — the render is `yq` + `envsubst`
+  and contacts no cluster. Removing any single guard turns it red. Also
+  **`task tofu:check:readme-parity`** (in `task tofu:ci`): every module
+  variable and output must appear in its hand-maintained README table, which
+  is what keeps the module README from silently drifting now that the second
+  copy of the interface under `knowledge/reference/` is gone.
+
+- **`task bootstrap:render-root` is now a public target** (was `internal:`) —
+  renders the two root manifests from `cluster.yaml` without contacting a
+  cluster. Useful as a dry-run; it is also what makes the render testable.
 
 - **The provisioning-profile catalog's kernel arguments are now pinned by a
   test** (`tofu/modules/talos-cluster/tests/profile-predicate-only.tftest.hcl`):

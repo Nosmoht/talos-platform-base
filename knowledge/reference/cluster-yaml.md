@@ -6,6 +6,12 @@ tags: [cluster-yaml, sot, schema, bootstrap]
 timestamp: 2026-07-15
 sources:
   - cluster.yaml.example
+  # Kept despite the schema-shape section moving to openspec/specs/cluster-yaml-sot/:
+  # the surviving prose still derives from this file (the deliberate absence of a
+  # schema_version, the unvalidated patch content, the structural exclusion of
+  # secrets), so it is still the trigger the bundle's re-verify rule needs — drop
+  # it and nothing tells a future reader those claims went stale.
+  - schemas/cluster.schema.json
   - scripts/lint-cluster-yaml.sh
   - schemas/fixtures/cluster.invalid.yaml
   - Taskfile.yml
@@ -59,7 +65,7 @@ Seeding: `task cluster:init-yaml` copies `cluster.yaml.example` to
    module variables, applying the module defaults via `try()` for omitted
    keys.
 
-## Authoring notes the schema cannot express
+## Authoring notes behind the schema's choices
 
 The typed surface is deliberately limited to the common, irreversible, or
 foot-gun-prone set (network CIDRs, versions, substrate toggles); the long

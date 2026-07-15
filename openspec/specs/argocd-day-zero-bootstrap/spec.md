@@ -86,21 +86,36 @@ The bootstrap render SHALL read exactly four fields from the consumer's
 `cluster.yaml` — `.cluster.name`, `.repo.url`, `.cluster.overlay` and
 `.cluster.target_revision` — and no others; the file is selected per
 invocation (default `cluster.yaml`). `.cluster.target_revision` SHALL default
-to `main` when absent. The other three SHALL fail the render when absent or
-null, rather than rendering an empty value into a bootstrap manifest.
+to `main` when absent. The other three SHALL fail the render when absent,
+null, empty, or not a string.
 
 This is the narrow half of the SoT contract: the full `cluster.yaml` is read
 by the consumer's OpenTofu root, while the bootstrap path is deliberately
 limited to cluster identity and repo coordinates. Widening the subset widens
 what a bootstrap render depends on.
 
+`.cluster.overlay` is **schema-optional but bootstrap-required**: the document
+schema admits a `cluster.yaml` without it (`cluster-yaml-sot`, Requirement
+"Cluster identity, endpoint, and network shape" — `cluster` requires only
+`name` and `endpoint`), because a consumer may drive the OpenTofu root without
+ever seeding an App-of-Apps root. This path is the consumer that narrows it: a
+`cluster.yaml` can be schema-conformant and still be refused here, and that is
+the intended split rather than a contradiction between the two specs.
+
 #### Scenario: The four identity fields reach the render
 
-- **WHEN** `task bootstrap:argocd` renders for a `cluster.yaml` carrying
-  `.cluster.name`, `.repo.url`, `.cluster.overlay` and
-  `.cluster.target_revision`
-- **THEN** the rendered root Application and root AppProject carry exactly
-  those values, and no other `cluster.yaml` field influences the output
+- **WHEN** `task bootstrap:render-root` renders for a `cluster.yaml` carrying
+  the four identity fields
+- **THEN** the rendered root Application carries that `repo.url`, that
+  overlay as its `path`, and that `cluster.name` as its instance label, and
+  the rendered AppProject carries that `repo.url` in `sourceRepos`
+
+#### Scenario: No other cluster.yaml field influences the output
+
+- **WHEN** two `cluster.yaml` files agree on the four identity fields and
+  differ in every other field
+- **THEN** both render byte-identical root Application and AppProject
+  manifests
 
 #### Scenario: Absent target_revision defaults to main
 
@@ -113,30 +128,63 @@ what a bootstrap render depends on.
   `.cluster.overlay`
 - **THEN** the render fails and no bootstrap manifest is written or applied
 
-### Requirement: Envsubst containment of cluster.yaml values
+### Requirement: Containment of cluster.yaml values in the rendered manifest
 
-A `cluster.yaml` value SHALL reach a rendered bootstrap manifest as itself and
-nothing else. The render SHALL enforce this with two independent guards:
+A `cluster.yaml` value SHALL reach a rendered bootstrap manifest as a scalar
+in its own YAML position, and SHALL NOT expand, or introduce YAML structure,
+into the manifest around it. The render SHALL reject, before reading any
+template, any read value that:
 
-1. every value read from `cluster.yaml` is rejected, before any template is
-   rendered, when it contains `$` — the render fails with an error naming the
-   offending value;
-2. `envsubst` is invoked with an explicit allowlist of the substitution
-   variable names the templates use, so any other `$NAME` sequence in a
-   template is left literal rather than expanded from the render host's
-   environment.
+1. contains `$` — `envsubst` would otherwise expand it against the render
+   host's environment;
+2. contains a newline — `envsubst` substitutes text, not YAML, so a
+   line break carries the rest of the value out of its scalar position and
+   into sibling keys or list items;
+3. is empty — an empty substitution renders a manifest field that is
+   syntactically valid and semantically wrong (an empty overlay names the
+   whole overlay tree);
+4. is not a string — a mapping or sequence serializes its subtree into the
+   value, which is (2) by another route and is not caught by (2) when the
+   node serializes to a single line.
 
-Guard 2 SHALL hold independently of guard 1: it is what keeps a `$`-bearing
-value that reached a template — through a future refactor, a widened subset,
-or a template edit — from expanding to the render host's environment. Neither
-guard is observable in the rendered output for well-formed input, which is
-why both are pinned here rather than left to the render's implementation.
+None of these is observable in the rendered output for well-formed input,
+which is why they are pinned here rather than left to the render's
+implementation. The bounds of the claim: the guards constrain the four
+identity VALUES. They are not a general YAML-injection defense for the
+templates, and they do not validate the values semantically — a syntactically
+clean but wrong repo URL renders happily.
+
+Separately, `envsubst` SHALL be invoked with an explicit allowlist of the
+substitution variable names the templates use, so a `$NAME` sequence a
+template carries outside that set stays literal instead of resolving against
+the render host's environment. This constrains the TEMPLATE text, not the
+values: `envsubst` is single-pass and never rescans what it substituted, so a
+`$`-bearing value would render literally with or without the allowlist. The
+two mechanisms cover different surfaces and neither substitutes for the other.
+
+Mechanically asserted for every scenario below by
+`scripts/check-bootstrap-render.sh` (`task bootstrap:check-render`, in the
+`hardware-features-check` CI job, offline — the render is `yq` + `envsubst`
+and contacts no cluster). Removing any single guard turns it red.
 
 #### Scenario: A dollar-bearing value fails the render
 
 - **WHEN** any of the read `cluster.yaml` values contains `$`
 - **THEN** the render fails with an error naming the offending value, and no
   bootstrap manifest is written or applied
+
+#### Scenario: A newline-bearing value fails the render
+
+- **WHEN** a read `cluster.yaml` value contains a line break — schema-valid,
+  since the identity fields carry no pattern
+- **THEN** the render fails and no bootstrap manifest is written or applied,
+  rather than the trailing lines becoming sibling YAML in the manifest
+
+#### Scenario: An empty or non-string value fails the render
+
+- **WHEN** a read `cluster.yaml` value is the empty string, or is a mapping or
+  sequence rather than a string
+- **THEN** the render fails and no bootstrap manifest is written or applied
 
 #### Scenario: Host environment does not leak into a rendered manifest
 
