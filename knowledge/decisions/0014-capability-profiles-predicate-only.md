@@ -125,8 +125,8 @@ meaning or the vendor-resolution the profile exists to provide.
   `discovery_source: talos-machine-config` precisely because NFD cannot
   detect it, so nothing else can emit it.
 - Con: loses the vendor resolution (`intel_iommu` vs `amd_iommu` from the
-  image's `cpu_vendor`) and the profile's binding of karg + `vfio-pci` module
-  + label, which is ADR 0009's core value.
+  image's `cpu_vendor`) and the profile's binding of karg, `vfio-pci` module,
+  and label into one unit — which is ADR 0009's core value.
 - Con: buys no freedom that opt-out does not already provide — the capability
   is opt-in, so a consumer wanting full control simply does not select it.
 
