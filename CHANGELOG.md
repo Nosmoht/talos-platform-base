@@ -80,8 +80,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     `kubernetes/bootstrap/`. `overlay` is now bound to a plain directory name
     in both the schema and the render.
   - A value that is a well-formed string and still **means** something else:
-    `repo.url: "'*'"` rendered `sourceRepos: ['*']`, i.e. the AppProject
-    trusting every repository — no line break, no `$`, correct type. Values
+    `repo.url: "'*'"` rendered `sourceRepos: ['*']` — the AppProject trusting
+    every repository, with no line break, no `$`, and the correct type. Values
     must now survive a YAML round-trip as themselves.
 
   Non-string values (a mapping serializing its subtree into the value) are
