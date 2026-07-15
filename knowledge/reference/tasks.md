@@ -45,8 +45,9 @@ Conventions declared in `Taskfile.yml`:
 | `tofu:docs` | Regenerate module README input/output tables via terraform-docs. |
 | `tofu:lint:yaml` | yamllint (relaxed) + markdownlint over `tofu/` — advisory (`\|\| true`). |
 | `tofu:check:render-determinism` | CI fence: Cilium/ArgoCD/CRD helm renders must use frozen `terraform_data` (`ignore_changes`), not live `data.helm_template`. Runs `scripts/check-render-determinism.sh`. |
-| `tofu:test` | `tofu test` — node-capability composition regression suite. **Network-dependent** (resolves the live Image Factory), so deliberately NOT part of `tofu:ci`. |
-| `tofu:ci` | Aggregate: `fmt:check` + `validate` + `lint` + `check:render-determinism` — mirrors CI, stays offline. |
+| `tofu:test` | `tofu test` — the full suite, including the node-capability composition regression tests. **Network-dependent** (resolves the live Image Factory), so deliberately NOT part of `tofu:ci`. Superset of `tofu:test:offline`. |
+| `tofu:test:offline` | The offline subset of `tofu:test`: the predicate-only catalog contract, the conflict guards, and input validation. Each points at a `tests/fixtures/*` stand-in module that symlinks the real code under test and declares no providers — a pure plan over `terraform_data`, so no network. Part of `tofu:ci`. |
+| `tofu:ci` | Aggregate: `fmt:check` + `validate` + `lint` + `check:render-determinism` + `test:offline` — mirrors CI, stays offline. |
 
 Both `tofu:validate` and `tofu:lint` exclude `tests/fixtures/**`: those are
 test inputs exercised via `tofu test` (`run { module }`), partial stand-in

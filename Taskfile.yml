@@ -136,17 +136,33 @@ tasks:
     cmd: scripts/check-render-determinism.sh
 
   tofu:test:
-    desc: "tofu test — node-capability composition regression suite (dedup/determinism + hard-error guards). NETWORK: resolves the live Image Factory, so it is NOT part of tofu:ci (which stays offline)."
+    desc: "tofu test — node-capability composition regression suite (dedup/determinism + hard-error guards). NETWORK: resolves the live Image Factory, so it is NOT part of tofu:ci (which stays offline). Superset of tofu:test:offline."
     cmd: |
       cd tofu/modules/talos-cluster && tofu init -input=false >/dev/null && tofu test
 
+  tofu:test:offline:
+    # The offline SUBSET of tofu:test, so tofu:ci can carry it. These suites
+    # point at ./tests/fixtures/* stand-in modules that symlink the real code
+    # under test and declare no providers, so they are a pure plan over
+    # terraform_data — no network, no Image Factory. tofu:test still runs them
+    # (it runs everything); this target exists so the catalog's authoring
+    # contract is checked by the offline chain rather than only by the
+    # network-dependent one.
+    desc: "tofu test — the offline suites only (predicate-only catalog contract + conflict guards + input validation). No network; part of tofu:ci."
+    cmd: |
+      cd tofu/modules/talos-cluster && tofu init -input=false >/dev/null && tofu test \
+        -filter=tests/profile-predicate-only.tftest.hcl \
+        -filter=tests/conflict-guards.tftest.hcl \
+        -filter=tests/input-validation.tftest.hcl
+
   tofu:ci:
-    desc: Full local tofu validation (fmt-check + validate + lint + render-determinism fence) — mirrors CI
+    desc: Full local tofu validation (fmt-check + validate + lint + render-determinism fence + offline tests) — mirrors CI
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
       - task: tofu:lint
       - task: tofu:check:render-determinism
+      - task: tofu:test:offline
 
   # ===========================================================================
   # gitops:* — kustomize manifest validation + rendered-manifests pipeline

@@ -56,8 +56,14 @@ consumer cannot set, override, or opt out of. (`karg_conflicts` guards
 profile-vs-profile collisions on one node; it takes no consumer input.
 A consumer kernel-argument path is proposed but not implemented — until
 it exists, base ownership of the sink is total.) This is an authoring
-contract over the catalog, enforced at review rather than at plan time
-(`knowledge/decisions/0016-capability-profiles-predicate-only.md`).
+contract over the catalog
+(`knowledge/decisions/0016-capability-profiles-predicate-only.md`). It is
+asserted mechanically for the shipped catalog by
+`tofu/modules/talos-cluster/tests/profile-predicate-only.tftest.hcl` (in
+`task tofu:ci`, offline); the predicate-to-argument mapping itself is
+read by a human, because a `presence_predicate` is prose — so a NEW
+profile's arguments are review-gated, while the existing ones are pinned
+by set equality.
 
 #### Scenario: A profile's argument set equals its predicate's argument set
 

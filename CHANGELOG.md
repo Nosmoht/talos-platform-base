@@ -35,6 +35,16 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The provisioning-profile catalog's kernel arguments are now pinned by a
+  test** (`tofu/modules/talos-cluster/tests/profile-predicate-only.tftest.hcl`):
+  set equality on the `iommu` variants, and no kernel argument on a profile
+  that provides no atom. It runs offline against the real catalog via a
+  fixture that symlinks the shipped `profiles.tf`/`composition.tf`, so the new
+  `tofu:test:offline` target carries it inside `task tofu:ci` — the shipped
+  catalog is now checked by the offline chain, not only by the
+  network-dependent `tofu:test`. Previously no test asserted the literal
+  argument set, so a profile silently re-acquiring host tuning was visible
+  only through a schematic content hash.
 - **OpenSpec adopted as the behavioral-requirements surface**
   (`knowledge/decisions/0015-openspec-adoption.md`). `openspec/specs/`
   carries specs for the 14 enumerated substrate capabilities (backfilled

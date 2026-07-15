@@ -187,13 +187,26 @@ correctness. No such source was found; the strongest pairing recommendation
 located is Red Hat's ("if `intel_iommu=on` works, you can *try adding*
 `iommu=pt`", with revert guidance) — Tier 2, and framed as tuning.
 
-**Mechanical check:** `tofu/modules/talos-cluster/tests/composition.tftest.hcl`
-asserts profile resolution and karg union; no test asserted the literal
-`iommu=pt`, so its removal is behaviour-visible only through the schematic
-content hash. A future CI cross-reference gate asserting *profile kargs ⊆
-atom presence_predicate args* would make this class of drift mechanical
-rather than reviewed — analogous to the existing provisioned-atom
-cross-reference gate.
+**Mechanical check:** `tofu/modules/talos-cluster/tests/profile-predicate-only.tftest.hcl`
+pins the catalog by SET EQUALITY — the `iommu` variants carry exactly
+`["intel_iommu=on"]` / `["amd_iommu=on"]`, and a profile providing no atom
+carries no argument. Re-add `iommu=pt` and it goes red; add a karg to
+`nvidia-lts` and it goes red. It runs offline via
+`./tests/fixtures/real-catalog` (symlinks the real `composition.tf` +
+`variables.tf` + `profiles.tf`, substitutes only a provider-less
+`versions.tf` and composition-local outputs), so it sits in `task tofu:ci`
+rather than in the network-dependent `tofu:test`. Before it,
+`composition.tftest.hcl` asserted resolution and karg union but no test
+asserted the literal argument set, so reverting this ADR's change broke
+nothing — the drift was visible only through a schematic content hash.
+
+What stays reviewed: the *predicate-to-argument mapping*. A
+`presence_predicate` is prose, so no gate can decide whether a NEW
+profile's argument is named by its atom — set equality pins what ships
+and shifts the burden onto whoever adds one. A cross-reference gate
+extracting argument literals from predicate prose would close that tail;
+it is not built here, and the honest scope is: existing catalog pinned,
+new entries review-gated.
 
 ## Links
 
