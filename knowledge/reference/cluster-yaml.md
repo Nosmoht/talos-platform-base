@@ -69,8 +69,15 @@ Seeding: `task cluster:init-yaml` copies `cluster.yaml.example` to
 
 The typed surface is deliberately limited to the common, irreversible, or
 foot-gun-prone set (network CIDRs, versions, substrate toggles); the long
-tail — registry mirrors, install disk, NTP, kernel args, VIP — lives inside
-the SoT as raw Talos patches in `config_patches`, just untyped.
+tail — registry mirrors, install disk, NTP, VIP — lives inside the SoT as raw
+Talos patches in `config_patches`, just untyped. **Boot kernel command-line
+args are the one exception**, and deliberately not routed through
+`config_patches`: under the Talos v1.10+ UKI/systemd-boot default,
+`machine.install.extraKernelArgs` is ignored (kernel args are embedded in the
+UKI), so a `config_patches` entry targeting it silently no-ops. Boot kernel
+args go to `images.<id>.extra_kernel_args` instead — the schematic sink that
+actually reaches the UKI, and the input that re-images the node when changed
+(issue #169).
 
 There is **no `schema_version` field by design**: the schema is versioned by
 its `$id` plus the base OCI tag — a breaking shape change bumps the next tag's
@@ -113,13 +120,19 @@ the wiring is what makes the gate bite:
 1. Positive step: `scripts/lint-cluster-yaml.sh cluster.yaml.example` must
    pass.
 2. Negative (schema red-green) step: the intentionally invalid fixture
-   `schemas/fixtures/cluster.invalid.yaml` — valid in every respect except
-   one node carries `role: master`, which the `node.role` enum rejects —
-   must fail with **exit code exactly 1**. Exit `0` fails CI ("malformed
-   cluster.yaml fixture passed schema validation"); any other non-zero code
-   also fails ("linter errored, did not reach a schema verdict"), so a broken
-   toolchain cannot pass vacuously. Relaxing the role enum in the schema
-   turns this step red.
+   `schemas/fixtures/cluster.invalid.yaml` — valid in every respect except six
+   violations (a node carrying `role: master`, a de-anchored
+   `talos.install_version`, and one image per kernel-arg lexical rule —
+   whitespace, removal spelling, empty key, `debugfs` key) — must fail with
+   **exit code exactly 1**, and CI names all six violations individually in
+   the output. Exit `0` fails CI ("malformed cluster.yaml fixture passed
+   schema validation"); any other non-zero code also fails ("linter errored,
+   did not reach a schema verdict"), so a broken toolchain cannot pass
+   vacuously. Relaxing any one of the six rules in the schema turns this step
+   red without affecting the other five.
+3. `tofu/modules/talos-cluster/examples/complete/cluster.yaml` is linted the
+   same way (issue #169) — the module's worked example is otherwise reachable
+   by no CI job.
 
 ## Worked references
 

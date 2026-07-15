@@ -1,12 +1,24 @@
 # INTENTIONALLY INVALID cluster.yaml — negative fixture for lint-cluster-yaml.sh
-# (issue #136 Task 3). Valid in every respect EXCEPT two violations, each
-# binding one schema rule red-green (CI asserts BOTH are named in the output):
+# (issue #136 Task 3; issue #169 added the four kernel-arg lexical-rule
+# violations). Valid in every respect EXCEPT six violations, each binding one
+# schema rule red-green (CI asserts ALL SIX are named in the output):
 #   1. node role: master — violates the node.role enum (controlplane | worker).
 #   2. talos.install_version: v1.12.6.4 — trailing garbage after the PATCH
 #      segment; violates the fully anchored version pattern (the former
 #      start-anchored pattern accepted this value).
-# Relax either rule in schemas/cluster.schema.json and the negative CI step
-# turns red. Not a runnable cluster — RFC5737 documentation IPs.
+#   3. images.bad-karg-whitespace.extra_kernel_args[0] — a space smuggles a
+#      second arg past the module's =-keyed conflict guard (rule W).
+#   4. images.bad-karg-removal.extra_kernel_args[0] — the karg removal
+#      spelling, a Non-Goal the guard cannot see (rule D).
+#   5. images.bad-karg-empty-key.extra_kernel_args[0] — the empty string, which
+#      the Factory would receive as extraKernelArgs: [""] (rule E).
+#   6. images.bad-karg-debugfs.extra_kernel_args[0] — the debugfs KEY at a
+#      NON-forbidden value (rule B matches the key, not the literal AGENTS.md
+#      §Hard Constraints value; this file is outside hard-constraints-check.yml's
+#      kubernetes/**+tofu/** glob regardless).
+# Relax any rule in schemas/cluster.schema.json and the negative CI step turns
+# red. Not a runnable cluster — RFC5737 documentation IPs; no node references
+# the four new images (check-jsonschema has no cross-reference check).
 cluster:
   name: bad-cluster
   endpoint: https://bad-cluster-api.example.com:6443
@@ -22,6 +34,22 @@ images:
     architecture: amd64
     cpu_vendor: intel
     extensions: []
+  bad-karg-whitespace:
+    architecture: amd64
+    cpu_vendor: intel
+    extra_kernel_args: ["hugepagesz=1G intel_iommu=off"] # INVALID: rule W (whitespace)
+  bad-karg-removal:
+    architecture: amd64
+    cpu_vendor: intel
+    extra_kernel_args: ["-intel_iommu"] # INVALID: rule D (removal spelling)
+  bad-karg-empty-key:
+    architecture: amd64
+    cpu_vendor: intel
+    extra_kernel_args: [""] # INVALID: rule E (empty key)
+  bad-karg-debugfs:
+    architecture: amd64
+    cpu_vendor: intel
+    extra_kernel_args: ["debugfs=on"] # INVALID: rule B (debugfs key, non-forbidden value)
 nodes:
   - hostname: cp-1
     ip: 192.0.2.11

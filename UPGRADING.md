@@ -42,6 +42,48 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
+## `v5.1.0` — consumer kernel args on UKI/systemd-boot nodes (MINOR — manual action for consumers carrying boot args in machine-config)
+
+**Applies to you** if you need to set custom kernel command-line arguments on
+nodes booting via UKI/systemd-boot (the Talos v1.10+ default for fresh metal
+UEFI installs) — performance/security tuning, huge pages, or (post-`v5.0.0`)
+`iommu=pt`. Everyone who sets nothing: no action, no re-image.
+
+**What changed.** `var.images[*].extra_kernel_args` (`list(string)`, default
+`[]`) is a new optional per-image input. It is unioned into the node's
+Image-Factory schematic `customization.extraKernelArgs` alongside the
+selected provisioning profiles' kernel args — the same UKI-correct sink the
+module already builds, now with a consumer-facing input reaching it.
+`cluster.yaml` exposes it as `images.<id>.extra_kernel_args`.
+
+**What it does NOT change.** `machine.install.extraKernelArgs` remains a
+no-op under UKI/systemd-boot (Talos v1.10+) — this input does **not** route
+through it, and never will (a base Hard Constraint). Only
+`images.<id>.extra_kernel_args` reaches the boot cmdline.
+
+**Consumer action required:**
+
+1. **If you carry boot-kernel-arg tuning in `machine.install.extraKernelArgs`
+   via `config_patches` today**, it has been silently ignored since your
+   cluster adopted the Talos v1.10+ UKI default — move it to
+   `images.<id>.extra_kernel_args` in `cluster.yaml` instead. This is the
+   migration this input exists to unblock.
+2. **Adopting the input re-images the affected nodes**: a new
+   `extra_kernel_args` value changes the node's schematic content hash → new
+   schematic id → new installer URL. Roll out via the usual out-of-band
+   `talosctl upgrade`.
+3. **A single-value kernel-arg key your image sets that collides with a
+   selected profile's kernel arg for that key fails the plan** (e.g. setting
+   `intel_iommu=on,sm_on` on a node that also selects the `iommu` capability,
+   whose profile sets `intel_iommu=on`) — this is a guard, not a defect;
+   restate the profile's value verbatim if you want both applied (it collapses
+   to one). A key no selected profile contributes (most tuning args, including
+   `hugepagesz=`/`hugepages=` pairs and `iommu=pt`) is never guarded.
+4. **A consumer setting nothing is unaffected**: the default `[]` composes
+   byte-identically to the pre-`v5.1.0` schematic — no re-image.
+
+---
+
 ## `v5.0.0` — the `iommu` profile stops baking `iommu=pt` (MAJOR — bare-metal-consumer-facing)
 
 Applies to you **only** if a node selects a capability resolving to the

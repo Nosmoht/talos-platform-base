@@ -189,7 +189,7 @@ provider "talos" {}
 | `kubernetes_version` | string | — | v-prefixed semver. Bump triggers out-of-band `talosctl upgrade-k8s`. |
 | `cluster_endpoint` | string | — | `https://…:6443` API endpoint / VIP |
 | `nodes` | list(object) | — | `{hostname, ip, role, image, hardware_capabilities?, config_patches?}`; role ∈ {controlplane, worker}; `image` must be a key in `images`; `hardware_capabilities` (default `[]`) are keys in `hardware_capabilities`; `config_patches` are per-node, applied AFTER the module-generated capability patch (so a raw patch overrides a generated `machine.kernel.modules`/`sysctls`/`nodeLabels` value — and its *content* is not parsed, so reserved-label enforcement on that vector is the downstream Kyverno rule, not tofu). |
-| `images` | map(object) | — | Per base-image: `{architecture("amd64"\|"arm64"), cpu_vendor("intel"\|"amd"\|"arm"), extensions(baseline — every node of the image), overlay?}`. At least one image required. |
+| `images` | map(object) | — | Per base-image: `{architecture("amd64"\|"arm64"), cpu_vendor("intel"\|"amd"\|"arm"), extensions(baseline — every node of the image), extra_kernel_args(schematic boot args, unioned with the node's profile args), overlay?}`. At least one image required. |
 | `hardware_capabilities` | map(object) | `{}` | Consumer composites: `{requires_features, provisioning_profiles, emits_label}`. `emits_label` MUST be `platform.io/hardware-capability.*`. A provisioned `requires_features` atom must be satisfied by a listed profile and vice-versa (symmetry, both directions, plan-time-checked). |
 | `config_patches` | list(string) | `[]` | machine-config patches applied to all nodes |
 | `controlplane_config_patches` | list(string) | `[]` | patches for controlplane nodes only |

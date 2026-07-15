@@ -244,6 +244,9 @@ jobs:
       - name: Lint consumer cluster.yaml schema (example)
         run: scripts/lint-cluster-yaml.sh cluster.yaml.example
 
+      - name: Lint consumer cluster.yaml schema (module worked example)
+        run: scripts/lint-cluster-yaml.sh tofu/modules/talos-cluster/examples/complete/cluster.yaml
+
       - name: Reject malformed cluster.yaml fixture (schema red-green)
         run: |
           set -u
@@ -261,17 +264,22 @@ jobs:
             printf '%s\n' "$out" >&2
             exit 1
           fi
-          # Bind BOTH fixture violations individually: relaxing the role enum
-          # or de-anchoring the version pattern must each turn this step red,
-          # even while the other violation still fails the file.
-          for v in '$.nodes[0].role' '$.talos.install_version'; do
+          # Bind all SIX fixture violations individually: relaxing the role
+          # enum, de-anchoring the version pattern, or relaxing any of the four
+          # kernel-arg lexical rules (issue #169) must each turn this step red,
+          # even while the other violations still fail the file.
+          for v in '$.nodes[0].role' '$.talos.install_version' \
+            "\$.images['bad-karg-whitespace'].extra_kernel_args[0]" \
+            "\$.images['bad-karg-removal'].extra_kernel_args[0]" \
+            "\$.images['bad-karg-empty-key'].extra_kernel_args[0]" \
+            "\$.images['bad-karg-debugfs'].extra_kernel_args[0]"; do
             if ! printf '%s\n' "$out" | grep -qF "$v"; then
               echo "FAIL: expected schema violation on $v was not reported — that rule no longer bites" >&2
               printf '%s\n' "$out" >&2
               exit 1
             fi
           done
-          echo "OK: malformed cluster.yaml fixture rejected with both expected violations (role enum + anchored version pattern)"
+          echo "OK: malformed cluster.yaml fixture rejected with all six expected violations (role enum + anchored version pattern + four kernel-arg lexical rules)"
 
       - name: Verify TASK_VERSION matches .tool-versions
         # Inline by necessity — it guards the pin of the binary that runs the

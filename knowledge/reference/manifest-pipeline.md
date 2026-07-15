@@ -3,7 +3,7 @@ type: reference
 title: Manifest Pipeline
 description: How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 tags: [rendered-manifests, validation, ci, conftest]
-timestamp: 2026-07-11
+timestamp: 2026-07-15
 sources:
   - scripts/render-component.sh
   - scripts/verify-rendered.sh
@@ -209,7 +209,7 @@ The workflow runs on every PR and on pushes to `main`, with these jobs:
 | Job | What it runs |
 | --- | --- |
 | `validate` | Tool-version drift check (workflow env vs `.tool-versions` for kustomize, conftest, kubeconform, helm, yq) → pinned tool installs → `verify-rendered.sh` (drift gate) → `check-argocd-substrate-invariants.sh` → discovery → safe render → **renderable-set fence** (rendered base-component set must equal the frozen `.ci-renderable-components.txt`) → kubeconform → `run_conftest.sh`; uploads `.work/` diagnostics on failure. |
-| `hardware-features-check` | Layer-C registry schema lint (`scripts/lint-hardware-features.sh`), provisioning-catalog reference check, **cluster.yaml schema lint** (`scripts/lint-cluster-yaml.sh` against `schemas/cluster.schema.json`, targeting `cluster.yaml.example`), and a **red-green fixture step**: `schemas/fixtures/cluster.invalid.yaml` must be rejected with exit 1 specifically — exit 0 (fixture passed) and exit 2 (toolchain error, no schema verdict) both fail, so a broken linter cannot pass vacuously. |
+| `hardware-features-check` | Layer-C registry schema lint (`scripts/lint-hardware-features.sh`), provisioning-catalog reference check, **cluster.yaml schema lint** (`scripts/lint-cluster-yaml.sh` against `schemas/cluster.schema.json`, targeting `cluster.yaml.example` and the module's worked example `tofu/modules/talos-cluster/examples/complete/cluster.yaml`), and a **red-green fixture step**: `schemas/fixtures/cluster.invalid.yaml` must be rejected with exit 1 specifically — exit 0 (fixture passed) and exit 2 (toolchain error, no schema verdict) both fail, so a broken linter cannot pass vacuously. |
 | `reuse-compliance` | REUSE 3.3 lint — every file carries SPDX metadata; `_rendered/` upstream-chart output is marked `LicenseRef-UpstreamHelm`. |
 | `secret-scan` | gitleaks over the full history with the pinned shared `.gitleaks.toml` — the server-side backstop against local `--no-verify` bypass. |
 | `oci-allowlist-check` | Same fail-closed tarball diff as `task supply-chain:oci-allowlist`. |

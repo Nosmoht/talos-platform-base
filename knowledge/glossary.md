@@ -3,7 +3,7 @@ type: glossary
 title: Glossary
 description: Cross-domain vocabulary for the talos-platform-base substrate, its delivery pipeline, and its consumer contract.
 tags: [glossary, vocabulary, platform]
-timestamp: 2026-07-11
+timestamp: 2026-07-15
 sources:
   - AGENTS.md
   - Taskfile.yml
@@ -125,7 +125,8 @@ record; deep-dive pages are linked where they exist.
   rule.
 - **Schematic** — Talos Image Factory spec embedding system extensions,
   kernel args, and an optional SBC overlay into installer images. Derived per
-  node by the module (image baseline unioned with selected profiles) and
+  node by the module: the image's baseline `extensions` + `extra_kernel_args` +
+  `overlay` unioned with the selected profiles' `extensions` + `extraKernelArgs`,
   content-hash-deduplicated so identical nodes share one schematic. See
   [capability-composition](architecture/capability-composition.md).
 - **semantic-release** — the release automation configured in

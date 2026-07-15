@@ -70,7 +70,11 @@ itself can satisfy by baking content into the node.
 constant — not a `var`** — so a consumer can select profiles by id but "cannot
 author or redefine one (closes the consumer-redefine vector mechanically)". It
 lives under `tofu/**` so the hard-constraints CI greps (SecureBoot, debugfs)
-cover any kernel args it carries. Each profile binds the parts of a provisioned
+cover any kernel args it carries. A consumer's `extra_kernel_args` (issue #169)
+live in *their* `cluster.yaml`, which those greps can never see — this is why
+`var.images` validation *and* `schemas/cluster.schema.json` both carry a
+`debugfs`-key rejection rule of their own, rather than relying on this base's
+CI to catch it. Each profile binds the parts of a provisioned
 feature so they cannot drift:
 
 - `provides` — the `talos-machine-config` atom(s) this profile satisfies;
@@ -111,7 +115,10 @@ from detection:
 
 Each node lists `hardware_capabilities` (any set — storage + compute + GPU —
 without a hand-authored node class) and an `image` (architecture, `cpu_vendor`,
-baseline extensions, optional SBC overlay) from `var.images`.
+baseline extensions, optional boot `extra_kernel_args`, optional SBC overlay)
+from `var.images`. `extra_kernel_args` is the image's fourth axis: consumer
+boot-time kernel command-line tuning, unioned into the schematic sink
+alongside the selected profiles' kernel args (issue #169).
 
 ## The composition pipeline
 
@@ -121,7 +128,9 @@ two sinks:
 
 - **Schematic sink** — `customization.systemExtensions.officialExtensions`
   (image baseline UNION profile extensions), `customization.extraKernelArgs`
-  (UNION of kernel args), plus the image's overlay.
+  (the image's `extra_kernel_args` UNION the selected profiles' kernel args —
+  sorted and deduplicated, so a consumer restating a profile's arg verbatim is
+  carried once, not twice), plus the image's overlay.
 - **Machine-config sink** — a generated per-node patch carrying
   `machine.kernel.modules` (grouped by name, parameters sorted),
   `machine.sysctls` (merged), and `machine.nodeLabels`.
@@ -178,7 +187,13 @@ The guarded invariants:
 - merge conflicts — same-name kernel modules with differing parameters,
   same-key sysctls with differing values, same-key kernel args with differing
   values (with a multi-value allowlist: `console`, `module_blacklist`,
-  `initcall_blacklist`, `blacklist`).
+  `initcall_blacklist`, `blacklist`). The kernel-arg guard is **cross-source**
+  (issue #169): a key is checked only when a selected profile contributes it
+  *and* the image's `extra_kernel_args` sets it to a differing value — a key
+  no selected profile contributes is the consumer's own and is never guarded
+  (the repeatable-key class, e.g. `hugepagesz=`/`hugepages=` per huge-page
+  size, is open-ended, so guarding it would need a bottomless allowlist). The
+  multi-value exemption above applies only to profile-contributed keys.
 
 ## CI gates
 
@@ -207,4 +222,15 @@ runs:
   red-green binding for the module/sysctl/kernel-arg conflict guards, using a
   synthetic colliding catalog fixture that symlinks the real `composition.tf`
   (the shipped catalog never collides, and the catalog is module-local, so no
-  `variables {}` input can trigger these guards).
+  `variables {}` input can trigger these guards). Also binds the cross-source
+  guard scoping (issue #169): a consumer-image karg conflicting with a
+  selected profile's karg fails the plan, a verbatim restatement does not, a
+  key no profile contributes is never guarded, and an exempt multi-value key
+  coexists across a profile source and an image source.
+- `tofu/modules/talos-cluster/tests/image-kernel-args.tftest.hcl` — offline
+  (issue #169): a node's default (no `extra_kernel_args`) composition is
+  order- and multiplicity-exact against the selected profiles' kernel args
+  alone, and an existing shipped-catalog consumer is not re-imaged (pinned
+  schematic hash) by adopting the input unset; a changed `extra_kernel_args`
+  changes the schematic hash, proving the re-image path fires rather than
+  silently no-opping.

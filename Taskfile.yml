@@ -178,14 +178,18 @@ tasks:
     # under test and declare no providers, so they are a pure plan over
     # terraform_data — no network, no Image Factory. tofu:test still runs them
     # (it runs everything); this target exists so the catalog's authoring
-    # contract is checked by the offline chain rather than only by the
+    # contract, the conflict guards, input validation, and the consumer
+    # image-kernel-arg oracles (AC2/AC6, issue #169 — their oracle is
+    # local.node_hash, a pure plan-time function, so they need no network
+    # either) are checked by the offline chain rather than only by the
     # network-dependent one.
-    desc: "tofu test — the offline suites only (predicate-only catalog contract + conflict guards + input validation). No network; part of tofu:ci."
+    desc: "tofu test — the offline suites only (predicate-only catalog contract + conflict guards + input validation + image kernel-args). No network; part of tofu:ci."
     cmd: |
       cd tofu/modules/talos-cluster && tofu init -input=false >/dev/null && tofu test \
         -filter=tests/profile-predicate-only.tftest.hcl \
         -filter=tests/conflict-guards.tftest.hcl \
-        -filter=tests/input-validation.tftest.hcl
+        -filter=tests/input-validation.tftest.hcl \
+        -filter=tests/image-kernel-args.tftest.hcl
 
   tofu:ci:
     desc: Full local tofu validation (fmt-check + validate + lint + render-determinism fence + offline tests) — mirrors CI

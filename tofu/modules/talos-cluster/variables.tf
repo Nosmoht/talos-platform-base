@@ -146,14 +146,22 @@ variable "images" {
       - overlay: optional SBC/board overlay for ARM single-board computers (e.g.
         name = "rpi_generic", image = "siderolabs/sbc-raspberrypi"). Leave null
         for ordinary x86/metal nodes.
+      - extra_kernel_args: optional per-image boot kernel command-line args,
+        baked into the schematic's customization.extraKernelArgs (the
+        Talos v1.10+ UKI-correct sink; machine.install.extraKernelArgs is
+        ignored under systemd-boot). Unioned with the node's resolved
+        provisioning-profile kernel args. One argument per element; a
+        differing single-value key vs. a selected profile fails the plan
+        (karg_conflicts) rather than landing both on the cmdline.
 
     The installer image is always the non-SecureBoot metal installer (NEVER the
     SecureBoot variant, per the base AGENTS.md Hard Constraint).
   EOT
   type = map(object({
-    architecture = optional(string, "amd64")
-    cpu_vendor   = string
-    extensions   = optional(list(string), [])
+    architecture      = optional(string, "amd64")
+    cpu_vendor        = string
+    extensions        = optional(list(string), [])
+    extra_kernel_args = optional(list(string), [])
     overlay = optional(object({
       name    = string
       image   = string
@@ -174,6 +182,80 @@ variable "images" {
   validation {
     condition     = alltrue([for img in var.images : contains(["intel", "amd", "arm"], img.cpu_vendor)])
     error_message = "Each image.cpu_vendor must be \"intel\", \"amd\", or \"arm\"."
+  }
+
+  # AC9 rules W/D/E/B on extra_kernel_args — lexical guardrails against a
+  # documented footgun, not a security boundary (a consumer owns their repo).
+  # Each validation is self-contained (references only var.images) and each
+  # message names the offending image + element via an identical naming clause
+  # (AC9's naming fence — grep-counted at exactly four occurrences below).
+  # Empty-list safety: alltrue([]) is true, so the default [] passes every rule.
+
+  # Rule W (whitespace) — a space smuggles a second arg past karg_conflicts,
+  # which keys on "=" and never on whitespace. ASCII-scoped by design: RE2
+  # [[:space:]] does not match U+00A0 and similar, which is not a cmdline-smuggle
+  # vector (the kernel splits the cmdline on ASCII space/tab, so an NBSP stays
+  # inside the token).
+  validation {
+    condition = alltrue([
+      for name, img in var.images : alltrue([
+        for a in img.extra_kernel_args : !can(regex("[[:space:]]", a))
+      ])
+    ])
+    error_message = "Each image.extra_kernel_args element must be a single kernel argument with no whitespace (a space smuggles a second arg past karg_conflicts, which splits on = and never on whitespace). Offending (image => elements): ${jsonencode({
+      for name, img in var.images : name => [
+        for a in img.extra_kernel_args : a if can(regex("[[:space:]]", a))
+      ] if length([for a in img.extra_kernel_args : a if can(regex("[[:space:]]", a))]) > 0
+    })}."
+  }
+
+  # Rule D (removal spelling) — the karg removal/prefix syntax (§Non-Goals);
+  # the conflict guard cannot see it.
+  validation {
+    condition = alltrue([
+      for name, img in var.images : alltrue([
+        for a in img.extra_kernel_args : !startswith(a, "-")
+      ])
+    ])
+    error_message = "Each image.extra_kernel_args element must not begin with '-' (the karg removal spelling is a Non-Goal; the conflict guard cannot see it). Offending (image => elements): ${jsonencode({
+      for name, img in var.images : name => [
+        for a in img.extra_kernel_args : a if startswith(a, "-")
+      ] if length([for a in img.extra_kernel_args : a if startswith(a, "-")]) > 0
+    })}."
+  }
+
+  # Rule E (empty key) — rejects the bare empty string AND a leading '=' (both
+  # key as "" via element(split("=", a), 0) and would otherwise defeat the
+  # guard's =-keying; a leading '=' also bypasses rule B's key match).
+  validation {
+    condition = alltrue([
+      for name, img in var.images : alltrue([
+        for a in img.extra_kernel_args : element(split("=", a), 0) != ""
+      ])
+    ])
+    error_message = "Each image.extra_kernel_args element must carry a non-empty key (the empty string reaches the Factory as extraKernelArgs: [\"\"], and a leading '=' defeats the guard's =-keying). Offending (image => elements): ${jsonencode({
+      for name, img in var.images : name => [
+        for a in img.extra_kernel_args : a if element(split("=", a), 0) == ""
+      ] if length([for a in img.extra_kernel_args : a if element(split("=", a), 0) == ""]) > 0
+    })}."
+  }
+
+  # Rule B (debugfs key) — the debugfs KEY at any value is rejected (AGENTS.md
+  # §Hard Constraints forbids the `off` value that boot-loops Talos with
+  # Cilium; this base's own gate greps only this repo's kubernetes/**/tofu/**
+  # PR diff and can never see a consumer's cluster.yaml). Matches the key,
+  # never the forbidden value literal, so this file stays clean of it.
+  validation {
+    condition = alltrue([
+      for name, img in var.images : alltrue([
+        for a in img.extra_kernel_args : element(split("=", a), 0) != "debugfs"
+      ])
+    ])
+    error_message = "Each image.extra_kernel_args element must not use the debugfs key at any value (AGENTS.md §Hard Constraints forbids the value that boot-loops Talos with Cilium; this base's gate greps only its own kubernetes/**/tofu/** PR diff and can never see a consumer's cluster.yaml). Offending (image => elements): ${jsonencode({
+      for name, img in var.images : name => [
+        for a in img.extra_kernel_args : a if element(split("=", a), 0) == "debugfs"
+      ] if length([for a in img.extra_kernel_args : a if element(split("=", a), 0) == "debugfs"]) > 0
+    })}."
   }
 }
 

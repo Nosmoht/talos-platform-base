@@ -29,3 +29,14 @@ output "catalog_profile_provides" {
   description = "Per-profile `provides` list as authored in the real catalog."
   value       = { for id, p in local.provisioning_profiles : id => p.provides }
 }
+
+# MIRRORS the module's own outputs.tf:62-65 (`node_schematic_hashes`, "Known at
+# plan time"). The module already exposes this; the fixture re-declares it only
+# because a fixture substitutes outputs.tf WHOLESALE to keep the module's
+# provider-resolving Image-Factory data sources out (versions.tf:1-6 declares no
+# providers). Nothing here widens the module's public interface — local.node_hash
+# lives in the symlinked composition.tf (:119) and is a pure function of the
+# composed extensions/kernel_args/overlay.
+output "node_schematic_hashes" {
+  value = local.node_hash
+}
