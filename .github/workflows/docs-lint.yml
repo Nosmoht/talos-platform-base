@@ -17,7 +17,14 @@ permissions:
 
 jobs:
   markdownlint:
+    # name: MUST stay "docs-lint" — branch protection requires the context
+    # "docs-lint". GitHub derives the context from a job's name: (falling back
+    # to the job ID), so without this the job reported as "markdownlint" and
+    # the required context could never be satisfied. Same contract as
+    # hard-constraints-check.yml. scripts/preflight-checks.sh asserts it.
+    name: docs-lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       # Tool versions — KEEP IN SYNC with .tool-versions and the Taskfile
       # knowledge:* vars block (drift-checked against .tool-versions below).
@@ -29,6 +36,7 @@ jobs:
       OPENKNOWLEDGE_SHA256_LINUX_AMD64: 0f58de81e52f064fbf52aac5289e0b1b6dc0e58de2f47c4e043263e9e927cb27
       LYCHEE_VERSION: "0.24.2"
       LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+      TASK_VERSION: "3.48.0"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -48,6 +56,7 @@ jobs:
           }
           assert openknowledge "$(tv openknowledge)" "$OPENKNOWLEDGE_VERSION"
           assert lychee        "$(tv lychee)"        "$LYCHEE_VERSION"
+          assert task          "$(tv task)"          "$TASK_VERSION"
           exit "$fail"
 
       - name: Install markdownlint-cli
@@ -67,10 +76,19 @@ jobs:
           sudo install -m 0755 "$tmp/openknowledge" /usr/local/bin/openknowledge
           openknowledge version
 
-      - name: Validate knowledge bundle (OKF + binding link-target rule)
-        # knowledge/openknowledge.toml raises link-target to error, so a
-        # broken or bundle-escaping link fails this step (exit 1).
-        run: openknowledge validate knowledge/
+      - name: Install go-task (pinned to a commit)
+        # Two pins, both load-bearing. The action is SHA-pinned rather than
+        # @v3 because this workflow pins every other input and is a required,
+        # path-unfiltered context — a moving ref would reach every PR at once.
+        # The go-task VERSION is pinned exactly (not 3.x) because go-task
+        # executes the gates below: an unpinned payload behind a pinned
+        # installer is still an unpinned gate. tofu-validate.yml keeps the
+        # mutable @v2 ref; it is path-filtered and not required, and its
+        # alignment is a separate PR.
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install lychee (pinned + checksum)
         run: |
@@ -86,15 +104,14 @@ jobs:
           sudo install -m 0755 "$ly_bin" /usr/local/bin/lychee
           lychee --version
 
-      - name: Offline link-resolution gate
-        # Intra-repo markdown links must resolve (file existence). External
-        # (network) links are out of scope by design — --offline checks only
-        # local targets. CHANGELOG.md is a historical record and excluded.
-        # The two tofu READMEs ship in the OCI tarball and carry relative
-        # links into knowledge/ — checked here so a decision rename cannot
-        # rot them silently.
-        run: |
-          lychee --offline --no-progress --exclude-path CHANGELOG.md \
-            'knowledge/**/*.md' './*.md' 'contracts/*.md' \
-            'tofu/modules/talos-cluster/README.md' \
-            'tofu/modules/talos-cluster/test/README.md'
+      - name: Validate knowledge bundle (OKF + offline link gate)
+        # Both gates live in the Taskfile target so the local chain and the CI
+        # chain are the same command. knowledge/openknowledge.toml raises
+        # link-target and rule-catalog to error, so a broken link or a
+        # malformed rule document fails this step.
+        run: task knowledge:validate
+
+      - name: Check the AGENTS.md managed block for drift
+        # The Open Knowledge maintenance block in AGENTS.md is generated from
+        # knowledge/rules/. Fails if it was hand-edited or left stale.
+        run: task knowledge:rules-check

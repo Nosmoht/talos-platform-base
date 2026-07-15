@@ -44,6 +44,24 @@ vars:
   LYCHEE_SHA256_DARWIN_ARM64: c9d3740ea2d891854d37116c9fba840f37b6e7c89d330e7db84ac333631c4977
   LYCHEE_SHA256_DARWIN_AMD64: 887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978
   LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+  # Rule set rendered into AGENTS.md's managed block. Single source for both
+  # knowledge:rules-apply and knowledge:rules-check — a divergence between the
+  # two would make the fence prescribe a regeneration that drops content.
+  # NOT [rules].enabled in openknowledge.toml: whether a no-argument
+  # `rules apply` falls back to it is undocumented (the CLI help contradicts
+  # itself), and a wrong guess renders the custom rule away.
+  OK_RULES: docs,decisions,schemas,talos-base-bundle
+  # Both rules targets render with whatever openknowledge is on PATH. Pinning
+  # the version here matters more than for validate: a mismatched binary
+  # renders a different block, and the fence's own advice ("regenerate") would
+  # then rewrite AGENTS.md with it.
+  OK_GUARD: |
+    command -v openknowledge >/dev/null 2>&1 || { echo "ERROR: 'openknowledge' not installed — run 'task knowledge:install-cli'"; exit 1; }
+    # Normalize the same way scripts/verify-tools.sh does — it strips a leading
+    # "v" from this exact command, and two checks of one value must not
+    # disagree on the format.
+    have="$(openknowledge version 2>/dev/null | head -n1 | tr -d '[:space:]' | sed -E 's/^v//')"
+    [ "$have" = "{{.OPENKNOWLEDGE_VERSION}}" ] || { echo "ERROR: openknowledge '$have' != pinned '{{.OPENKNOWLEDGE_VERSION}}' — run 'task knowledge:install-cli' (and check PATH order)"; exit 1; }
 
 tasks:
   default:
@@ -250,9 +268,76 @@ tasks:
       openknowledge validate knowledge/
       # Offline link-resolution gate: intra-repo markdown links must resolve.
       # Scope: the bundle, root orientation files, contracts/. CHANGELOG.md is
-      # a historical record and excluded by design.
+      # a historical record and excluded by design. The two tofu READMEs ship
+      # in the OCI tarball and carry relative links into knowledge/ — checked
+      # so a decision rename cannot rot them silently.
       lychee --offline --no-progress --exclude-path CHANGELOG.md \
-        'knowledge/**/*.md' './*.md' 'contracts/*.md'
+        'knowledge/**/*.md' './*.md' 'contracts/*.md' \
+        'tofu/modules/talos-cluster/README.md' \
+        'tofu/modules/talos-cluster/test/README.md'
+
+  knowledge:rules-apply:
+    desc: Regenerate the Open Knowledge maintenance block in AGENTS.md (managed block)
+    cmd: |
+      set -e
+      {{.OK_GUARD}}
+      # --yes: without it the CLI prompts and, when declined, still exits 0 —
+      # the target would report success while having written nothing.
+      openknowledge rules apply {{.OK_RULES}} \
+        --path knowledge --file AGENTS.md --target generic --yes
+      grep -q '<!-- openknowledge:rules:start -->' AGENTS.md || {
+        echo "FAIL: no managed block in AGENTS.md after apply"; exit 1; }
+      echo "AGENTS.md managed block regenerated — review the diff before committing."
+
+  knowledge:rules-check:
+    desc: Fail if AGENTS.md's managed block drifted from the rules catalog
+    cmd: |
+      set -e
+      {{.OK_GUARD}}
+      # --dry-run prints a "Would update ..." preamble before the block, so the
+      # block MUST be extracted by marker on both sides. Same extractor for
+      # both, or the two sides can disagree on trailing lines alone.
+      extract_block() { awk '/<!-- openknowledge:rules:start -->/,/<!-- openknowledge:rules:end -->/'; }
+
+      # Keep stderr: when the render fails (unknown rule, unreadable rule
+      # document, bad config) it is the only statement of the actual cause.
+      err="$(mktemp)"
+      gen="$(openknowledge rules apply {{.OK_RULES}} \
+        --path knowledge --file AGENTS.md --target generic --dry-run 2>"$err" | extract_block)"
+      cur="$(extract_block < AGENTS.md)"
+
+      # A vacuous pass (empty vs empty) would be a green gate checking nothing.
+      [ -n "$gen" ] || {
+        echo "FAIL: openknowledge produced no managed block. Its output was:"
+        cat "$err"; rm -f "$err"; exit 1; }
+      rm -f "$err"
+      [ -n "$cur" ] || { echo "FAIL: AGENTS.md has no managed block — run 'task knowledge:rules-apply'"; exit 1; }
+
+      starts="$(grep -c '<!-- openknowledge:rules:start -->' AGENTS.md || true)"
+      ends="$(grep -c '<!-- openknowledge:rules:end -->' AGENTS.md || true)"
+      [ "$starts" = "1" ] && [ "$ends" = "1" ] || { echo "FAIL: AGENTS.md must contain exactly one marker pair (found $starts/$ends)"; exit 1; }
+
+      # Assert every configured rule reached the block. Anchored on the
+      # "Enabled rules:" list entry ("- <id>: <summary>") rather than a bare
+      # substring: an unanchored search for "decisions" also matches prose
+      # mentioning knowledge/decisions/, so a rule that failed to render would
+      # still pass. One body heading per rule is checked too — the enabled
+      # list echoes back what was requested, the headings prove it rendered.
+      # "Enabled rules:" heads the requested-rule list and is not a body.
+      headings="$(printf '%s\n' "$gen" | grep ' rules:$' | grep -vc '^Enabled rules:$' || true)"
+      want=0
+      for rule in $(echo "{{.OK_RULES}}" | tr ',' ' '); do
+        want=$((want + 1))
+        printf '%s\n' "$gen" | grep -qE "^- ${rule}: " || {
+          echo "FAIL: rule '$rule' is not in the block's enabled list — is knowledge/rules/ intact?"; exit 1; }
+      done
+      [ "$headings" = "$want" ] || {
+        echo "FAIL: block has $headings rule bodies, expected $want — a rule rendered no instruction bullets"; exit 1; }
+
+      if ! diff -u <(printf '%s\n' "$cur") <(printf '%s\n' "$gen"); then
+        echo "FAIL: AGENTS.md managed block drifted — run 'task knowledge:rules-apply'"; exit 1
+      fi
+      echo "OK: AGENTS.md managed block is in sync."
 
   knowledge:new:
     desc: "Scaffold a new knowledge concept (usage: task knowledge:new FILE=reference/foo.md TYPE=reference)"
