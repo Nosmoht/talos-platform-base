@@ -20,10 +20,10 @@ sources:
 YAML document IS the cluster definition (identity, versions, network, images,
 capabilities, nodes, machine-config patches, substrate knobs). OpenTofu is the
 executor, not the SoT — the consumer's root module is a thin `yamldecode` shim
-that maps this file onto the typed interface of the
-[talos-cluster module](talos-cluster-module.md). The base ships only
-`cluster.yaml.example`; the real `cluster.yaml` is gitignored at the base and
-committed in consumer repos per repo convention.
+that maps this file onto the typed interface of the `talos-cluster` module
+(interface tables in `tofu/modules/talos-cluster/README.md`). The base ships
+only `cluster.yaml.example`; the real `cluster.yaml` is gitignored at the base
+and committed in consumer repos per repo convention.
 
 > **Normative requirements live in the OpenSpec spec**
 > `openspec/specs/cluster-yaml-sot/` (SoT map:

@@ -159,8 +159,9 @@ patch), bootstraps the cluster, seeds Cilium and ArgoCD as create-only
 controlplane `inlineManifest`s, applies the ArgoCD CRDs server-side via
 `kubectl`, and blocks until the cluster health gate passes. The sensitive
 outputs `kubeconfig` and `talosconfig` are only released once healthy. See
-[talos-cluster-module](../reference/talos-cluster-module.md) and
-[day-zero-bootstrap](../architecture/day-zero-bootstrap.md).
+`tofu/modules/talos-cluster/README.md` for the interface tables and
+[day-zero-bootstrap](../architecture/day-zero-bootstrap.md) for the layered
+bring-up model.
 
 ## Step 5 — Seed the App-of-Apps root
 
@@ -219,6 +220,7 @@ renders cleanly. From here on, never `kubectl apply` ArgoCD-managed resources
 
 - [verify-release](./verify-release.md) — the full fail-closed verification recipe.
 - [cluster-yaml](../reference/cluster-yaml.md) — the SoT schema.
-- [talos-cluster-module](../reference/talos-cluster-module.md) — module interface and outputs.
+- `tofu/modules/talos-cluster/README.md` — module interface and outputs;
+  `openspec/specs/module-interface-contract/` for the normative requirements.
 - [day-zero-bootstrap](../architecture/day-zero-bootstrap.md) — the layered bring-up model.
 - [substrate](../architecture/substrate.md) — what is (and is not) in the base.

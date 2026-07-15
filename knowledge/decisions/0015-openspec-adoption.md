@@ -73,15 +73,30 @@ Constraints and the ADRs; specs cite them and describe observable
 outcomes (pure reference, zero restatement).
 
 **SoT map vs `knowledge/reference/`.** Specs are normative for
-requirements; reference docs stay narrative:
-[talos-cluster-module](../reference/talos-cluster-module.md) → interface
-requirements in `module-interface-contract`, composition in
-`hardware-capability-composition`, machine-config in
+requirements; reference docs stay narrative. The `talos-cluster` module's
+surface maps to interface requirements in `module-interface-contract`,
+composition in `hardware-capability-composition`, machine-config in
 `machine-config-generation`, bootstrap flow in
 `cluster-bootstrap-lifecycle`, installer surface in
 `node-image-composition`; [cluster-yaml](../reference/cluster-yaml.md) →
-`cluster-yaml-sot`. The module README's variable/output tables are
-terraform-docs-generated (inject mode) and exempt from this map.
+`cluster-yaml-sot`. The module's own `README.md` stays the hand-maintained
+narrative next to the code.
+
+**Correction (2026-07-15).** As accepted, this section exempted the module
+README's variable/output tables from the map on the grounds that they are
+"terraform-docs-generated (inject mode)". That premise was false:
+`tofu/modules/talos-cluster/README.md` carries no `BEGIN_TF_DOCS` markers,
+and `task tofu:docs` runs `terraform-docs --output-mode inject … || true`,
+which is a no-op without them and swallows the miss. The tables are
+hand-maintained. The exemption therefore rested on an automation that does
+not exist, and the same contract was carried by hand in three places
+(module README, `knowledge/reference/talos-cluster-module.md`, the specs).
+`knowledge/reference/talos-cluster-module.md` was removed on 2026-07-15 —
+every section of it was already carried either by an owning spec or by the
+module README — leaving the README (narrative, next to the code) and the
+specs (normative). Collapsing the remaining hand-maintained duplication
+would mean making the generation real (markers + a non-swallowing
+`tofu:docs`); that is a separate decision, not a consequence of this one.
 
 ### Consequences
 

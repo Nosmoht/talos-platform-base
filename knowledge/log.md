@@ -2,6 +2,20 @@
 
 ## 2026-07-15
 
+- `reference/talos-cluster-module.md` REMOVED. Every section of it was
+  already carried elsewhere: the variable/output/version tables and the
+  module-enforced invariants by their owning OpenSpec specs, and the
+  fresh-PKI adoption warning, the schema-pin/install-pin Day-2 pattern and
+  the examples entry point by `tofu/modules/talos-cluster/README.md`, which
+  sits next to the code. Its inbound links now point at whichever of those
+  two carries the content.
+- `decisions/0015-openspec-adoption.md`: dated correction appended to the
+  §SoT map. The accepted text exempted the module README's tables as
+  "terraform-docs-generated (inject mode)"; verified false — the README has
+  no `BEGIN_TF_DOCS` markers and `task tofu:docs` swallows the miss with
+  `|| true`, so the tables are hand-maintained and the contract was carried
+  by hand three times.
+- `index.md`: `reference/talos-cluster-module.md` entry dropped.
 - `specs/hardware-capability-composition` (OpenSpec, outside this bundle)
   gained the predicate-only profile-karg requirement, and ADR-0016 gained the
   Talos `CONFIG_IOMMU_DEFAULT_PASSTHROUGH` lookup it had declined to make
