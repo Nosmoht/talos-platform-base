@@ -836,6 +836,19 @@ data "helm_template" "argocd_crds" {
     value = "true"
   }
 
+  # Layer the SAME values as the seed render above (shipped floor + optional consumer
+  # override). This apply is server-side --force-conflicts and emits the full chart
+  # (app + CRDs), so without the override it would (re)write argocd-cm/argocd-cmd-params-cm
+  # with the upstream chart placeholders — notably configs.cm.url = https://argocd.example.com
+  # — clobbering the consumer's real values on every chart-render bump and breaking the
+  # OIDC redirect ("Invalid redirect URL"). Layering the override keeps this convergence
+  # path consistent with the seed. See talos-platform-docs#171. NOTE: the consumer values
+  # live in the caller's argocd_values_override, not here — this only references the var.
+  values = var.argocd_values_override != "" ? [
+    file("${path.module}/helm/argocd-values.yaml"),
+    var.argocd_values_override,
+  ] : [file("${path.module}/helm/argocd-values.yaml")]
+
   lifecycle {
     postcondition {
       # Frozen by terraform_data.argocd_crds_render — an empty CRD render would be
