@@ -288,5 +288,3 @@ value; consumer-settable HA; still zero-wiring at bootstrap.
 - postfinance/kubelet-csr-approver `internal/controller/csr_controller.go`,
   `internal/controller/regex_ip_checks.go` @ v1.2.14 (source of the security
   model above).
-</content>
-</invoke>
