@@ -1,0 +1,295 @@
+# kubelet-csr-approver — VENDORED, chart-rendered + templated (substrate seed).
+#
+# Source : github.com/postfinance/kubelet-csr-approver
+#          Helm chart kubelet-csr-approver, version 1.2.14 (appVersion v1.2.14)
+#          repo https://postfinance.github.io/kubelet-csr-approver
+# Chart tarball SHA256 (kubelet-csr-approver-1.2.14.tgz):
+#          4bd637228cd354c1fd8b8e44a0a1c9d7bc9074c01d3eb43c82d39ef11430a090
+# Vendored: 2026-07-17. Seeded as a controlplane cluster.inlineManifest by
+#           tofu/modules/talos-cluster (local.cert_approver_manifest), rendered
+#           via templatefile() — NOT read raw. Replaces the retired
+#           alex1989hu/kubelet-serving-cert-approver seed (ADR-0019 supersedes
+#           ADR-0013 §D2).
+#
+# Rendered with:
+#   helm template kubelet-csr-approver kubelet-csr-approver/kubelet-csr-approver \
+#     --version 1.2.14 -n kubelet-csr-approver -f <values>
+# where <values> set: fullnameOverride=kubelet-csr-approver,
+#   image.repository/pullPolicy, bypassDnsResolution=true, control-plane
+#   tolerations, priorityClassName=system-cluster-critical. providerRegex /
+#   providerIpPrefixes / replicas / leaderElection are re-parameterized below.
+#
+# Modifications applied to the chart render (re-apply on every version bump):
+#   1. The Helm `test` hook Job (kubelet-csr-approver-test-connection, busybox
+#      wget) is REMOVED — it is a `helm test` artifact, not a runtime object.
+#   2. Container image DIGEST-pinned (@sha256) for supply-chain integrity;
+#      imagePullPolicy IfNotPresent (digest is already immutable — Always only
+#      buys a ghcr.io round-trip on every pod start, a bootstrap foot-gun).
+#   3. The six app.kubernetes.io labels (name/instance/version/component/
+#      part-of/managed-by) are set on every object AND the pod template; the
+#      Helm-injected `helm.sh/chart` and `app.kubernetes.io/managed-by: Helm`
+#      are dropped (AGENTS.md requires all six recommended labels; this seed
+#      ships outside the kustomize render/label gate). Selectors keep the
+#      immutable name+instance subset only.
+#   4. `automountServiceAccountToken: true` set explicitly (the controller needs
+#      its SA token to call the CSR-approval API).
+#   5. The ClusterRoleBinding's spurious `metadata.namespace` (a Helm render
+#      artifact on a cluster-scoped object) is dropped.
+#   6. TEMPLATED via OpenTofu templatefile(): the provider_regex and
+#      provider_ip_prefixes values are injected as jsonencode() scalars (safe,
+#      single-line), replicas as the replica count, and the leader-election
+#      blocks render ONLY when replicas > 1 — the -leader-election arg plus a
+#      NAMESPACED Role+RoleBinding for the leases+events grant (the upstream
+#      chart folds these into the ClusterRole cluster-wide; we scope them to the
+#      approver's own namespace for least privilege). So the ClusterRole is
+#      INVARIANT — always exactly the three signer-scoped CSR rules regardless of
+#      replicas — and the default replicas:1 carries no leases grant at all.
+#      NOTE: templatefile interprets template syntax everywhere, comments
+#      included — this header deliberately avoids the literal dollar-brace /
+#      percent-brace sequences.
+#
+# Security model (see knowledge/decisions/0019-postfinance-kubelet-csr-approver.md):
+# postfinance denies terminally and, in addition to the alex1989hu baseline
+# (Username prefix system:node:, x509 CN==Username, >=1 SAN, expiration bound),
+# binds each DNS SAN to the requesting node via HasPrefix(sanDNSName, hostname)
+# — a per-node bind alex1989hu lacked. Limits: HasPrefix is prefix-not-exact
+# (node-1 matches node-10); an IP-only CSR (no DNS SAN) is bounded only by
+# provider_ip_prefixes. RBAC `approve` is signer-restricted to
+# kubernetes.io/kubelet-serving (verified in csr_controller.go kubebuilder marker).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubelet-csr-approver
+  namespace: kubelet-csr-approver
+  labels:
+    app.kubernetes.io/name: kubelet-csr-approver
+    app.kubernetes.io/instance: kubelet-csr-approver
+    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/component: cert-approver
+    app.kubernetes.io/part-of: talos-platform-base
+    app.kubernetes.io/managed-by: opentofu
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubelet-csr-approver
+  labels:
+    app.kubernetes.io/name: kubelet-csr-approver
+    app.kubernetes.io/instance: kubelet-csr-approver
+    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/component: cert-approver
+    app.kubernetes.io/part-of: talos-platform-base
+    app.kubernetes.io/managed-by: opentofu
+rules:
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests/approval
+  verbs:
+  - update
+- apiGroups:
+  - certificates.k8s.io
+  resourceNames:
+  - kubernetes.io/kubelet-serving
+  resources:
+  - signers
+  verbs:
+  - approve
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubelet-csr-approver
+  labels:
+    app.kubernetes.io/name: kubelet-csr-approver
+    app.kubernetes.io/instance: kubelet-csr-approver
+    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/component: cert-approver
+    app.kubernetes.io/part-of: talos-platform-base
+    app.kubernetes.io/managed-by: opentofu
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubelet-csr-approver
+subjects:
+- kind: ServiceAccount
+  name: kubelet-csr-approver
+  namespace: kubelet-csr-approver
+%{ if leader_election ~}
+---
+# Leader-election needs a Lease + Events in the approver's OWN namespace. The
+# upstream chart folds these into the ClusterRole (cluster-wide); we scope them
+# to a namespaced Role instead (least privilege) — this grant renders only when
+# replicas > 1, so the default single-replica seed carries none of it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubelet-csr-approver-leaderelection
+  namespace: kubelet-csr-approver
+  labels:
+    app.kubernetes.io/name: kubelet-csr-approver
+    app.kubernetes.io/instance: kubelet-csr-approver
+    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/component: cert-approver
+    app.kubernetes.io/part-of: talos-platform-base
+    app.kubernetes.io/managed-by: opentofu
+rules:
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubelet-csr-approver-leaderelection
+  namespace: kubelet-csr-approver
+  labels:
+    app.kubernetes.io/name: kubelet-csr-approver
+    app.kubernetes.io/instance: kubelet-csr-approver
+    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/component: cert-approver
+    app.kubernetes.io/part-of: talos-platform-base
+    app.kubernetes.io/managed-by: opentofu
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubelet-csr-approver-leaderelection
+subjects:
+- kind: ServiceAccount
+  name: kubelet-csr-approver
+  namespace: kubelet-csr-approver
+%{ endif ~}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubelet-csr-approver
+  namespace: kubelet-csr-approver
+  labels:
+    app.kubernetes.io/name: kubelet-csr-approver
+    app.kubernetes.io/instance: kubelet-csr-approver
+    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/component: cert-approver
+    app.kubernetes.io/part-of: talos-platform-base
+    app.kubernetes.io/managed-by: opentofu
+  annotations:
+    prometheus.io/port: '8080'
+    prometheus.io/scrape: 'true'
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app.kubernetes.io/name: kubelet-csr-approver
+    app.kubernetes.io/instance: kubelet-csr-approver
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubelet-csr-approver
+  namespace: kubelet-csr-approver
+  labels:
+    app.kubernetes.io/name: kubelet-csr-approver
+    app.kubernetes.io/instance: kubelet-csr-approver
+    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/component: cert-approver
+    app.kubernetes.io/part-of: talos-platform-base
+    app.kubernetes.io/managed-by: opentofu
+spec:
+  replicas: ${replicas}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubelet-csr-approver
+      app.kubernetes.io/instance: kubelet-csr-approver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kubelet-csr-approver
+        app.kubernetes.io/instance: kubelet-csr-approver
+        app.kubernetes.io/version: v1.2.14
+        app.kubernetes.io/component: cert-approver
+        app.kubernetes.io/part-of: talos-platform-base
+        app.kubernetes.io/managed-by: opentofu
+    spec:
+      serviceAccountName: kubelet-csr-approver
+      automountServiceAccountToken: true
+      priorityClassName: system-cluster-critical
+      securityContext: {}
+      containers:
+      - name: kubelet-csr-approver
+        image: ghcr.io/postfinance/kubelet-csr-approver:v1.2.14@sha256:c0f6aa1abdc225a32f9a29992fd97f711e78e2df21434f9ce7bc60981f96a5f8
+        imagePullPolicy: IfNotPresent
+        args:
+        - -metrics-bind-address
+        - ":8080"
+        - -health-probe-bind-address
+        - ":8081"
+%{ if leader_election ~}
+        - -leader-election
+%{ endif ~}
+        env:
+        - name: PROVIDER_REGEX
+          value: ${provider_regex}
+        - name: PROVIDER_IP_PREFIXES
+          value: ${provider_ip_prefixes}
+        - name: BYPASS_DNS_RESOLUTION
+          value: "true"
+        - name: ALLOWED_DNS_NAMES
+          value: "1"
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsGroup: 65532
+          runAsNonRoot: true
+          runAsUser: 65532
+          seccompProfile:
+            type: RuntimeDefault
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists

@@ -7,6 +7,42 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed — BREAKING
 
+- **`talos-cluster`: the seeded kubelet-serving CSR approver is now
+  `postfinance/kubelet-csr-approver` (was
+  `alex1989hu/kubelet-serving-cert-approver`).** Same controlplane
+  `inlineManifest` seed, but the manifest is now chart-rendered and templated
+  with a small per-cluster config surface —
+  `substrate.cert_approver.{provider_regex, provider_ip_prefixes, replicas}` — so
+  the approver is **tunable** (two security knobs + a replica count) instead of
+  the previous fixed, zero-config seed. The image is digest-pinned to
+  `ghcr.io/postfinance/kubelet-csr-approver:v1.2.14`. postfinance adds an
+  **always-on per-node DNS-SAN binding** the old approver lacked — a CSR's DNS
+  SANs must be prefixed by the requesting node's hostname. The two knobs default
+  so every cluster still boots and approves out-of-the-box
+  (`provider_regex = ".*"`, `provider_ip_prefixes = ["0.0.0.0/0", "::/0"]` — the
+  safe floor; an empty list would deny every serving CSR); a consumer tightens
+  `provider_ip_prefixes` to its node subnets for an additional IP-SAN-to-subnet
+  binding, and `replicas > 1` opts into HA (auto leader-election + a namespaced
+  leases RBAC).
+  **Consumer impact:** the approver's identity, RBAC, and pod identity all change
+  — the namespace is renamed `kubelet-serving-cert-approver` →
+  `kubelet-csr-approver`, the metrics port moves `9090` → `8080`, the vendored
+  manifest is renamed `manifests/cert-approver.yaml` →
+  `manifests/kubelet-csr-approver.yaml`, and non-conforming CSRs are now **Denied
+  terminally** (a `Denied` condition) rather than left `Pending`. Anything scoped
+  to the old namespace (ServiceMonitor, alerts, RBAC) must be repointed.
+  **BREAKING — migration:** MAJOR OCI bump. The old approver was a create-only
+  seed Talos never deletes, so after the new seed is Running the old
+  `kubelet-serving-cert-approver` namespace + its cluster-scoped ClusterRoles
+  (`certificates:`/`events:kubelet-serving-cert-approver`) + ClusterRoleBinding +
+  a stray `events:` RoleBinding in the `default` namespace must be torn down by
+  hand; config changes do not propagate to a running cluster (create-only seed);
+  and a node-excluding `provider_*` value denies serving CSRs cluster-wide
+  (terminal). See UPGRADING.md for the full teardown, propagation, rollback, and
+  observability-migration steps. Decision:
+  [`knowledge/decisions/0019-postfinance-kubelet-csr-approver.md`](knowledge/decisions/0019-postfinance-kubelet-csr-approver.md)
+  (supersedes ADR-0013 §D2; ADR-0013 §D1 — rotation default-on — is unchanged).
+
 - **`talos-cluster`: the `iommu` provisioning profile no longer bakes
   `iommu=pt`.** The profile's `intel`/`amd` variants now carry only
   `intel_iommu=on` / `amd_iommu=on` — the args the `iommu-enabled` Layer-C

@@ -284,4 +284,106 @@ run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
     condition     = length(output.cert_approver_seed_missing_labels) == 0
     error_message = "AGENTS.md §Hard Constraints: every object in the cert-approver seed must carry all six app.kubernetes.io/* recommended labels; object-flattened missing set: ${jsonencode(output.cert_approver_seed_missing_labels)}"
   }
+  # ADR-0019: the per-cluster config surface defaults keep every cluster booting +
+  # approving out-of-the-box. Empty provider_ip_prefixes would DENY all IP-SAN CSRs
+  # (source-verified WhitelistedIPCheck), so the safe floor is all-IPs, not empty.
+  assert {
+    condition     = output.cert_approver_env["PROVIDER_REGEX"] == ".*" && output.cert_approver_env["PROVIDER_IP_PREFIXES"] == "0.0.0.0/0,::/0" && output.cert_approver_env["BYPASS_DNS_RESOLUTION"] == "true"
+    error_message = "adr-0019: default cert-approver config must inject PROVIDER_REGEX='.*', PROVIDER_IP_PREFIXES='0.0.0.0/0,::/0' (the all-IPs floor, NOT empty), BYPASS_DNS_RESOLUTION='true'; got ${jsonencode(output.cert_approver_env)}"
+  }
+  # Restricted-PSA hardening bound to the rendered Deployment (base CI runs no live
+  # PSA admission) — a re-vendor dropping a field fails here, not silently at runtime.
+  assert {
+    condition     = try(output.cert_approver_pod_security_context.runAsNonRoot, false) == true && try(output.cert_approver_pod_security_context.readOnlyRootFilesystem, false) == true && try(output.cert_approver_pod_security_context.seccompProfile.type, "") == "RuntimeDefault" && contains(try(output.cert_approver_pod_security_context.capabilities.drop, []), "ALL")
+    error_message = "adr-0019 + restricted PSA: the cert-approver container securityContext must set runAsNonRoot, readOnlyRootFilesystem, drop [ALL] and RuntimeDefault seccomp; got ${jsonencode(output.cert_approver_pod_security_context)}"
+  }
+  # Default replicas:1 keeps least privilege: no leader-election arg AND no
+  # namespaced leases Role at all (that grant renders ONLY at replicas > 1).
+  assert {
+    condition     = output.cert_approver_replicas == 1 && !contains(output.cert_approver_container_args, "-leader-election")
+    error_message = "adr-0019: default cert_approver_replicas must be 1 with no -leader-election arg; replicas=${output.cert_approver_replicas}, args=${jsonencode(output.cert_approver_container_args)}"
+  }
+  assert {
+    condition     = length(output.cert_approver_leaderelection_role_rules) == 0
+    error_message = "adr-0019 least privilege: at replicas:1 no leader-election Role (coordination.k8s.io/leases) must render; got ${jsonencode(output.cert_approver_leaderelection_role_rules)}"
+  }
+  # ClusterRole CLOSURE (H7): the cluster-scoped role is INVARIANT — exactly the
+  # three rules below, bound by FULL signature (apiGroups + resources + VERBS +
+  # resourceNames). A re-vendor adding a rule/resource/verb (e.g. `sign` on
+  # signers → cert issuance), widening apiGroups, or dropping the signer scope
+  # changes a signature and fails here. Combined with the UNSCOPED-approve sentinel
+  # and the binding closure below, this binds the whole cluster-wide RBAC surface.
+  assert {
+    condition = toset(output.cert_approver_clusterrole_signature) == toset([
+      "g=certificates.k8s.io|r=certificatesigningrequests|v=get,list,watch|n=",
+      "g=certificates.k8s.io|r=certificatesigningrequests/approval|v=update|n=",
+      "g=certificates.k8s.io|r=signers|v=approve|n=kubernetes.io/kubelet-serving",
+    ])
+    error_message = "adr-0019 §Security (H7 closure): the cert-approver ClusterRole signature must be exactly the three signer-scoped CSR rules; got ${jsonencode(output.cert_approver_clusterrole_signature)}"
+  }
+  # Binding closure: exactly ONE ClusterRoleBinding, to the scoped ClusterRole, for
+  # the approver SA only — a re-vendor adding a second binding (e.g. → cluster-admin)
+  # or repointing roleRef fails here (the rule signature alone cannot see bindings).
+  assert {
+    condition = output.cert_approver_clusterrolebinding_targets == [{
+      role     = "kubelet-csr-approver"
+      subjects = ["ServiceAccount/kubelet-csr-approver/kubelet-csr-approver"]
+    }]
+    error_message = "adr-0019 §Security: exactly one ClusterRoleBinding (approver SA → the scoped ClusterRole) must exist; got ${jsonencode(output.cert_approver_clusterrolebinding_targets)}"
+  }
+  # ALLOWED_DNS_NAMES is pinned (Talos kubelet-serving CSRs carry one DNS SAN); a
+  # re-vendor changing it is caught here rather than surfacing as terminal denials.
+  assert {
+    condition     = output.cert_approver_env["ALLOWED_DNS_NAMES"] == "1"
+    error_message = "adr-0019: ALLOWED_DNS_NAMES must be pinned to '1'; got '${try(output.cert_approver_env["ALLOWED_DNS_NAMES"], "<absent>")}'"
+  }
+}
+
+# ADR-0019: HA opt-in + per-cluster config override. replicas>1 auto-enables
+# leader-election + the leases RBAC; provider_* flow through as env; a
+# metacharacter-bearing regex (colon) still renders a parseable manifest (the
+# jsonencode escaping guard). Red-green: revert the templatefile wiring and these
+# flip. NETWORK (Image Factory) like the other plan runs.
+run "cert_approver_ha_and_config_override" {
+  command = plan
+  variables {
+    nodes = [
+      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      { hostname = "w-1", ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    ]
+    cert_approver_replicas             = 2
+    cert_approver_provider_regex       = "^node:[0-9]+$"
+    cert_approver_provider_ip_prefixes = ["192.0.2.0/24"]
+  }
+
+  assert {
+    condition     = output.cert_approver_replicas == 2 && contains(output.cert_approver_container_args, "-leader-election")
+    error_message = "adr-0019 HA: cert_approver_replicas=2 must render replicas:2 AND the -leader-election arg; replicas=${output.cert_approver_replicas}, args=${jsonencode(output.cert_approver_container_args)}"
+  }
+  # HA adds the leases/events grant as a NAMESPACED Role (not the ClusterRole),
+  # and the ClusterRole stays INVARIANT at its 3 signer-scoped rules — so HA never
+  # widens the cluster-wide surface.
+  assert {
+    condition     = contains(flatten([for r in output.cert_approver_leaderelection_role_rules : try(r.apiGroups, [])]), "coordination.k8s.io")
+    error_message = "adr-0019 HA: replicas>1 must add the namespaced coordination.k8s.io/leases Role; role rules=${jsonencode(output.cert_approver_leaderelection_role_rules)}"
+  }
+  assert {
+    condition = toset(output.cert_approver_clusterrole_signature) == toset([
+      "g=certificates.k8s.io|r=certificatesigningrequests|v=get,list,watch|n=",
+      "g=certificates.k8s.io|r=certificatesigningrequests/approval|v=update|n=",
+      "g=certificates.k8s.io|r=signers|v=approve|n=kubernetes.io/kubelet-serving",
+    ])
+    error_message = "adr-0019 §Security: the ClusterRole signature must stay the three signer-scoped rules in HA mode (leases go to a namespaced Role); got ${jsonencode(output.cert_approver_clusterrole_signature)}"
+  }
+  # Config override flows through AND the colon-bearing regex round-trips exactly —
+  # proving the jsonencode escaping (an unescaped colon would corrupt the YAML scalar).
+  assert {
+    condition     = output.cert_approver_env["PROVIDER_REGEX"] == "^node:[0-9]+$" && output.cert_approver_env["PROVIDER_IP_PREFIXES"] == "192.0.2.0/24"
+    error_message = "adr-0019: overridden provider_regex/provider_ip_prefixes must flow through unchanged (escaping intact); got ${jsonencode(output.cert_approver_env)}"
+  }
+  # The approve scope is unchanged in HA mode (signer-restricted, not broadened).
+  assert {
+    condition     = output.cert_approver_approve_resource_names == ["kubernetes.io/kubelet-serving"]
+    error_message = "adr-0019 §Security: the approve verb must stay resourceNames-scoped to [kubernetes.io/kubelet-serving] in HA mode; got ${jsonencode(output.cert_approver_approve_resource_names)}"
+  }
 }

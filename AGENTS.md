@@ -19,9 +19,13 @@ constitutive as the OS (Talos) and the CNI (Cilium), **not** a Day-2 app.
 `cert-approver` is the only addition, present solely as Talos serving-cert glue:
 it approves the `kubernetes.io/kubelet-serving` CSRs the base's default-on kubelet
 serving-cert rotation triggers (client-kubelet CSRs auto-approve, so the cluster
-boots without it; metrics-server / `kubectl logs|exec|top` need it). Delivered as
-a controlplane `inlineManifest` seed (`knowledge/decisions/0013-kubelet-serving-cert-rotation.md`),
-not a fourth pillar.
+boots without it; metrics-server / `kubectl logs|exec|top` need it). The approver
+is `postfinance/kubelet-csr-approver` — tunable per-cluster via
+`substrate.cert_approver.*` (two security knobs + `replicas`) and carrying an
+always-on per-node DNS-SAN binding. Delivered as a controlplane `inlineManifest`
+seed (`knowledge/decisions/0019-postfinance-kubelet-csr-approver.md`, superseding
+ADR-0013 §D2; the seed pattern + rotation default-on remain
+`knowledge/decisions/0013-kubelet-serving-cert-rotation.md`), not a fourth pillar.
 Because ArgoCD is core substrate it is delivered as part of standing the
 cluster up — **opt-out, never an opt-in Day-2 add-on**; classifying
 ArgoCD-bootstrap as Day-2 is a scoping error. `talos-platform-apps` is the

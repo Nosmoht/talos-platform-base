@@ -102,7 +102,7 @@ output "kubelet_serving_cert_rotation" {
 
 output "cert_approver_namespace_labels" {
   description = <<-EOT
-    Labels seeded onto the module-delivered kubelet-serving-cert-approver
+    Labels seeded onto the module-delivered kubelet-csr-approver
     namespace (PSA-restricted floor + the six recommended labels). Audit surface
     + the binding point for the composition test's PSA-restricted assertion.
     Non-sensitive (labels carry no secret).
@@ -137,18 +137,20 @@ output "cert_approver_approve_resource_names" {
     empty/absent). Parses the multi-doc vendored manifest and collects, across all
     ClusterRole docs, the resourceNames of every rule whose verbs include "approve".
     Binds the composition test to the RBAC SCOPE (H7) — a re-vendor that broadens
-    the signer scope or drops resourceNames changes this list and fails the test
-    (unlike a presence-only substring check, which the signer string survives in
-    the ClusterRole name / namespace / comments). Secret-free.
+    the signer scope, drops resourceNames, OR adds a SECOND unscoped approve rule
+    changes this list and fails the test. A rule granting `approve` with NO
+    resourceNames (= all signers in RBAC) maps to the literal "<UNSCOPED>" so it
+    can never flatten away invisibly. Scans EVERY doc (not only ClusterRole), so an
+    approve grant smuggled into another kind is still caught. Secret-free.
   EOT
   value = flatten([
-    for doc in split("---", file("${path.module}/manifests/cert-approver.yaml")) :
+    for doc in split("---", local.cert_approver_manifest) :
     [
       for rule in try(yamldecode(doc).rules, []) :
-      try(rule.resourceNames, [])
+      length(try(rule.resourceNames, [])) > 0 ? rule.resourceNames : ["<UNSCOPED>"]
       if contains(try(rule.verbs, []), "approve")
     ]
-    if try(yamldecode(doc).kind, "") == "ClusterRole"
+    if try(yamldecode(doc).kind, "") != ""
   ])
 }
 
@@ -162,13 +164,145 @@ output "cert_approver_seed_missing_labels" {
     re-vendor makes this list non-empty and fails the composition test. Secret-free.
   EOT
   value = flatten([
-    for doc in split("---", file("${path.module}/manifests/cert-approver.yaml")) :
+    for doc in split("---", local.cert_approver_manifest) :
     setsubtract(
       ["app.kubernetes.io/name", "app.kubernetes.io/instance", "app.kubernetes.io/version", "app.kubernetes.io/component", "app.kubernetes.io/part-of", "app.kubernetes.io/managed-by"],
       keys(try(yamldecode(doc).metadata.labels, {}))
     )
     if try(yamldecode(doc).kind, "") != ""
   ])
+}
+
+output "cert_approver_rbac_rules" {
+  description = <<-EOT
+    The decoded ClusterRole rule set of the rendered cert-approver seed (the raw
+    rule objects, for inspection). The ClusterRole is INVARIANT — always the three
+    cluster-scoped rules (certificatesigningrequests read, .../approval update,
+    signers approve scoped to kubernetes.io/kubelet-serving) regardless of replicas.
+    The RBAC-CLOSURE binding at test time is cert_approver_clusterrole_signature
+    (apiGroups+resources+verbs+resourceNames) plus cert_approver_clusterrolebinding_targets;
+    this output is the un-normalized companion. The leader-election leases/events
+    grant is NOT here — it is a namespaced Role (cert_approver_leaderelection_role_rules).
+    Secret-free.
+  EOT
+  value = flatten([
+    for doc in split("---", local.cert_approver_manifest) :
+    try(yamldecode(doc).rules, [])
+    if try(yamldecode(doc).kind, "") == "ClusterRole"
+  ])
+}
+
+output "cert_approver_clusterrole_signature" {
+  description = <<-EOT
+    Full normalized signature of every cluster-scoped ClusterRole rule —
+    apiGroups + resources + VERBS + resourceNames, each sorted, one string per
+    rule, the list sorted. Binds the WHOLE cluster-wide RBAC surface (not just
+    count + resources): a re-vendor adding a verb (e.g. `sign` on signers →
+    cert issuance), widening apiGroups, or dropping the signer resourceNames
+    changes a signature and fails the composition test. Secret-free.
+  EOT
+  value = sort(flatten([
+    for doc in split("---", local.cert_approver_manifest) :
+    [
+      for r in try(yamldecode(doc).rules, []) :
+      format("g=%s|r=%s|v=%s|n=%s",
+        join(",", sort(try(r.apiGroups, []))),
+        join(",", sort(try(r.resources, []))),
+        join(",", sort(try(r.verbs, []))),
+        join(",", sort(try(r.resourceNames, [])))
+      )
+    ]
+    if try(yamldecode(doc).kind, "") == "ClusterRole"
+  ]))
+}
+
+output "cert_approver_clusterrolebinding_targets" {
+  description = <<-EOT
+    Every ClusterRoleBinding in the seed as {role = roleRef.name, subjects =
+    ["<kind>/<namespace>/<name>", …]}. Binds the cluster-scoped binding surface:
+    a re-vendor adding a SECOND ClusterRoleBinding (e.g. the approver SA →
+    cluster-admin) or repointing roleRef changes this list and fails the test —
+    the closure the rule-signature alone cannot see. Secret-free.
+  EOT
+  value = [
+    for doc in split("---", local.cert_approver_manifest) :
+    {
+      role     = try(yamldecode(doc).roleRef.name, "")
+      subjects = [for s in try(yamldecode(doc).subjects, []) : "${try(s.kind, "")}/${try(s.namespace, "")}/${try(s.name, "")}"]
+    }
+    if try(yamldecode(doc).kind, "") == "ClusterRoleBinding"
+  ]
+}
+
+output "cert_approver_leaderelection_role_rules" {
+  description = <<-EOT
+    The decoded namespaced Role rule set for leader-election (coordination.k8s.io/
+    leases + events, in the approver's own namespace). EMPTY at the default
+    replicas:1 (no Role rendered — least privilege) and populated only when
+    replicas > 1. Binds the HA conditional AND the least-privilege default: the
+    composition test asserts it is empty at replicas:1 and carries leases at
+    replicas:2. Secret-free.
+  EOT
+  value = flatten([
+    for doc in split("---", local.cert_approver_manifest) :
+    try(yamldecode(doc).rules, [])
+    if try(yamldecode(doc).kind, "") == "Role"
+  ])
+}
+
+output "cert_approver_pod_security_context" {
+  description = <<-EOT
+    The decoded container securityContext of the rendered cert-approver Deployment
+    — binds the restricted-PSA hardening (runAsNonRoot, drop ALL,
+    readOnlyRootFilesystem, RuntimeDefault seccomp) at test time so a re-vendor
+    that drops a field fails the composition test rather than only being caught by
+    live PSA admission (which base CI never runs). Secret-free.
+  EOT
+  value = try([
+    for doc in split("---", local.cert_approver_manifest) :
+    yamldecode(doc).spec.template.spec.containers[0].securityContext
+    if try(yamldecode(doc).kind, "") == "Deployment"
+  ][0], {})
+}
+
+output "cert_approver_container_args" {
+  description = <<-EOT
+    The decoded container args of the rendered cert-approver Deployment. Binds the
+    HA conditional: `-leader-election` appears ONLY when replicas > 1. Secret-free.
+  EOT
+  value = try([
+    for doc in split("---", local.cert_approver_manifest) :
+    yamldecode(doc).spec.template.spec.containers[0].args
+    if try(yamldecode(doc).kind, "") == "Deployment"
+  ][0], [])
+}
+
+output "cert_approver_replicas" {
+  description = <<-EOT
+    The decoded replica count of the rendered cert-approver Deployment — binds the
+    consumer-settable replicas knob (default 1). Secret-free.
+  EOT
+  value = try([
+    for doc in split("---", local.cert_approver_manifest) :
+    yamldecode(doc).spec.replicas
+    if try(yamldecode(doc).kind, "") == "Deployment"
+  ][0], null)
+}
+
+output "cert_approver_env" {
+  description = <<-EOT
+    The decoded container environment of the rendered cert-approver Deployment as a
+    name→value map (PROVIDER_REGEX, PROVIDER_IP_PREFIXES, BYPASS_DNS_RESOLUTION,
+    ALLOWED_DNS_NAMES). Red-green binding for the per-cluster config injection:
+    reverting the templatefile wiring flips these. Secret-free (config, not keys).
+  EOT
+  value = try({
+    for e in [
+      for doc in split("---", local.cert_approver_manifest) :
+      yamldecode(doc).spec.template.spec.containers[0].env
+      if try(yamldecode(doc).kind, "") == "Deployment"
+    ][0] : e.name => e.value
+  }, {})
 }
 
 output "controlplane_base_is_prefix_of_final" {

@@ -8,6 +8,11 @@ timestamp: 2026-06-30
 deciders:
   - platform-maintainer
 supersedes: []
+# Partially superseded by 0019 (§D2 approver identity + seed mechanism only; D1
+# rotation stands) — recorded via the dated in-body banner + 0019's `supersedes`,
+# per the 0003/0004 partial-supersession convention (status stays accepted; a
+# populated superseded_by is reserved for FULL supersession, cf. 0005/0008).
+superseded_by: []
 related:
   - base:substrate-only-base
   - base:substrate-hard-constraints
@@ -17,6 +22,27 @@ tags: [adr, talos]
 ---
 
 # ADR: Kubelet serving-cert rotation as substrate default + cert-approver as a Talos seed
+
+> [2026-07-17 partial supersession] **§D2 is superseded in part by
+> [0019-postfinance-kubelet-csr-approver.md](./0019-postfinance-kubelet-csr-approver.md).**
+> The **approver identity** (alex1989hu → postfinance/kubelet-csr-approver
+> v1.2.14) and the **seed mechanism** (static `file()` vendored raw manifest →
+> chart-rendered `templatefile()`-parameterized manifest at
+> `manifests/kubelet-csr-approver.yaml`, namespace renamed to
+> `kubelet-csr-approver`) are replaced, and the SAN-to-node-binding **stance**
+> flips: ADR-0019 ships a per-node DNS-SAN binding **default-on** (plus a
+> three-knob `substrate.cert_approver` config surface), rather than delegating
+> the whole binding to consumer Kyverno as §Security below does. **§D1 (kubelet
+> serving-cert rotation default-on) STANDS unchanged**, as do the still-holding
+> §D2 sub-decisions ADR-0019 preserves: the unconditional seed, namespace
+> sole-ownership ([ADR-0002](./0002-namespace-ownership-rendered-manifests.md)),
+> restricted-PSA namespace, the six recommended labels, controlplane
+> tolerations, and the `approve` verb signer-scoped to
+> `kubernetes.io/kubelet-serving` only. Read the two ADRs together: everything
+> below about the **alex1989hu** approver identity, the raw-manifest seed
+> pattern, the metrics port 9090, and the "SAN-to-node binding is a consumer
+> Kyverno obligation" residual reflects the superseded §D2; ADR-0019 is
+> authoritative on those points.
 
 ## Context and Problem Statement
 

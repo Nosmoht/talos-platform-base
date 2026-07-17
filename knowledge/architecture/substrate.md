@@ -3,7 +3,7 @@ type: architecture
 title: Substrate Boundary
 description: What talos-platform-base is and ships — the three-pillar substrate, the base/apps/consumer layer model, the tracked repo layout, and the fail-closed OCI artifact allowlist.
 tags: [substrate, layer-model, oci-artifact, boundaries]
-timestamp: 2026-07-15
+timestamp: 2026-07-17
 sources:
   - .ci-oci-tarball-include.txt
   - .ci-oci-tarball-expected.txt
@@ -11,7 +11,7 @@ sources:
   - Taskfile.yml
   - .github/workflows/oci-publish.yml
   - tofu/modules/talos-cluster/main.tf
-  - tofu/modules/talos-cluster/manifests/cert-approver.yaml
+  - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
   - kubernetes/base/infrastructure/argocd/kustomization.yaml
   - kubernetes/base/infrastructure/argocd/values.yaml
   - AGENTS.md
@@ -45,17 +45,26 @@ three as constitutive:
   default `true`), so it comes up with the bootstrap — opt-out, never an
   opt-in add-on.
 
-The only addition is **cert-approver** (`kubelet-serving-cert-approver`) —
-Talos serving-cert glue, not a fourth pillar. The module enables kubelet
-serving-cert rotation on all nodes (`serverTLSBootstrap: true`) and
-unconditionally seeds a vendored static manifest
-(`tofu/modules/talos-cluster/manifests/cert-approver.yaml`) that approves the
-resulting `kubernetes.io/kubelet-serving` CSRs. Its RBAC `approve` verb is
-signer-restricted to that one signer, and its namespace carries a
-PSA-`restricted` floor. Without it the cluster still boots (client-kubelet
-CSRs auto-approve), but metrics-server and `kubectl logs|exec|top` need the
-approved serving certs. Decision:
-[0013-kubelet-serving-cert-rotation](../decisions/0013-kubelet-serving-cert-rotation.md).
+The only addition is **cert-approver** (`kubelet-csr-approver`) — Talos
+serving-cert glue, not a fourth pillar. The module enables kubelet serving-cert
+rotation on all nodes (`serverTLSBootstrap: true`) and unconditionally seeds a
+chart-rendered, `templatefile()`-parameterized manifest
+(`tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml`, running
+**postfinance/kubelet-csr-approver**) that approves the resulting
+`kubernetes.io/kubelet-serving` CSRs. Its RBAC `approve` verb is
+signer-restricted to that one signer, its namespace carries a PSA-`restricted`
+floor, and it adds a per-node DNS-SAN-to-node binding **default-on**. Unlike the
+former knob-free approver, it exposes three per-cluster knobs under
+`substrate.cert_approver` — `provider_regex` and `provider_ip_prefixes` (two
+SAN-allowlist security values, defaulting to the permissive `.*` /
+`0.0.0.0/0,::/0` floor) plus `replicas` (default `1`; `> 1` derives HA). Without
+it the cluster still boots (client-kubelet CSRs auto-approve), but
+metrics-server and `kubectl logs|exec|top` need the approved serving certs.
+Decisions:
+[0013-kubelet-serving-cert-rotation](../decisions/0013-kubelet-serving-cert-rotation.md)
+(rotation default-on + seed model) and
+[0019-postfinance-kubelet-csr-approver](../decisions/0019-postfinance-kubelet-csr-approver.md)
+(the postfinance approver + config surface, superseding 0013 §D2).
 
 ## The base / apps / consumer layer model
 
@@ -97,7 +106,7 @@ policies/conftest/           Rego policies for rendered manifests
 schemas/                     cluster.schema.json, hardware-features.schema.json
 scripts/                     validation / render / helper scripts
 tofu/modules/talos-cluster/  the cluster-lifecycle module (+ helm values,
-                             vendored cert-approver manifest, tests)
+                             chart-rendered cert-approver manifest, tests)
 platform-hardware-features.yaml   Layer-C hardware-feature vocabulary (root)
 cluster.yaml.example         declarative cluster-SoT template
 Taskfile.yml                 the single task runner
@@ -145,7 +154,7 @@ tofu/modules/talos-cluster/README.md
 tofu/modules/talos-cluster/helm/argocd-values.yaml
 tofu/modules/talos-cluster/helm/cilium-values.yaml
 tofu/modules/talos-cluster/main.tf
-tofu/modules/talos-cluster/manifests/cert-approver.yaml
+tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
 tofu/modules/talos-cluster/outputs.tf
 tofu/modules/talos-cluster/test/README.md
 tofu/modules/talos-cluster/test/pki-reconcile-microtest.sh
@@ -155,7 +164,7 @@ tofu/modules/talos-cluster/versions.tf
 ```
 
 That is: a talos-cluster module subset (four of its `.tf` files, the helm
-value floors, the vendored cert-approver seed, the adoption/PKI proof
+value floors, the chart-rendered cert-approver seed, the adoption/PKI proof
 scripts), the Cilium Day-2 reference values + GatewayClass extra, and the
 hardware-capability vocabulary (`platform-hardware-features.yaml` at the
 repo root plus its schema under `schemas/`). Note the allowlist does NOT

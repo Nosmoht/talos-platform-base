@@ -3,10 +3,10 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-timestamp: 2026-07-15
+timestamp: 2026-07-17
 sources:
   - tofu/modules/talos-cluster/main.tf
-  - tofu/modules/talos-cluster/manifests/cert-approver.yaml
+  - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
   - kubernetes/bootstrap/argocd/root-application.yaml.tmpl
   - kubernetes/bootstrap/argocd/root-project.yaml.tmpl
   - kubernetes/bootstrap/cilium/values.yaml
@@ -50,15 +50,23 @@ machine config (workers carry none):
   `tofu/modules/talos-cluster/helm/argocd-values.yaml` plus an optional
   `argocd_values_override`. The render deliberately excludes CRDs
   (`include_crds = false`) — see the CRD side-channel below.
-- **cert-approver** — unconditional (no toggle): the
-  `kubelet-serving-cert-approver` Namespace (PSA-`restricted`) plus the
-  vendored upstream manifest
-  (`tofu/modules/talos-cluster/manifests/cert-approver.yaml`). This is the
-  vendored-static-manifest seed pattern (upstream ships raw YAML, no chart),
-  distinct from the helm-render/freeze pattern Cilium and ArgoCD use. It
-  pairs with the all-nodes kubelet patch `serverTLSBootstrap: true`; the
-  cluster-scoped approver approves serving CSRs from workers too. Decision:
-  [0013-kubelet-serving-cert-rotation](../decisions/0013-kubelet-serving-cert-rotation.md).
+- **cert-approver** — unconditional (no disable toggle): the
+  `kubelet-csr-approver` Namespace (PSA-`restricted`) plus the
+  **postfinance/kubelet-csr-approver** manifest
+  (`tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml`). The
+  manifest is the postfinance Helm chart rendered at pin time and committed,
+  then `templatefile()`-parameterized with the three per-cluster
+  `substrate.cert_approver` knobs — `provider_regex` / `provider_ip_prefixes`
+  (SAN allowlists) and `replicas` (`> 1` derives leader-election + leases RBAC).
+  Because `templatefile()` is pure, this seed stays outside the
+  `data.helm_template` freeze pattern Cilium and ArgoCD use. It pairs with the
+  all-nodes kubelet patch `serverTLSBootstrap: true`; the cluster-scoped approver
+  approves serving CSRs from workers too and enforces a per-node DNS-SAN binding
+  default-on. Decisions:
+  [0013-kubelet-serving-cert-rotation](../decisions/0013-kubelet-serving-cert-rotation.md)
+  (rotation default-on + seed model) and
+  [0019-postfinance-kubelet-csr-approver](../decisions/0019-postfinance-kubelet-csr-approver.md)
+  (the postfinance approver + config surface, superseding 0013 §D2).
 
 Two supporting mechanics:
 

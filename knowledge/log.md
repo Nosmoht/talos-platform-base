@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-07-17
+
+- `decisions/0019-postfinance-kubelet-csr-approver.md` ADDED (accepted). Records
+  the swap from alex1989hu/kubelet-serving-cert-approver to
+  postfinance/kubelet-csr-approver v1.2.14, delivered as the same controlplane
+  inlineManifest seed but chart-rendered + `templatefile()`-parameterized
+  (`manifests/kubelet-csr-approver.yaml`, namespace renamed
+  `kubelet-csr-approver`), with a three-knob `substrate.cert_approver` config
+  surface (`provider_regex` / `provider_ip_prefixes` / `replicas`), the
+  source-verified postfinance-vs-alex1989hu security check table (default-on
+  per-node DNS-SAN binding as the gain; `HasPrefix`-not-exact + IP-only-CSR
+  residuals named), the breaking-change list, and the tftest + homelab-deny-path
+  validation. Supersedes ADR-0013 §D2.
+- `decisions/0013-kubelet-serving-cert-rotation.md`: dated partial-supersession
+  banner added below the H1; `superseded_by` set to the §D2-qualified 0019 path.
+  §D1 (rotation default-on) STANDS; §D2's approver identity + seed mechanism are
+  superseded.
+- `decisions/index.md`: 0019 added under Accepted; the 0013 row annotated with
+  the §D2 partial supersession.
+- `architecture/substrate.md`, `architecture/day-zero-bootstrap.md`,
+  `glossary.md`: re-verified against the implemented branch and updated —
+  approver identity alex1989hu → postfinance, manifest filename
+  `cert-approver.yaml` → `kubelet-csr-approver.yaml`, chart-rendered
+  `templatefile()` seed, "no knobs" → the three-knob `substrate.cert_approver`
+  config surface, and the default-on per-node DNS-SAN binding. `timestamp`
+  bumped to 2026-07-17.
+- `workflows/first-consumer-cluster.md`: manifest-filename reference in the
+  tarball-membership list corrected `cert-approver.yaml` →
+  `kubelet-csr-approver.yaml` (filename-only; `timestamp` left at 2026-07-15).
+
 ## 2026-07-15
 
 - `reference/talos-cluster-module.md` REMOVED. Its requirement-bearing

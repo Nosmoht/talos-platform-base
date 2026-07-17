@@ -217,6 +217,9 @@ provider "talos" {}
 | `argocd_namespace` | string | `"argocd"` | namespace for the bootstrap ArgoCD install |
 | `argocd_chart_version` | string | `"9.4.5"` | `argo-cd` Helm chart version (argoproj.github.io/argo-helm) |
 | `argocd_values_override` | string | `""` | full replacement of the bootstrap Helm values (YAML). Empty = the shipped `helm/argocd-values.yaml` (slim, ksops). |
+| `cert_approver_provider_regex` | string | `".*"` | `postfinance/kubelet-csr-approver` `PROVIDER_REGEX` — node-name regex the approver accepts. **SEED knob** (create-only). The always-on per-node DNS-SAN hostname-prefix binding applies regardless. Validated: compiles, no `---`, no newline (protects the split-based audit outputs). |
+| `cert_approver_provider_ip_prefixes` | list(string) | `["0.0.0.0/0", "::/0"]` | `PROVIDER_IP_PREFIXES` — CIDRs a CSR's IP SANs must fall within. Default is the **safe floor** (all IPs); **never `[]`** (an empty set denies every serving CSR). Tighten to node subnets for an IP-SAN-to-subnet binding. **SEED knob.** Every entry must be a valid CIDR. |
+| `cert_approver_replicas` | number | `1` | approver Deployment replica count (`>= 1`). `> 1` derives leader-election + a namespaced `coordination.k8s.io/leases` Role/RoleBinding so the HA config is coherent; `1` keeps least privilege (no leases rule). **SEED knob.** |
 
 **Patch precedence — two passes.** *Generation pass* (baked into the machine
 config by `data.talos_machine_configuration`): all-nodes (`config_patches`) then
@@ -268,6 +271,14 @@ read. Full semantics live in each output's `description` in
 | `kubelet_rotation_setting` | no | decoded rotation patch — proves the mechanism is `machine.kubelet.extraConfig.serverTLSBootstrap`, not the deprecated `--rotate-server-certificates` flag |
 | `cert_approver_approve_resource_names` | no | RBAC scope of the vendored approver's `approve` verb — must equal `["kubernetes.io/kubelet-serving"]`, never `["*"]` |
 | `cert_approver_seed_missing_labels` | no | recommended-label gaps across the vendored seed manifest — must be empty |
+| `cert_approver_rbac_rules` | no | raw decoded ClusterRole rule objects (inspection companion); INVARIANT at 3 signer-scoped rules. The binding closure is `cert_approver_clusterrole_signature` + `cert_approver_clusterrolebinding_targets` |
+| `cert_approver_clusterrole_signature` | no | normalized per-rule signature (apiGroups+resources+VERBS+resourceNames) of the ClusterRole — the composition suite asserts the exact set, so a re-vendor adding a verb (`sign`), widening apiGroups, or dropping the signer scope turns red |
+| `cert_approver_clusterrolebinding_targets` | no | every ClusterRoleBinding as {role, subjects} — the suite asserts exactly one (approver SA → the scoped ClusterRole), so a second binding (e.g. → cluster-admin) or a repointed roleRef turns red |
+| `cert_approver_leaderelection_role_rules` | no | decoded namespaced leader-election Role rules (`coordination.k8s.io/leases` + events) — empty at `replicas:1` (least privilege), populated only at `replicas > 1` |
+| `cert_approver_pod_security_context` | no | decoded pod/container securityContext — restricted-PSA regression guard (runAsNonRoot, drop ALL, readOnlyRootFilesystem, seccomp RuntimeDefault) |
+| `cert_approver_env` | no | decoded `PROVIDER_*` / `BYPASS_DNS_RESOLUTION` env — red-green binding that the `substrate.cert_approver.*` config flows through to the seed |
+| `cert_approver_container_args` | no | decoded container args of the rendered approver — binds the HA conditional (`-leader-election` present only when `replicas > 1`) |
+| `cert_approver_replicas` | no | decoded replica count of the rendered approver Deployment — binds the consumer-settable `replicas` knob (default 1) |
 | `controlplane_base_is_prefix_of_final` | no | asserts the sensitive argocd/cilium seeds are only appended after the non-sensitive base patch list, never reordered before it |
 
 ## Versions: schema-pin vs install-pin (Day-2 pattern)

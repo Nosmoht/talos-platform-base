@@ -1,28 +1,4 @@
----
-sources:
-  primary:
-    - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
-  secondary:
-    - tofu/modules/talos-cluster/main.tf
-references:
-  - knowledge/decisions/0013-kubelet-serving-cert-rotation.md
-  - knowledge/decisions/0019-postfinance-kubelet-csr-approver.md
----
-
-# cert-approver-seed
-
-## Purpose
-
-`postfinance/kubelet-csr-approver` is delivered unconditionally as a
-controlplane Talos `cluster.inlineManifests` seed: it approves the
-`kubernetes.io/kubelet-serving` CSRs that the module's default-on kubelet
-serving-cert rotation triggers. The cluster boots without it; metrics-server
-and `kubectl logs|exec|top` need the approved serving certificates. The
-approver identity is postfinance (ADR-0019 supersedes ADR-0013 §D2's
-alex1989hu choice); unlike the retired approver it denies non-conforming CSRs
-terminally and binds each DNS SAN to the requesting node.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Unconditional controlplane inlineManifest seed
 
@@ -40,22 +16,6 @@ Service, Deployment) — with no module variable to disable it.
 - **THEN** the controlplane config patches include the
   `kubelet-csr-approver-namespace` and `kubelet-csr-approver` inlineManifest
   entries in that order
-
-### Requirement: Pairs with default-on kubelet serving-cert rotation
-
-The module SHALL enable kubelet serving-cert rotation on all nodes via an
-overridable machine-config patch setting
-`machine.kubelet.extraConfig.serverTLSBootstrap: true` on both the
-controlplane and worker patch lists, placed before caller `config_patches`
-so a consumer can opt out; the seeded approver then approves the resulting
-`kubernetes.io/kubelet-serving` CSRs from all nodes.
-
-#### Scenario: Rotation patch applied to both node roles
-
-- **WHEN** the module renders machine configurations
-- **THEN** both the controlplane and worker patch lists contain
-  `serverTLSBootstrap: true` under `machine.kubelet.extraConfig`, ordered
-  before caller-supplied patches
 
 ### Requirement: Signer-restricted approval RBAC
 
@@ -101,6 +61,31 @@ is pure, the seed stays outside the Helm-render-determinism fence.
 - **THEN** it names the upstream repository, the pinned chart version and
   appVersion, the chart tarball SHA-256 checksum, the `helm template`
   invocation, and the list of local modifications applied to the render
+
+### Requirement: Restricted namespace floor and recommended labels
+
+The module SHALL seed the `kubelet-csr-approver` Namespace with pod-security
+labels at `restricted` (enforce, audit, and warn) plus the recommended label
+set, and the vendored manifest SHALL carry the recommended labels on every
+object and on the pod template (normative: AGENTS.md §Hard Constraints —
+Kubernetes recommended labels on all resources); the Deployment's pod
+satisfies the restricted profile (non-root, all capabilities dropped,
+read-only root filesystem, runtime default seccomp).
+
+#### Scenario: Namespace enforces restricted PSA
+
+- **WHEN** the seeded Namespace manifest is inspected
+- **THEN** it carries `pod-security.kubernetes.io/enforce: restricted` and
+  the six `app.kubernetes.io/*` recommended labels with
+  `app.kubernetes.io/managed-by: opentofu`
+
+#### Scenario: Workload passes the restricted profile
+
+- **WHEN** the Deployment's pod spec is inspected
+- **THEN** it sets `runAsNonRoot: true`, drops all capabilities, uses a
+  read-only root filesystem, and sets a `RuntimeDefault` seccomp profile
+
+## ADDED Requirements
 
 ### Requirement: Per-cluster config surface with permissive defaults
 
@@ -173,26 +158,3 @@ without a second knob.
 - **THEN** the Deployment sets that replica count and the `-leader-election`
   argument, and the rendered RBAC includes the `coordination.k8s.io/leases`
   rule
-
-### Requirement: Restricted namespace floor and recommended labels
-
-The module SHALL seed the `kubelet-csr-approver` Namespace with pod-security
-labels at `restricted` (enforce, audit, and warn) plus the recommended label
-set, and the vendored manifest SHALL carry the recommended labels on every
-object and on the pod template (normative: AGENTS.md §Hard Constraints —
-Kubernetes recommended labels on all resources); the Deployment's pod
-satisfies the restricted profile (non-root, all capabilities dropped,
-read-only root filesystem, runtime default seccomp).
-
-#### Scenario: Namespace enforces restricted PSA
-
-- **WHEN** the seeded Namespace manifest is inspected
-- **THEN** it carries `pod-security.kubernetes.io/enforce: restricted` and
-  the six `app.kubernetes.io/*` recommended labels with
-  `app.kubernetes.io/managed-by: opentofu`
-
-#### Scenario: Workload passes the restricted profile
-
-- **WHEN** the Deployment's pod spec is inspected
-- **THEN** it sets `runAsNonRoot: true`, drops all capabilities, uses a
-  read-only root filesystem, and sets a `RuntimeDefault` seccomp profile

@@ -151,3 +151,7 @@ substrate:
     chart_version: "9.4.5" # SEED knob (install-time), not an upgrade knob
     namespace: argocd
     values_override: "" # consumer Helm values merged on the shipped slim values
+  cert_approver: # postfinance/kubelet-csr-approver — always seeded; these only TUNE it
+    provider_regex: ".*" # cluster-wide extra gate on SAN DNS names ("^node-.*$" to tighten)
+    provider_ip_prefixes: ["0.0.0.0/0", "::/0"] # SAN IP allow-set; MUST be non-empty. Tighten to node subnets.
+    # replicas: 2 # opt into HA (auto-enables leader-election + leases RBAC); default 1

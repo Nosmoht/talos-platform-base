@@ -158,7 +158,7 @@
       }
     },
     "substrate": {
-      "description": "Layer-1 substrate delivery. Cilium + ArgoCD are the ONLY cluster.yaml-configurable substrate tools \u2014 the consumer yamldecode shim reads only substrate.cilium and substrate.argocd; cert-approver is always-on substrate (a controlplane inlineManifest seed, adr-0013) with no cluster.yaml knobs. Closed (additionalProperties:false) so a typo'd sibling key (e.g. argo_cd:) is caught at lint time instead of being silently dropped by the shim. The per-tool inner long tail (values_override, encryption, \u2026) stays loosely typed. A future configurable substrate tool ships a schema update in the same base OCI tag.",
+      "description": "Layer-1 substrate delivery. Cilium, ArgoCD and cert-approver are the cluster.yaml-configurable substrate tools \u2014 the consumer yamldecode shim reads substrate.cilium, substrate.argocd and substrate.cert_approver. cert-approver is always-on substrate (a controlplane inlineManifest seed, adr-0019 supersedes adr-0013 \u00a7D2); its substrate.cert_approver keys tune the SAN-to-node binding + replicas but cannot disable the seed. Closed (additionalProperties:false) so a typo'd sibling key (e.g. argo_cd:) is caught at lint time instead of being silently dropped by the shim. The per-tool inner long tail (values_override, encryption, \u2026) stays loosely typed. A future configurable substrate tool ships a schema update in the same base OCI tag.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -167,6 +167,33 @@
         },
         "argocd": {
           "type": "object"
+        },
+        "cert_approver": {
+          "description": "postfinance/kubelet-csr-approver tuning (the seed itself is unconditional; these keys cannot disable it). Closed so a typo'd security-control key fails lint rather than silently falling back to the permissive default. SEED knobs (create-only inlineManifest): changes re-render the machine config but do NOT update a running approver \u2014 see UPGRADING.md.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider_regex": {
+              "description": "Cluster-wide regex every kubelet-serving CSR's SAN DNS name must additionally match. Default '.*' (no extra constraint; the per-node HasPrefix DNS-SAN binding is always on regardless). Must not contain a YAML document separator (---) or newline — mirrors the module's var.cert_approver_provider_regex validation so the declarative path rejects it at lint time too.",
+              "type": "string",
+              "not": {
+                "pattern": "---|\\n"
+              }
+            },
+            "provider_ip_prefixes": {
+              "description": "CIDR set every kubelet-serving CSR's SAN IP must fall within. Default ['0.0.0.0/0','::/0'] (all IPs). Must be non-empty \u2014 an empty set DENIES every CSR carrying an IP SAN. Tighten to node subnets for the IP-SAN-to-subnet binding.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "replicas": {
+              "description": "cert-approver Deployment replica count. Default 1. Raise (e.g. 2) to opt into HA \u2014 replicas > 1 auto-enables leader-election + the coordination.k8s.io/leases RBAC.",
+              "type": "integer",
+              "minimum": 1
+            }
+          }
         }
       }
     }

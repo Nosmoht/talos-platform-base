@@ -3,11 +3,12 @@ type: glossary
 title: Glossary
 description: Cross-domain vocabulary for the talos-platform-base substrate, its delivery pipeline, and its consumer contract.
 tags: [glossary, vocabulary, platform]
-timestamp: 2026-07-15
+timestamp: 2026-07-17
 sources:
   - AGENTS.md
   - Taskfile.yml
   - tofu/modules/talos-cluster/variables.tf
+  - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
   - tofu/modules/talos-cluster/profiles.tf
   - scripts/render-component.sh
   - scripts/check-render-determinism.sh
@@ -35,12 +36,18 @@ record; deep-dive pages are linked where they exist.
   platform component that is *not* substrate, shipped as independently
   versioned signed OCI artifacts. Routing rule: not substrate → apps catalog,
   never base. See [0004-substrate-only-base](decisions/0004-substrate-only-base.md).
-- **cert-approver** — single-purpose controller seeded as a controlplane
-  `inlineManifest` (`tofu/modules/talos-cluster/manifests/cert-approver.yaml`)
+- **cert-approver** — single-purpose controller (**postfinance/kubelet-csr-approver**,
+  namespace `kubelet-csr-approver`) seeded as a controlplane `inlineManifest`
+  (`tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml`, the
+  postfinance Helm chart rendered at pin time then `templatefile()`-parameterized)
   that approves `kubernetes.io/kubelet-serving` CSRs triggered by the base's
   default-on kubelet serving-cert rotation; its RBAC `approve` verb is
-  signer-scoped to exactly that signer. Talos serving-cert glue, not a fourth
-  pillar. See [0013-kubelet-serving-cert-rotation](decisions/0013-kubelet-serving-cert-rotation.md).
+  signer-scoped to exactly that signer, and it binds each CSR's DNS SAN to the
+  requesting node by default. Exposes three `substrate.cert_approver` knobs
+  (`provider_regex`, `provider_ip_prefixes`, `replicas`). Talos serving-cert
+  glue, not a fourth pillar. See
+  [0013-kubelet-serving-cert-rotation](decisions/0013-kubelet-serving-cert-rotation.md)
+  and [0019-postfinance-kubelet-csr-approver](decisions/0019-postfinance-kubelet-csr-approver.md).
 - **chart.lock.yaml** — per-component pin spec for the Rendered Manifests
   Pattern: chart repo/name/version plus `tgz_sha256` digest, release
   name/namespace/`includeCRDs`, and the values file. Read by
