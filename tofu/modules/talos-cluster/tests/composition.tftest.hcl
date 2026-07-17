@@ -331,11 +331,19 @@ run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
     }]
     error_message = "adr-0019 §Security: exactly one ClusterRoleBinding (approver SA → the scoped ClusterRole) must exist; got ${jsonencode(output.cert_approver_clusterrolebinding_targets)}"
   }
-  # ALLOWED_DNS_NAMES is pinned (Talos kubelet-serving CSRs carry one DNS SAN); a
-  # re-vendor changing it is caught here rather than surfacing as terminal denials.
+  # ALLOWED_DNS_NAMES / -max-sans is dead config in postfinance v1.2.14 (the
+  # controller never reads it) and a value of "1" would misrepresent an enforced
+  # 1-DNS-SAN cap that a legitimate node exceeds (NodeHostName + NodeInternalDNS +
+  # NodeExternalDNS). The seed omits it; a re-vendor re-introducing it is caught here.
   assert {
-    condition     = output.cert_approver_env["ALLOWED_DNS_NAMES"] == "1"
-    error_message = "adr-0019: ALLOWED_DNS_NAMES must be pinned to '1'; got '${try(output.cert_approver_env["ALLOWED_DNS_NAMES"], "<absent>")}'"
+    condition     = !contains(keys(output.cert_approver_env), "ALLOWED_DNS_NAMES")
+    error_message = "adr-0019: ALLOWED_DNS_NAMES must not be shipped (dead+misleading config); got '${try(output.cert_approver_env["ALLOWED_DNS_NAMES"], "<absent>")}'"
+  }
+  # Symmetric guard on the flag form: the same dead cap can re-enter as a
+  # `-max-sans` container arg (chart-alt of the env var) and evade the env assert.
+  assert {
+    condition     = !contains(output.cert_approver_container_args, "-max-sans")
+    error_message = "adr-0019: the -max-sans cap flag must not be shipped (dead+misleading, flag form of ALLOWED_DNS_NAMES); got ${jsonencode(output.cert_approver_container_args)}"
   }
 }
 

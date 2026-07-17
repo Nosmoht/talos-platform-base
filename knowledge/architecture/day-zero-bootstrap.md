@@ -26,9 +26,16 @@ Hardware provisioning and PXE boot are out of scope for the base.
 
 ## What the module seeds via controlplane inlineManifests
 
-Talos `cluster.inlineManifests` are **create-only seeds** — applied once at
-bootstrap, never re-run. The module bakes three seeds into the controlplane
-machine config (workers carry none):
+Talos `cluster.inlineManifests` are **create-only seeds**: Talos re-applies
+them on every machine-config apply and **creates** any not-yet-existing
+manifest, but never **updates or deletes** a resource it already created
+("create-only" means an *existing* object is inert to the seed). So a fresh
+cluster gets every seed at bootstrap, a later `tofu apply` lands newly-added
+manifests (this is what makes the renamed cert-approver reach an existing
+cluster), and an in-place edit to an already-seeded resource does not
+propagate — see [ADR-0013](../decisions/0013-kubelet-serving-cert-rotation.md)
+and the upgrade guide (`UPGRADING.md`). The module bakes three seeds into the
+controlplane machine config (workers carry none):
 
 - **Cilium** (`deploy_cilium`, default `true`) — the `cilium` chart is
   rendered locally via `data.helm_template` (no `helm_release`, no live

@@ -669,6 +669,10 @@ variable "cert_approver_provider_regex" {
   default     = ".*"
 
   validation {
+    condition     = trimspace(var.cert_approver_provider_regex) != ""
+    error_message = "cert_approver_provider_regex must not be empty or whitespace-only — an empty PROVIDER_REGEX makes postfinance/kubelet-csr-approver v1.2.14 exit fatally at startup so the approver never runs, and a whitespace-only regex compiles but matches no DNS SAN, denying every serving-cert CSR. Use \".*\" for no extra pattern constraint."
+  }
+  validation {
     condition     = can(regexall(var.cert_approver_provider_regex, ""))
     error_message = "cert_approver_provider_regex must be a valid RE2 regex (it is compiled by the Go approver)."
   }

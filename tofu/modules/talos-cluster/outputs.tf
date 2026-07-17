@@ -292,9 +292,9 @@ output "cert_approver_replicas" {
 output "cert_approver_env" {
   description = <<-EOT
     The decoded container environment of the rendered cert-approver Deployment as a
-    name→value map (PROVIDER_REGEX, PROVIDER_IP_PREFIXES, BYPASS_DNS_RESOLUTION,
-    ALLOWED_DNS_NAMES). Red-green binding for the per-cluster config injection:
-    reverting the templatefile wiring flips these. Secret-free (config, not keys).
+    name→value map (PROVIDER_REGEX, PROVIDER_IP_PREFIXES, BYPASS_DNS_RESOLUTION).
+    Red-green binding for the per-cluster config injection: reverting the
+    templatefile wiring flips these. Secret-free (config, not keys).
   EOT
   value = try({
     for e in [

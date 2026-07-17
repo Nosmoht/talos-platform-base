@@ -134,21 +134,48 @@ ever needs DNS-strict mode. `BypassHostnameCheck` stays `false` (never exposed)
 
 ## Security model (verified at source)
 
-postfinance validates each CSR terminally: a non-conforming CSR gets a `Denied`
-condition (unlike alex1989hu, which leaves it Pending). The checks, source-verified:
+The two approvers split the conformance surface differently — the switch is a
+**trade, not a strict upgrade**:
+
+- **postfinance** denies terminally (a `Denied` condition) any CSR that fails a
+  check its controller **itself** performs, but that set is **narrower** than
+  alex1989hu's: it does **not** inspect Subject `Organization`, email/URI SANs,
+  or requested key usages. Those are enforced downstream by the built-in
+  `kubernetes.io/kubelet-serving` signer, which marks an already-Approved but
+  non-compliant CSR `Failed` (`SignerValidationFailure`), **not** `Denied`
+  (source-verified against `pkg/controller/certificates/signer` +
+  `pkg/apis/certificates/helpers.go`).
+- **alex1989hu v0.11.0** validated `Organization`, email/URI SANs and key usages
+  in its own `isRequestConform` (source-verified; see ADR-0013 §Security model)
+  and left a non-conforming CSR `Pending` — but performed **no** SAN-to-node
+  binding (its recorded "Known limitation").
+
+The source-verified check split:
 
 | Check | alex1989hu v0.11.0 | postfinance v1.2.14 | Delta |
 |---|---|---|---|
-| `username` prefix `system:node:` | yes | yes | = |
-| `x509 CN == username` (identity bind) | yes | yes | = |
-| `Organization == [system:nodes]` | yes | (username-derived hostname) | ≈ |
-| ≥1 SAN present | yes | yes | = |
-| No email/URI SANs | yes | yes | = |
-| Expiration bounded | (key-usage bound) | `expirationSeconds ≤ max` | ≥ |
+| `username` prefix `system:node:` | yes (approver) | yes (approver) | = |
+| `x509 CN == username` (identity bind) | yes (approver) | yes (approver) | = |
+| ≥1 SAN present | yes (approver) | yes (approver) | = |
+| `Organization == [system:nodes]` | approver (`Pending` if not) | signer only (`Failed` if not) | approval-time → signer-time |
+| No email/URI SANs | approver (`Pending`) | signer only (`Failed`) | approval-time → signer-time |
+| Key usages ⊆ serving set | approver (`Pending`) | signer only (`Failed`) | approval-time → signer-time |
+| Expiration ≤ max bound | no (approver) | `expirationSeconds ≤ max` | new |
 | `approve` RBAC scoped to `kubernetes.io/kubelet-serving` only | yes | yes | = |
 | **DNS-SAN → node bind** | **none** (delegated to consumer Kyverno) | `HasPrefix(sanDNSName, node-hostname)`, always-on, regardless of `provider_regex` / `bypass_dns` | **new gain** |
 | DNS-SAN regex allowlist | none | `PROVIDER_REGEX` (default `.*`) | new (opt-in tighten) |
 | IP-SAN → subnet bind | none | `PROVIDER_IP_PREFIXES`, unconditional deny outside set | new (bounded by config) |
+
+On the three `Organization` / email-URI / key-usage rows, postfinance moves
+enforcement from **approval-time** (alex1989hu leaves it `Pending`) to
+**issuance-time** (signer `Failed`) — a malformed CSR is refused a certificate
+either way, but the condition type and alerting signal differ (alert on signer
+`Failed`, not only `Denied` — see the observability migration in the upgrade
+guide). In exchange postfinance adds the always-on DNS-SAN-to-node binding
+alex1989hu lacked, closing on every fresh cluster the exact SAN-spoofing gap
+ADR-0013 recorded as alex1989hu's "Known limitation". No field alex1989hu
+enforced goes entirely unenforced — the three moved rows are still caught by the
+signer; the binding gain is the more security-relevant side of the trade.
 
 The always-on `HasPrefix(sanDNSName, hostname)` binding — `hostname` derived
 from the CSR's `system:node:<hostname>` username — is a real gain over
@@ -169,9 +196,16 @@ ADR-0013 delegated to consumer Kyverno.
 So the shipped default posture is "meaningfully stronger than alex1989hu for DNS
 SANs, plus IP SANs bounded by the configured prefixes" — **not** a complete
 per-node bind. Consumer Kyverno remains available for anything beyond
-(exact-match hostname binding, per-node IP binding). The baseline conformance is
-**≥ alex1989hu** on every row above, and the `approve` verb stays
-signer-restricted (no client-signer escalation). The Deployment satisfies
+(exact-match hostname binding, per-node IP binding). Net of the approval-time →
+signer-time trade on the three conformance rows above, the switch is a security
+**gain** overall (the SAN-to-node binding closes a real spoofing gap; no field
+alex1989hu enforced goes entirely unenforced), but it is **not** a strict
+superset — on the three moved rows alex1989hu leaves a violating CSR `Pending`
+(approver-time), while postfinance approves it and the signer marks it `Failed`
+(issuance-time). (The terminal `Denied` condition is postfinance's own distinct
+behavior for the checks it *does* perform — see the Consequences section — not
+alex1989hu's.) The `approve` verb stays signer-restricted
+(no client-signer escalation). The Deployment satisfies
 restricted PSA (`runAsNonRoot`, `drop: [ALL]`, `readOnlyRootFilesystem`,
 `seccompProfile: RuntimeDefault`, uid/gid 65532).
 

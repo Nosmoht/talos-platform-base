@@ -47,6 +47,14 @@
 #      NOTE: templatefile interprets template syntax everywhere, comments
 #      included — this header deliberately avoids the literal dollar-brace /
 #      percent-brace sequences.
+#   7. The upstream ALLOWED_DNS_NAMES env var (chart maxSans / -max-sans flag)
+#      is REMOVED: in v1.2.14 the controller never reads the parsed value (dead
+#      config — verified in internal/controller/csr_controller.go), and the
+#      kubelet builds serving-cert CSRs from NodeHostName + NodeInternalDNS +
+#      NodeExternalDNS, so a node legitimately carries 2+ DNS SANs. Shipping a
+#      value of 1 would misrepresent an enforced 1-SAN cap and become a latent
+#      terminal-deny bug the day a future version honored it. Re-evaluate on
+#      the next version bump.
 #
 # Security model (see knowledge/decisions/0019-postfinance-kubelet-csr-approver.md):
 # postfinance denies terminally and, in addition to the alex1989hu baseline
@@ -257,8 +265,6 @@ spec:
           value: ${provider_ip_prefixes}
         - name: BYPASS_DNS_RESOLUTION
           value: "true"
-        - name: ALLOWED_DNS_NAMES
-          value: "1"
         ports:
         - name: metrics
           containerPort: 8080

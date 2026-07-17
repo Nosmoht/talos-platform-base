@@ -174,8 +174,10 @@
           "additionalProperties": false,
           "properties": {
             "provider_regex": {
-              "description": "Cluster-wide regex every kubelet-serving CSR's SAN DNS name must additionally match. Default '.*' (no extra constraint; the per-node HasPrefix DNS-SAN binding is always on regardless). Must not contain a YAML document separator (---) or newline — mirrors the module's var.cert_approver_provider_regex validation so the declarative path rejects it at lint time too.",
+              "description": "Cluster-wide regex every kubelet-serving CSR's SAN DNS name must additionally match (the full DNS SAN, e.g. '^node-.*$', not the bare node name). Default '.*' (no extra constraint; the per-node HasPrefix DNS-SAN binding is always on regardless). Must contain a non-whitespace character — an empty PROVIDER_REGEX makes postfinance/kubelet-csr-approver v1.2.14 exit fatally, and a whitespace-only regex matches no DNS SAN (deny-all). Must not contain a YAML document separator (---) or newline — mirrors the module's var.cert_approver_provider_regex validation so the declarative path rejects it at lint time too.",
               "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
               "not": {
                 "pattern": "---|\\n"
               }

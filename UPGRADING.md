@@ -143,6 +143,13 @@ it.
 - **Add a denied-CSR alert.** Because denies are now terminal, a rising count of
   `Denied` `kubernetes.io/kubelet-serving` CSRs is the signal that a `provider_*`
   value is excluding real nodes (see step 3) — alert on it.
+- **Also alert on signer failures.** The approver only checks what its controller
+  inspects (username, CN, SAN presence, IP-prefix, DNS-prefix, expiration).
+  Constraints it does **not** check — Subject `Organization`, email/URI SANs, key
+  usages — are enforced by the built-in `kubernetes.io/kubelet-serving` signer,
+  which marks such a CSR `Failed` (`SignerValidationFailure`): Approved by the
+  approver, then never Issued — **not** `Denied`. A `Denied`-only alert misses
+  this; alert on `Failed` kubelet-serving CSRs too.
 - **Single-replica availability (unchanged default).** The approver still runs
   `replicas: 1` and (absent worker scheduling) on a control-plane node; a rolling
   OS upgrade / CP-node reboot (`talosctl upgrade`) evicts it, and any kubelet

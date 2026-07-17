@@ -161,6 +161,28 @@ run "cert_approver_provider_ip_prefixes_rejects_non_cidr" {
   expect_failures = [var.cert_approver_provider_ip_prefixes]
 }
 
+run "cert_approver_provider_regex_rejects_empty" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cert_approver_provider_regex = ""
+  }
+  # postfinance v1.2.14 exits fatally at startup on an empty PROVIDER_REGEX
+  # (source-verified internal/cmd/cmd.go) — the guard prevents a CrashLoop seed.
+  expect_failures = [var.cert_approver_provider_regex]
+}
+
+run "cert_approver_provider_regex_rejects_whitespace_only" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cert_approver_provider_regex = " "
+  }
+  # A whitespace-only regex is not caught by the empty-string check but compiles
+  # to a deny-all pattern (matches no DNS SAN) — the trimspace() guard rejects it.
+  expect_failures = [var.cert_approver_provider_regex]
+}
+
 run "cert_approver_provider_regex_rejects_document_separator" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }
