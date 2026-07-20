@@ -11,9 +11,10 @@
 # via tfvar/env (see variables.tf), here defaulted to validate-safe placeholders.
 
 locals {
-  cfg    = yamldecode(file("${path.module}/cluster.yaml"))
-  cilium = try(local.cfg.substrate.cilium, {})
-  argocd = try(local.cfg.substrate.argocd, {})
+  cfg           = yamldecode(file("${path.module}/cluster.yaml"))
+  cilium        = try(local.cfg.substrate.cilium, {})
+  argocd        = try(local.cfg.substrate.argocd, {})
+  cert_approver = try(local.cfg.substrate.cert_approver, {})
 
   # Talos machine-config patches are DECLARED as structured YAML maps in
   # cluster.yaml; the module's interface takes YAML strings. yamlencode bridges
@@ -92,5 +93,12 @@ module "complete" {
   argocd_chart_version   = try(local.argocd.chart_version, "9.4.5")
   argocd_namespace       = try(local.argocd.namespace, "argocd")
   argocd_values_override = try(local.argocd.values_override, "")
-  sops_age_key           = var.sops_age_key # secret — tfvar/env, never cluster.yaml
+
+  # cert-approver tuning (the seed is unconditional; these only tune it). try()
+  # keeps an existing cluster.yaml without a substrate.cert_approver block valid —
+  # a missing key yields the module default.
+  cert_approver_provider_regex       = try(local.cert_approver.provider_regex, ".*")
+  cert_approver_provider_ip_prefixes = try(local.cert_approver.provider_ip_prefixes, ["0.0.0.0/0", "::/0"])
+  cert_approver_replicas             = try(local.cert_approver.replicas, 1)
+  sops_age_key                       = var.sops_age_key # secret — tfvar/env, never cluster.yaml
 }

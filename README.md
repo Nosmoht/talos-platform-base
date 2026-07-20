@@ -88,8 +88,11 @@ receives a frozen tree containing:
   substrate pillar. `cert-approver` is also substrate (Talos serving-cert
   glue — it approves the `kubernetes.io/kubelet-serving` CSRs the base's
   default-on kubelet rotation triggers) but is delivered as a controlplane
-  `inlineManifest` seed by `tofu/modules/talos-cluster` (adr-0013), not as
-  a kustomize component. Every non-substrate
+  `inlineManifest` seed by `tofu/modules/talos-cluster` (adr-0019, superseding
+  adr-0013 §D2), not as a kustomize component. The approver is
+  `postfinance/kubelet-csr-approver`, tunable per-cluster via
+  `substrate.cert_approver.*` (two security knobs + `replicas`) and carrying an
+  always-on per-node DNS-SAN binding. Every non-substrate
   component (monitoring, secrets, storage, device plugins, the
   network-trust contract, …) now lives in the separate
   [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)

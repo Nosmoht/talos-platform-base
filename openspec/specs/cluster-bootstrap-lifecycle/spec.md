@@ -19,7 +19,11 @@ kubeconfig/talosconfig retrieval, and the blocking health gate.
 regions (including the post-health ArgoCD CRD server-side apply) plus the
 Image-Factory and machine-config regions; the latter two are owned
 descriptively by the `node-image-composition` and
-`machine-config-generation` specs. Day-2 OS and Kubernetes upgrades are
+`machine-config-generation` specs. The cert-approver region seeds
+`postfinance/kubelet-csr-approver` (ADR-0019 supersedes ADR-0013 §D2) by
+rendering the vendored chart manifest through `templatefile()` into
+`local.cert_approver_manifest` — a pure render, not a raw `file()` read —
+and baking it as a controlplane inlineManifest. Day-2 OS and Kubernetes upgrades are
 out-of-band: applying configuration alone does not re-image a node — the
 consumer runs `talosctl` against the rendered installer URL and version
 outputs.

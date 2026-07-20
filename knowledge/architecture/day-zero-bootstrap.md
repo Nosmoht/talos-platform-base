@@ -3,10 +3,10 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-timestamp: 2026-07-15
+timestamp: 2026-07-17
 sources:
   - tofu/modules/talos-cluster/main.tf
-  - tofu/modules/talos-cluster/manifests/cert-approver.yaml
+  - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
   - kubernetes/bootstrap/argocd/root-application.yaml.tmpl
   - kubernetes/bootstrap/argocd/root-project.yaml.tmpl
   - kubernetes/bootstrap/cilium/values.yaml
@@ -26,9 +26,16 @@ Hardware provisioning and PXE boot are out of scope for the base.
 
 ## What the module seeds via controlplane inlineManifests
 
-Talos `cluster.inlineManifests` are **create-only seeds** — applied once at
-bootstrap, never re-run. The module bakes three seeds into the controlplane
-machine config (workers carry none):
+Talos `cluster.inlineManifests` are **create-only seeds**: Talos re-applies
+them on every machine-config apply and **creates** any not-yet-existing
+manifest, but never **updates or deletes** a resource it already created
+("create-only" means an *existing* object is inert to the seed). So a fresh
+cluster gets every seed at bootstrap, a later `tofu apply` lands newly-added
+manifests (this is what makes the renamed cert-approver reach an existing
+cluster), and an in-place edit to an already-seeded resource does not
+propagate — see [ADR-0013](../decisions/0013-kubelet-serving-cert-rotation.md)
+and the upgrade guide (`UPGRADING.md`). The module bakes three seeds into the
+controlplane machine config (workers carry none):
 
 - **Cilium** (`deploy_cilium`, default `true`) — the `cilium` chart is
   rendered locally via `data.helm_template` (no `helm_release`, no live
@@ -50,15 +57,23 @@ machine config (workers carry none):
   `tofu/modules/talos-cluster/helm/argocd-values.yaml` plus an optional
   `argocd_values_override`. The render deliberately excludes CRDs
   (`include_crds = false`) — see the CRD side-channel below.
-- **cert-approver** — unconditional (no toggle): the
-  `kubelet-serving-cert-approver` Namespace (PSA-`restricted`) plus the
-  vendored upstream manifest
-  (`tofu/modules/talos-cluster/manifests/cert-approver.yaml`). This is the
-  vendored-static-manifest seed pattern (upstream ships raw YAML, no chart),
-  distinct from the helm-render/freeze pattern Cilium and ArgoCD use. It
-  pairs with the all-nodes kubelet patch `serverTLSBootstrap: true`; the
-  cluster-scoped approver approves serving CSRs from workers too. Decision:
-  [0013-kubelet-serving-cert-rotation](../decisions/0013-kubelet-serving-cert-rotation.md).
+- **cert-approver** — unconditional (no disable toggle): the
+  `kubelet-csr-approver` Namespace (PSA-`restricted`) plus the
+  **postfinance/kubelet-csr-approver** manifest
+  (`tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml`). The
+  manifest is the postfinance Helm chart rendered at pin time and committed,
+  then `templatefile()`-parameterized with the three per-cluster
+  `substrate.cert_approver` knobs — `provider_regex` / `provider_ip_prefixes`
+  (SAN allowlists) and `replicas` (`> 1` derives leader-election + leases RBAC).
+  Because `templatefile()` is pure, this seed stays outside the
+  `data.helm_template` freeze pattern Cilium and ArgoCD use. It pairs with the
+  all-nodes kubelet patch `serverTLSBootstrap: true`; the cluster-scoped approver
+  approves serving CSRs from workers too and enforces a per-node DNS-SAN binding
+  default-on. Decisions:
+  [0013-kubelet-serving-cert-rotation](../decisions/0013-kubelet-serving-cert-rotation.md)
+  (rotation default-on + seed model) and
+  [0019-postfinance-kubelet-csr-approver](../decisions/0019-postfinance-kubelet-csr-approver.md)
+  (the postfinance approver + config surface, superseding 0013 §D2).
 
 Two supporting mechanics:
 

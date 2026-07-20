@@ -307,29 +307,47 @@ locals {
 }
 
 # ---------------------------------------------------------------------------
-# cert-approver (kubelet-serving CSR approver) — Talos boot-glue substrate,
-# delivered as a controlplane cluster.inlineManifest SEED. This is the
-# VENDORED-STATIC-MANIFEST seed pattern, distinct from the helm-render/freeze
-# pattern Cilium/ArgoCD use: alex1989hu ships raw YAML (no Helm chart), so the
-# pinned manifest is vendored at manifests/cert-approver.yaml and read via file().
-# UNCONDITIONAL (no toggle): cert-approver is always-on boot-glue and
-# cluster.schema.json's substrate block carries no knob for it. Pairs with
-# base_kubelet_rotation_patch — without the approver the serving CSRs that
-# serverTLSBootstrap triggers stay Pending. See knowledge/decisions/0013-kubelet-serving-cert-rotation.md.
+# cert-approver (postfinance/kubelet-csr-approver) — Talos boot-glue substrate,
+# delivered as a controlplane cluster.inlineManifest SEED. VENDORED-CHART-RENDER
+# + TEMPLATED pattern: the postfinance chart is rendered once at pin time and
+# committed at manifests/kubelet-csr-approver.yaml with the per-cluster config
+# values (provider_regex / provider_ip_prefixes / replicas) re-parameterized as
+# templatefile() placeholders — pure/deterministic (no data.helm_template, so
+# outside the render-determinism fence). UNCONDITIONAL seed (always delivered);
+# cluster.schema.json's substrate.cert_approver carries only tuning knobs, no
+# disable toggle. Pairs with base_kubelet_rotation_patch — without the approver
+# the serving CSRs that serverTLSBootstrap triggers stay Pending.
+# ADR-0019 (supersedes ADR-0013 §D2). See knowledge/decisions/0019-postfinance-kubelet-csr-approver.md.
 # ---------------------------------------------------------------------------
 locals {
+  # replicas > 1 opts into HA: the vendored template then also renders the
+  # -leader-election arg + a NAMESPACED leases/events Role+RoleBinding (the
+  # ClusterRole stays invariant at its 3 signer-scoped rules), so the default
+  # replicas:1 keeps least privilege (no leases grant at all).
+  cert_approver_leader_election = var.cert_approver_replicas > 1
+
+  # The seeded manifest, rendered ONCE. Both the seed patch and the audit
+  # outputs (outputs.tf) consume this — never re-render or read the file raw.
+  # provider_regex / provider_ip_prefixes are injected as jsonencode() scalars
+  # (safe single-line YAML); provider_ip_prefixes is comma-joined per the
+  # PROVIDER_IP_PREFIXES env format the approver parses.
+  cert_approver_manifest = templatefile("${path.module}/manifests/kubelet-csr-approver.yaml", {
+    provider_regex       = jsonencode(var.cert_approver_provider_regex)
+    provider_ip_prefixes = jsonencode(join(",", var.cert_approver_provider_ip_prefixes))
+    replicas             = var.cert_approver_replicas
+    leader_election      = local.cert_approver_leader_election
+  })
+
   # PSA-restricted floor + the six recommended labels for the module-seeded
   # cert-approver namespace. The seed is the SOLE owner (no steady-state
   # Application — the ADR-0002 sole-owner case, strictly simpler than the argocd
-  # two-writer transfer). restricted (NOT argocd's baseline): single-replica
+  # two-writer transfer). restricted (NOT argocd's baseline): low-replica
   # controller, no host access. managed-by=opentofu marks the seed as creator.
-  # The stale platform.io/network-* (PNI) labels of the retired
-  # infrastructure/cert-approver stub are intentionally dropped (PNI dissolved at
-  # v2.0.0, ADR-0004). version = the approver image tag (the SEED knob).
+  # version = the approver image tag (the SEED knob).
   cert_approver_namespace_labels = {
-    "app.kubernetes.io/name"                     = "kubelet-serving-cert-approver"
-    "app.kubernetes.io/instance"                 = "kubelet-serving-cert-approver"
-    "app.kubernetes.io/version"                  = "0.11.0"
+    "app.kubernetes.io/name"                     = "kubelet-csr-approver"
+    "app.kubernetes.io/instance"                 = "kubelet-csr-approver"
+    "app.kubernetes.io/version"                  = "v1.2.14"
     "app.kubernetes.io/component"                = "cert-approver"
     "app.kubernetes.io/part-of"                  = "talos-platform-base"
     "app.kubernetes.io/managed-by"               = "opentofu"
@@ -344,7 +362,7 @@ locals {
   # Controlplane inlineManifest seed, in apply order: (1) the namespace as a
   # SEPARATE entry FIRST (so the namespaced SA/Deployment land into an existing
   # namespace — the same Namespace-first ordering the argocd seed relies on),
-  # (2) the vendored SA + signer-restricted ClusterRoles/Bindings + Service +
+  # (2) the vendored SA + signer-restricted ClusterRole/Binding + Service +
   # Deployment. The approver is cluster-scoped → it approves serving CSRs from ALL
   # nodes (incl. workers, which carry no inlineManifest seeds). Controlplane-only,
   # like the Cilium/ArgoCD seeds. Unconditional (always seeded).
@@ -352,19 +370,19 @@ locals {
     cluster = {
       inlineManifests = [
         {
-          name = "kubelet-serving-cert-approver-namespace"
+          name = "kubelet-csr-approver-namespace"
           contents = yamlencode({
             apiVersion = "v1"
             kind       = "Namespace"
             metadata = {
-              name   = "kubelet-serving-cert-approver"
+              name   = "kubelet-csr-approver"
               labels = local.cert_approver_namespace_labels
             }
           })
         },
         {
-          name     = "kubelet-serving-cert-approver"
-          contents = file("${path.module}/manifests/cert-approver.yaml")
+          name     = "kubelet-csr-approver"
+          contents = local.cert_approver_manifest
         },
       ]
     }

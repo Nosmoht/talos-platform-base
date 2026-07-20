@@ -79,7 +79,7 @@ every re-vendor and CI verification runs against the same immutable release.
 
 Tarball membership is allowlist-driven (fail-closed) by
 `.ci-oci-tarball-include.txt`: the `tofu/modules/talos-cluster` module tree
-(with its `helm/` values floor and the `manifests/cert-approver.yaml` seed),
+(with its `helm/` values floor and the `manifests/kubelet-csr-approver.yaml` seed),
 the reference Cilium values under `kubernetes/bootstrap/cilium/`, and the
 Layer-C hardware-features vocabulary (`platform-hardware-features.yaml` +
 `schemas/hardware-features.schema.json`). The task runner (`Taskfile.yml`),

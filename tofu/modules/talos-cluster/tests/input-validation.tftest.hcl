@@ -136,3 +136,77 @@ run "image_extra_kernel_args_accepts_a_well_formed_list" {
     }
   }
 }
+
+# --- cert-approver per-cluster config validations (adr-0019) ---
+# Red-green: delete the matching validation in variables.tf and the run stops
+# failing ("Missing expected failure").
+
+run "cert_approver_provider_ip_prefixes_rejects_empty" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cert_approver_provider_ip_prefixes = []
+  }
+  # Empty set denies every CSR carrying an IP SAN (source-verified WhitelistedIPCheck)
+  # — the deny-all footgun the non-empty guard exists to prevent.
+  expect_failures = [var.cert_approver_provider_ip_prefixes]
+}
+
+run "cert_approver_provider_ip_prefixes_rejects_non_cidr" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cert_approver_provider_ip_prefixes = ["not-a-cidr"]
+  }
+  expect_failures = [var.cert_approver_provider_ip_prefixes]
+}
+
+run "cert_approver_provider_regex_rejects_empty" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cert_approver_provider_regex = ""
+  }
+  # postfinance v1.2.14 exits fatally at startup on an empty PROVIDER_REGEX
+  # (source-verified internal/cmd/cmd.go) — the guard prevents a CrashLoop seed.
+  expect_failures = [var.cert_approver_provider_regex]
+}
+
+run "cert_approver_provider_regex_rejects_whitespace_only" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cert_approver_provider_regex = " "
+  }
+  # A whitespace-only regex is not caught by the empty-string check but compiles
+  # to a deny-all pattern (matches no DNS SAN) — the trimspace() guard rejects it.
+  expect_failures = [var.cert_approver_provider_regex]
+}
+
+run "cert_approver_provider_regex_rejects_document_separator" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cert_approver_provider_regex = "a---b"
+  }
+  # A compilable regex containing "---" would corrupt the split("---") audit outputs.
+  expect_failures = [var.cert_approver_provider_regex]
+}
+
+run "cert_approver_provider_regex_rejects_uncompilable" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cert_approver_provider_regex = "[unterminated"
+  }
+  expect_failures = [var.cert_approver_provider_regex]
+}
+
+run "cert_approver_replicas_rejects_zero" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cert_approver_replicas = 0
+  }
+  expect_failures = [var.cert_approver_replicas]
+}

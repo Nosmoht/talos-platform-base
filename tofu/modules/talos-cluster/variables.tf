@@ -644,3 +644,86 @@ variable "cilium_gateway_api_crds_url" {
   type        = string
   default     = ""
 }
+
+# ---------------------------------------------------------------------------
+# cert-approver (postfinance/kubelet-csr-approver) — per-cluster config surface.
+# The seed itself is UNCONDITIONAL (always delivered); these knobs tune the
+# SAN-to-node binding. Defaults keep every cluster booting + approving
+# out-of-the-box AND carry the always-on per-node DNS-SAN binding (the approver
+# binds each DNS SAN to the requesting node's hostname regardless of the regex).
+# See knowledge/decisions/0019-postfinance-kubelet-csr-approver.md.
+# ---------------------------------------------------------------------------
+
+variable "cert_approver_provider_regex" {
+  description = <<-EOT
+    postfinance/kubelet-csr-approver PROVIDER_REGEX — a cluster-wide regex every
+    kubelet-serving CSR's SAN DNS name must additionally match. Default ".*"
+    (no extra constraint): the approver still binds each DNS SAN to the requesting
+    node via HasPrefix(sanDNSName, hostname) regardless, so ".*" is not "no
+    binding". Tighten to your node-naming pattern (e.g. "^node-.*$") for a
+    cluster-wide pattern gate on top. SEED knob (create-only inlineManifest):
+    changing it re-renders the machine config but does NOT update a running
+    approver — see UPGRADING.md.
+  EOT
+  type        = string
+  default     = ".*"
+
+  validation {
+    condition     = trimspace(var.cert_approver_provider_regex) != ""
+    error_message = "cert_approver_provider_regex must not be empty or whitespace-only — an empty PROVIDER_REGEX makes postfinance/kubelet-csr-approver v1.2.14 exit fatally at startup so the approver never runs, and a whitespace-only regex compiles but matches no DNS SAN, denying every serving-cert CSR. Use \".*\" for no extra pattern constraint."
+  }
+  validation {
+    condition     = can(regexall(var.cert_approver_provider_regex, ""))
+    error_message = "cert_approver_provider_regex must be a valid RE2 regex (it is compiled by the Go approver)."
+  }
+  validation {
+    # The seed's audit outputs parse the rendered manifest by splitting on the
+    # YAML document separator "---"; a regex containing it (or a newline) would
+    # corrupt that parse. A compilable regex can still contain "---".
+    condition     = !strcontains(var.cert_approver_provider_regex, "---") && !strcontains(var.cert_approver_provider_regex, "\n")
+    error_message = "cert_approver_provider_regex must not contain a YAML document separator (---) or a newline."
+  }
+}
+
+variable "cert_approver_provider_ip_prefixes" {
+  description = <<-EOT
+    postfinance/kubelet-csr-approver PROVIDER_IP_PREFIXES — the CIDR set every
+    kubelet-serving CSR's SAN IP address must fall within. Default
+    ["0.0.0.0/0", "::/0"] (all IPs — the safe out-of-the-box floor). NOTE: an
+    EMPTY list would DENY every CSR carrying an IP SAN (the approver checks each
+    IP SAN for set membership unconditionally), so the default is all-IPs, not
+    empty. Tighten to your node subnets to bind IP SANs to the cluster's
+    addresses. SEED knob (create-only) — see cert_approver_provider_regex.
+  EOT
+  type        = list(string)
+  default     = ["0.0.0.0/0", "::/0"]
+
+  validation {
+    condition     = length(var.cert_approver_provider_ip_prefixes) > 0
+    error_message = "cert_approver_provider_ip_prefixes must not be empty — an empty set denies every CSR that carries an IP SAN. Use [\"0.0.0.0/0\", \"::/0\"] for all IPs."
+  }
+  validation {
+    condition     = alltrue([for c in var.cert_approver_provider_ip_prefixes : can(cidrhost(c, 0))])
+    error_message = "Every cert_approver_provider_ip_prefixes entry must be a valid CIDR (e.g. \"192.0.2.0/24\" or \"::/0\")."
+  }
+}
+
+variable "cert_approver_replicas" {
+  description = <<-EOT
+    cert-approver Deployment replica count. Default 1 (minimal footprint; a
+    single-node/edge cluster must not be forced to 2). Raise it (e.g. 2) to opt
+    into HA — replicas > 1 AUTO-enables leader-election and the
+    coordination.k8s.io/leases RBAC, so the default replicas:1 keeps least
+    privilege (no leases grant). SEED knob (create-only): on a running cluster,
+    basic redundancy is a `kubectl scale`; enabling leader-election Day-2 needs a
+    manual apply / re-seed. postfinance denies terminally, so a down approver
+    stalls new serving-cert issuance — HA matters more than under the old approver.
+  EOT
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.cert_approver_replicas >= 1 && floor(var.cert_approver_replicas) == var.cert_approver_replicas
+    error_message = "cert_approver_replicas must be an integer >= 1."
+  }
+}

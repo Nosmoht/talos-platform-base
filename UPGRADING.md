@@ -42,6 +42,124 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
+## Unreleased (next MAJOR) — kubelet-serving CSR approver replaced with `postfinance/kubelet-csr-approver` (MAJOR — consumer-facing)
+
+**Type:** MAJOR (consumer-runtime breaking). The seeded kubelet-serving CSR
+approver changes from `alex1989hu/kubelet-serving-cert-approver` to
+`postfinance/kubelet-csr-approver` (digest-pinned `v1.2.14`), delivered as the
+same controlplane `inlineManifest` seed but now chart-rendered and templated with
+a per-cluster config surface. Decision:
+[`knowledge/decisions/0019-postfinance-kubelet-csr-approver.md`](knowledge/decisions/0019-postfinance-kubelet-csr-approver.md)
+(supersedes ADR-0013 §D2; ADR-0013 §D1 — rotation default-on — is unchanged).
+
+New `cluster.yaml` surface under `substrate.cert_approver` (all defaulted — every
+cluster still boots and approves out-of-the-box):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `provider_regex` | `".*"` | node-name regex the approver accepts |
+| `provider_ip_prefixes` | `["0.0.0.0/0", "::/0"]` | CIDRs a CSR's IP SANs must fall within — the **safe floor**; **never `[]`** (an empty list denies every serving CSR) |
+| `replicas` | `1` | `> 1` opts into HA — auto leader-election + a namespaced leases RBAC |
+
+postfinance adds an **always-on per-node DNS-SAN binding** the old approver
+lacked (a CSR's DNS SANs must be prefixed by the requesting node's hostname).
+Tightening `provider_ip_prefixes` to your node subnets adds an IP-SAN-to-subnet
+binding on top. Two honest limits (source-verified): the DNS binding is a
+hostname *prefix* match, not exact (`node-1` also matches `node-10`), and an
+IP-only CSR (no DNS SAN) is bounded only by `provider_ip_prefixes`.
+
+### 1. Tear down the OLD approver (required — it does not self-remove)
+
+The prior tag seeded alex1989hu as a **create-only** `inlineManifest`; Talos
+never deletes a resource it created, and the namespace rename means the new seed
+lands in a **different** namespace. So after adopting this tag **two
+cluster-scoped approvers coexist** — the old permissive one keeps approving what a
+tightened new one would Deny.
+
+Sequence (do NOT reverse):
+
+1. Confirm the new approver is up: the `kubelet-csr-approver` Deployment is
+   Running and `kubectl get csr` shows `kubernetes.io/kubelet-serving` CSRs
+   `Approved,Issued` on controlplane AND worker nodes.
+2. THEN delete the old objects in full:
+
+   ```bash
+   kubectl delete namespace kubelet-serving-cert-approver
+   kubectl delete clusterrole certificates:kubelet-serving-cert-approver \
+                              events:kubelet-serving-cert-approver
+   # the ClusterRoleBinding(s) that referenced those roles — discover the exact
+   # name(s) rather than assuming, then delete:
+   kubectl get clusterrolebinding -o json \
+     | jq -r '.items[]
+              | select(.roleRef.name | test("kubelet-serving-cert-approver"))
+              | .metadata.name'
+   # upstream also plants an events: RoleBinding in the `default` namespace —
+   # neither the namespace delete nor the cluster-scoped deletes reap it:
+   kubectl -n default delete rolebinding events:kubelet-serving-cert-approver
+   ```
+
+   Confirm the exact old binding names against your cluster before deleting.
+
+If you are **also tightening `provider_ip_prefixes`** in the same bump, sequence
+it AFTER the old approver is gone — during the coexistence window the old
+permissive approver races and can approve a CSR the new one would Deny (terminal,
+one-way).
+
+### 2. Config changes do NOT propagate on a running cluster
+
+The seed is **create-only**: `tofu apply` re-renders the machine config, but Talos
+does not update a Deployment it already created. Editing
+`substrate.cert_approver.*` in `cluster.yaml` and re-applying therefore hardens
+**new** clusters only. To change `provider_*` on a live cluster, patch the running
+Deployment directly (`kubectl set env`) or re-seed. Do not assume a `cluster.yaml`
+edit tightened a running cluster — it did not.
+
+### 3. Rollback / bad-config recovery
+
+postfinance **denies terminally**. A `provider_ip_prefixes` / `provider_regex`
+that excludes your real nodes → **every** kubelet-serving CSR is Denied (a terminal
+`Denied` condition, not `Pending`) → serving certs stop issuing → metrics-server,
+`kubectl logs|exec|top` break cluster-wide. Immediate rollback on the live
+Deployment (namespace `kubelet-csr-approver`):
+
+```bash
+kubectl -n kubelet-csr-approver set env deployment/kubelet-csr-approver \
+  PROVIDER_IP_PREFIXES=0.0.0.0/0,::/0 PROVIDER_REGEX='.*'
+```
+
+`.*` + all-IPs is the safe floor — restore it first, then re-tighten
+deliberately. A Denied CSR is terminal, so affected nodes recover once the kubelet
+issues a fresh CSR (its next rotation attempt) and the restored approver accepts
+it.
+
+### 4. Observability migration
+
+- **Metrics port `9090` → `8080`.** Repoint any ServiceMonitor / scrape config
+  (health probe is on `8081`).
+- **Namespace selector** → `kubelet-csr-approver` (was
+  `kubelet-serving-cert-approver`).
+- **Metric names differ.** postfinance does not expose the same series as
+  alex1989hu — rebuild dashboards/alerts against postfinance's metric set.
+- **Add a denied-CSR alert.** Because denies are now terminal, a rising count of
+  `Denied` `kubernetes.io/kubelet-serving` CSRs is the signal that a `provider_*`
+  value is excluding real nodes (see step 3) — alert on it.
+- **Also alert on signer failures.** The approver only checks what its controller
+  inspects (username, CN, SAN presence, IP-prefix, DNS-prefix, expiration).
+  Constraints it does **not** check — Subject `Organization`, email/URI SANs, key
+  usages — are enforced by the built-in `kubernetes.io/kubelet-serving` signer,
+  which marks such a CSR `Failed` (`SignerValidationFailure`): Approved by the
+  approver, then never Issued — **not** `Denied`. A `Denied`-only alert misses
+  this; alert on `Failed` kubelet-serving CSRs too.
+- **Single-replica availability (unchanged default).** The approver still runs
+  `replicas: 1` and (absent worker scheduling) on a control-plane node; a rolling
+  OS upgrade / CP-node reboot (`talosctl upgrade`) evicts it, and any kubelet
+  serving-cert rotation during that window stalls until it reschedules and is
+  Ready. Set `substrate.cert_approver.replicas: 2` for HA on new clusters, or
+  `kubectl scale` an existing one (2 replicas approve idempotently even without
+  leader-election). Time mass-rotation-affecting upgrades accordingly.
+
+---
+
 ## `v5.1.0` — consumer kernel args on UKI/systemd-boot nodes (MINOR — manual action for consumers carrying boot args in machine-config)
 
 **Applies to you** if you need to set custom kernel command-line arguments on

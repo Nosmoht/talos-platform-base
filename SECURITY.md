@@ -72,8 +72,13 @@ The base is substrate-only. It ships:
 - The substrate component `argocd/` (Helm values + namespace declaration).
   `cert-approver` is substrate too but ships as a Talos controlplane
   `inlineManifest` seed in the OpenTofu module
-  (`tofu/modules/talos-cluster/manifests/cert-approver.yaml`), not a kustomize
-  component (adr-0013).
+  (`tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml`), not a
+  kustomize component (adr-0019, superseding adr-0013 §D2). The approver is
+  `postfinance/kubelet-csr-approver`; it enforces an always-on per-node DNS-SAN
+  binding (a CSR's DNS SANs must be prefixed by the requesting node's hostname)
+  and, when a consumer tightens `substrate.cert_approver.provider_ip_prefixes` to
+  its node subnets, an IP-SAN-to-subnet binding. `approve` stays signer-scoped to
+  `kubernetes.io/kubelet-serving`.
 - ArgoCD bootstrap templates (parameterized; rendered with envsubst).
 - Talos machine-config patches.
 - The `tofu/modules/talos-cluster` cluster-lifecycle module.
