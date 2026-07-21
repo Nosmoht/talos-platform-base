@@ -1,19 +1,22 @@
 name: Release
 
-# Conventional-commit-driven releases with a human approval gate.
+# Conventional-commit-driven, fully automated releases — no human approval step.
 #
 # Flow: a push to `main` runs `plan` (semantic-release --dry-run) which computes
 # the next version from the conventional-commit history and surfaces it in the
-# job summary. If a release is due, `release` waits for manual approval in the
-# `release` GitHub Environment, then runs the real semantic-release: it creates
+# job summary. `plan` also runs a blocking MAJOR-bump guard (see the step) — the
+# backstop that replaced the former manual approval. If a release is due and the
+# guard passes, `release` runs the real semantic-release unattended: it creates
 # the tag + GitHub Release. Because the tag is pushed with a GitHub App token
 # (NOT the default GITHUB_TOKEN, whose events do not trigger other workflows),
 # the existing `oci-publish.yml` (on: push tags 'v*') fires and attaches the
 # cosign-signed OCI assets to the Release. oci-publish.yml is unchanged, so the
-# signing identity + consumer verification regex are preserved.
+# signing identity + consumer verification regex are preserved. semantic-release
+# does NOT commit back to `main`; CHANGELOG.md is cut by hand in the releasing PR
+# (ADR-0020).
 #
-# See knowledge/workflows/release-process.md for the full design, the one-time GitHub App +
-# Environment setup, and the commit-message (BREAKING CHANGE footer) discipline.
+# See knowledge/workflows/release-process.md for the full design, the one-time GitHub App
+# setup, and the commit-message (BREAKING CHANGE footer) discipline.
 
 on:
   push:
@@ -108,11 +111,70 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Hard MAJOR-bump guard — the backstop that replaces the removed manual
+      # approval Environment. semantic-release only bumps MAJOR on a
+      # `BREAKING CHANGE:` footer / `type!:` marker; a merge that drops the
+      # marker would ship a breaking base-surface change as MINOR/PATCH. This
+      # step FAILS the release (blocks `release`, which is `needs: plan`) when a
+      # published artifact/contract surface changed since the last tag but the
+      # computed bump is not MAJOR — unless a maintainer attests the change is
+      # non-breaking via an `Allow-Non-Major:` trailer on the tip commit.
+      # Gated on will-release so a non-releasing push (docs/chore) never fails.
+      - name: MAJOR-bump guard
+        if: steps.dry.outputs.will-release == 'true'
+        env:
+          NEXT: ${{ steps.dry.outputs.next-version }}
+        run: |
+          set -euo pipefail
+          # Highest STABLE semver tag by version order — not `git describe`,
+          # which returns the nearest *reachable* tag (reachability-dependent)
+          # and would fail open on a non-semver or prerelease nearest tag.
+          # Filtering to `vX.Y.Z` excludes prerelease (`-rc.N`) and stray tags.
+          last_tag="$(git tag --list 'v*' --sort=-v:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+          if [ -z "$last_tag" ]; then
+            echo "First release — no prior stable tag to compare; guard n/a."
+            exit 0
+          fi
+          # Breaking base-surface: published tarball layout, consumer-parsed
+          # contracts/schemas, and base Helm-value defaults. NOT exhaustive of
+          # every breaking change (tofu module interfaces and machine-config
+          # patches are out of this mechanical net — reviewer judgment covers
+          # those); this is the high-signal subset a dropped marker most often
+          # slips through.
+          surface="$(git diff --name-only "${last_tag}..HEAD" -- \
+            '.ci-oci-tarball-include.txt' '.ci-oci-tarball-expected.txt' \
+            'schemas/**' 'platform-hardware-features.yaml' 'contracts/**' \
+            'kubernetes/base/**/values.yaml' || true)"
+          if [ -z "$surface" ]; then
+            echo "No breaking base-surface change since ${last_tag}; guard n/a."
+            exit 0
+          fi
+          last_major="${last_tag#v}"; last_major="${last_major%%.*}"
+          next_major="${NEXT%%.*}"
+          if [ "$next_major" != "$last_major" ]; then
+            echo "MAJOR bump (${last_tag} → v${NEXT}) matches the base-surface change; guard satisfied."
+            exit 0
+          fi
+          # Override: an `Allow-Non-Major: <reason>` git trailer on the tip
+          # (merge) commit — a maintainer attestation that the surface change is
+          # genuinely non-breaking. Anchored to line-start so a prose mention or
+          # a negation ("does NOT qualify …") cannot match. The merging
+          # maintainer owns this line; under squash-merge, verify it in the
+          # concatenated commit body before merging (ADR-0020 §Decision 3).
+          if git log -1 --format=%B | grep -qiE '^Allow-Non-Major:[[:space:]]*[^[:space:]]'; then
+            echo "::warning::Base-surface changed since ${last_tag} without a MAJOR bump (v${NEXT}); overridden via an 'Allow-Non-Major:' trailer on the tip commit."
+            printf 'Overridden surface files:\n%s\n' "$surface"
+            exit 0
+          fi
+          echo "::error::Base artifact/contract surface changed since ${last_tag} but the computed bump is v${NEXT} (not MAJOR). Add a 'BREAKING CHANGE:' footer / type! marker to bump MAJOR, or attest a genuinely non-breaking change with an 'Allow-Non-Major: <reason>' trailer on the tip commit."
+          printf 'Changed base-surface files:\n%s\n' "$surface"
+          exit 1
+
   release:
     needs: plan
     if: ${{ needs.plan.outputs.will-release == 'true' }}
     runs-on: ubuntu-latest
-    environment: release # manual-approval gate (required reviewer = @nosmoht)
     permissions:
       contents: read # the App token performs writes, not GITHUB_TOKEN
     steps:

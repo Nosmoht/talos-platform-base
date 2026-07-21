@@ -1,9 +1,9 @@
 ---
 type: workflow
 title: Release Process
-description: How a release moves from conventional commit through the semantic-release approval gate to a signed OCI artifact on ghcr.io.
+description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-timestamp: 2026-07-11
+timestamp: 2026-07-21
 sources:
   - .github/workflows/release.yml
   - .github/workflows/commitlint.yml
@@ -16,11 +16,18 @@ sources:
 
 # Release Process
 
-Releases are conventional-commit-driven with a human approval gate. The chain
-is: PR title lint → merge to `main` → `release.yml` plan (dry-run) → manual
-approval in the `release` GitHub Environment → semantic-release cuts the tag →
-the tag push triggers `oci-publish.yml`, which builds, signs, attests, and
+Releases are conventional-commit-driven and fully automated — no human
+approval step. The chain is: PR title lint → merge to `main` → `release.yml`
+plan (dry-run) → hard MAJOR-bump guard → semantic-release cuts the tag → the
+tag push triggers `oci-publish.yml`, which builds, signs, attests, and
 publishes the OCI artifact plus the GitHub Release.
+
+The former manual approval gate (an `environment: release` protection) was
+removed so a merge to `main` releases without operator action. Its one
+mechanical function — catching a breaking base-surface change that ships
+without a MAJOR bump — is now a blocking CI check (the MAJOR-bump guard,
+below). What the human gate additionally provided implicitly (an eyeball on
+every release) is **not** replaced; automated releases are unattended.
 
 ## Commit gate — commitlint on the PR title
 
@@ -33,8 +40,12 @@ semantic-release parses.
 - Allowed types: `feat`, `fix`, `perf`, `chore`, `docs`, `test`, `refactor`, `ci`.
 - `requireScope: false` — a scope like `fix(cilium): …` is house style per
   `CONTRIBUTING.md`, not mandatory.
-- The gate applies to PRs only; direct-`main` commits bypass it. The manual
-  release approval is the backstop.
+- The gate applies to PRs only; direct-`main` commits bypass it. With the
+  manual release approval removed, there is **no** human backstop for a
+  malformed direct-`main` commit subject; the MAJOR-bump guard below covers
+  only the breaking-surface-without-MAJOR class, not commit-message hygiene in
+  general. The mitigating factor is that `main` merges land as merge commits
+  that preserve the PR-title-derived subject.
 
 ## Version computation — `.releaserc.json`
 
@@ -63,7 +74,7 @@ commits). This carries the `AGENTS.md` rule that a breaking change to base
 Helm values requires a MAJOR bump: without the footer, the change ships as a
 non-breaking release.
 
-## Plan and approval — `.github/workflows/release.yml`
+## Plan and release — `.github/workflows/release.yml`
 
 Triggered on every push to `main` (concurrency group `release-main`,
 `cancel-in-progress: false` so a half-done release is never cancelled).
@@ -74,22 +85,39 @@ Triggered on every push to `main` (concurrency group `release-main`,
 - Greps the log for "the next release version is X.Y.Z" and emits
   `will-release` / `next-version` outputs plus a `# Release plan` job summary
   showing the next version (or "No release").
-- **MAJOR prompt**: if any `kubernetes/base/**/values.yaml` changed since the
-  last tag, the summary appends a warning to confirm MAJOR-vs-MINOR before
-  approving, reminding that only a `BREAKING CHANGE:` footer bumps MAJOR.
+- **MAJOR-bump guard** (blocking, `if: will-release == 'true'`): when a
+  published base-surface path changed since the last tag but the computed bump
+  is not MAJOR, the step **fails** — blocking `release` (which is
+  `needs: plan`). The surface set is `.ci-oci-tarball-{include,expected}.txt`,
+  `schemas/**`, `platform-hardware-features.yaml`, `contracts/**`, and
+  `kubernetes/base/**/values.yaml`. Gated on `will-release`, so a non-releasing
+  push (docs/chore) never fails it. **Override:** a maintainer who has confirmed
+  the change is genuinely non-breaking adds an `Allow-Non-Major: <reason>` git
+  trailer to the tip (merge) commit, downgrading the block to a warning. The
+  match is anchored to line-start (a prose mention or negation cannot trigger
+  it); under squash-merge the merging maintainer must verify the trailer in the
+  concatenated body. Additive, backward-compatible edits to a surface path (a
+  new optional schema field, a new default value) are the expected override
+  case — the guard flags any change to the path, not only breaking ones. The
+  set is the
+  high-signal subset a dropped `type!:` marker most often slips through — it is
+  **not** exhaustive (tofu module interfaces and machine-config patches are out
+  of the mechanical net; reviewer judgment covers those).
 - The job runs with `GITHUB_TOKEN`, which cannot push to protected `main` nor
   trigger downstream workflows — so this ungated job cannot cut a real release.
 
-### Job `release` (approval-gated)
+### Job `release` (unattended)
 
-Runs only when `will-release == 'true'` and waits for manual approval in the
-`release` GitHub Environment. It mints a GitHub App token
-(`vars.RELEASE_APP_ID` + `secrets.RELEASE_APP_PRIVATE_KEY`), checks out with
-`persist-credentials: false`, and runs the real `npx semantic-release` with
-the App token. The App token matters: tags pushed with the default
-`GITHUB_TOKEN` do not trigger other workflows, so the App token is what makes
-the `v*` tag push fire `oci-publish.yml` while preserving its signing
-identity.
+Runs whenever `will-release == 'true'` and `plan` (incl. the guard) passed — no
+approval step. It mints a GitHub App token (`vars.RELEASE_APP_ID` +
+`secrets.RELEASE_APP_PRIVATE_KEY`), checks out with `persist-credentials:
+false`, and runs the real `npx semantic-release` with the App token. The App
+token matters: tags pushed with the default `GITHUB_TOKEN` do not trigger other
+workflows, so the App token is what makes the `v*` tag push fire
+`oci-publish.yml` while preserving its signing identity. semantic-release does
+**not** commit anything back to `main` — it tags and creates the GitHub Release
+only; `CHANGELOG.md` is cut by hand in the releasing PR (automating that cut is
+tracked as a follow-up).
 
 ## CHANGELOG contract
 
@@ -147,11 +175,12 @@ Consumer-side signature/provenance verification is covered in
 ## End-to-end summary
 
 1. Author commits per conventional-commit rules; PR title linted by
-   `lint-pr-title`.
-2. Squash-merge to `main` → `plan` computes the next version into the job
-   summary (with the MAJOR prompt when base Helm values changed).
-3. Human approves the `release` environment → semantic-release tags
-   `v<version>` and creates the Release object.
+   `lint-pr-title`. CHANGELOG `[Unreleased]` is cut by hand in the same PR.
+2. Merge to `main` → `plan` computes the next version into the job summary and
+   runs the blocking MAJOR-bump guard.
+3. Guard passes → `release` runs unattended (no approval) → semantic-release
+   tags `v<version>` and creates the Release object. semantic-release does not
+   commit back to `main`.
 4. Tag push (App token) → `oci-publish.yml` builds the allowlisted tarball,
    signs, attests (SLSA + SBOM), publishes to
    `ghcr.io/nosmoht/talos-platform-base:<tag>`, and attaches the tarball,

@@ -19,6 +19,7 @@ Frontmatter is canonical for status and dates.
 - [ADR: Capability profiles carry only their presence_predicate args — drop iommu=pt](0016-capability-profiles-predicate-only.md) - removes the host-DMA tuning arg `iommu=pt` from the `iommu` provisioning profile, returning the `iommu` kernel-arg key to consumer control (accepted)
 - [ADR: Consumer-supplied schematic extra_kernel_args, cross-source-scoped](0017-consumer-image-kernel-args.md) - adds an optional per-image `extra_kernel_args` input reaching the UKI-correct schematic sink, with the kernel-arg conflict guard scoped to cross-source (profile-vs-image) collisions only (accepted)
 - [ADR: Replace cert-approver (alex1989hu) with postfinance/kubelet-csr-approver + a per-cluster config surface](0019-postfinance-kubelet-csr-approver.md) - swaps the seeded kubelet-serving approver to postfinance/kubelet-csr-approver as a chart-rendered templatefile() seed with a three-knob config surface and a default-on per-node DNS-SAN binding; supersedes [0013](0013-kubelet-serving-cert-rotation.md) §D2 (accepted)
+- [ADR: Remove the manual release approval gate; replace its MAJOR backstop with a blocking CI guard](0020-automated-release-no-approval-gate.md) - drops the environment:release manual-approval protection so a merge to main releases unattended, replacing the gate's MAJOR-vs-MINOR backstop with a blocking, will-release-gated MAJOR-bump guard plus an [allow-non-major] override (accepted)
 
 ## Proposed
 

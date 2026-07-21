@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-21
+
+- `decisions/0020-automated-release-no-approval-gate.md` ADDED (accepted).
+  Records removing the `environment: release` manual-approval gate so a merge to
+  `main` releases unattended, and replacing the gate's one mechanical function
+  (MAJOR-vs-MINOR backstop) with a blocking, `will-release`-gated MAJOR-bump
+  guard in `release.yml`'s `plan` job (surface set = tarball allowlist +
+  `schemas/**` + `platform-hardware-features.yaml` + `contracts/**` + base
+  `values.yaml`), with an `[allow-non-major]` HEAD-commit override. No
+  commit-back to `main`; CHANGELOG stays hand-cut in the releasing PR.
+  Accepted trade-offs recorded (unattended = no eyeball; guard replaces only the
+  MAJOR half; surface set non-exhaustive). Auto-cut via bot-PR deferred to a
+  follow-up.
+- `decisions/index.md`: 0020 added under Accepted.
+- `workflows/release-process.md`: rewritten from "human approval gate" to the
+  automated flow — overview, §Commit gate backstop sentence, §Plan and release
+  (job `release` renamed approval-gated → unattended, MAJOR-bump guard
+  documented), and the frontmatter `description`; `timestamp` bumped to
+  2026-07-21. `index.md` release-process link description updated to match.
+
 ## 2026-07-17
 
 - `decisions/0019-postfinance-kubelet-csr-approver.md` ADDED (accepted). Records
