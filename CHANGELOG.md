@@ -5,6 +5,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## v6.0.0 — 2026-07-20
+
 ### Changed — BREAKING
 
 - **`talos-cluster`: the seeded kubelet-serving CSR approver is now
@@ -42,6 +44,10 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   observability-migration steps. Decision:
   [`knowledge/decisions/0019-postfinance-kubelet-csr-approver.md`](knowledge/decisions/0019-postfinance-kubelet-csr-approver.md)
   (supersedes ADR-0013 §D2; ADR-0013 §D1 — rotation default-on — is unchanged).
+
+## v5.0.0 — 2026-07-15
+
+### Changed — BREAKING
 
 - **`talos-cluster`: the `iommu` provisioning profile no longer bakes
   `iommu=pt`.** The profile's `intel`/`amd` variants now carry only
