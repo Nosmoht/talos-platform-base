@@ -1,0 +1,11 @@
+# MkDocs config so Backstage TechDocs renders this repo's Open-Knowledge-Format bundle
+# (referenced via the backstage.io/techdocs-ref annotation on the talos-platform-base
+# catalog Component). docs_dir points at the existing knowledge/ tree (its index.md is the
+# root); mkdocs 1.6 allows a subdir (only docs_dir: . is forbidden). nav is auto-generated
+# from the file tree. techdocs-core is the Backstage-required plugin (the backend image
+# runs the local mkdocs builder — no Docker-in-pod).
+site_name: Talos Platform Base
+site_description: Cluster-agnostic Talos + Cilium + ArgoCD substrate — OKF knowledge bundle.
+docs_dir: knowledge
+plugins:
+  - techdocs-core
