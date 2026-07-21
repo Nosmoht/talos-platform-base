@@ -189,7 +189,8 @@ tasks:
         -filter=tests/profile-predicate-only.tftest.hcl \
         -filter=tests/conflict-guards.tftest.hcl \
         -filter=tests/input-validation.tftest.hcl \
-        -filter=tests/image-kernel-args.tftest.hcl
+        -filter=tests/image-kernel-args.tftest.hcl \
+        -filter=tests/kubeconfig-endpoint-marker.tftest.hcl
 
   tofu:ci:
     desc: Full local tofu validation (fmt-check + validate + lint + render-determinism fence + offline tests) — mirrors CI

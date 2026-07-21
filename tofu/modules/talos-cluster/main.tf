@@ -781,6 +781,14 @@ resource "talos_cluster_kubeconfig" "this" {
   node                 = local.first_controlplane.ip
   endpoint             = local.first_controlplane.ip
   client_configuration = talos_machine_secrets.this.client_configuration
+
+  # Force a re-fetch (state-only destroy+recreate) when the advertised
+  # cluster endpoint changes — kubeconfig-refresh.tf, issue #186. `node`/
+  # `endpoint` above stay the Talos-API (talosclient, port 50000) dial
+  # target and are intentionally NOT repointed at var.cluster_endpoint.
+  lifecycle {
+    replace_triggered_by = [terraform_data.kubeconfig_endpoint_marker]
+  }
 }
 
 # talosconfig for day-2 talosctl access. Endpoints = controlplanes, nodes = all.

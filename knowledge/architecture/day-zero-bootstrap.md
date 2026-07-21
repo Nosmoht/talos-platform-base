@@ -3,7 +3,7 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-timestamp: 2026-07-17
+timestamp: 2026-07-21
 sources:
   - tofu/modules/talos-cluster/main.tf
   - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
@@ -118,6 +118,15 @@ Key properties:
 - **Blocking health gate** — `tofu apply` does not return at the bootstrap
   call; a health data source polls until etcd quorum, node readiness, and
   apiserver reachability hold (timeout `cluster_health_timeout`).
+- **Kubeconfig regenerates on an endpoint change** — `talos_cluster_kubeconfig.this`
+  carries a `lifecycle.replace_triggered_by` keyed on a `terraform_data`
+  marker tracking `var.cluster_endpoint` (`kubeconfig-refresh.tf`), so a
+  later change to the advertised cluster endpoint (VIP move, DNS rename, a
+  reflected node re-IP) forces a state-only destroy+recreate that re-fetches
+  the kubeconfig instead of leaving it frozen at the bootstrap-time value.
+  The recreate rotates the embedded admin client certificate; adding the
+  marker to an already-bootstrapped cluster's state does not itself trigger
+  a recreate (inert until the endpoint actually changes).
 - **CRD side-channel** — the three ArgoCD CRDs render to roughly 1.8 MB, far
   beyond inlineManifest budget (the app render is about 109 KB), so after
   the health gate the module writes the kubeconfig plus the full ArgoCD
