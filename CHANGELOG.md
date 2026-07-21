@@ -5,6 +5,61 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`talos-cluster`: `module.<name>.kubeconfig` now regenerates when the
+  advertised cluster endpoint changes.** Previously,
+  `talos_cluster_kubeconfig.this` fetched the admin kubeconfig once at
+  bootstrap and never re-fetched it: its own arguments (`node`/`endpoint =
+  local.first_controlplane.ip`) are the Talos-API (talosclient, port 50000)
+  dial target used only to *fetch* the kubeconfig, not the emitted
+  Kubernetes `server:` — per the `siderolabs/talos` provider schema
+  (`tofu providers schema -json`, `registry.opentofu.org/siderolabs/talos`)
+  and the Terraform Registry docs for `talos_cluster_kubeconfig`. The
+  `server:` value is Talos-derived from `var.cluster_endpoint`, which is
+  baked into the machine config at `tofu/modules/talos-cluster/main.tf:674`
+  (controlplane) and `:684` (worker); a later `var.cluster_endpoint` change
+  (a VIP move, a DNS rename, or a control-plane node re-IP on a
+  single-control-plane cluster where `cluster_endpoint` is expressed as
+  that node's own IP — the seeder's `api_vip: ""` fallback is exactly this
+  case, and is the strongest evidence this fix closes the #168/#186
+  incident; on a VIP/DNS endpoint a plain node re-IP is correctly inert
+  and does not trigger regeneration) left the resource's own arguments
+  unchanged, so it
+  never re-read and the module kept emitting the stale `server:`. A new
+  `terraform_data.kubeconfig_endpoint_marker` (tracked `input =
+  var.cluster_endpoint`) now drives `lifecycle.replace_triggered_by` on
+  `talos_cluster_kubeconfig.this`, so a changed endpoint forces a re-fetch.
+  - **Non-breaking, no MAJOR bump**: the emitted `server:` value is
+    unchanged — it always tracked `var.cluster_endpoint` — and the trigger
+    is inert until the endpoint actually changes. Adding the marker to an
+    existing state (endpoint unchanged) only creates the marker; it does
+    **not** replace the existing kubeconfig, so there is no first-apply
+    churn on this version bump (reproduced offline with OpenTofu 1.11.8 —
+    a version-specific observation, not a semver-guaranteed provider
+    property).
+  - **Side effect on a genuine endpoint change**: the resource is
+    destroyed and recreated (state-only — it revokes nothing on the
+    cluster and does not touch `talos_machine_secrets`), which rotates the
+    embedded admin client certificate. The output still waits on the
+    existing health gate (`depends_on = data.talos_cluster_health`) before
+    emitting the refreshed kubeconfig, but that gate polls the
+    control-plane **node IPs**
+    (`tofu/modules/talos-cluster/main.tf:817-819`), not
+    `var.cluster_endpoint`. On a cluster whose endpoint is a VIP or DNS
+    name distinct from the node IPs, the gate does not verify the *new*
+    endpoint is reachable: a VIP moved to a wrong or unpropagated target
+    still reports healthy. The consumer is responsible for confirming the
+    new endpoint is correct and propagated before relying on the emitted
+    kubeconfig — this gate will not catch a wrong or unpropagated
+    VIP/DNS endpoint.
+  - Cosmetically different but equivalent endpoint strings (for example
+    a trailing slash or case difference) count as a change and trigger
+    regeneration too — no canonicalization is performed.
+  - A DNS-rename regeneration depends on Talos adding the new hostname to
+    the apiserver serving-cert SANs in the same apply; the apiserver
+    cert-SANs update alongside `var.cluster_endpoint` on a re-apply.
+
 ## v6.0.0 — 2026-07-20
 
 ### Changed — BREAKING

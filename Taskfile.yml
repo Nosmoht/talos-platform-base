@@ -167,6 +167,15 @@ tasks:
     desc: "CI fence: Cilium/ArgoCD/CRD helm renders must use frozen terraform_data (ignore_changes), not live data.helm_template"
     cmd: scripts/check-render-determinism.sh
 
+  tofu:check:kubeconfig-endpoint-regen:
+    # PR #187 review blocker #3 — full rationale in scripts/check-kubeconfig-endpoint-regen.sh.
+    # Without this, deleting the entire lifecycle block from main.tf leaves the
+    # full offline tofu test suite + tofu validate green (issue #186 regresses
+    # silently); this is the only committed check that references
+    # replace_triggered_by / kubeconfig_endpoint_marker.
+    desc: "CI fence: talos_cluster_kubeconfig.this keeps replace_triggered_by wired to terraform_data.kubeconfig_endpoint_marker (input = var.cluster_endpoint)"
+    cmd: scripts/check-kubeconfig-endpoint-regen.sh
+
   tofu:test:
     desc: "tofu test — node-capability composition regression suite (dedup/determinism + hard-error guards). NETWORK: resolves the live Image Factory, so it is NOT part of tofu:ci (which stays offline). Superset of tofu:test:offline."
     cmd: |
@@ -189,7 +198,8 @@ tasks:
         -filter=tests/profile-predicate-only.tftest.hcl \
         -filter=tests/conflict-guards.tftest.hcl \
         -filter=tests/input-validation.tftest.hcl \
-        -filter=tests/image-kernel-args.tftest.hcl
+        -filter=tests/image-kernel-args.tftest.hcl \
+        -filter=tests/kubeconfig-endpoint-marker.tftest.hcl
 
   tofu:ci:
     desc: Full local tofu validation (fmt-check + validate + lint + render-determinism fence + offline tests) — mirrors CI
@@ -199,6 +209,7 @@ tasks:
       - task: tofu:lint
       - task: tofu:check:render-determinism
       - task: tofu:check:readme-parity
+      - task: tofu:check:kubeconfig-endpoint-regen
       - task: tofu:test:offline
 
   # ===========================================================================

@@ -6,3 +6,17 @@
 output "node_kernel_args" {
   value = { for h, e in local.node_effective : h => e.kernel_args }
 }
+
+# This fixture ALSO hosts the kubeconfig-endpoint-marker assertion (issue
+# #186) — the symlinked kubeconfig-refresh.tf's terraform_data resource needs
+# no fixture-side wiring, just this output to expose its tracked input.
+#
+# Fixture coupling: the kubeconfig-refresh.tf symlink instantiates the real
+# terraform_data.kubeconfig_endpoint_marker resource unconditionally, so
+# EVERY suite reusing this fixture (currently also
+# tests/input-validation.tftest.hcl) carries it too — a future edit to the
+# marker (renaming it, changing its tracked input) can break those other
+# suites even though they assert nothing about the marker themselves.
+output "kubeconfig_endpoint_marker_input" {
+  value = terraform_data.kubeconfig_endpoint_marker.input
+}
