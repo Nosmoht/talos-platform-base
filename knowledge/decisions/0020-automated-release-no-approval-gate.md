@@ -62,6 +62,7 @@ losing that MAJOR backstop.
 ## Consequences
 
 ### Positive
+
 - Releases are unattended — a merge to `main` ships without waiting on the
   maintainer.
 - The MAJOR misclassification the gate guarded against is now a deterministic,
@@ -71,6 +72,7 @@ losing that MAJOR backstop.
   attestation flow.
 
 ### Negative / accepted trade-offs
+
 - **No human eyeball on releases.** A failed automated release (guard block,
   transient error) is silent unless someone watches the Actions tab. A failure
   notification is a candidate follow-up.
@@ -83,6 +85,7 @@ losing that MAJOR backstop.
   mechanical net; reviewer judgment, not this guard, covers them.
 
 ## Alternatives considered
+
 - **Keep the gate.** Rejected — it is exactly the manual wait the change removes,
   and it stalled v6.0.0.
 - **Fully automate the CHANGELOG cut via commit-back to `main`.** Rejected for
@@ -94,6 +97,7 @@ losing that MAJOR backstop.
   checks, needs no bypass).
 
 ## Follow-up
+
 - Automate the `[Unreleased]` → `## vX.Y.Z — DATE` cut via a post-release bot PR
   with auto-merge (no direct-to-`main` push, no branch-protection bypass).
 - Add a `failure()`-conditioned notification on `release.yml` so an unattended
