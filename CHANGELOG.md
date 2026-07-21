@@ -37,8 +37,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     embedded admin client certificate. The health-gated output
     (`depends_on = data.talos_cluster_health`) emits the refreshed
     kubeconfig only once the cluster is healthy at the new endpoint.
-  - Cosmetically different but equivalent endpoint strings (e.g. a
-    trailing slash or case difference) count as a change and trigger
+  - Cosmetically different but equivalent endpoint strings (for example
+    a trailing slash or case difference) count as a change and trigger
     regeneration too — no canonicalization is performed.
   - A DNS-rename regeneration depends on Talos adding the new hostname to
     the apiserver serving-cert SANs in the same apply; the apiserver
