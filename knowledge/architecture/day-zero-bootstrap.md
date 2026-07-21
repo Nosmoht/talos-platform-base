@@ -121,12 +121,20 @@ Key properties:
 - **Kubeconfig regenerates on an endpoint change** — `talos_cluster_kubeconfig.this`
   carries a `lifecycle.replace_triggered_by` keyed on a `terraform_data`
   marker tracking `var.cluster_endpoint` (`kubeconfig-refresh.tf`), so a
-  later change to the advertised cluster endpoint (VIP move, DNS rename, a
-  reflected node re-IP) forces a state-only destroy+recreate that re-fetches
-  the kubeconfig instead of leaving it frozen at the bootstrap-time value.
-  The recreate rotates the embedded admin client certificate; adding the
-  marker to an already-bootstrapped cluster's state does not itself trigger
-  a recreate (inert until the endpoint actually changes).
+  later change to the advertised cluster endpoint — a VIP move, a DNS
+  rename, or a control-plane node re-IP on a single-control-plane cluster
+  where the endpoint is expressed as that node's own IP — forces a
+  state-only destroy+recreate that re-fetches the kubeconfig instead of
+  leaving it frozen at the bootstrap-time value. On a VIP/DNS endpoint a
+  plain node re-IP is correctly inert. The recreate rotates the embedded
+  admin client certificate; adding the marker to an already-bootstrapped
+  cluster's state does not itself trigger a recreate (inert until the
+  endpoint actually changes). The existing health gate polls the
+  control-plane node IPs, not the advertised endpoint, so on a VIP/DNS
+  endpoint it does not verify the new endpoint is reachable — the
+  consumer confirms the endpoint is correct and propagated. A re-fetched
+  kubeconfig is also only usable once the new hostname/IP is in the
+  apiserver serving-cert SANs.
 - **CRD side-channel** — the three ArgoCD CRDs render to roughly 1.8 MB, far
   beyond inlineManifest budget (the app render is about 109 KB), so after
   the health gate the module writes the kubeconfig plus the full ArgoCD

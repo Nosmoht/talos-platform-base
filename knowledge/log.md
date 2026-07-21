@@ -24,6 +24,13 @@
   `talos_cluster_kubeconfig.this` now carries a `lifecycle.replace_triggered_by`
   keyed on a `terraform_data` marker tracking `var.cluster_endpoint`);
   `timestamp` bumped to 2026-07-21.
+- `architecture/day-zero-bootstrap.md` (PR #187 review follow-up): corrected
+  the kubeconfig-regeneration note — the existing health gate polls
+  control-plane node IPs, not the advertised endpoint, so it does not verify
+  a VIP/DNS endpoint's reachability; reworded the node-re-IP trigger
+  condition to state plainly it applies only when the endpoint IS a
+  control-plane node's own IP; and noted the DNS-rename serving-cert-SAN
+  dependency for a re-fetched kubeconfig to be usable.
 
 ## 2026-07-17
 

@@ -93,7 +93,9 @@ declared nodes.
   on a later apply
 - **THEN** the module regenerates the admin kubeconfig so its emitted
   `server:` reflects the current endpoint, rather than staying frozen at
-  the create-time value
+  the create-time value. Regeneration alone does not make the endpoint
+  reachable: the new endpoint's certificate SAN and network propagation
+  must also already be in place, which this scenario does not establish
 
 ### Requirement: Blocking health gate
 

@@ -8,10 +8,11 @@
 # test binds ONLY the marker's tracked value (the KEY), offline, via the
 # provider-less ./tests/fixtures/colliding-catalog stand-in (which omits
 # main.tf, so the lifecycle wiring itself is NOT exercised here — that is
-# covered by the resource-scoped grep in scripts/verify-issue-186-ac.sh-style
-# checks / plan.md AC #1 and by `tofu validate` reference resolution; the
-# behavioral regeneration is confirmed only by an out-of-repo consumer
-# homelab `tofu apply`).
+# covered by the resource-scoped grep in
+# scripts/check-kubeconfig-endpoint-regen.sh (wired into `task tofu:ci`) and
+# by `tofu validate` reference resolution; the behavioral regeneration can
+# be confirmed only by an out-of-repo consumer homelab `tofu apply` — not
+# run as part of this repo's CI).
 #
 # Uses the same ./tests/fixtures/colliding-catalog stand-in (symlinked real
 # variables.tf) as tests/input-validation.tftest.hcl — pure plan over
