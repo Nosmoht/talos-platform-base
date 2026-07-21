@@ -2,6 +2,7 @@
 sources:
   primary:
     - tofu/modules/talos-cluster/main.tf
+    - tofu/modules/talos-cluster/kubeconfig-refresh.tf
 references:
   - knowledge/decisions/0006-opentofu-cluster-lifecycle.md
 ---
@@ -85,6 +86,14 @@ declared nodes.
 - **THEN** the admin kubeconfig is pulled from the bootstrap controlplane
   and the talosconfig lists every controlplane as an endpoint and every
   node as a node
+
+#### Scenario: Kubeconfig regenerates when the advertised endpoint changes
+
+- **WHEN** the advertised cluster endpoint (`var.cluster_endpoint`) changes
+  on a later apply
+- **THEN** the module regenerates the admin kubeconfig so its emitted
+  `server:` reflects the current endpoint, rather than staying frozen at
+  the create-time value
 
 ### Requirement: Blocking health gate
 
