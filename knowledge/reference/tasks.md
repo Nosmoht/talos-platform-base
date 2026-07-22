@@ -86,7 +86,8 @@ tasks. `bootstrap:argocd` only seeds the consumer-identity App-of-Apps root
 
 Details of the render → apply path (`bootstrap:render-root`, `bootstrap:check-render`, `bootstrap:argocd`):
 
-- **Preconditions:** `deploy_argocd=true` and a completed `tofu apply` (the
+- **Preconditions (`bootstrap:argocd` only — the render and check tasks need
+  no cluster):** `deploy_argocd=true` and a completed `tofu apply` (the
   module seeds ArgoCD and applies its CRDs server-side), plus a working
   `kubectl` context. A persistent CRD `NotFound` means the apply did not
   finish its CRD step; recovery command:
