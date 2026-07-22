@@ -54,6 +54,18 @@
   `validation` blocks) and `substrate.cilium` closed
   (`additionalProperties: false`).
 - `decisions/index.md`: 0022 added under Accepted.
+- `reference/tasks.md`: the `tofu:*` inventory table gains rows for
+  `tofu:check:readme-parity` and `tofu:check:kubeconfig-endpoint-regen`,
+  inserted at their `Taskfile.yml` definition-order positions, and the
+  `tofu:ci` row now enumerates all seven member tasks instead of five
+  (issue #190). Scope: only the `tofu:*` table was re-verified row-for-row
+  against `Taskfile.yml`; the other namespace tables were not audited here.
+  Residual: `Taskfile.yml`'s `tofu:ci` `desc:` string still names five
+  members, and this concept points readers at `task --list`, which renders
+  exactly that string — out of scope per the issue's §Non-Goals. `timestamp`
+  stays `2026-07-15` by maintainer decision: this concept's `sources:` cover
+  all ten namespace tables and only the `tofu:*` one was re-verified, so
+  bumping would claim a concept-wide freshness that was not established.
 
 ## 2026-07-21
 

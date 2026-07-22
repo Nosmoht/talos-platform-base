@@ -43,11 +43,13 @@ Conventions declared in `Taskfile.yml`:
 | `tofu:validate` | `tofu init -backend=false` + `tofu validate` per tofu dir (modules + examples). |
 | `tofu:lint` | `tflint --chdir=.` per tofu dir (modules + examples). |
 | `tofu:docs` | Regenerate a module README's terraform-docs block — **refuses today**: no module README carries `BEGIN_TF_DOCS` markers, so their Inputs/Outputs tables are hand-maintained and must be edited by hand. Running `terraform-docs --output-mode inject` against a marker-less README appends a second, competing generated table set instead of updating one (verified, terraform-docs v0.22.0; [ADR-0015](../decisions/0015-openspec-adoption.md) correction). |
+| `tofu:check:readme-parity` | CI fence: every `variables.tf` variable and `outputs.tf` output of a module appears in that module's hand-maintained README table (see `tofu:docs` for why those tables are hand-maintained). Scope limit: name-level parity in the `.tf` → README direction only — a README row for a deleted declaration, or stale prose on a surviving row, is not caught. Runs `scripts/check-module-readme-parity.sh`. |
 | `tofu:lint:yaml` | yamllint (relaxed) + markdownlint over `tofu/` — advisory (`\|\| true`). |
 | `tofu:check:render-determinism` | CI fence: Cilium/ArgoCD/CRD helm renders must use frozen `terraform_data` (`ignore_changes`), not live `data.helm_template`. Runs `scripts/check-render-determinism.sh`. |
+| `tofu:check:kubeconfig-endpoint-regen` | CI fence: `talos_cluster_kubeconfig.this` keeps its `replace_triggered_by` wiring to the `terraform_data.kubeconfig_endpoint_marker` resource (whose `input` is `var.cluster_endpoint`), so a changed endpoint still forces kubeconfig regeneration (issue #186). Static, resource-scoped grep — no provider, no network. Runs `scripts/check-kubeconfig-endpoint-regen.sh`. |
 | `tofu:test` | `tofu test` — the full suite, including the node-capability composition regression tests. **Network-dependent** (resolves the live Image Factory), so deliberately NOT part of `tofu:ci`. Superset of `tofu:test:offline`. |
 | `tofu:test:offline` | The offline subset of `tofu:test`: the predicate-only catalog contract, the conflict guards, input validation, and the consumer image-kernel-arg oracles (schematic re-image / no-re-image, issue #169). Each points at a `tests/fixtures/*` stand-in module that symlinks the real code under test and declares no providers — a pure plan over `terraform_data`, so no network. Part of `tofu:ci`. |
-| `tofu:ci` | Aggregate: `fmt:check` + `validate` + `lint` + `check:render-determinism` + `test:offline` — mirrors CI, stays offline. |
+| `tofu:ci` | Aggregate: `fmt:check` + `validate` + `lint` + `check:render-determinism` + `check:readme-parity` + `check:kubeconfig-endpoint-regen` + `test:offline` — mirrors CI, stays offline. |
 
 Both `tofu:validate` and `tofu:lint` exclude `tests/fixtures/**`: those are
 test inputs exercised via `tofu test` (`run { module }`), partial stand-in
