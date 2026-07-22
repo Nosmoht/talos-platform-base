@@ -3,14 +3,14 @@ type: reference
 title: cluster.yaml — Declarative Cluster SoT
 description: The two consumers of the declarative cluster.yaml Source-of-Truth, its secret-handling rules, and how CI wires the schema lint gate red-green.
 tags: [cluster-yaml, sot, schema, bootstrap]
-timestamp: 2026-07-15
+timestamp: 2026-07-22
 sources:
   - cluster.yaml.example
   # Kept despite the schema-shape section moving to openspec/specs/cluster-yaml-sot/:
   # the surviving prose still derives from this file (the deliberate absence of a
-  # schema_version, the unvalidated patch content, the structural exclusion of
-  # secrets), so it is still the trigger the bundle's re-verify rule needs — drop
-  # it and nothing tells a future reader those claims went stale.
+  # schema_version, the unvalidated patch content), so it is still the trigger
+  # the bundle's re-verify rule needs — drop it and nothing tells a future
+  # reader those claims went stale.
   - schemas/cluster.schema.json
   - scripts/lint-cluster-yaml.sh
   - schemas/fixtures/cluster.invalid.yaml
@@ -27,9 +27,11 @@ YAML document IS the cluster definition (identity, versions, network, images,
 capabilities, nodes, machine-config patches, substrate knobs). OpenTofu is the
 executor, not the SoT — the consumer's root module is a thin `yamldecode` shim
 that maps this file onto the typed interface of the `talos-cluster` module
-(interface tables in `tofu/modules/talos-cluster/README.md`). The base ships
-only `cluster.yaml.example`; the real `cluster.yaml` is gitignored at the base
-and committed in consumer repos per repo convention.
+(normative in `openspec/specs/module-interface-contract/`;
+`tofu/modules/talos-cluster/README.md` is the release-shipped copy of the
+same interface). The base ships only `cluster.yaml.example`; the real
+`cluster.yaml` is gitignored at the base and committed in consumer repos per
+repo convention.
 
 > **The file's shape is normative in the spec, not here.** Required keys, field
 > types, patterns and the closed-root rule live in
@@ -93,8 +95,10 @@ gitleaks' concern, not the schema's.
 
 ## What must never be in it
 
-Secrets have **no schema slot** — they are structurally excluded, not merely
-discouraged. Where they go instead:
+Secrets have **no schema slot**, per `openspec/specs/cluster-yaml-sot/`
+§"Requirement: Untyped escape hatches and structural secret exclusion" (which
+itself names `knowledge/decisions/0007-cluster-yaml-sot.md` as normative for
+why). Where they go instead:
 
 - `sops_age_key` (ArgoCD ksops repoServer) → `TF_VAR_sops_age_key` /
   gitignored tfvars / SOPS.
@@ -121,15 +125,11 @@ the wiring is what makes the gate bite:
    pass.
 2. Negative (schema red-green) step: the intentionally invalid fixture
    `schemas/fixtures/cluster.invalid.yaml` — valid in every respect except six
-   violations (a node carrying `role: master`, a de-anchored
-   `talos.install_version`, and one image per kernel-arg lexical rule —
-   whitespace, removal spelling, empty key, `debugfs` key) — must fail with
-   **exit code exactly 1**, and CI names all six violations individually in
-   the output. Exit `0` fails CI ("malformed cluster.yaml fixture passed
-   schema validation"); any other non-zero code also fails ("linter errored,
-   did not reach a schema verdict"), so a broken toolchain cannot pass
-   vacuously. Relaxing any one of the six rules in the schema turns this step
-   red without affecting the other five.
+   deliberate violations, each binding one schema rule owned by
+   `openspec/specs/cluster-yaml-sot/` — must fail, and CI names all six
+   violations individually in the output. See the spec for the gate's exact
+   pass/fail/error behavior. Relaxing any one of the six rules in the schema
+   turns this step red without affecting the other five.
 3. `tofu/modules/talos-cluster/examples/complete/cluster.yaml` is linted the
    same way (issue #169) — the module's worked example is otherwise reachable
    by no CI job.
