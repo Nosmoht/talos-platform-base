@@ -160,6 +160,113 @@ it.
 
 ---
 
+## Unreleased (next MAJOR) — Cilium observability inputs + opt-in ArgoCD self-management (MAJOR — consumer-facing)
+
+**Type:** MAJOR (bundles two independent compatibility breaks). Adds
+first-class default-off Cilium observability inputs and an opt-in
+emitted-Application ArgoCD self-management delivery mode for Cilium. Decision:
+[`knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md`](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
+### 1. OpenTofu floor raised to `>= 1.9` (affects EVERY consumer)
+
+The new cross-variable `validation` guards on `cilium_self_management`
+require OpenTofu >= 1.9. This is not opt-in: **every** consumer of
+`tofu/modules/talos-cluster`, whether or not they use the new Cilium
+features, must run OpenTofu >= 1.9 to `plan`/`apply` this module version.
+Upgrade your OpenTofu binary before adopting this tag.
+
+### 2. `substrate.cilium` schema is now CLOSED (affects consumers with extra/typo'd keys)
+
+`schemas/cluster.schema.json`'s `substrate.cilium` object now sets
+`additionalProperties: false` with the full enumerated key set. Audit your
+`cluster.yaml`'s `substrate.cilium` block: any key that isn't one of the
+documented `cilium_*` names (see the module README Inputs table) now fails
+`check-jsonschema` at lint time instead of being silently dropped by the
+`try()`-based shim in `examples/complete/main.tf`. Fix by removing or
+correcting the offending key before adopting this tag.
+
+### 3. New opt-in surface (default off — no action if you set nothing)
+
+- `substrate.cilium.agent_metrics` / `operator_metrics` — Cilium
+  agent/operator Prometheus metrics. Wire your own `ServiceMonitor` /
+  `PodMonitor` to scrape them; none is shipped by the base.
+- `substrate.cilium.hubble_enabled` + `hubble_metrics` — Hubble
+  flow/metrics observability, metrics-only scope (`hubble.tls.enabled` is
+  forced `false`; this does not disable the metrics endpoint, only the
+  unused observer-API TLS — see the ADR). **Enabling Hubble triggers a
+  graceful-restart-gated Cilium agent DaemonSet roll** — expect a rolling
+  agent restart across your nodes when you first turn this on (or change
+  the metrics set thereafter).
+- `substrate.cilium.self_management` + `self_management_project` — opt-in:
+  the module emits a new `cilium_self_management_app` output (a rendered
+  ArgoCD `Application` manifest). The module never applies it. Consumer
+  action to adopt: write a one-line `local_file` resource in your own root
+  against the output, commit it to your GitOps repo, let your existing
+  ArgoCD sync it. You must own **exactly one** Cilium `Application` —
+  ensure you are not already running a separate hand-authored one.
+
+### 4. Override-drop hazard — REQUIRED reading before enabling self-management
+
+If you set `substrate.cilium.values_override` (BGP control-plane, L2
+announcements, bpf tuning, or any other datapath-critical Helm value), the
+module **hard-rejects** `cilium_self_management=true` at plan time while
+that override is non-empty. This is intentional: the emitted
+`Application`'s values do **not** inherit `cilium_values_override`, so
+enabling self-management with it still set would have your datapath config
+silently **DROPPED** the moment ArgoCD adopts Cilium. To migrate safely:
+
+1. Re-add the equivalent Helm values in your own Cilium `Application`
+   (the one the emitted manifest becomes, once you adopt it).
+2. Only THEN empty `substrate.cilium.values_override` in `cluster.yaml`.
+3. Only THEN set `substrate.cilium.self_management = true`.
+
+Reversing this order (emptying the override before your own `Application`
+carries the equivalent values) creates a window where your datapath config
+exists nowhere. Plan the migration as one atomic cutover, not two separate
+commits.
+
+### 5. Bootstrap-window datapath gap (accepted trade-off — plan around it on BGP/L2 clusters)
+
+The seed is create-only, so the guard above and a future fresh
+bootstrap/`-replace` interact in tension: (a) while `values_override` stays
+set, you cannot enable self-management at all; (b) once you empty it to
+enable self-management, a **future** fresh bootstrap or node replacement
+brings that node up with plain-floor Cilium (no BGP/L2/bpf) until ArgoCD's
+first sync re-applies your override via the self-managed `Application` — a
+bootstrap-window datapath gap. If you depend on BGP/L2 for cluster
+connectivity, hold new-node bootstraps/replacements until you have confirmed
+ArgoCD's adoption sync completed, or accept the gap window.
+
+### 6. ArgoCD-adoption runtime caveat
+
+The first ArgoCD sync that adopts the seed-created Cilium resources into the
+emitted `Application` may trigger managed-fields reconciliation and an agent
+restart. This is expected seed-to-GitOps takeover behavior, not a failure —
+do not intervene on your own before confirming the sync completed.
+
+### 7. `spec.project` hardening (recommended, not required)
+
+`cilium_self_management_project` defaults to `"default"` so the feature
+works out of the box. For hardening, create a scoped `AppProject` granting
+destination namespace `kube-system` at `https://kubernetes.default.svc`
+plus Cilium's cluster-scoped resources (CRDs, ClusterRoles,
+ClusterRoleBindings) in `clusterResourceWhitelist`, then point
+`self_management_project` at it. Without that whitelist, a scoped project
+leaves the adopted `Application` inert/degraded.
+
+### Validation steps after upgrade
+
+1. `tofu fmt -check` + `tofu validate` (module + your root) — confirms your
+   OpenTofu binary meets the new `>= 1.9` floor.
+2. `check-jsonschema --schemafile vendor/base/schemas/cluster.schema.json
+   --default-filetype yaml cluster.yaml` — confirms no stray key under
+   `substrate.cilium`.
+3. If adopting `self_management`: confirm `tofu plan` succeeds (the guard
+   would otherwise hard-reject it) and review the emitted
+   `cilium_self_management_app` output before committing it to GitOps.
+
+---
+
 ## `v5.1.0` — consumer kernel args on UKI/systemd-boot nodes (MINOR — manual action for consumers carrying boot args in machine-config)
 
 **Applies to you** if you need to set custom kernel command-line arguments on

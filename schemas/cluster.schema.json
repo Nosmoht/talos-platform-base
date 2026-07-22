@@ -163,7 +163,82 @@
       "additionalProperties": false,
       "properties": {
         "cilium": {
-          "type": "object"
+          "description": "Cilium CNI delivery + first-class observability inputs (default off) + opt-in ArgoCD self-management delivery mode (default off, module-emitted Application output only). Closed (additionalProperties:false) so a typo'd key is caught at lint time instead of being silently dropped. See knowledge/decisions/0021-cilium-observability-and-argocd-self-management.md.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Deliver Cilium as a controlplane inlineManifest seed. false keeps the Talos-default CNI (Flannel) or a caller-supplied CNI.",
+              "type": "boolean"
+            },
+            "chart_version": {
+              "description": "cilium Helm chart version. SEED knob (install-time), not an upgrade knob.",
+              "type": "string"
+            },
+            "chart_repository": {
+              "description": "Helm repository for the cilium chart. No digest/cosign pin — point only at a trusted source.",
+              "type": "string"
+            },
+            "routing_mode": {
+              "description": "Cilium datapath routing mode: tunnel (VXLAN/Geneve overlay) or native (routed fabric, e.g. BGP). Install-time-fixed.",
+              "type": "string"
+            },
+            "kube_proxy_replacement": {
+              "description": "Run Cilium as the kube-proxy replacement (also sets Talos cluster.proxy.disabled). Install-time-fixed.",
+              "type": "boolean"
+            },
+            "gateway_api": {
+              "description": "Enable the Cilium Gateway API controller. Hard Constraint: Gateway API only, no Ingress.",
+              "type": "boolean"
+            },
+            "gateway_api_crds_url": {
+              "description": "OPT-IN bootstrap seeding of the Gateway API CRDs via cluster.extraManifests. Empty = CRDs are a Day-1 GitOps concern. No digest pin — a failed fetch crashloops Talos bootstrap.",
+              "type": "string"
+            },
+            "mtu": {
+              "description": "Cilium datapath MTU. 0 = chart auto-detect.",
+              "type": "integer"
+            },
+            "native_routing_cidr": {
+              "description": "ipv4NativeRoutingCIDR for routing_mode: native. Empty = derive from the first pod_cidr entry.",
+              "type": "string"
+            },
+            "encryption": {
+              "description": "Transparent pod-traffic encryption: { type: none|wireguard|ipsec }. ipsec requires cilium_ipsec_key via tfvar/env. Inner long tail stays loosely typed.",
+              "type": "object"
+            },
+            "values_override": {
+              "description": "Long-tail consumer Helm values merged on the floor + computed values (Hubble long tail beyond the first-class inputs below, L2/BGP announcements, bpf tuning). Feeds ONLY the bootstrap seed, never the self-management emitted Application (see self_management).",
+              "type": "string"
+            },
+            "agent_metrics": {
+              "description": "Enable Cilium agent Prometheus metrics (prometheus.enabled). Default off.",
+              "type": "boolean"
+            },
+            "operator_metrics": {
+              "description": "Enable Cilium operator Prometheus metrics (operator.prometheus.enabled). Default off.",
+              "type": "boolean"
+            },
+            "hubble_enabled": {
+              "description": "Enable Hubble for flow/metrics observability. Forces hubble.tls.enabled=false (observer-API server TLS off, metrics-only scope — the Hubble metrics endpoint is independent of observer TLS since Cilium 1.16). Default off.",
+              "type": "boolean"
+            },
+            "hubble_metrics": {
+              "description": "Hubble metrics to export (hubble.metrics.enabled), e.g. [\"dns\",\"drop\",\"tcp\"]. Default []. Scrape wiring (ServiceMonitors/PodMonitors) stays consumer-side.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "self_management": {
+              "description": "Opt-in: emit a Cilium ArgoCD Application (module output only, never applied by the module) as the Day-2 delivery path. HARD-REJECTED at plan time when values_override is non-empty (the emitted Application does not inherit it — see ADR-0021). Requires enabled=true and the ArgoCD substrate enabled. Default off.",
+              "type": "boolean"
+            },
+            "self_management_project": {
+              "description": "ArgoCD AppProject the emitted Application targets. Default \"default\" (the always-present permissive project) — scope to a dedicated project with the required destination + clusterResourceWhitelist for hardening (see README).",
+              "type": "string"
+            }
+          }
         },
         "argocd": {
           "type": "object"

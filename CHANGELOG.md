@@ -5,6 +5,50 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`talos-cluster`: first-class Cilium observability inputs (default off).**
+  `cilium_agent_metrics`, `cilium_operator_metrics` (Cilium agent/operator
+  Prometheus metrics), `cilium_hubble_enabled` + `cilium_hubble_metrics`
+  (Hubble flow/metrics, metrics-only scope — no Relay/UI). Layered into the
+  same computed-values map the bootstrap seed has always used, so they flow
+  through the existing floor ⊕ computed ⊕ override Helm-deep-merge with no
+  new data-flow. `cilium_hubble_enabled=true` forces
+  `hubble.tls.enabled=false`; grounded via T1 Cilium docs that the Hubble
+  metrics scrape endpoint is independent of the observer-API TLS setting, so
+  this does not disable metrics export. See
+  [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+- **`talos-cluster`: opt-in Cilium ArgoCD self-management delivery mode
+  (default off).** `cilium_self_management` emits a new
+  `cilium_self_management_app` output — a rendered Cilium ArgoCD
+  `Application` manifest — so a consumer's existing ArgoCD can adopt
+  steady-state Cilium management the same way it already can for ArgoCD
+  itself. The module only renders the manifest; it never applies it (no
+  `kubectl`, no live-apply resource — AGENTS.md §Hard Constraints). Requires
+  `deploy_argocd=true` AND `deploy_cilium=true`. **Hard-rejected at plan
+  time** while `cilium_values_override` is non-empty: the emitted manifest
+  does not inherit that override, so enabling self-management with a
+  seed-active datapath override (BGP/L2/bpf) would otherwise silently drop
+  it on adoption. `cilium_self_management_project` selects the target
+  `AppProject` (default `"default"`; a scoped project is recommended
+  hardening — see the module README). See
+  [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
+### Changed — BREAKING
+
+- **`talos-cluster`: OpenTofu floor raised to `>= 1.9`.** The new
+  cross-variable `validation` guards above require it. This applies to
+  **every** consumer of the module, not only those opting into
+  `cilium_self_management` — a consumer on OpenTofu `< 1.9` cannot
+  `plan`/`apply` this module version at all until upgrading their OpenTofu
+  binary. See [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+- **`schemas/cluster.schema.json`: `substrate.cilium` is now closed
+  (`additionalProperties: false`).** A consumer `cluster.yaml` with an
+  extra or misspelled key under `substrate.cilium` now fails
+  `check-jsonschema` at lint time instead of being silently dropped by the
+  `try()`-based shim. Fix by removing/correcting the offending key. See
+  [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
 ### Fixed
 
 - **`talos-cluster`: `module.<name>.kubeconfig` now regenerates when the

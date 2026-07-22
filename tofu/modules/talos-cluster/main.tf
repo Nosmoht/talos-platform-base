@@ -248,39 +248,11 @@ locals {
     cluster = { extraManifests = [var.cilium_gateway_api_crds_url] }
   })] : []
 
-  # First IPv4 / IPv6 entries of pod_cidr by family (":" marks IPv6), so the
-  # native-routing CIDRs are family-correct regardless of caller list order.
-  cilium_pod_v4 = [for c in var.pod_cidr : c if !strcontains(c, ":")]
-  cilium_pod_v6 = [for c in var.pod_cidr : c if strcontains(c, ":")]
-  cilium_native_v4 = var.cilium_native_routing_cidr != "" ? var.cilium_native_routing_cidr : (
-    length(local.cilium_pod_v4) > 0 ? local.cilium_pod_v4[0] : var.pod_cidr[0]
-  )
-
-  # Module-computed Cilium values from the typed inputs, layered between the
-  # shipped floor (helm/cilium-values.yaml) and the consumer override. kube-proxy
-  # replacement + the KubePrism host/port are emitted HERE (not the floor), gated
-  # on the toggle, so the Cilium side and Talos proxy.disabled stay in sync.
-  cilium_computed_values = yamlencode(merge(
-    {
-      routingMode          = var.cilium_routing_mode
-      kubeProxyReplacement = var.cilium_kube_proxy_replacement
-    },
-    var.cilium_kube_proxy_replacement ? { k8sServiceHost = "localhost", k8sServicePort = "7445" } : {},
-    var.cilium_routing_mode == "native" ? { ipv4NativeRoutingCIDR = local.cilium_native_v4 } : {},
-    (var.cilium_routing_mode == "native" && var.dual_stack && length(local.cilium_pod_v6) > 0) ? { ipv6NativeRoutingCIDR = local.cilium_pod_v6[0] } : {},
-    var.dual_stack ? { ipv6 = { enabled = true } } : {},
-    var.cilium_mtu > 0 ? { MTU = var.cilium_mtu } : {},
-    # enableAppProtocol: Cilium routes a backend over h2c (HTTP/2 cleartext) only
-    # when the Service port declares `appProtocol: kubernetes.io/h2c` AND this is on.
-    # Without it the Gateway's envoy de-frames grpc-web into native gRPC over HTTP/1.1,
-    # which gRPC backends (e.g. argocd-server's CLI/UI API) answer with 404 — gRPC
-    # unreachable through the Gateway (#132). It is a Gateway-API setting (GEP-1911),
-    # so it lives in this computed layer gated on cilium_gateway_api, NOT the floor
-    # (base#133 review H1). No-op until a Service opts in via appProtocol.
-    var.cilium_gateway_api ? { gatewayAPI = { enabled = true, enableAppProtocol = true } } : {},
-    var.cilium_encryption.type == "wireguard" ? { encryption = { enabled = true, type = "wireguard" } } : {},
-    var.cilium_encryption.type == "ipsec" ? { encryption = { enabled = true, type = "ipsec" } } : {},
-  ))
+  # Cilium value-computation locals (cilium_pod_v4/v6, cilium_native_v4,
+  # cilium_computed_values, cilium_computed_values_yaml, cilium_effective_values,
+  # cilium_self_management_app) moved to cilium-values.tf (issue #188) — see that
+  # file for the single observability data-flow both the frozen seed below and
+  # the opt-in emitted self-management Application derive from.
 
   # Cilium (+ optional IPsec key Secret, applied first via the Namespace→CRD→other
   # sort) as controlplane inlineManifests, baked after caller patches like ArgoCD.
@@ -406,7 +378,7 @@ data "helm_template" "cilium" {
 
   values = compact([
     file("${path.module}/helm/cilium-values.yaml"),
-    local.cilium_computed_values,
+    local.cilium_computed_values_yaml,
     var.cilium_values_override,
   ])
 

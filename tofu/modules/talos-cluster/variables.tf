@@ -646,6 +646,129 @@ variable "cilium_gateway_api_crds_url" {
 }
 
 # ---------------------------------------------------------------------------
+# Cilium observability inputs + opt-in ArgoCD self-management (issue #188).
+# Default-off, first-class alternative to hand-rolling cilium_values_override
+# for the common "I want Cilium/Hubble metrics" case. Feed the SAME computed-
+# values map (cilium-values.tf) that serves both the frozen bootstrap seed and
+# the opt-in emitted self-management Application — single observability
+# data-flow, no double-application. See
+# knowledge/decisions/0021-cilium-observability-and-argocd-self-management.md.
+# ---------------------------------------------------------------------------
+
+variable "cilium_agent_metrics" {
+  description = <<-EOT
+    Enable Cilium agent Prometheus metrics (prometheus.enabled). Default false.
+    Documented first-class alternative to hand-rolling cilium_values_override
+    for the "I want Cilium metrics" case (issue #188).
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "cilium_operator_metrics" {
+  description = <<-EOT
+    Enable Cilium operator Prometheus metrics (operator.prometheus.enabled).
+    Default false. See cilium_agent_metrics.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "cilium_hubble_enabled" {
+  description = <<-EOT
+    Enable Hubble (hubble.enabled) for flow/metrics observability. Default false
+    — the frozen bootstrap seed floor (helm/cilium-values.yaml) ships
+    hubble.enabled: false for a deterministic render (see that file's header).
+    When true, the observability layer ALSO forces hubble.tls.enabled = false:
+    metrics-only scope (no Relay/UI — issue Non-goal), so the observer gRPC
+    API's server TLS is unnecessary. The Hubble METRICS scrape endpoint
+    (hubble-metrics Service, :9965) is gated by hubble.enabled + a non-empty
+    hubble.metrics.enabled and is architecturally INDEPENDENT of
+    hubble.tls.enabled (its own hubble.metrics.tls.enabled knob since Cilium
+    1.16) — see ADR-0021 §(g). Enabling this on an already-running cluster
+    (via the emitted self-management Application, cilium_self_management)
+    changes the DaemonSet pod template (new ports + scrape annotations) -> a
+    rolling restart; graceful-restart-gate on BGP-speaking clusters (UPGRADING.md).
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "cilium_hubble_metrics" {
+  description = <<-EOT
+    Hubble metrics to export (hubble.metrics.enabled), e.g. ["dns","drop","tcp"].
+    Default [] — with cilium_hubble_enabled=true and this left empty, the Hubble
+    server is up but no metrics are exported (a documented half-on state — see
+    README). Scrape wiring (ServiceMonitors/PodMonitors) stays consumer-side
+    (issue Non-goal).
+  EOT
+  type        = list(string)
+  default     = []
+}
+
+variable "cilium_self_management" {
+  description = <<-EOT
+    Opt-in: emit a Cilium ArgoCD Application manifest (module OUTPUT only,
+    cilium_self_management_app — never applied by the module) for the
+    consumer's own GitOps to own and reconcile, as the Day-2 delivery path for
+    a Cilium config change (including the observability inputs above) on an
+    already-bootstrapped cluster — the frozen bootstrap inlineManifest seed is
+    create-only and does not reconcile.
+
+    The emitted Application's Helm valuesObject is the MODULE-SET layer (floor
+    + computed-incl-observability) ONLY — it does NOT inherit
+    cilium_values_override (see that variable). Default false. Requires
+    deploy_argocd = true AND deploy_cilium = true (first validation below).
+  EOT
+  type        = bool
+  default     = false
+
+  # Deploy-prereq guard: self-management presupposes both an ArgoCD to
+  # reconcile into and a module-delivered Cilium seed to hand off from.
+  validation {
+    condition     = !var.cilium_self_management || (var.deploy_argocd && var.deploy_cilium)
+    error_message = "cilium_self_management requires deploy_argocd = true AND deploy_cilium = true (self-management hands the Day-2 config off from the module-delivered Cilium seed to the consumer's ArgoCD)."
+  }
+
+  # Override-drop HARD-REJECT guard (ADR-0021): the emitted Application's
+  # valuesObject does NOT inherit cilium_values_override — a seed-active
+  # datapath override (BGP control-plane / L2 announcements / bpf tuning)
+  # would be SILENTLY DROPPED on ArgoCD adoption if this guard did not fire.
+  # Hard-reject (not a `check`-warn) because cilium_values_override is an
+  # opaque free-form YAML string the module cannot introspect to tell a
+  # datapath-critical override from a benign one — fail safe.
+  #
+  # KEEP THIS AS A SEPARATE validation block from the one above — merging the
+  # two conditions into one `condition` would collapse the deploy-prereq guard
+  # legs (A/B) and this override-drop guard leg (C) in
+  # tests/input-validation.tftest.hcl into a single untested predicate: an
+  # expect_failures check only proves SOME validation fired, so all three legs
+  # would stay vacuously green under a merged condition even if one half of
+  # the merged predicate were silently deleted. See tests/input-validation.tftest.hcl
+  # guard legs A/B/C.
+  validation {
+    condition     = !(var.cilium_self_management && var.cilium_values_override != "")
+    error_message = "cilium_self_management cannot be enabled while cilium_values_override is non-empty: the emitted Application's valuesObject does NOT inherit cilium_values_override, so a datapath-critical override (BGP control-plane / L2 announcements / bpf tuning) would be silently dropped when ArgoCD adopts Cilium. Migrate the override into your own Cilium Application first, then empty cilium_values_override on the SoT."
+  }
+}
+
+variable "cilium_self_management_project" {
+  description = <<-EOT
+    ArgoCD AppProject the emitted Cilium Application targets. Default "default"
+    (the always-present permissive project — the base defines exactly one
+    AppProject, root-bootstrap, kubernetes/bootstrap/argocd/root-project.yaml.tmpl;
+    no "cilium" project exists). STRONGLY RECOMMENDED to scope this to a
+    consumer-created project that grants destination namespace kube-system +
+    https://kubernetes.default.svc and the cluster-scoped resources Cilium
+    needs (its CRDs, ClusterRoles, ClusterRoleBindings) in
+    clusterResourceWhitelist — an under-scoped project makes the adopted
+    Application inert/degraded. See README + ADR-0021.
+  EOT
+  type        = string
+  default     = "default"
+}
+
+# ---------------------------------------------------------------------------
 # cert-approver (postfinance/kubelet-csr-approver) — per-cluster config surface.
 # The seed itself is UNCONDITIONAL (always delivered); these knobs tune the
 # SAN-to-node binding. Defaults keep every cluster booting + approving

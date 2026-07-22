@@ -212,6 +212,12 @@ provider "talos" {}
 | `cilium_ipsec_key` | string (sensitive) | `""` | IPsec PSK seeded as the `cilium-ipsec-keys` Secret; required for `type=ipsec` (wireguard is keyless). Lands in (encrypted) state. |
 | `cilium_gateway_api` | bool | `true` | enable the Cilium **gateway controller** (operator creates the GatewayClass once CRDs exist). The CRDs are NOT seeded by default — apply them via GitOps (Day-1), or opt into bootstrap seeding below. Controller errors harmlessly until CRDs land; CNI unaffected. |
 | `cilium_gateway_api_crds_url` | string | `""` (no boot seed) | **OPT-IN** bootstrap seeding of the Gateway API CRDs via `cluster.extraManifests`. Empty = CRDs are a Day-1 GitOps concern (air-gap-safe). Set to the GW-API **v1.4.1 standard** bundle URL (or an internal mirror) for a connected cluster. ⚠️ a failed fetch crashloops Talos' ExtraManifestController and blocks clean bootstrap. |
+| `cilium_agent_metrics` | bool | `false` | enable Cilium **agent** Prometheus metrics (`prometheus.enabled`). Default off. |
+| `cilium_operator_metrics` | bool | `false` | enable Cilium **operator** Prometheus metrics (`operator.prometheus.enabled`). Default off. Note: the upstream chart's OWN default for this value is already `true`, so the rendered `cilium-config` ConfigMap's `operator-prometheus-serve-addr` key is present regardless of this toggle — it does not discriminate at the render layer (a pre-existing chart-default fact, not introduced by this input). |
+| `cilium_hubble_enabled` | bool | `false` | enable Hubble flow/metrics observability. **Forces `hubble.tls.enabled=false`** (metrics-only scope — no Relay/UI; the Hubble metrics endpoint is independent of observer-API TLS since Cilium 1.16). Default off. |
+| `cilium_hubble_metrics` | list(string) | `[]` | Hubble metrics to export (`hubble.metrics.enabled`), e.g. `["dns", "drop", "tcp"]`. Scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side. An empty list with `cilium_hubble_enabled=true` is a valid **half-on** state (server on, no metrics exported). |
+| `cilium_self_management` | bool | `false` | **opt-in**: emit a Cilium ArgoCD `Application` (module OUTPUT only — see `cilium_self_management_app` — never applied by the module) as the Day-2 delivery path. Requires `deploy_argocd=true` AND `deploy_cilium=true`. **HARD-REJECTED at plan time** while `cilium_values_override` is non-empty — see the Cilium Self-Management section below. |
+| `cilium_self_management_project` | string | `"default"` | ArgoCD `AppProject` the emitted Application targets. Default `"default"` (the always-present permissive project) — scope to a dedicated project for hardening (see below). |
 | `deploy_argocd` | bool | `true` | deliver ArgoCD as a controlplane `inlineManifest`. Requires `sops_age_key` when true. |
 | `sops_age_key` | string (sensitive) | `""` | age private key (`keys.txt`) for the ArgoCD **ksops** repoServer, seeded as the `sops-age-key` Secret. **Required** when `deploy_argocd = true`. Lands in (encrypted) state. |
 | `argocd_namespace` | string | `"argocd"` | namespace for the bootstrap ArgoCD install |
@@ -255,6 +261,7 @@ overlay's job.
 | `distinct_schematic_count` | no | number of distinct schematics after content-hash dedup |
 | `talos_install_version` | no | effective installer version |
 | `cluster_health` | no | `"healthy (…)"` — references `data.talos_cluster_health`, so any consumer reading it blocks until the cluster is online |
+| `cilium_self_management_app` | no | the emitted Cilium ArgoCD `Application` manifest (raw YAML string) when `cilium_self_management=true`; `""` otherwise. Module OUTPUT only — never applied by the module (see the Cilium Self-Management section below). Secret-free (no `cilium_values_override` term). |
 
 Audit-shaped outputs. These exist as binding points for the composition
 regression suite (`tests/composition.tftest.hcl`, via `task tofu:test` —
@@ -273,6 +280,7 @@ read. Full semantics live in each output's `description` in
 | `cert_approver_seed_missing_labels` | no | recommended-label gaps across the vendored seed manifest — must be empty |
 | `cert_approver_rbac_rules` | no | raw decoded ClusterRole rule objects (inspection companion); INVARIANT at 3 signer-scoped rules. The binding closure is `cert_approver_clusterrole_signature` + `cert_approver_clusterrolebinding_targets` |
 | `cert_approver_clusterrole_signature` | no | normalized per-rule signature (apiGroups+resources+VERBS+resourceNames) of the ClusterRole — the composition suite asserts the exact set, so a re-vendor adding a verb (`sign`), widening apiGroups, or dropping the signer scope turns red |
+| `cilium_seed_observability_markers` | no | booleans decoded from the FROZEN bootstrap seed render (not a second Helm render), keyed `agent_metrics`/`operator_metrics`/`hubble`/`hubble_metrics`. `agent_metrics`, `hubble`, and `hubble_metrics` genuinely discriminate their respective toggles; `operator_metrics` is **audit-only** (see the `cilium_operator_metrics` input row — the upstream chart's own default makes this key always present at the render layer). `{}` when `deploy_cilium=false`. |
 | `cert_approver_clusterrolebinding_targets` | no | every ClusterRoleBinding as {role, subjects} — the suite asserts exactly one (approver SA → the scoped ClusterRole), so a second binding (e.g. → cluster-admin) or a repointed roleRef turns red |
 | `cert_approver_leaderelection_role_rules` | no | decoded namespaced leader-election Role rules (`coordination.k8s.io/leases` + events) — empty at `replicas:1` (least privilege), populated only at `replicas > 1` |
 | `cert_approver_pod_security_context` | no | decoded pod/container securityContext — restricted-PSA regression guard (runAsNonRoot, drop ALL, readOnlyRootFilesystem, seccomp RuntimeDefault) |
@@ -370,6 +378,85 @@ former consumer-side `cluster.extraManifests`-URL recipe is obsolete. See
 [`knowledge/decisions/0007-cluster-yaml-sot.md`](../../../knowledge/decisions/0007-cluster-yaml-sot.md). Install-time
 Cilium config rides the typed `cilium_*` inputs + `cilium_values_override`;
 runtime-mutable config (Hubble, L2/BGP) is Day-2 Cilium self-management.
+
+## Cilium observability + self-management
+
+**Observability (default off).** `cilium_agent_metrics`, `cilium_operator_metrics`,
+`cilium_hubble_enabled` + `cilium_hubble_metrics` are first-class typed inputs
+layered into the SAME computed-values map the bootstrap seed and the emitted
+self-management `Application` (below) both derive from — a single observability
+data-flow, no divergent layers. `cilium_hubble_enabled=true` forces
+`hubble.tls.enabled=false` (metrics-only scope; no Relay/UI): the Hubble metrics
+scrape endpoint (`hubble-metrics` Service, `:9965`) is independent of the
+observer-API TLS setting at the pinned chart version. An empty `cilium_hubble_metrics`
+with `cilium_hubble_enabled=true` is a valid **half-on** state — the Hubble
+server runs but exports no metrics. `cilium_operator_metrics` does not
+discriminate the rendered `cilium-config` ConfigMap (see the input row above);
+`cilium_agent_metrics` and `cilium_hubble_enabled` do.
+
+**Self-management (opt-in, `cilium_self_management`).** When enabled, the module
+emits a rendered Cilium ArgoCD `Application` manifest as the
+`cilium_self_management_app` OUTPUT — the module never applies it (no
+`kubectl`, no live-apply resource: AGENTS.md §Hard Constraints forbids the
+module directly applying ArgoCD-managed resources). Consumer pattern: a one-line
+`local_file` resource in the consumer's own root writing the output to disk,
+committed to the consumer's GitOps repo, so the consumer's existing ArgoCD
+adopts steady-state Cilium management. The consumer owns **exactly one** Cilium
+`Application` — mutual-exclusivity with the bootstrap seed's inlineManifest
+resources (the seed becomes the pre-adoption floor, not a second manager). The
+emitted manifest carries **no `syncPolicy`** — the consumer controls sync
+timing, since enabling Hubble triggers a graceful-restart-gated DaemonSet roll.
+Requires **OpenTofu ≥ 1.9** (cross-variable `validation` blocks).
+
+**Coupling + guard.** `cilium_self_management` requires `deploy_argocd=true` AND
+`deploy_cilium=true` (self-management hands the Day-2 config off from the
+module-delivered seed to the consumer's ArgoCD — there is nothing to hand off
+otherwise). Separately, the emitted `valuesObject` does **NOT** inherit
+`cilium_values_override` — the module **HARD-REJECTS** `cilium_self_management=true`
+while `cilium_values_override` is non-empty at plan time: a seed-active
+datapath-critical override (BGP control-plane, L2 announcements, bpf tuning)
+would otherwise be silently **DROPPED** the moment ArgoCD adopts Cilium.
+Migrate the override into your own Cilium `Application` first, then empty
+`cilium_values_override` in the SoT to enable self-management.
+
+**Bootstrap-window datapath gap (accepted trade-off, no code fix).** The guard
+above and the module's create-only seed (`terraform_data.cilium_render`,
+`ignore_changes=[input]`) interact in two ways that are in tension and must both
+be understood: (a) while `cilium_values_override` stays set in the SoT, the
+guard blocks `cilium_self_management` outright — you cannot self-manage with a
+seed-active override still declared; (b) once you empty
+`cilium_values_override` to enable self-management, a **future** fresh bootstrap
+or a `-replace` re-seed of the frozen render brings a node up with
+**plain-floor Cilium only** (no BGP/L2/bpf) until ArgoCD's first sync adopts and
+re-applies the override via the self-managed `Application` — a bootstrap-window
+datapath gap on BGP/L2 clusters. This is the mirror image of the existing
+re-bootstrapped-node caveat (a stale seed that still carries a since-migrated
+override): one state has a gap on the seed side, the other has a gap on the
+migration side. There is no code fix for either; plan around the window on
+BGP-dependent clusters (e.g. hold reboots until ArgoCD sync is confirmed).
+
+**`spec.project` posture.** Defaults to `"default"` (the always-present
+permissive AppProject) so the feature works out of the box. **Strongly
+recommended hardening**: set `cilium_self_management_project` to a
+consumer-created, scoped `AppProject` that grants destination namespace
+`kube-system` at `https://kubernetes.default.svc`, plus Cilium's cluster-scoped
+resources (its CRDs, ClusterRoles, ClusterRoleBindings) in
+`clusterResourceWhitelist` — without that whitelist, the adopted `Application`
+is inert/degraded under a scoped project.
+
+**Supply-chain note.** The emitted `targetRevision` is
+`var.cilium_chart_version` — a mutable tag, no digest/cosign pin. Unlike the
+frozen, render-once bootstrap seed, the self-managed `Application` **re-pulls**
+the chart on every ArgoCD reconcile, a broader repeated-fetch attack surface.
+Point `cilium_chart_repository` only at a trusted source.
+
+**Chart-version-skew + ArgoCD-adoption caveat.** `cilium_chart_version` is a
+seed-only knob for the bootstrap render; once self-management is adopted,
+bumping it re-renders the emitted `Application`'s `targetRevision` and ArgoCD
+performs the upgrade — the module itself never upgrades a running Cilium. The
+**first sync that adopts** the seed-created Cilium resources into the emitted
+`Application` may trigger managed-fields reconciliation and an agent restart —
+an inherent seed→GitOps takeover behavior, not a bug, and not avoidable in code.
 
 ## Notes
 

@@ -146,6 +146,12 @@ substrate:
     native_routing_cidr: "" # ipv4NativeRoutingCIDR for routing_mode: native ("" = derive from pod_cidr)
     encryption: { type: none } # none | wireguard | ipsec (ipsec needs cilium_ipsec_key via tfvar/env)
     values_override: "" # long tail: Hubble, L2/BGP, bpf, VLAN bypass (Helm values, merged on the floor)
+    agent_metrics: false # Cilium agent Prometheus metrics (prometheus.enabled)
+    operator_metrics: false # Cilium operator Prometheus metrics (operator.prometheus.enabled)
+    hubble_enabled: false # Hubble flow/metrics observability (forces hubble.tls.enabled=false — metrics-only scope)
+    hubble_metrics: [] # e.g. ["dns", "drop", "tcp"] — scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side
+    self_management: false # opt-in: emit a Cilium ArgoCD Application output (module-emitted only, never applied). HARD-REJECTED with values_override non-empty
+    self_management_project: default # ArgoCD AppProject the emitted Application targets — scope to a dedicated project for hardening
   argocd:
     enabled: true # false opts out of ArgoCD delivery (true REQUIRES sops_age_key via tfvar/env)
     chart_version: "9.4.5" # SEED knob (install-time), not an upgrade knob

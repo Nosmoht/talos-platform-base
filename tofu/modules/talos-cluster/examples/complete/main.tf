@@ -75,18 +75,24 @@ module "complete" {
   worker_config_patches       = local.worker_config_patches
 
   # --- Substrate: Cilium ---
-  deploy_cilium                 = try(local.cilium.enabled, true)
-  cilium_chart_version          = try(local.cilium.chart_version, "1.19.4")
-  cilium_chart_repository       = try(local.cilium.chart_repository, "https://helm.cilium.io")
-  cilium_routing_mode           = try(local.cilium.routing_mode, "tunnel")
-  cilium_native_routing_cidr    = try(local.cilium.native_routing_cidr, "")
-  cilium_kube_proxy_replacement = try(local.cilium.kube_proxy_replacement, true)
-  cilium_mtu                    = try(local.cilium.mtu, 0)
-  cilium_gateway_api            = try(local.cilium.gateway_api, true)
-  cilium_gateway_api_crds_url   = try(local.cilium.gateway_api_crds_url, "")
-  cilium_encryption             = try(local.cilium.encryption, { type = "none" })
-  cilium_values_override        = try(local.cilium.values_override, "")
-  cilium_ipsec_key              = var.cilium_ipsec_key # secret — tfvar/env, never cluster.yaml
+  deploy_cilium                  = try(local.cilium.enabled, true)
+  cilium_chart_version           = try(local.cilium.chart_version, "1.19.4")
+  cilium_chart_repository        = try(local.cilium.chart_repository, "https://helm.cilium.io")
+  cilium_routing_mode            = try(local.cilium.routing_mode, "tunnel")
+  cilium_native_routing_cidr     = try(local.cilium.native_routing_cidr, "")
+  cilium_kube_proxy_replacement  = try(local.cilium.kube_proxy_replacement, true)
+  cilium_mtu                     = try(local.cilium.mtu, 0)
+  cilium_gateway_api             = try(local.cilium.gateway_api, true)
+  cilium_gateway_api_crds_url    = try(local.cilium.gateway_api_crds_url, "")
+  cilium_encryption              = try(local.cilium.encryption, { type = "none" })
+  cilium_values_override         = try(local.cilium.values_override, "")
+  cilium_ipsec_key               = var.cilium_ipsec_key # secret — tfvar/env, never cluster.yaml
+  cilium_agent_metrics           = try(local.cilium.agent_metrics, false)
+  cilium_operator_metrics        = try(local.cilium.operator_metrics, false)
+  cilium_hubble_enabled          = try(local.cilium.hubble_enabled, false)
+  cilium_hubble_metrics          = try(local.cilium.hubble_metrics, [])
+  cilium_self_management         = try(local.cilium.self_management, false)
+  cilium_self_management_project = try(local.cilium.self_management_project, "default")
 
   # --- Substrate: ArgoCD ---
   deploy_argocd          = try(local.argocd.enabled, true)
