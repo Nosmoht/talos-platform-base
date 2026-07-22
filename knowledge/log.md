@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-07-22
+
+- `decisions/0021-spec-vs-bundle-normativity.md` ADDED (accepted). Records
+  `openspec/specs/cluster-yaml-sot/spec.md` and
+  `openspec/specs/module-interface-contract/spec.md` as the sole normative
+  artifacts for `cluster.yaml` schema shape and the `talos-cluster` module's
+  variable/output contracts (issue #177), with the module README's
+  hand-maintained duplication kept and gated only at name level
+  (`task tofu:check:readme-parity`, advisory). Named residuals: the
+  `emits_label` prefix constraint stays normative in two specs at once,
+  two further bundle concepts still restate spec-owned content, and per-variable
+  defaults remain exhaustive only in the README. Five spillover follow-ups
+  filed (issues #190–#194).
+- `decisions/0015-openspec-adoption.md`: dated partial-supersession banner
+  below the H1, a pointer sentence inside §Ownership model, a pointer
+  sentence inside §"SoT map vs `knowledge/reference/`", and a frontmatter
+  comment above `superseded_by: []` — all insert-only; the accepted text and
+  the 2026-07-15 Correction block are untouched.
+- `decisions/index.md`: added the ADR-0021 row to §Accepted; annotated the
+  ADR-0015 row with the partial-supersession qualifier.
+- `reference/cluster-yaml.md`: the module-interface pointer now names
+  `openspec/specs/module-interface-contract/` as normative (the README is
+  the release-shipped copy); §"What must never be in it" points at
+  `openspec/specs/cluster-yaml-sot/`'s secret-exclusion Requirement instead
+  of restating it; §"How CI binds the lint gate" drops the enumerated
+  six-rule list and the exit-code contract in favor of a spec pointer;
+  `sources:` justification comment trimmed to the two claims that still
+  derive from the file; `timestamp` bumped.
+
 ## 2026-07-21
 
 - `decisions/0020-automated-release-no-approval-gate.md` ADDED (accepted).
