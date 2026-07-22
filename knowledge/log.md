@@ -66,6 +66,12 @@
   stays `2026-07-15` by maintainer decision: this concept's `sources:` cover
   all ten namespace tables and only the `tofu:*` one was re-verified, so
   bumping would claim a concept-wide freshness that was not established.
+- `reference/tasks.md` (record correction — the concept file itself is
+  unchanged): the residual recorded in the `reference/tasks.md` bullet above is
+  closed. `Taskfile.yml`'s `tofu:ci` `desc:` now enumerates all seven member
+  tasks in the same wording as the concept's `tofu:ci` row, so `task --list` —
+  which this concept points readers at — and the inventory table agree.
+  `timestamp` stays `2026-07-15` for the reason recorded above.
 
 ## 2026-07-21
 
