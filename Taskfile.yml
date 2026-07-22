@@ -202,7 +202,7 @@ tasks:
         -filter=tests/kubeconfig-endpoint-marker.tftest.hcl
 
   tofu:ci:
-    desc: Full local tofu validation (fmt-check + validate + lint + render-determinism fence + offline tests) — mirrors CI
+    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:readme-parity + check:kubeconfig-endpoint-regen + test:offline — mirrors CI, stays offline"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
