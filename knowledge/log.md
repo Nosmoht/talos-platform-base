@@ -28,6 +28,23 @@
   six-rule list and the exit-code contract in favor of a spec pointer;
   `sources:` justification comment trimmed to the two claims that still
   derive from the file; `timestamp` bumped.
+- `decisions/0022-cilium-observability-and-argocd-self-management.md` ADDED
+  (accepted). Records first-class default-off Cilium observability inputs
+  (`cilium_agent_metrics`, `cilium_operator_metrics`, `cilium_hubble_enabled`,
+  `cilium_hubble_metrics`) and an opt-in emitted-Application ArgoCD
+  self-management delivery mode (`cilium_self_management`,
+  `cilium_self_management_project`) — module renders, never applies, per
+  AGENTS.md §Hard Constraints. Documents the bounded floor⊕computed merge
+  (`operator` sub-merge) + two-engine-drift invariant, the override-drop
+  hazard + hard-reject `validation` guard, the bootstrap-window datapath gap
+  tension, the Hubble TLS-off/metrics-independence grounding (T1 Cilium
+  docs), the `spec.project` posture + supply-chain note, the ArgoCD-adoption
+  runtime caveat, and the five schema-contract-parity decisions for the now
+  CLOSED `substrate.cilium` schema. Two consumer-visible compatibility
+  breaks: the module's OpenTofu floor bumped to `>= 1.9` (cross-variable
+  `validation` blocks) and `substrate.cilium` closed
+  (`additionalProperties: false`).
+- `decisions/index.md`: 0022 added under Accepted.
 
 ## 2026-07-21
 

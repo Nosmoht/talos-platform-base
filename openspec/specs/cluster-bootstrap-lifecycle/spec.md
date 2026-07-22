@@ -20,7 +20,13 @@ kubeconfig/talosconfig retrieval, and the blocking health gate.
 regions (including the post-health ArgoCD CRD server-side apply) plus the
 Image-Factory and machine-config regions; the latter two are owned
 descriptively by the `node-image-composition` and
-`machine-config-generation` specs. The cert-approver region seeds
+`machine-config-generation` specs. The Cilium value-computation locals
+(the module-computed values feeding both the frozen seed and the opt-in
+emitted self-management Application, and the emitted-Application local
+itself) live in the sibling `cilium-values.tf`, owned by
+`cilium-cni-delivery` — moved out of `main.tf` (issue #188) so both
+consumers of the computed values read the same map. The cert-approver
+region seeds
 `postfinance/kubelet-csr-approver` (ADR-0019 supersedes ADR-0013 §D2) by
 rendering the vendored chart manifest through `templatefile()` into
 `local.cert_approver_manifest` — a pure render, not a raw `file()` read —

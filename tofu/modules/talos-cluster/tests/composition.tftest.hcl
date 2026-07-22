@@ -395,3 +395,102 @@ run "cert_approver_ha_and_config_override" {
     error_message = "adr-0019 §Security: the approve verb must stay resourceNames-scoped to [kubernetes.io/kubelet-serving] in HA mode; got ${jsonencode(output.cert_approver_approve_resource_names)}"
   }
 }
+
+# AC #1 network seed-marker binding (issue #188, ADR-0021) — proves the
+# observability fold reaches the ACTUAL rendered bootstrap seed manifest, not
+# just the offline cilium_effective_values map (tests/input-validation.tftest.hcl
+# already binds that half). Also binds addendum-2's render-level check: with
+# cilium_hubble_enabled=true + a non-empty hubble_metrics + the module's forced
+# hubble.tls.enabled=false, the rendered manifest still carries the
+# hubble-metrics Service / :9965 scrape endpoint — mechanically confirming the
+# C1 grounding (ADR-0021 §g) at the PINNED chart version actually shipped, not
+# just via the T1 docs citation.
+#
+# Reads data.helm_template.cilium[0].manifest DIRECTLY rather than through
+# terraform_data.cilium_render[0].output (which cilium_seed_observability_markers,
+# outputs.tf, reads for REAL post-apply consumers). Empirically confirmed
+# (issue #188 implementation): terraform_data's `output` attribute is ALWAYS
+# "(known after apply)" at plan time for a resource being newly created —
+# by design, since its whole purpose is to freeze a value AT create time — so
+# it cannot be asserted against under this file's command = plan convention
+# (no apply: this suite never touches a live cluster, and 192.0.2.11 is an
+# RFC5737 documentation IP with no reachable Talos API to apply against). The
+# underlying data source has no such limitation (data sources resolve at plan
+# time when their own inputs are fully known, which they are here — verified
+# empirically). For this first-ever plan there is no prior frozen state to
+# diverge from, so reading the data source directly proves exactly the same
+# render the freeze would capture.
+#
+# Red-green (AC#1 network seed-marker): drop the observability fold from
+# local.cilium_computed_values (cilium-values.tf) -> the agent_metrics/hubble/
+# hubble_metrics asserts below all fail (the ConfigMap keys they check for
+# become absent). (operator_metrics is NOT asserted here as a discriminating
+# marker — the upstream chart's own default already renders
+# operator-prometheus-serve-addr regardless of the toggle (verified against
+# the pinned chart, ADR-0021 §l caveat); the offline
+# cilium_effective_values.operator.prometheus.enabled assertion in
+# tests/input-validation.tftest.hcl is what genuinely binds the
+# operator-metrics leg of AC #1.)
+#
+# Red-green (Hubble-metrics render, addendum 2): drop the hubble-metrics
+# Service from the render by disabling metrics (reverting this run's
+# cilium_hubble_metrics to [] makes the hubble-metrics Service assert below
+# fail, since an empty metrics list is the documented half-on state with no
+# exported scrape endpoint).
+run "cilium_seed_render_carries_observability_markers" {
+  command = plan
+  variables {
+    deploy_cilium           = true
+    cilium_agent_metrics    = true
+    cilium_operator_metrics = true
+    cilium_hubble_enabled   = true
+    cilium_hubble_metrics   = ["dns"]
+    nodes = [
+      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    ]
+  }
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "ConfigMap" &&
+        try(yamldecode(doc).metadata.name, "") == "cilium-config" &&
+        contains(keys(try(yamldecode(doc).data, {})), "prometheus-serve-addr")
+      )
+    ])
+    error_message = "AC#1 network seed-marker: the rendered cilium-config ConfigMap must carry prometheus-serve-addr when cilium_agent_metrics=true"
+  }
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "ConfigMap" &&
+        try(yamldecode(doc).metadata.name, "") == "cilium-config" &&
+        try(yamldecode(doc).data["enable-hubble"], "false") == "true"
+      )
+    ])
+    error_message = "AC#1 network seed-marker: the rendered cilium-config ConfigMap must carry enable-hubble=true when cilium_hubble_enabled=true"
+  }
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "ConfigMap" &&
+        try(yamldecode(doc).metadata.name, "") == "cilium-config" &&
+        contains(keys(try(yamldecode(doc).data, {})), "hubble-metrics-server")
+      )
+    ])
+    error_message = "AC#1 network seed-marker: the rendered cilium-config ConfigMap must carry hubble-metrics-server when cilium_hubble_metrics is non-empty"
+  }
+  # Addendum 2 — render-level confirmation that hubble.tls.enabled=false (the
+  # module's forced setting) does NOT disable the hubble-metrics scrape
+  # endpoint at the pinned chart version. Filters the rendered multi-doc YAML
+  # for the hubble-metrics headless Service and its :9965 port.
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "Service" &&
+        try(yamldecode(doc).metadata.name, "") == "hubble-metrics" &&
+        contains([for p in try(yamldecode(doc).spec.ports, []) : try(p.port, 0)], 9965)
+      )
+    ])
+    error_message = "ADR-0021 §g (C1 grounding): the render must carry the hubble-metrics Service on port 9965 even though hubble.tls.enabled=false — the Hubble metrics scrape endpoint must NOT be disabled by turning observer-API TLS off"
+  }
+}

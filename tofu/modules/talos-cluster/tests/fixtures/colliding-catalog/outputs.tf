@@ -20,3 +20,15 @@ output "node_kernel_args" {
 output "kubeconfig_endpoint_marker_input" {
   value = terraform_data.kubeconfig_endpoint_marker.input
 }
+
+# Fixture-only outputs (NOT symlinked from the real module's outputs.tf) exposing
+# the two locals tests/input-validation.tftest.hcl asserts on for the Cilium
+# observability + self-management surface (issue #188) — cilium-values.tf is pure
+# var.*-derived locals (no data/terraform_data), so it is provider-less-fixture-safe.
+output "cilium_effective_values" {
+  value = local.cilium_effective_values
+}
+
+output "cilium_self_management_app" {
+  value = local.cilium_self_management_app
+}

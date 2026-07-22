@@ -321,3 +321,63 @@ output "controlplane_base_is_prefix_of_final" {
     local.controlplane_machine_config_patches, 0, length(local.controlplane_base_patches)
   ) == local.controlplane_base_patches
 }
+
+output "cilium_self_management_app" {
+  description = <<-EOT
+    The opt-in emitted Cilium ArgoCD Application manifest (YAML string) — the
+    sole self-management deliverable a consumer commits into their own
+    app-of-apps repo. "" when cilium_self_management = false (default). NEVER
+    applied by the module (AGENTS.md §Hard Constraints — no kubectl apply of
+    ArgoCD-managed resources); the consumer's own GitOps is the single writer.
+    See knowledge/decisions/0021-cilium-observability-and-argocd-self-management.md.
+  EOT
+  value       = local.cilium_self_management_app
+
+  precondition {
+    # Empty-render guard: the floor is always merged into cilium_effective_values,
+    # so valuesObject cannot legitimately be empty when the toggle is on. Belt-
+    # and-suspenders against a future refactor dropping the floor merge (a
+    # regression the offline test's floor-preservation asserts already fail on).
+    condition     = !var.cilium_self_management || local.cilium_self_management_app != ""
+    error_message = "cilium_self_management is true but the emitted Application rendered empty — refusing to emit a hollow Cilium Application. Check cilium-values.tf's cilium_self_management_app local."
+  }
+}
+
+output "cilium_seed_observability_markers" {
+  description = <<-EOT
+    Booleans decoded from the FROZEN bootstrap seed render
+    (terraform_data.cilium_render[0].output — NOT a second data.helm_template.cilium
+    read), filtered by kind=="ConfigMap" && metadata.name=="cilium-config". Marker
+    keys verified against the pinned chart (1.19.4) cilium-configmap.yaml template:
+    `agent_metrics` <- presence of "prometheus-serve-addr" (gated by
+    `{{- if .Values.prometheus.enabled }}`); `hubble` <- the "enable-hubble" value
+    (unconditionally rendered, reflects hubble.enabled directly); `hubble_metrics`
+    <- presence of "hubble-metrics-server" (gated by
+    `{{- if or .Values.hubble.metrics.enabled .Values.hubble.metrics.dynamic.enabled }}`,
+    itself nested under the outer `{{- if .Values.hubble.enabled }}` block).
+    `operator_metrics` <- presence of "operator-prometheus-serve-addr" — CAVEAT
+    (verified by rendering the pinned chart): the upstream chart's OWN default for
+    `operator.prometheus.enabled` is `true` (values.yaml), and neither the floor
+    nor this module's computed layer ever sets it false, so this key is present in
+    the rendered ConfigMap REGARDLESS of var.cilium_operator_metrics — it does NOT
+    discriminate the toggle at the render layer (a pre-existing chart-default fact,
+    not introduced by this change). The offline `cilium_effective_values.operator.
+    prometheus.enabled` assertion (tests/input-validation.tftest.hcl) is what
+    genuinely red-green-binds the operator-metrics leg of AC #1; this field is
+    audit-only for that leg. {} when deploy_cilium = false or the name-filtered
+    ConfigMap list is empty (try()-wrapped, mirroring the cert_approver_env
+    precedent). Secret-free (booleans + one raw string value only).
+  EOT
+  value = try(
+    [
+      for doc in split("---", try(terraform_data.cilium_render[0].output, "")) : {
+        agent_metrics    = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
+        operator_metrics = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")
+        hubble           = try(yamldecode(doc).data["enable-hubble"], "false") == "true"
+        hubble_metrics   = contains(keys(yamldecode(doc).data), "hubble-metrics-server")
+      }
+      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
+    ][0],
+    {}
+  )
+}
