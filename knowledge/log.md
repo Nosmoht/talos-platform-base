@@ -2,6 +2,15 @@
 
 ## 2026-07-22
 
+- `decisions/0003-three-layer-capability-architecture.md`: removed eight
+  gitignored session-scratch path citations (status blockquote, §Context,
+  §Enforcement scope, §NFD placement, §Single-source convention,
+  §References) per issue #193; each citation's substance (the Layer-C
+  necessity verdict, the three load-bearing facts, the scope limits, the
+  NFD producer-tooling verdict, the label-drift hazard, and the
+  Round-1/Round-2 audit findings) is now stated as historical record in
+  body prose with no dangling path.
+
 - `decisions/0021-spec-vs-bundle-normativity.md` ADDED (accepted). Records
   `openspec/specs/cluster-yaml-sot/spec.md` and
   `openspec/specs/module-interface-contract/spec.md` as the sole normative
