@@ -109,5 +109,6 @@ This decision is wrong if the ownership table above stops matching the tree — 
 ## Links
 
 - [issue #177](https://github.com/Nosmoht/talos-platform-base/issues/177) — the decision this record resolves.
+- [PR #195](https://github.com/Nosmoht/talos-platform-base/pull/195) — the change that lands this record.
 - Spillover follow-ups: [issue #190](https://github.com/Nosmoht/talos-platform-base/issues/190), [issue #191](https://github.com/Nosmoht/talos-platform-base/issues/191), [issue #192](https://github.com/Nosmoht/talos-platform-base/issues/192), [issue #193](https://github.com/Nosmoht/talos-platform-base/issues/193), [issue #194](https://github.com/Nosmoht/talos-platform-base/issues/194) — see ### Consequences → Follow-up above for what each closes.
 - [0015-openspec-adoption](./0015-openspec-adoption.md) — the record this ADR partially supersedes.
