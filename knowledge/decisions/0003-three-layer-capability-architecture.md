@@ -24,7 +24,7 @@ tags: [adr, capability]
 # ADR: Three-Layer Capability Architecture — Tool-Capability-Index (Layer A) + PNI Network-Trust Registry (Layer B) + Hardware Features Registry (Layer C)
 
 > **Status:** accepted on first proposal. The two-round adversarial audit
-> archived at `.work/issues/layer-audit/` produced an unambiguous Layer-C
+> (working notes not retained in-repo) produced an unambiguous Layer-C
 > necessity verdict; per-entry classification for the Layer-A cleanup was
 > settled in the same audit. The implementation tooling (Layer-C lint
 > script, refs-check extension, Kyverno reserved-label extension) lands
@@ -55,9 +55,9 @@ predecessor returns no matches. The "two layers" count was a framing
 artifact of the candidate set, not a derived consequence of the problem
 space.
 
-The two-round layer-audit (`.work/issues/layer-audit/findings.md` Round 1
-plus `.work/issues/layer-audit/cleanup-scope.md` Round 2) established
-three load-bearing facts that motivate this supersession:
+The two-round layer-audit (Round 1 plus Round 2, conducted 2026-05-23;
+working notes not retained in-repo) established three load-bearing facts
+that motivate this supersession:
 
 1. **A de-facto hardware layer already exists across ≥7 artifacts** —
    `kubernetes/base/infrastructure/cluster.yaml.example` lines 46–67
@@ -242,7 +242,6 @@ co-located sibling policy) — same rule shape, extended key list.
 
 These scope limits were surfaced by the Round-1 adversarial review
 (`team-red`); the rule scope and ADR claim were tightened together.
-Findings ledger: `.work/reviews/r1/team-red.md`.
 
 ### Composite capability convention
 
@@ -287,7 +286,7 @@ local-namespace ids). Cross-cluster comparability is achieved at the
 
 ### NFD placement
 
-Per `.work/issues/layer-audit/cleanup-scope.md` Q2 verdict (B): NFD is
+The Round-2 layer-audit concluded: NFD is
 **Layer-C producer-tooling**, not a Layer-A swappable tool. It MAY have
 a META Layer-A entry to document its presence and lifecycle (this is an
 open question deferred from issue #61's scope — see "Out of scope for
@@ -298,7 +297,7 @@ ships *both* NFD AND a Talos-`machine.nodeLabels` path for the same
 atomic feature (current example: `nvidia-gpu`), consumer cluster repos
 MUST pick exactly one source and MUST NOT have both writing labels for
 the same feature on the same Node. Allowing both creates a label-drift
-hazard (Round-1 reviewer MED — `.work/reviews/r1/reviewer.md`): NFD
+hazard: the Round-1 adversarial review flagged this at MED severity — NFD
 might transiently miss a PCI re-enumeration while the Talos label stays
 stale `true`, or vice versa. Scheduling decisions then diverge depending
 on which key the consumer's nodeSelector references. The two
@@ -437,6 +436,8 @@ A follow-up ADR may be filed when cross-component need surfaces.
 - Talos `machine.nodeLabels`:
   https://www.talos.dev/v1.7/reference/configuration/v1alpha1/config/#Config.machine.nodeLabels
 - Companion ADR (Layer C consumer): [0009-node-capability-composition.md](./0009-node-capability-composition.md)
-- Audit trail (Round 1): `.work/issues/layer-audit/findings.md`
-- Audit trail (Round 2): `.work/issues/layer-audit/cleanup-scope.md`
+- Audit trail: two-round adversarial audit (`team-red`, 2026-05-23) produced
+  the Layer-C necessity verdict and the per-entry Layer-A cleanup
+  classification cited throughout this ADR; working notes were not retained
+  in-repo (see frontmatter `consulted:`).
 - Implementation tracking: [issue #61](https://github.com/Nosmoht/talos-platform-base/issues/61)
