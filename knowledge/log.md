@@ -2,6 +2,45 @@
 
 ## 2026-07-22
 
+- `reference/tasks.md`: the remaining task-namespace tables audited against
+  `Taskfile.yml` (issue #199). `bootstrap:*` gains rows for
+  `bootstrap:render-root` and `bootstrap:check-render` at their
+  `Taskfile.yml` definition-order positions, each citing
+  `openspec/specs/argocd-day-zero-bootstrap/` for the field-level contract
+  it deliberately does not restate, with the `Details of ...` lead-in
+  retitled to cover the render → apply path; the `spec:*` table's
+  `spec:check-regen` row moved below `spec:install-cli` to match
+  definition order. Two Purpose cells corrected — both cases where the row
+  agreed with the task's `desc:` and disagreed with its `cmds:`:
+  `gitops:validate` now enumerates all eight stages it runs (added the
+  conftest bite-check and `scripts/check-bootstrap-render.sh`), and
+  `spec:validate` now names the `spec_lib` parser self-test
+  (`scripts/test/test_spec_lib.py`). The wider step-6 sweep — every
+  remaining Purpose cell against `desc:` and `cmds:`, the six per-table
+  prose notes, the lead-in/convention prose, and the `Makefile`-derived
+  stub prose against `Makefile`'s `RETIRED_MSG` — found two further such
+  divergences, corrected concept-side: `tofu:test:offline` omitted the
+  kubeconfig-endpoint-marker regression (issue #186) it runs, and
+  `dev:verify-pins` omitted the `package-lock.json` registry-provenance
+  guard it runs. One exemption is now recorded: `dev:npm-ci`, via a
+  `Deliberately absent from this table:` marker paragraph beneath the
+  `dev:*` table — the fixed lead-in the planned inventory-parity fence
+  (#200) will read exemption lists from. The issue's asserted `bootstrap:*`
+  exemption was re-derived as inapplicable: the bootstrap details prose
+  withholds the render's field-level contract, not the two tasks'
+  inventory rows, so both were backfilled as rows instead. `timestamp`
+  bumped to 2026-07-22, now attesting every namespace table's row set, row
+  order and Purpose cell, the six per-table prose notes, the
+  lead-in/convention/`Makefile`-stub prose, the `Makefile` mapping table,
+  and `package.json` (newly declared in `sources:`) plus the
+  `package-lock.json` integrity-hash half of the pin claim (read by hand,
+  left undeclared — it churns on every transitive dependency bump).
+  Residual, not attested by this bump: `knowledge/openknowledge.toml`'s
+  `link-target`/`rule-catalog` severity claim, derived from a source this
+  audit does not inspect — follow-up to be filed. Scope: `Taskfile.yml`
+  and `Makefile` are unchanged; the CI fence binding this inventory to
+  them is #200.
+
 - `decisions/0003-three-layer-capability-architecture.md`: removed eight
   gitignored session-scratch path citations (status blockquote, §Context,
   §Enforcement scope, §NFD placement, §Single-source convention,

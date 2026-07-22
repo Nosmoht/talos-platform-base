@@ -3,10 +3,11 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-timestamp: 2026-07-15
+timestamp: 2026-07-22
 sources:
   - Taskfile.yml
   - Makefile
+  - package.json
 ---
 
 # Task Runner Surface
@@ -48,7 +49,7 @@ Conventions declared in `Taskfile.yml`:
 | `tofu:check:render-determinism` | CI fence: Cilium/ArgoCD/CRD helm renders must use frozen `terraform_data` (`ignore_changes`), not live `data.helm_template`. Runs `scripts/check-render-determinism.sh`. |
 | `tofu:check:kubeconfig-endpoint-regen` | CI fence: `talos_cluster_kubeconfig.this` keeps its `replace_triggered_by` wiring to the `terraform_data.kubeconfig_endpoint_marker` resource (whose `input` is `var.cluster_endpoint`), so a changed endpoint still forces kubeconfig regeneration (issue #186). Static, resource-scoped grep — no provider, no network. Runs `scripts/check-kubeconfig-endpoint-regen.sh`. |
 | `tofu:test` | `tofu test` — the full suite, including the node-capability composition regression tests. **Network-dependent** (resolves the live Image Factory), so deliberately NOT part of `tofu:ci`. Superset of `tofu:test:offline`. |
-| `tofu:test:offline` | The offline subset of `tofu:test`: the predicate-only catalog contract, the conflict guards, input validation, and the consumer image-kernel-arg oracles (schematic re-image / no-re-image, issue #169). Each points at a `tests/fixtures/*` stand-in module that symlinks the real code under test and declares no providers — a pure plan over `terraform_data`, so no network. Part of `tofu:ci`. |
+| `tofu:test:offline` | The offline subset of `tofu:test`: the predicate-only catalog contract, the conflict guards, input validation, the consumer image-kernel-arg oracles (schematic re-image / no-re-image, issue #169), and the kubeconfig-endpoint-marker regression (issue #186 — the `terraform_data` marker tracks `var.cluster_endpoint`). Each points at a `tests/fixtures/*` stand-in module that symlinks the real code under test and declares no providers — a pure plan over `terraform_data`, so no network. Part of `tofu:ci`. |
 | `tofu:ci` | Aggregate: `fmt:check` + `validate` + `lint` + `check:render-determinism` + `check:readme-parity` + `check:kubeconfig-endpoint-regen` + `test:offline` — mirrors CI, stays offline. |
 
 Both `tofu:validate` and `tofu:lint` exclude `tests/fixtures/**`: those are
@@ -59,7 +60,7 @@ modules rather than standalone modules.
 
 | Task | Purpose |
 | --- | --- |
-| `gitops:validate` | Full pipeline: kustomize-target discovery → safe render → SOPS check → conftest → kubeconform → ArgoCD substrate invariants. Stage detail in [manifest pipeline](manifest-pipeline.md). |
+| `gitops:validate` | Full pipeline: kustomize-target discovery → safe render → SOPS check → conftest → kubeconform → conftest bite-check → ArgoCD substrate invariants → `scripts/check-bootstrap-render.sh`. Stage detail in [manifest pipeline](manifest-pipeline.md). |
 | `gitops:render-component` | Stage-1 (helm template) + Stage-2 (kustomize build) render of one component. Usage: `task gitops:render-component COMPONENT=<name>`; fails with usage text when `COMPONENT` is unset. |
 | `gitops:render-all` | Render every component under `kubernetes/base/infrastructure/` that has a `chart.lock.yaml`; exits 0 with a notice when none exist. |
 | `gitops:verify-rendered` | Re-render all components and fail if the committed `_rendered/` tree drifts (`scripts/verify-rendered.sh`). |
@@ -78,12 +79,15 @@ tasks. `bootstrap:argocd` only seeds the consumer-identity App-of-Apps root
 
 | Task | Purpose |
 | --- | --- |
+| `bootstrap:render-root` | Render the App-of-Apps root manifests (root-project + root-application) from `cluster.yaml` into `kubernetes/bootstrap/argocd/_out/`, with no cluster contact — a cluster-free dry-run. Usage: `task bootstrap:render-root [ENV=cluster.yaml]`. Field-level contract (which fields, the `main` default, the value guards) is normative in `openspec/specs/argocd-day-zero-bootstrap/`, asserted by `task bootstrap:check-render`. |
 | `bootstrap:argocd` | Render the root templates from `cluster.yaml`, wait for the Application/AppProject CRDs to exist and become `Established` and for `deployment/argocd-server` to be available, then `kubectl apply` root-project and root-application. Usage: `task bootstrap:argocd [ENV=cluster.yaml]`. |
+| `bootstrap:check-render` | CI gate: assert `bootstrap:render-root`'s output satisfies the `argocd-day-zero-bootstrap` spec scenarios, offline (`yq` + `envsubst` only, no cluster contact). Contract: `openspec/specs/argocd-day-zero-bootstrap/`. |
 | `bootstrap:argocd-password` | Print the initial ArgoCD admin password from the `argocd-initial-admin-secret` Secret (rotate after first login). |
 
-Details of `bootstrap:argocd`:
+Details of the render → apply path (`bootstrap:render-root`, `bootstrap:check-render`, `bootstrap:argocd`):
 
-- **Preconditions:** `deploy_argocd=true` and a completed `tofu apply` (the
+- **Preconditions (`bootstrap:argocd` only — the render and check tasks need
+  no cluster):** `deploy_argocd=true` and a completed `tofu apply` (the
   module seeds ArgoCD and applies its CRDs server-side), plus a working
   `kubectl` context. A persistent CRD `NotFound` means the apply did not
   finish its CRD step; recovery command:
@@ -127,9 +131,9 @@ bundle. See `knowledge/workflows/spec-driven-development.md`.
 
 | Task | Purpose |
 | --- | --- |
-| `spec:validate` | Strict `openspec validate` over `openspec/`, a bite-check (a committed malformed fixture must fail validation, run against a temp copy), the source-ownership partition assert (`scripts/check-spec-partition.py`: exclusivity + completeness over the enumerated universe per ADR-0015), and an offline `lychee` pass. Run verbatim by `docs-lint.yml`. Precondition: `task spec:install-cli` + `task knowledge:install-cli` (lychee). |
-| `spec:check-regen` | Regeneration parity: whole-tree delta after `openspec update --force` must be empty — the committed tool trees equal the pinned generator's output (parity only, not benignity). Run verbatim by `docs-lint.yml`. Overwrites uncommitted edits inside the generated trees. |
+| `spec:validate` | Strict `openspec validate` over `openspec/`, a bite-check (a committed malformed fixture must fail validation, run against a temp copy), the `spec_lib` parser self-test (`scripts/test/test_spec_lib.py`), the source-ownership partition assert (`scripts/check-spec-partition.py`: exclusivity + completeness over the enumerated universe per ADR-0015), and an offline `lychee` pass. Run verbatim by `docs-lint.yml`. Precondition: `task spec:install-cli` + `task knowledge:install-cli` (lychee). |
 | `spec:install-cli` | Install the lockfile-pinned `openspec` CLI: shared `npm ci --ignore-scripts` (integrity-verified via `package-lock.json`) + `~/.local/bin` symlink. Precondition: `npm`. |
+| `spec:check-regen` | Regeneration parity: whole-tree delta after `openspec update --force` must be empty — the committed tool trees equal the pinned generator's output (parity only, not benignity). Run verbatim by `docs-lint.yml`. Overwrites uncommitted edits inside the generated trees. |
 | `spec:check-staleness` | Staleness gate: fail when the diff against `BASE` (default `origin/main`) touches a spec's `primary` source without touching the owning spec (`scripts/check-spec-staleness.py`; fragment-keyed sources fire at fragment granularity, fail-closed on unresolvable fragments). Escape for verified no-behavior-change diffs: `Spec-Impact: none` trailer in the BODY of every commit touching the file (per-commit scope). Run by `docs-lint.yml` on PRs. |
 | `spec:update` | Regenerate the committed OpenSpec tool integrations (`.claude/`, `.codex/`) after a CLI upgrade; fails when the regeneration emitted paths `.gitignore` still ignores (delta-based gate). Regenerated diffs are security-relevant review surface (ADR-0014). |
 
@@ -160,7 +164,9 @@ the pinned Taskfile vars above. See the MCP setup workflow
 | --- | --- |
 | `dev:install-pre-commit` | `uvx pre-commit install` + one advisory run across the repo. |
 | `dev:verify-tools` | Confirm installed binaries match the `.tool-versions` pins (`scripts/verify-tools.sh`). |
-| `dev:verify-pins` | Assert the Taskfile `vars:` pins (openknowledge, lychee) and the `package.json` pins (openspec, markdownlint-cli) agree with `.tool-versions`. Run verbatim by `docs-lint.yml`. |
+| `dev:verify-pins` | Assert the Taskfile `vars:` pins (openknowledge, lychee) and the `package.json` pins (openspec, markdownlint-cli) agree with `.tool-versions`, and that every `package-lock.json`-resolved package points at the official `registry.npmjs.org` (supply-chain provenance guard). Run verbatim by `docs-lint.yml`. |
+
+Deliberately absent from this table: `dev:npm-ci`, declared `internal: true` in `Taskfile.yml` and therefore hidden from `task --list` — the live inventory this page mirrors. It is the shared `npm ci --ignore-scripts` step that `docs:install-cli` and `spec:install-cli` both declare as a dependency (`deps: [dev:npm-ci]`). `Deliberately absent from this table:` is a fixed lead-in marker: the planned inventory-parity fence (issue #200) will read a table's exemption list from a note carrying this exact lead-in, naming the exempt tasks as the backticked task names that follow it in the same paragraph.
 
 ## Makefile deprecation stub
 
