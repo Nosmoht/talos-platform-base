@@ -55,43 +55,56 @@ the first apply.
 ### Requirement: Per-node configuration apply
 
 The module SHALL apply the role-appropriate machine configuration to
-every declared node, keyed by hostname and targeted at the node's IP;
+every declared node, keyed by node name and targeted at the node's IP;
 nodes are expected to already be reachable in Talos maintenance mode —
-the module does not provision hardware or boot nodes.
+the module does not provision hardware or boot nodes. The apply SHALL
+iterate the identity-checked node view rather than the raw input, so the
+IP-collision guard is evaluated on the apply path.
 
 #### Scenario: Every node receives its role's configuration
 
 - **WHEN** the apply runs over the declared node set
 - **THEN** each node receives the machine configuration matching its
   role, addressed at its declared IP, with one apply resource per
-  hostname
+  node name
 
 ### Requirement: Single-node bootstrap on a stable target
 
 The module SHALL bootstrap etcd on exactly one node — the controlplane
-with the lexicographically lowest hostname — and only after every node's
-configuration apply, selecting the target by stable hostname key rather
-than list order.
+with the lexicographically lowest name — and only after every node's
+configuration apply, selecting the target by a stable name key.
 
-#### Scenario: Node-list reordering does not move the bootstrap target
+#### Scenario: The bootstrap target is the lowest-named CONTROLPLANE
 
-- **WHEN** `var.nodes` is reordered after the cluster was bootstrapped
-- **THEN** the bootstrap target remains the controlplane with the lowest
-  hostname and no re-bootstrap is planned
+- **WHEN** the node set contains a worker whose name sorts below every
+  controlplane
+- **THEN** the bootstrap target is still the lowest-named controlplane,
+  not the lowest-named node
+
+#### Scenario: Re-declaring the node set does not move the bootstrap target
+
+- **WHEN** the same node set is declared again in a different order
+- **THEN** the bootstrap target is unchanged and no re-bootstrap is
+  planned
+
+Adding a controlplane whose name sorts BELOW the incumbent does move the
+target — a known hazard the module cannot resolve on the consumer's
+behalf, documented in the module README and `UPGRADING.md`.
 
 ### Requirement: Credential retrieval
 
 The module SHALL retrieve the admin kubeconfig from the bootstrap
 controlplane after bootstrap completes, and SHALL derive a talosconfig
 whose endpoints are the controlplane IPs and whose node list covers all
-declared nodes.
+declared nodes. Both lists SHALL be the name-ordered projections of the
+node set, not independently rebuilt filters.
 
 #### Scenario: Credentials follow the bootstrap
 
 - **WHEN** the bootstrap has completed
 - **THEN** the admin kubeconfig is pulled from the bootstrap controlplane
   and the talosconfig lists every controlplane as an endpoint and every
-  node as a node
+  node as a node, each in node-name order
 
 #### Scenario: Kubeconfig regenerates when the advertised endpoint changes
 
