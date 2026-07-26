@@ -42,6 +42,183 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
+## Unreleased (next MAJOR) — `nodes` is keyed by node name (MAJOR — consumer-facing)
+
+**Type:** MAJOR (input-shape breaking, runtime-neutral). `var.nodes` /
+`cluster.yaml` `nodes:` change from a LIST of node objects to a MAP keyed by the
+node's name. The per-node `hostname` field is removed — the key *is* the
+hostname. See [ADR-0023](knowledge/decisions/0023-node-identity-map-key.md).
+
+Nothing about a running cluster changes: the per-node apply resource is still
+`for_each`-keyed by the same hostname strings, so state addresses are stable and
+an unchanged node set must produce a **zero-diff plan**. If your plan is not
+empty after the conversion, stop and investigate — do not apply.
+
+### 1. Convert `cluster.yaml` `nodes:` to a mapping (required)
+
+```yaml
+# BEFORE (v7)
+nodes:
+  - hostname: node-01
+    ip: 192.0.2.11
+    role: controlplane
+    image: intel
+
+# AFTER (v8) — the key is the hostname; the field is gone
+nodes:
+  node-01:
+    ip: 192.0.2.11
+    role: controlplane
+    image: intel
+```
+
+Mechanically, with `yq` (mikefarah, v4). **Run the duplicate check first** — the
+conversion cannot detect a hostname declared twice, and a collapsed node silently
+leaves `for_each`, which drops it from state and from every future config
+rollout while the machine keeps running:
+
+```bash
+cp cluster.yaml cluster.yaml.orig                 # the verification below needs it
+
+# Refuse to convert a file that already carries the defect this change removes.
+test "$(yq '[.nodes[].hostname] | length' cluster.yaml.orig)" \
+   = "$(yq '[.nodes[].hostname] | unique | length' cluster.yaml.orig)" \
+  || { echo "duplicate hostname in cluster.yaml — resolve it before converting"; exit 1; }
+
+yq -i '.nodes |= ([.[] | {"key": .hostname, "value": (del(.hostname))}] | from_entries)' cluster.yaml
+```
+
+Then verify nothing was lost. Both sides re-attach the hostname and normalise
+key order, so a correct conversion prints nothing and any real loss shows up:
+
+```bash
+diff <(yq -o=json '[.nodes[]]                                    | sort_by(.hostname) | sort_keys(..)' cluster.yaml.orig) \
+     <(yq -o=json '[.nodes | to_entries[] | .value * {"hostname": .key}] | sort_by(.hostname) | sort_keys(..)' cluster.yaml) \
+  && echo "conversion lost nothing"
+```
+
+> `yq -i` re-serialises the WHOLE document, not just `.nodes`. If your
+> `config_patches` use literal block scalars (`|`), check `git diff cluster.yaml`
+> for restyling outside `.nodes` before committing: a re-styled patch string is a
+> changed value in `talos_machine_configuration_apply`, which would re-push
+> machine config to those nodes and break the zero-diff expectation below.
+
+### 2. Update your consumer shim (required)
+
+```hcl
+# BEFORE
+nodes = [for n in local.cfg.nodes : {
+  hostname              = n.hostname
+  ip                    = n.ip
+  role                  = n.role
+  image                 = n.image
+  hardware_capabilities = try(n.hardware_capabilities, [])
+  config_patches        = [for p in try(n.config_patches, []) : yamlencode(p)]
+}]
+
+# AFTER — every field except hostname carries over unchanged
+nodes = { for name, n in local.cfg.nodes : name => {
+  ip                    = n.ip
+  role                  = n.role
+  image                 = n.image
+  hardware_capabilities = try(n.hardware_capabilities, [])
+  config_patches        = [for p in try(n.config_patches, []) : yamlencode(p)]
+} }
+```
+
+Do not shorten the field list while converting: `hardware_capabilities` and
+`config_patches` are `optional(..., [])`, so dropping them is **silent** — the
+node loses its capability composition and its per-node patches, and the plan
+that rewrites its machine config looks entirely valid.
+
+Any `for n in local.cfg.nodes : n.hostname => …` comprehension elsewhere in your
+root becomes `for name, n in local.cfg.nodes : name => …`.
+
+### 3. Update tooling that looked a node up by field (required if you have any)
+
+`yq` selectors keyed on the hostname field must become key lookups:
+
+```bash
+# BEFORE
+yq -r '.nodes[] | select(.hostname == "node-01") | .ip' cluster.yaml
+# AFTER
+yq -r '.nodes["node-01"].ip' cluster.yaml
+```
+
+Role filters (`.nodes[] | select(.role == "controlplane") | .ip`) keep working
+unchanged — `yq`'s `.nodes[]` iterates a mapping's values.
+
+### 4. New rejections — these may fail your first plan
+
+Six rules the list model could not express are now enforced at plan time. Each
+one names a real, previously silent failure mode:
+
+- **The controlplane count must be ODD.** An even etcd membership tolerates no
+  more failures than the odd count below it. Two consequences to plan around:
+  growing 3 → 5 must be declared in one step, and a dead control-plane node
+  cannot be *removed* to leave 2 — **replace its entry** (same key, new IP /
+  hardware) instead of deleting it. The rule lives on `var.nodes`, so while it
+  fails, nothing else in your root plans either.
+- **Node keys must already be canonical Kubernetes node names** — lowercase
+  `[a-z0-9-.]`, no leading/trailing `-` or `.`, ≤63 per label, ≤253 total.
+  Talos validates hostname LENGTH only and then silently rewrites the rest
+  (`nodename.FromHostname`: lowercase, `_` → `-`, other characters dropped), so
+  a key like `NODE_01` would have arrived in Kubernetes as `node-01` — a
+  different name than the one you declared, and one that two different keys can
+  collide onto.
+- **First labels must be unique while `register_with_fqdn` is false.** Talos
+  splits the hostname at the first dot and registers the SHORT hostname, so
+  `node-a.site1.example.org` and `node-a.site2.example.org` would put two
+  kubelets on one Node object. With `register_with_fqdn = true` the full name is
+  the Kubernetes identity and the pair is allowed — the two machines then share
+  an OS hostname, which is yours to live with.
+- **A dotted node key requires `register_with_fqdn = true`** (new input, default
+  `false` → `machine.kubelet.registerWithFQDN`, settable as
+  `cluster.register_with_fqdn` in `cluster.yaml`). Without it Kubernetes only
+  ever sees the first label and the domain part silently disappears. It is
+  **all-or-nothing**: one dotted key flips FQDN registration for every node,
+  including short-named ones, which changes their Kubernetes node name.
+- **`node.ip` must be a canonical single address.** `192.0.2.011` and
+  `::ffff:192.0.2.11` are distinct strings naming one host, so they used to slip
+  past the ip-uniqueness check and point two apply resources at one machine.
+- **Node roles must be `controlplane` or `worker`** and at least one controlplane
+  must exist (both pre-existing, now covered by tests).
+
+If your existing node names trip the canonicality rule, renaming a node is a
+genuine identity change: new state address, new Kubernetes node. Plan it as a
+node replacement, not as an edit.
+
+### 5. Two plan diffs that are EXPECTED (not conversion errors)
+
+The zero-diff expectation covers the machine config. Two things can legitimately
+show up anyway:
+
+- **Reordered outputs / talosconfig, if your old `nodes:` list was not already in
+  node-name order.** The derived lists are now name-ordered; previously they
+  followed declaration order. You will see `Changes to Outputs` for
+  `controlplane_ips` and a changed talosconfig. Nothing about the cluster
+  changes — only the order of an emitted list. Confirm the SET is identical and
+  proceed.
+- **Growing a control plane can move the bootstrap target.** The bootstrap node
+  is the lowest-named controlplane. Adding a controlplane whose name sorts BELOW
+  the incumbent repoints `talos_machine_bootstrap`. On an already-bootstrapped
+  cluster that resource must not be re-created — if your plan shows
+  `talos_machine_bootstrap` being replaced, stop: name the new nodes so they sort
+  above the incumbent, or `tofu state mv` deliberately. This hazard predates v8;
+  the odd-count rule makes multi-node additions more common, so it is worth
+  stating.
+
+### Validation steps after upgrade
+
+```bash
+scripts/lint-cluster-yaml.sh cluster.yaml   # or your repo's equivalent
+tofu validate
+tofu plan                                   # empty for an unchanged node set,
+                                            # except for the two cases in §5
+```
+
+---
+
 ## Unreleased (next MAJOR) — kubelet-serving CSR approver replaced with `postfinance/kubelet-csr-approver` (MAJOR — consumer-facing)
 
 **Type:** MAJOR (consumer-runtime breaking). The seeded kubelet-serving CSR

@@ -22,7 +22,7 @@ locals {
   # try(): an undefined capability contributes nothing; the undefined_caps
   # precondition produces the clear error.
   node_profiles = {
-    for n in var.nodes : n.hostname => distinct(flatten([
+    for h, n in var.nodes : h => distinct(flatten([
       for c in n.hardware_capabilities : try(var.hardware_capabilities[c].provisioning_profiles, [])
     ]))
   }
@@ -32,8 +32,8 @@ locals {
   # them). A profile with variants uses the cpu_vendor-matched kernel_args; the
   # variant_mismatches precondition catches a missing vendor entry.
   node_profile_resolved = {
-    for n in var.nodes : n.hostname => [
-      for pname in local.node_profiles[n.hostname] : {
+    for h, n in var.nodes : h => [
+      for pname in local.node_profiles[h] : {
         name           = pname
         provides       = local.provisioning_profiles[pname].provides
         extensions     = local.provisioning_profiles[pname].extensions
@@ -49,21 +49,21 @@ locals {
   }
 
   node_provided_atoms = {
-    for n in var.nodes : n.hostname => distinct(flatten([
-      for p in local.node_profile_resolved[n.hostname] : p.provides
+    for h, n in var.nodes : h => distinct(flatten([
+      for p in local.node_profile_resolved[h] : p.provides
     ]))
   }
 
   # --- 3. UNION into the two sinks -----------------------------------------
   node_effective = {
-    for n in var.nodes : n.hostname => {
+    for h, n in var.nodes : h => {
       arch    = try(var.images[n.image].architecture, "amd64")
       overlay = try(var.images[n.image].overlay, null)
       # extensions: image baseline UNION selected-profile extensions (sorted ->
       # canonical for the content hash).
       extensions = sort(distinct(concat(
         try(var.images[n.image].extensions, []),
-        flatten([for p in local.node_profile_resolved[n.hostname] : p.extensions]),
+        flatten([for p in local.node_profile_resolved[h] : p.extensions]),
       )))
       # kernel_args: image extra_kernel_args UNION selected-profile kernel_args
       # (symmetric to the extensions union above). try(): an undefined
@@ -74,7 +74,7 @@ locals {
       # is (karg_conflicts below).
       kernel_args = sort(distinct(concat(
         try(var.images[n.image].extra_kernel_args, []),
-        flatten([for p in local.node_profile_resolved[n.hostname] : p.kernel_args]),
+        flatten([for p in local.node_profile_resolved[h] : p.kernel_args]),
       )))
     }
   }
@@ -83,31 +83,31 @@ locals {
   # dedup to the first; the module_conflicts precondition fails BEFORE this masks
   # a same-name/differing-params conflict.
   node_modules_raw = {
-    for n in var.nodes : n.hostname => flatten([for p in local.node_profile_resolved[n.hostname] : p.kernel_modules])
+    for h, n in var.nodes : h => flatten([for p in local.node_profile_resolved[h] : p.kernel_modules])
   }
   node_modules_grouped = {
-    for n in var.nodes : n.hostname => {
-      for m in local.node_modules_raw[n.hostname] : m.name => { name = m.name, parameters = sort(m.parameters) }...
+    for h, n in var.nodes : h => {
+      for m in local.node_modules_raw[h] : m.name => { name = m.name, parameters = sort(m.parameters) }...
     }
   }
   node_kernel_modules = {
-    for n in var.nodes : n.hostname => [
-      for name in sort(keys(local.node_modules_grouped[n.hostname])) : local.node_modules_grouped[n.hostname][name][0]
+    for h, n in var.nodes : h => [
+      for name in sort(keys(local.node_modules_grouped[h])) : local.node_modules_grouped[h][name][0]
     ]
   }
 
   # sysctls: merge all profile maps (sysctl_conflicts precondition fails on a
   # same-key/differing-value collision before the silent merge-last-wins).
   node_sysctls = {
-    for n in var.nodes : n.hostname => merge(concat([{}], [for p in local.node_profile_resolved[n.hostname] : p.sysctls])...)
+    for h, n in var.nodes : h => merge(concat([{}], [for p in local.node_profile_resolved[h] : p.sysctls])...)
   }
 
   # nodeLabels: capability emits_label (defined caps only) + a Layer-C
   # hardware-feature label per PROVIDED atom (base-controlled provenance, H1).
   node_labels = {
-    for n in var.nodes : n.hostname => merge(
+    for h, n in var.nodes : h => merge(
       { for c in n.hardware_capabilities : var.hardware_capabilities[c].emits_label => "true" if contains(keys(var.hardware_capabilities), c) },
-      { for atom in local.node_provided_atoms[n.hostname] : "platform.io/hardware-feature.${atom}" => "true" },
+      { for atom in local.node_provided_atoms[h] : "platform.io/hardware-feature.${atom}" => "true" },
     )
   }
 
@@ -117,14 +117,14 @@ locals {
   # extension set, which equals the declared set when the resolution precondition
   # holds — so the declared-set hash is a sound dedup key.
   node_schematic_yaml = {
-    for n in var.nodes : n.hostname => yamlencode(merge(
+    for h, n in var.nodes : h => yamlencode(merge(
       {
         customization = merge(
-          { systemExtensions = { officialExtensions = local.node_effective[n.hostname].extensions } },
-          length(local.node_effective[n.hostname].kernel_args) > 0 ? { extraKernelArgs = local.node_effective[n.hostname].kernel_args } : {},
+          { systemExtensions = { officialExtensions = local.node_effective[h].extensions } },
+          length(local.node_effective[h].kernel_args) > 0 ? { extraKernelArgs = local.node_effective[h].kernel_args } : {},
         )
       },
-      local.node_effective[n.hostname].overlay == null ? {} : { overlay = local.node_effective[n.hostname].overlay },
+      local.node_effective[h].overlay == null ? {} : { overlay = local.node_effective[h].overlay },
     ))
   }
   node_hash = { for hostname, y in local.node_schematic_yaml : hostname => substr(sha256(y), 0, 16) }
@@ -156,30 +156,30 @@ locals {
   # patch still overrides — the documented escape hatch) and BEFORE base_cni_patch
   # (which stays strictly last). Empty list when the node provisions nothing.
   node_generated_patches = {
-    for n in var.nodes : n.hostname => (
-      length(local.node_kernel_modules[n.hostname]) == 0 && length(local.node_sysctls[n.hostname]) == 0 && length(local.node_labels[n.hostname]) == 0
+    for h, n in var.nodes : h => (
+      length(local.node_kernel_modules[h]) == 0 && length(local.node_sysctls[h]) == 0 && length(local.node_labels[h]) == 0
       ? []
       : [yamlencode({
         machine = merge(
-          length(local.node_kernel_modules[n.hostname]) > 0 ? { kernel = { modules = local.node_kernel_modules[n.hostname] } } : {},
-          length(local.node_sysctls[n.hostname]) > 0 ? { sysctls = local.node_sysctls[n.hostname] } : {},
-          length(local.node_labels[n.hostname]) > 0 ? { nodeLabels = local.node_labels[n.hostname] } : {},
+          length(local.node_kernel_modules[h]) > 0 ? { kernel = { modules = local.node_kernel_modules[h] } } : {},
+          length(local.node_sysctls[h]) > 0 ? { sysctls = local.node_sysctls[h] } : {},
+          length(local.node_labels[h]) > 0 ? { nodeLabels = local.node_labels[h] } : {},
         )
       })]
     )
   }
 
   # --- invariant violation sets (consumed by the guard preconditions) -------
-  undefined_images = [for n in var.nodes : n.hostname if !contains(keys(var.images), n.image)]
+  undefined_images = [for h, n in var.nodes : h if !contains(keys(var.images), n.image)]
   undefined_caps = {
-    for n in var.nodes : n.hostname => [for c in n.hardware_capabilities : c if !contains(keys(var.hardware_capabilities), c)]
+    for h, n in var.nodes : h => [for c in n.hardware_capabilities : c if !contains(keys(var.hardware_capabilities), c)]
   }
   undefined_profiles = {
-    for n in var.nodes : n.hostname => [for pname in local.node_profiles[n.hostname] : pname if !contains(keys(local.provisioning_profiles), pname)]
+    for h, n in var.nodes : h => [for pname in local.node_profiles[h] : pname if !contains(keys(local.provisioning_profiles), pname)]
   }
   variant_mismatches = {
-    for n in var.nodes : n.hostname => [
-      for pname in local.node_profiles[n.hostname] : pname
+    for h, n in var.nodes : h => [
+      for pname in local.node_profiles[h] : pname
       if contains(keys(local.provisioning_profiles), pname)
       && length(local.provisioning_profiles[pname].variants) > 0
       && !contains(keys(local.provisioning_profiles[pname].variants), try(var.images[n.image].cpu_vendor, ""))
@@ -211,19 +211,19 @@ locals {
   }
   # conflicts (M3): same-name modules differing params; same-key sysctls/kargs differing value
   module_conflicts = {
-    for n in var.nodes : n.hostname => [
-      for name, mods in local.node_modules_grouped[n.hostname] : name
+    for h, n in var.nodes : h => [
+      for name, mods in local.node_modules_grouped[h] : name
       if length(distinct([for m in mods : join(",", m.parameters)])) > 1
     ]
   }
   _sysctl_by_key = {
-    for n in var.nodes : n.hostname => {
-      for pair in flatten([for p in local.node_profile_resolved[n.hostname] : [for k, v in p.sysctls : { key = k, value = v }]]) :
+    for h, n in var.nodes : h => {
+      for pair in flatten([for p in local.node_profile_resolved[h] : [for k, v in p.sysctls : { key = k, value = v }]]) :
       pair.key => pair.value...
     }
   }
   sysctl_conflicts = {
-    for n in var.nodes : n.hostname => [for k, vs in local._sysctl_by_key[n.hostname] : k if length(distinct(vs)) > 1]
+    for h, n in var.nodes : h => [for k, vs in local._sysctl_by_key[h] : k if length(distinct(vs)) > 1]
   }
   # Conflict iff a PROFILE and the IMAGE both set the same single-value key to
   # differing values. Keys no profile contributes are the consumer's own — the
@@ -231,13 +231,13 @@ locals {
   # so guarding them would need a bottomless allowlist. Profile-vs-profile
   # collisions keep firing exactly as before (the image side contributes [] then).
   _karg_profile_by_key = {
-    for n in var.nodes : n.hostname => {
-      for a in flatten([for p in local.node_profile_resolved[n.hostname] : p.kernel_args]) :
+    for h, n in var.nodes : h => {
+      for a in flatten([for p in local.node_profile_resolved[h] : p.kernel_args]) :
       element(split("=", a), 0) => (a == element(split("=", a), 0) ? "" : trimprefix(a, "${element(split("=", a), 0)}="))...
     }
   }
   _karg_image_by_key = {
-    for n in var.nodes : n.hostname => {
+    for h, n in var.nodes : h => {
       for a in try(var.images[n.image].extra_kernel_args, []) :
       element(split("=", a), 0) => (a == element(split("=", a), 0) ? "" : trimprefix(a, "${element(split("=", a), 0)}="))...
     }
@@ -249,20 +249,20 @@ locals {
   # Only ever consulted for a key a PROFILE contributes (see karg_conflicts).
   _karg_multivalue_keys = ["console", "module_blacklist", "initcall_blacklist", "blacklist"]
   karg_conflicts = {
-    for n in var.nodes : n.hostname => [
-      for k, vs in local._karg_profile_by_key[n.hostname] : k
+    for h, n in var.nodes : h => [
+      for k, vs in local._karg_profile_by_key[h] : k
       if !contains(local._karg_multivalue_keys, k) && length(distinct(concat(
-        vs, try(local._karg_image_by_key[n.hostname][k], [])
+        vs, try(local._karg_image_by_key[h][k], [])
       ))) > 1
     ]
   }
   _karg_conflict_detail = {
-    for n in var.nodes : n.hostname => {
-      for k in local.karg_conflicts[n.hostname] : k => {
-        profile = distinct(local._karg_profile_by_key[n.hostname][k])
-        image   = distinct(try(local._karg_image_by_key[n.hostname][k], []))
+    for h, n in var.nodes : h => {
+      for k in local.karg_conflicts[h] : k => {
+        profile = distinct(local._karg_profile_by_key[h][k])
+        image   = distinct(try(local._karg_image_by_key[h][k], []))
       }
-    } if length(local.karg_conflicts[n.hostname]) > 0
+    } if length(local.karg_conflicts[h]) > 0
   }
 }
 

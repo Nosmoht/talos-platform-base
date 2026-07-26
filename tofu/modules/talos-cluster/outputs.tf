@@ -45,8 +45,8 @@ output "cluster_endpoint" {
 }
 
 output "controlplane_ips" {
-  description = "IPs of the controlplane nodes (talosconfig endpoints)."
-  value       = [for n in local.controlplanes : n.ip]
+  description = "IPs of the controlplane nodes (talosconfig endpoints), ordered by node name — not by declaration order."
+  value       = local.controlplane_ips
 }
 
 output "schematic_ids" {

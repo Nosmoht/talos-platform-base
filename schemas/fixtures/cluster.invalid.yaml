@@ -51,8 +51,16 @@ images:
     cpu_vendor: intel
     extra_kernel_args: ["debugfs=on"] # INVALID: rule B (debugfs key, non-forbidden value)
 nodes:
-  - hostname: cp-1
+  cp-1:
     ip: 192.0.2.11
     role: master # INVALID: schema enum is controlplane | worker
+    image: standard
+    hardware_capabilities: []
+  # INVALID: non-canonical node key. Talos would ACCEPT this hostname (its
+  # validation is length-only) and silently rewrite it to "cp-2" on the way to
+  # Kubernetes — so the declared name and the live name would differ.
+  CP_2:
+    ip: 192.0.2.12
+    role: controlplane
     image: standard
     hardware_capabilities: []

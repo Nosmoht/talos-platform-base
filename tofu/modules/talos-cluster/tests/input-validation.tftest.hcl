@@ -23,9 +23,9 @@ variables {
     intel = { architecture = "amd64", cpu_vendor = "intel", extensions = [] }
   }
 
-  nodes = [
-    { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-  ]
+  nodes = {
+    cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+  }
 }
 
 run "talos_version_rejects_trailing_garbage" {
@@ -448,5 +448,363 @@ run "cilium_self_management_off_with_override_set_plans_clean" {
   assert {
     condition     = output.cilium_self_management_app == ""
     error_message = "negative-space: an override-only consumer (self_management=false) must plan cleanly with an empty emitted app, never rejected by the override-drop guard"
+  }
+}
+
+# --- Node identity: one node, one definition place (issue #204) -------------
+#
+# var.nodes is a MAP keyed by node name, so a duplicate NAME is structurally
+# impossible (no test can express it). What still needs guarding is everything
+# the key does not cover: a duplicate IP, an even control-plane count, a key
+# Talos would silently rewrite, two keys collapsing onto one OS hostname, and a
+# dotted key whose domain never reaches Kubernetes.
+#
+# Red-green per run is recorded inline: delete the named validation in
+# variables.tf and exactly that run reports "Missing expected failure".
+
+run "duplicate_ip_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.11", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  # Red-green: the ip-distinct validation. Its structural backstop (nodes.tf's
+  # nodes_by_ip "Duplicate object key") would still fail the plan without it, but
+  # with an unreadable error — this run pins the readable one as first-fired.
+  expect_failures = [var.nodes]
+}
+
+run "even_controlplane_count_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      cp-2 = { ip = "192.0.2.12", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  # etcd quorum: 2 tolerates 0 failures, exactly like 1. Red-green: the `% 2 == 1`
+  # validation.
+  expect_failures = [var.nodes]
+}
+
+run "four_controlplanes_are_rejected_too" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      cp-2 = { ip = "192.0.2.12", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      cp-3 = { ip = "192.0.2.13", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      cp-4 = { ip = "192.0.2.14", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+# Positive control for the parity rule: without it the rule could degenerate
+# into "more than one control plane always fails" and every negative run above
+# would still pass.
+run "three_controlplanes_plan_cleanly" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      cp-2 = { ip = "192.0.2.12", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      cp-3 = { ip = "192.0.2.13", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+}
+
+# The four key-format runs feed values Talos ACCEPTS and then silently rewrites
+# (HostnameConfigV1Alpha1.Validate is length-only; nodename.FromHostname
+# lowercases, maps '_'->'-', drops other runes and trims '-'/'.'). Without the
+# module-side rule they would reach Kubernetes as a DIFFERENT name than declared.
+run "uppercase_node_key_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      CP-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+run "underscore_node_key_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp_1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+run "leading_dash_node_key_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      "-cp-1" = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+run "overlong_label_node_key_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      # 64 chars — one over the DNS label limit Talos itself enforces.
+      "cp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+run "trailing_dash_node_key_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      "cp-1-" = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+# The <= 253 total-length conjunct, isolated: every label is 63 or shorter (so the
+# per-label clause cannot fire) and the key is a single node with register_with_fqdn
+# on (so neither the first-label nor the dotted-key rule fires). 4 x 63 + 3 dots = 255.
+run "overlong_total_node_key_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    register_with_fqdn = true
+    nodes = {
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+# Accept-side control for the label limit: exactly 63 characters must PASS, so a
+# mutant tightening the bound to 62 is caught (every negative fixture above stays
+# red under that mutant and would not reveal it).
+run "sixty_three_character_label_plans_cleanly" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      "cp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+}
+
+# Two DIFFERENT machines whose keys share a first label. Talos splits at the first
+# dot, so both get OS hostname "node-a" — and while register_with_fqdn is off,
+# both kubelets would claim the Kubernetes node "node-a". Isolated from the
+# dotted-key rule by leaving the flag ON is NOT possible here (that would make
+# this case legal), so the flag stays off and BOTH rules fire — recorded honestly:
+# this run binds "first-label OR dotted-key", and the next two runs separate them.
+run "colliding_first_labels_are_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    register_with_fqdn = false
+    nodes = {
+      "node-a.site1.example.org" = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      "node-a.site2.example.org" = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+run "dotted_key_without_register_with_fqdn_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    register_with_fqdn = false
+    nodes = {
+      "node-a.site1.example.org" = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  # ONE node, so the first-label rule cannot fire — this isolates the dotted-key
+  # rule. Red-green: drop the `var.register_with_fqdn ||` conjunct from it.
+  expect_failures = [var.nodes]
+}
+
+# The multi-site topology register_with_fqdn exists for: same short name, different
+# domains, FQDN registration on. Kubernetes sees two distinct nodes, so this is
+# LEGAL — it is the case the first-label rule must NOT reject. Red-green: make the
+# first-label rule unconditional again and this run hard-fails.
+run "colliding_first_labels_are_legal_with_register_with_fqdn" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    register_with_fqdn = true
+    nodes = {
+      "node-a.site1.example.org" = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      "node-a.site2.example.org" = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+}
+
+# Positive control for the dotted-key rule: distinct first labels + the switch on
+# must plan cleanly, so the rule cannot degenerate into "dots always fail".
+run "distinct_fqdn_keys_with_register_with_fqdn_plan_cleanly" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    register_with_fqdn = true
+    nodes = {
+      "node-a.site1.example.org" = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      "node-b.site2.example.org" = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+}
+
+# A node set with NO controlplane. Isolated from the parity rule by its `count == 0`
+# arm, so this binds the at-least-one rule alone. Red-green: delete that validation
+# and the run reports "Missing expected failure" (before the arm existed, parity
+# would have fired instead and hidden the deletion).
+run "node_set_without_controlplane_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      w-1 = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+# The role enum. One valid controlplane keeps the parity and at-least-one rules
+# green, so only the enum can fire.
+run "invalid_node_role_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "master", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+# Non-canonical IP spellings. Each names the same host as a canonical form, so
+# without this rule the ip-uniqueness check (a string comparison) would pass and
+# two apply resources would target one machine.
+run "non_canonical_ipv4_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp-1 = { ip = "192.0.2.011", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+run "ipv4_mapped_ipv6_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp-1 = { ip = "::ffff:192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  expect_failures = [var.nodes]
+}
+
+# Accept-side control: a canonical IPv6 address must plan cleanly, so the rule
+# cannot degenerate into "IPv4 only".
+run "canonical_ipv6_plans_cleanly" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp-1 = { ip = "2001:db8::1", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+}
+
+# The ONLY behaviour var.register_with_fqdn has: an all-nodes machine-config patch.
+# Without this, the flag could stop emitting anything, every validation would still
+# pass, dotted keys would still be accepted — and the kubelet would keep registering
+# the short name, which is exactly the declared-name-vs-live-name drift this whole
+# change exists to remove.
+run "register_with_fqdn_emits_the_kubelet_patch" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    register_with_fqdn = true
+  }
+  assert {
+    condition     = length(output.register_with_fqdn_patch) == 1
+    error_message = "register_with_fqdn = true must emit exactly one all-nodes patch"
+  }
+  assert {
+    condition     = yamldecode(output.register_with_fqdn_patch[0]).machine.kubelet.registerWithFQDN == true
+    error_message = "the emitted patch must set machine.kubelet.registerWithFQDN = true"
+  }
+}
+
+# Default-off must emit NOTHING, so adopting this module version produces a
+# byte-identical machine config for a consumer that sets nothing.
+run "register_with_fqdn_default_emits_no_patch" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  assert {
+    condition     = length(output.register_with_fqdn_patch) == 0
+    error_message = "register_with_fqdn defaults to false and must then emit no patch at all"
+  }
+}
+
+# The projections and the bootstrap target. The node set deliberately contains a
+# WORKER whose name sorts below every controlplane (`a-w`), so a bootstrap-target
+# refactor to "first key overall" picks the wrong node and this run catches it —
+# the ordering asserts alone would not.
+#
+# NOTE on the ordering contract's red-green: there is no sort() to remove. A map's
+# `for` expression and keys() are lexicographically ordered by definition, so name
+# ordering is a property of var.nodes being a MAP, not of a call that could be
+# deleted. The binding mutant is a TYPE change (map -> list), which these asserts
+# do catch — a list-shaped input reaches the projections in declaration order.
+run "projections_and_bootstrap_target_follow_node_name" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      w-2  = { ip = "192.0.2.22", role = "worker", image = "intel", hardware_capabilities = [] },
+      cp-3 = { ip = "192.0.2.13", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      a-w  = { ip = "192.0.2.20", role = "worker", image = "intel", hardware_capabilities = [] },
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      cp-2 = { ip = "192.0.2.12", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  assert {
+    condition     = tolist(output.controlplane_ips) == tolist(["192.0.2.11", "192.0.2.12", "192.0.2.13"])
+    error_message = "controlplane_ips must carry the controlplane IPs in node-name order (cp-1, cp-2, cp-3)"
+  }
+  assert {
+    condition     = tolist(output.worker_ips) == tolist(["192.0.2.20", "192.0.2.22"])
+    error_message = "worker_ips must carry the worker IPs in node-name order (a-w, w-2)"
+  }
+  assert {
+    condition     = tolist(output.node_ips) == tolist(["192.0.2.20", "192.0.2.11", "192.0.2.12", "192.0.2.13", "192.0.2.22"])
+    error_message = "node_ips must carry every node's IP in node-name order across both roles (a-w, cp-1, cp-2, cp-3, w-2)"
+  }
+  assert {
+    condition     = output.first_controlplane_ip == "192.0.2.11"
+    error_message = "the bootstrap target must be the lowest-named CONTROLPLANE (cp-1) — not the lowest-named node overall (a-w, a worker)"
   }
 }

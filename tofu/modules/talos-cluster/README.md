@@ -144,12 +144,14 @@ module "complete" {
     }
   }
 
-  nodes = [
-    { hostname = "node-cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["storage-replicated"] },
-    { hostname = "node-gpu-1", ip = "192.0.2.31", role = "worker", image = "intel", hardware_capabilities = ["storage-replicated", "compute-gpu-nvidia"],
-      config_patches = [file("${path.module}/patches/gpu-nic.yaml")] }, # per-node NIC binding
-    { hostname = "node-pi-1", ip = "192.0.2.41", role = "worker", image = "pi", hardware_capabilities = [] }, # arm64
-  ]
+  # Keyed by node name — the key IS the Talos hostname / Kubernetes node name.
+  # One node, one definition place. The controlplane count must be ODD.
+  nodes = {
+    node-cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["storage-replicated"] }
+    node-gpu-1 = { ip = "192.0.2.31", role = "worker", image = "intel", hardware_capabilities = ["storage-replicated", "compute-gpu-nvidia"],
+    config_patches = [file("${path.module}/patches/gpu-nic.yaml")] } # per-node NIC binding
+    node-pi-1 = { ip = "192.0.2.41", role = "worker", image = "pi", hardware_capabilities = [] } # arm64
+  }
 
   # Cluster-wide patches the caller owns (NTP, registry mirrors, install disk).
   config_patches = [file("${path.module}/patches/cluster-common.yaml")]
@@ -188,7 +190,8 @@ provider "talos" {}
 | `talos_install_version` | string | `""` | **OS-version pin** — what's installed on the nodes. Defaults to `talos_version`. Bump for OS upgrades. |
 | `kubernetes_version` | string | — | v-prefixed semver. Bump triggers out-of-band `talosctl upgrade-k8s`. |
 | `cluster_endpoint` | string | — | `https://…:6443` API endpoint / VIP |
-| `nodes` | list(object) | — | `{hostname, ip, role, image, hardware_capabilities?, config_patches?}`; role ∈ {controlplane, worker}; `image` must be a key in `images`; `hardware_capabilities` (default `[]`) are keys in `hardware_capabilities`; `config_patches` are per-node, applied AFTER the module-generated capability patch (so a raw patch overrides a generated `machine.kernel.modules`/`sysctls`/`nodeLabels` value — and its *content* is not parsed, so reserved-label enforcement on that vector is the downstream Kyverno rule, not tofu). |
+| `nodes` | map(object) | — | **Keyed by node name** — the key IS the Talos hostname, the Kubernetes node name and the per-node apply resource's state address, so a node cannot be declared twice. Keys must already be canonical Kubernetes node names (lowercase `[a-z0-9-.]`, no leading/trailing `-`/`.`, ≤63 per label, ≤253 total): Talos validates hostname LENGTH only and silently rewrites the rest, so a non-canonical key would land in the cluster under a different name. First labels must be unique (Talos splits at the first dot); a dotted key requires `register_with_fqdn`. Value: `{ip, role, image, hardware_capabilities?, config_patches?}`; role ∈ {controlplane, worker} and the controlplane count must be **odd** (etcd quorum); `image` must be a key in `images`; `hardware_capabilities` (default `[]`) are keys in `hardware_capabilities`; `config_patches` are per-node, applied AFTER the module-generated capability patch (so a raw patch overrides a generated `machine.kernel.modules`/`sysctls`/`nodeLabels` value — and its *content* is not parsed, so reserved-label enforcement on that vector is the downstream Kyverno rule, not tofu). |
+| `register_with_fqdn` | bool | `false` | Sets `machine.kubelet.registerWithFQDN`. Talos splits a dotted hostname at the first dot and registers only the SHORT hostname with Kubernetes by default — so dotted node keys are rejected unless this is on. |
 | `images` | map(object) | — | Per base-image: `{architecture("amd64"\|"arm64"), cpu_vendor("intel"\|"amd"\|"arm"), extensions(baseline — every node of the image), extra_kernel_args(schematic boot args, unioned with the node's profile args), overlay?}`. At least one image required. |
 | `hardware_capabilities` | map(object) | `{}` | Consumer composites: `{requires_features, provisioning_profiles, emits_label}`. `emits_label` MUST be `platform.io/hardware-capability.*`. A provisioned `requires_features` atom must be satisfied by a listed profile and vice-versa (symmetry, both directions, plan-time-checked). |
 | `config_patches` | list(string) | `[]` | machine-config patches applied to all nodes |
@@ -461,11 +464,32 @@ an inherent seed→GitOps takeover behavior, not a bug, and not avoidable in cod
 ## Notes
 
 - etcd is bootstrapped on exactly one controlplane: the one with the
-  **lowest hostname** (`sort()` over controlplane hostnames). This is a stable
-  key — reordering `nodes` after bootstrap does not move the bootstrap target.
+  **lowest node name** (`sort()` over controlplane keys). This is a stable
+  key — re-declaring `nodes` in a different order after bootstrap does not move
+  the bootstrap target. The same holds for every Talos-facing list the module
+  emits (`cluster_health.*`, the talosconfig endpoints/nodes,
+  `output.controlplane_ips`): each is a projection of `var.nodes` ordered by node
+  name, so declaration order is never observable.
 - Per-node module-injected config is the hostname, the composed installer image,
   and the generated capability patch (kernel modules / sysctls / nodeLabels).
   Everything else cluster-specific comes from the caller's patches.
+- **The patch escape hatch cuts both ways.** Caller patches are applied AFTER the
+  module's own, and the module does not parse their content. So a per-node
+  `config_patches` entry carrying a `HostnameConfig` (or `machine.network.hostname`)
+  overrides the key-derived hostname, and a patch setting
+  `machine.kubelet.registerWithFQDN` overrides `register_with_fqdn` in either
+  direction. The node-key validations cannot see that, and no CI gate does — if
+  you use the escape hatch on these two fields, the declared name and the live
+  name diverge, and every state address, `installer_images` key and `talosctl`
+  target stays keyed on a name no machine carries. The typed inputs are the
+  supported surface.
+- **Growing a control plane can move the bootstrap target.** It is the
+  lowest-named controlplane, so ADDING one whose name sorts below the incumbent
+  repoints `talos_machine_bootstrap` — which must not be re-created on a running
+  cluster. Name new controlplanes so they sort above the incumbent, or move the
+  state entry deliberately. The odd-count rule makes multi-node additions the
+  normal shape, so check the plan for a `talos_machine_bootstrap` replacement
+  before applying.
 - The installer image is always the non-SecureBoot `metal-installer` (the
   SecureBoot installer variant is forbidden per the base `AGENTS.md` Hard
   Constraint — boot loops). ARM SBC images use `architecture = "arm64"` + an

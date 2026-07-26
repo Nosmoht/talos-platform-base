@@ -7,6 +7,14 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`talos-cluster`: `register_with_fqdn` input (bool, default `false`).** Sets
+  `machine.kubelet.registerWithFQDN`. Talos splits a dotted hostname at the
+  first dot and registers only the SHORT hostname with Kubernetes by default, so
+  a dotted node name silently lost its domain part; the input makes FQDN node
+  names actually reach Kubernetes, and dotted node keys are rejected while it is
+  off. Default-off emits no machine-config change. See
+  [ADR-0023](knowledge/decisions/0023-node-identity-map-key.md).
+
 - **`talos-cluster`: first-class Cilium observability inputs (default off).**
   `cilium_agent_metrics`, `cilium_operator_metrics` (Cilium agent/operator
   Prometheus metrics), `cilium_hubble_enabled` + `cilium_hubble_metrics`
@@ -36,6 +44,44 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed — BREAKING
 
+- **`talos-cluster`: `nodes` is a MAP keyed by node name, not a list.** The
+  per-node `hostname` field is removed — the key *is* the hostname, so a node is
+  declared exactly once and a duplicate node name is no longer expressible
+  rather than merely rejected. Every Talos-facing list
+  (`cluster_health.{control_plane_nodes, worker_nodes, endpoints}`, the
+  talosconfig `endpoints`/`nodes`, `output.controlplane_ips`) becomes a
+  projection of that map ordered by node name, so declaration order is not
+  observable anywhere. `schemas/cluster.schema.json` types `nodes` as an object
+  with a `propertyNames` pattern constraining the FORM of node keys (it does not
+  — and structurally cannot — detect a repeated YAML key, which the parser
+  collapses first; the module-side map type is what makes a duplicate node
+  unexpressible).
+  **BREAKING — migration:** `cluster.yaml` `nodes:` becomes a mapping and the
+  consumer shim maps it through; the mechanical recipe plus a
+  nothing-was-lost diff is in [`UPGRADING.md`](UPGRADING.md). Runtime-neutral:
+  the per-node apply resource keeps the same `for_each` keys, so an unchanged
+  node set must produce a **zero-diff plan** — a non-empty plan means the
+  conversion changed something and must not be applied. See
+  [ADR-0023](knowledge/decisions/0023-node-identity-map-key.md).
+- **`talos-cluster`: five new plan-time rejections on the node set.** Each closes
+  a failure mode the list model left silent: an EVEN controlplane count (etcd
+  quorum — an even membership tolerates no more failures than the odd count
+  below it); a node key that is not already a canonical Kubernetes node name
+  (Talos validates hostname LENGTH only, then silently rewrites the rest via
+  `nodename.FromHostname` — so `NODE_01` used to arrive as `node-01`, and two
+  keys could collapse onto one node); two node keys sharing a first label while
+  `register_with_fqdn` is off (Talos splits the hostname at the first dot, so
+  both kubelets would claim one Node object — permitted once FQDN registration
+  makes the full name the Kubernetes identity); a dotted node key while
+  `register_with_fqdn` is false (Kubernetes would only ever see the first
+  label); and a non-canonical `node.ip` (`192.0.2.011`, `::ffff:192.0.2.11` —
+  distinct strings naming one host, which used to slip past the ip-uniqueness
+  check and point two apply resources at one machine).
+  **BREAKING — migration:** a consumer running an even controlplane count, a
+  non-canonical node name or a non-canonical IP must fix it before planning.
+  Renaming a node is a real identity change — new state address, new Kubernetes
+  node. Note the odd-count rule also blocks *shrinking* a control plane to an
+  even count: replace a dead member's entry rather than deleting it.
 - **`talos-cluster`: OpenTofu floor raised to `>= 1.9`.** The new
   cross-variable `validation` guards above require it. This applies to
   **every** consumer of the module, not only those opting into

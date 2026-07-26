@@ -32,3 +32,34 @@ output "cilium_effective_values" {
 output "cilium_self_management_app" {
   value = local.cilium_self_management_app
 }
+
+# Fixture-only outputs exposing the node-identity projections from the symlinked
+# nodes.tf (provider-less, pure var.nodes-derived), so the ordering contract can
+# be asserted OFFLINE. The real module feeds these same locals straight into
+# data.talos_cluster_health / data.talos_client_configuration, so asserting them
+# here binds the real boundary arguments, not a fixture copy of them.
+output "controlplane_ips" {
+  value = local.controlplane_ips
+}
+
+output "worker_ips" {
+  value = local.worker_ips
+}
+
+output "node_ips" {
+  value = local.node_ips
+}
+
+# The bootstrap target. talos_machine_bootstrap lives in the real main.tf (which
+# this provider-less fixture does not symlink), so exposing the local is how the
+# selection rule gets an offline binding at all — without it, a refactor to
+# "first key overall" (which can pick a WORKER) turns no test red.
+output "first_controlplane_ip" {
+  value = local.first_controlplane.ip
+}
+
+# The only behaviour var.register_with_fqdn has. Exposed so both arms are
+# assertable offline: [] when off, the registerWithFQDN patch when on.
+output "register_with_fqdn_patch" {
+  value = local.register_with_fqdn_patch
+}

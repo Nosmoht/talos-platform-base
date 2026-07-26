@@ -63,6 +63,10 @@
         },
         "allow_scheduling_on_controlplanes": {
           "type": "boolean"
+        },
+        "register_with_fqdn": {
+          "description": "Set machine.kubelet.registerWithFQDN so the kubelet registers with the node's FQDN instead of its short hostname. Talos splits a dotted hostname at the first dot and registers only the SHORT hostname by default, so a dotted node key is meaningless to Kubernetes unless this is true — and the module rejects dotted node keys while it is false. ALL-OR-NOTHING: one dotted node key flips FQDN registration for every node in the cluster. Default false.",
+          "type": "boolean"
         }
       }
     },
@@ -129,10 +133,14 @@
       }
     },
     "nodes": {
-      "description": "Bare-metal cluster members.",
-      "type": "array",
-      "minItems": 1,
-      "items": {
+      "description": "Bare-metal cluster members, keyed by node name. The KEY is the node's Talos hostname and its Kubernetes node name — one node, one definition place, so declaring the same node twice is structurally impossible. Keys must ALREADY be canonical Kubernetes node names: Talos validates hostname LENGTH only and silently rewrites the rest (lowercasing, '_' -> '-', dropping other characters), so a non-canonical key would arrive in the cluster under a different name than the one declared here. The per-label 63-character bound is not expressible in JSON Schema without a lookahead; the tofu module enforces it and is the gate that actually blocks an apply.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$",
+        "maxLength": 253
+      },
+      "additionalProperties": {
         "$ref": "#/$defs/node"
       }
     },
@@ -394,17 +402,11 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "hostname",
         "ip",
         "role",
         "image"
       ],
       "properties": {
-        "hostname": {
-          "description": "Unique node hostname; keys the per-node apply resource.",
-          "type": "string",
-          "minLength": 1
-        },
         "ip": {
           "description": "Unique node IP reachable on the Talos API port.",
           "type": "string",

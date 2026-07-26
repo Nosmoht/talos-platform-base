@@ -176,6 +176,15 @@ tasks:
     desc: "CI fence: talos_cluster_kubeconfig.this keeps replace_triggered_by wired to terraform_data.kubeconfig_endpoint_marker (input = var.cluster_endpoint)"
     cmd: scripts/check-kubeconfig-endpoint-regen.sh
 
+  tofu:check:node-projection-wiring:
+    # Issue #204 — full rationale in scripts/check-node-projection-wiring.sh.
+    # The offline fixture omits main.tf, so no `tofu test` can see WHICH node
+    # projection reaches WHICH Talos argument; swapping two of them leaves the
+    # whole suite green while pointing talosctl and the apply-blocking health
+    # gate at the wrong node set.
+    desc: "CI fence: the Talos boundary arguments stay bound to their intended node projections (nodes.tf), and the per-node apply keeps iterating local.nodes_checked"
+    cmd: scripts/check-node-projection-wiring.sh
+
   tofu:test:
     desc: "tofu test — node-capability composition regression suite (dedup/determinism + hard-error guards). NETWORK: resolves the live Image Factory, so it is NOT part of tofu:ci (which stays offline). Superset of tofu:test:offline."
     cmd: |
@@ -202,7 +211,7 @@ tasks:
         -filter=tests/kubeconfig-endpoint-marker.tftest.hcl
 
   tofu:ci:
-    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:readme-parity + check:kubeconfig-endpoint-regen + test:offline — mirrors CI, stays offline"
+    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + test:offline — mirrors CI, stays offline"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
@@ -210,6 +219,7 @@ tasks:
       - task: tofu:check:render-determinism
       - task: tofu:check:readme-parity
       - task: tofu:check:kubeconfig-endpoint-regen
+      - task: tofu:check:node-projection-wiring
       - task: tofu:test:offline
 
   # ===========================================================================

@@ -32,9 +32,9 @@ variables {
     intel = { architecture = "amd64", cpu_vendor = "intel", extensions = [] }
   }
 
-  nodes = [
-    { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-  ]
+  nodes = {
+    cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+  }
 }
 
 run "kubeconfig_marker_tracks_cluster_endpoint" {

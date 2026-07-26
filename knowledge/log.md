@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-07-26
+
+- `decisions/0023-node-identity-map-key.md` added (issue #204): `var.nodes`
+  becomes a map keyed by node name, every Talos-facing list becomes a
+  name-ordered projection of it, and the identity gaps the list model hid
+  become plan-time validations — node-key canonicality (Talos validates
+  hostname length only and then silently rewrites the rest), first-label
+  collisions (Talos splits at the first dot), FQDN registration
+  (`register_with_fqdn`), and an odd controlplane count (etcd quorum).
+  Indexed under Accepted.
+
 ## 2026-07-22
 
 - `reference/tasks.md`: the remaining task-namespace tables audited against
