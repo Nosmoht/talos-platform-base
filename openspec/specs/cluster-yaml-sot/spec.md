@@ -136,17 +136,30 @@ mirroring the module's `var.images` validations for the declarative path.
 
 ### Requirement: Node entries
 
-The schema SHALL require at least one entry under `nodes` and SHALL require
-each node to declare `hostname`, `ip`, `role` (one of `controlplane`,
-`worker`), and `image` (documented as a key of the `images` catalog), with
+`nodes` SHALL be a MAPPING keyed by node name, not a sequence — a node is
+declared exactly once, at exactly one place, and the key is the node's name
+rather than a field of the entry. The schema SHALL require at least one entry
+and SHALL require each node to declare `ip`, `role` (one of `controlplane`,
+`worker`) and `image` (documented as a key of the `images` catalog), with
 optional `hardware_capabilities` (a string array of capability ids) and
 per-node `config_patches`.
+
+The schema SHALL constrain node keys to canonical Kubernetes node names —
+lowercase `[a-z0-9-.]`, starting and ending alphanumeric, at most 253
+characters. The per-label 63-character bound is not expressible in JSON Schema
+without a lookahead and is enforced by the module instead.
 
 #### Scenario: Node with undeclared role is rejected
 
 - **WHEN** a node declares a `role` outside `controlplane` and `worker`, or
-  omits any of the four required fields
+  omits any of the three required fields
 - **THEN** schema validation fails on that node entry
+
+#### Scenario: Non-canonical node key is rejected
+
+- **WHEN** a node key carries uppercase or an underscore (values Talos itself
+  would accept and silently rewrite)
+- **THEN** schema validation fails on `nodes`, naming the offending key
 
 ### Requirement: Composite capability entries
 

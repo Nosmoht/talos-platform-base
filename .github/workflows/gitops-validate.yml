@@ -264,11 +264,15 @@ jobs:
             printf '%s\n' "$out" >&2
             exit 1
           fi
-          # Bind all SIX fixture violations individually: relaxing the role
-          # enum, de-anchoring the version pattern, or relaxing any of the four
-          # kernel-arg lexical rules (issue #169) must each turn this step red,
-          # even while the other violations still fail the file.
-          for v in '$.nodes[0].role' '$.talos.install_version' \
+          # Bind all SEVEN fixture violations individually: relaxing the role
+          # enum, the node-key pattern (issue #204 — a key Talos would ACCEPT and
+          # silently rewrite), de-anchoring the version pattern, or relaxing any
+          # of the four kernel-arg lexical rules (issue #169) must each turn this
+          # step red, even while the other violations still fail the file.
+          # The node-key needle carries the offending VALUE, not just the path:
+          # "$.nodes" alone is a prefix of "$.nodes['cp-1'].role" and would pass
+          # vacuously on the role violation after the key rule was relaxed.
+          for v in "\$.nodes['cp-1'].role" "\$.nodes: 'CP_2'" '$.talos.install_version' \
             "\$.images['bad-karg-whitespace'].extra_kernel_args[0]" \
             "\$.images['bad-karg-removal'].extra_kernel_args[0]" \
             "\$.images['bad-karg-empty-key'].extra_kernel_args[0]" \
@@ -279,7 +283,7 @@ jobs:
               exit 1
             fi
           done
-          echo "OK: malformed cluster.yaml fixture rejected with all six expected violations (role enum + anchored version pattern + four kernel-arg lexical rules)"
+          echo "OK: malformed cluster.yaml fixture rejected with all seven expected violations (role enum + node-key pattern + anchored version pattern + four kernel-arg lexical rules)"
 
       - name: Verify TASK_VERSION matches .tool-versions
         # Inline by necessity — it guards the pin of the binary that runs the

@@ -14,16 +14,8 @@
 #  siderolabs/talos provider ships no upgrade resource; see the Day-2 block below.)
 
 locals {
-  controlplanes = [for n in var.nodes : n if n.role == "controlplane"]
-
-  # Bootstrap target + the node we pull kubeconfig/talosconfig from. Selected by
-  # a STABLE key (lowest controlplane hostname), NOT list order — so reordering
-  # var.nodes after bootstrap cannot move which node is bootstrapped
-  # (talos_machine_bootstrap is pinned to this node's IP).
-  controlplanes_by_hostname = { for n in local.controlplanes : n.hostname => n }
-  first_controlplane        = local.controlplanes_by_hostname[sort(keys(local.controlplanes_by_hostname))[0]]
-
-  nodes_by_hostname = { for n in var.nodes : n.hostname => n }
+  # The node identity model (var.nodes -> keyed views -> generated lists) lives
+  # in nodes.tf, so a provider-less test fixture can symlink it.
 
   # OS version running on the nodes. Defaults to talos_version (= schema-pin)
   # for new clusters; bump talos_install_version for an OS upgrade while
@@ -221,6 +213,7 @@ locals {
   base_kubelet_rotation_patch = yamlencode({
     machine = { kubelet = { extraConfig = { serverTLSBootstrap = true } } }
   })
+
 
   # All-nodes AUTHORITATIVE patch (cni:none + proxy.disabled), gated on Cilium
   # delivery. Placed LAST so it wins over any caller config_patch: when
@@ -621,6 +614,7 @@ locals {
   controlplane_base_patches = concat(
     [local.base_cluster_patch],
     [local.base_kubelet_rotation_patch],
+    local.register_with_fqdn_patch,
     var.config_patches,
     var.controlplane_config_patches,
     local.base_cni_patch,
@@ -635,6 +629,7 @@ locals {
   worker_machine_config_patches = concat(
     [local.base_cluster_patch],
     [local.base_kubelet_rotation_patch],
+    local.register_with_fqdn_patch,
     var.config_patches,
     var.worker_config_patches,
     local.base_cni_patch,
@@ -679,7 +674,10 @@ data "talos_machine_configuration" "worker" {
 # consumer overlay's job — same substrate-only boundary as AGENTS.md
 # §"Out of scope for the base".
 resource "talos_machine_configuration_apply" "this" {
-  for_each = local.nodes_by_hostname
+  # Keyed by node name — the same key strings as before the map refactor, so
+  # state addresses are stable across the v7 -> v8 conversion. Routed through
+  # nodes_checked (nodes.tf) so the IP-collision guard is in the apply path too.
+  for_each = local.nodes_checked
 
   client_configuration = talos_machine_secrets.this.client_configuration
   machine_configuration_input = (
@@ -699,7 +697,7 @@ resource "talos_machine_configuration_apply" "this" {
             # never `urls.installer_secureboot`. This is the code-level Hard
             # Constraint enforcement (AGENTS.md: no SecureBoot installer image);
             # the module cannot emit a SecureBoot installer through this path.
-            image = data.talos_image_factory_urls.this[local.node_install_key[each.value.hostname]].urls.installer
+            image = data.talos_image_factory_urls.this[local.node_install_key[each.key]].urls.installer
           }
         }
       }),
@@ -713,7 +711,7 @@ resource "talos_machine_configuration_apply" "this" {
       yamlencode({
         apiVersion = "v1alpha1"
         kind       = "HostnameConfig"
-        hostname   = each.value.hostname
+        hostname   = each.key
         auto       = { "$patch" = "delete" }
       }),
     ],
@@ -721,7 +719,7 @@ resource "talos_machine_configuration_apply" "this" {
     # nodeLabels from the node's hardware_capabilities). BEFORE node patches so a
     # raw per-node patch can still override a generated value (documented escape
     # hatch); base_cni_patch stays strictly last.
-    local.node_generated_patches[each.value.hostname],
+    local.node_generated_patches[each.key],
     each.value.config_patches,
     # base_cni_patch re-applied LAST in the apply pass too, so cni:none + proxy
     # win over a generated/node patch as well (not just the all-nodes/role patches of
@@ -767,8 +765,8 @@ resource "talos_cluster_kubeconfig" "this" {
 data "talos_client_configuration" "this" {
   cluster_name         = var.cluster_name
   client_configuration = talos_machine_secrets.this.client_configuration
-  endpoints            = [for n in local.controlplanes : n.ip]
-  nodes                = [for n in var.nodes : n.ip]
+  endpoints            = local.controlplane_ips
+  nodes                = local.node_ips
 }
 
 # BLOCK until the cluster is genuinely healthy: etcd quorum established, all
@@ -786,9 +784,9 @@ data "talos_cluster_health" "this" {
   ]
 
   client_configuration = talos_machine_secrets.this.client_configuration
-  control_plane_nodes  = [for n in local.controlplanes : n.ip]
-  worker_nodes         = [for n in var.nodes : n.ip if n.role == "worker"]
-  endpoints            = [for n in local.controlplanes : n.ip]
+  control_plane_nodes  = local.controlplane_ips
+  worker_nodes         = local.worker_ips
+  endpoints            = local.controlplane_ips
 
   timeouts = {
     read = var.cluster_health_timeout

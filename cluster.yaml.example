@@ -32,6 +32,11 @@ cluster:
   service_cidr: ["10.96.0.0/12"] # Talos serviceSubnets
   dual_stack: false # v4+v6: give pod_cidr/service_cidr each a v4 and a v6 entry
   allow_scheduling_on_controlplanes: false # true for single-node / edge clusters
+  # register_with_fqdn: false             # true only if your node keys are FQDNs
+  #   Talos splits a dotted hostname at the first dot and registers only the SHORT
+  #   hostname with Kubernetes, so a dotted node key below is rejected while this
+  #   is false. ALL-OR-NOTHING: one dotted key flips FQDN registration for every
+  #   node, including short-named ones — which changes their Kubernetes node name.
 
 repo:
   url: https://github.com/your-org/your-cluster-repo.git
@@ -67,13 +72,18 @@ images:
 hardware-capabilities: {} # e.g. { storage-replicated: { requires_features: [drbd-kernel-module], provisioning_profiles: [drbd], emits_label: platform.io/hardware-capability.storage-replicated } }
 
 # --- Nodes: bare-metal members (must be PXE-booted into Talos maintenance mode) ---
+# KEYED BY NODE NAME — one node, one definition place. The key IS the Talos
+# hostname and the Kubernetes node name, so it must already be canonical
+# (lowercase [a-z0-9-.], no leading/trailing '-' or '.'): Talos validates only
+# the hostname LENGTH and silently rewrites everything else, which would land
+# the node in the cluster under a different name than the one written here.
 # role is ONLY controlplane | worker. Hardware specialisation = image + the SET of
-# hardware_capabilities, not role.
+# hardware_capabilities, not role. The controlplane count must be ODD (etcd quorum).
 nodes:
-  - { hostname: cp-1, ip: 192.0.2.11, role: controlplane, image: standard, hardware_capabilities: [] }
-  - { hostname: w-1, ip: 192.0.2.21, role: worker, image: standard, hardware_capabilities: [] }
+  cp-1: { ip: 192.0.2.11, role: controlplane, image: standard, hardware_capabilities: [] }
+  w-1: { ip: 192.0.2.21, role: worker, image: standard, hardware_capabilities: [] }
   # Per-node patches (e.g. a NIC-specific bridge) are structured YAML maps:
-  # - hostname: gpu-1
+  # gpu-1:
   #   ip: 192.0.2.31
   #   role: worker
   #   image: standard

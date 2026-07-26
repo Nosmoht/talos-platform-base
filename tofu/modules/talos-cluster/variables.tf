@@ -81,6 +81,12 @@ variable "nodes" {
     expressed as a SET of `hardware_capabilities` (composed independently) plus
     the base `image` (architecture + CPU vendor + baseline extensions + overlay).
 
+    The MAP KEY is the node's name — its Talos hostname, its Kubernetes node
+    name, and the key of the per-node apply resource (and therefore its state
+    address). It is deliberately NOT a field: one node, one definition place,
+    uniqueness by construction instead of by an added-on check. Renaming a node
+    IS an identity change (new state address, new Kubernetes node).
+
     `image` (required) must exist as a key in var.images.
     `hardware_capabilities` (optional, default []) is the set of capability ids
     (keys in var.hardware_capabilities) the node holds — a node can hold any set
@@ -91,8 +97,7 @@ variable "nodes" {
     apply AFTER the module-generated capability patch, so a raw patch can still
     override a generated machine.kernel.modules / sysctls / nodeLabels value.
   EOT
-  type = list(object({
-    hostname              = string
+  type = map(object({
     ip                    = string
     role                  = string                     # "controlplane" | "worker"
     image                 = string                     # must exist as key in var.images
@@ -101,27 +106,125 @@ variable "nodes" {
   }))
 
   validation {
-    condition     = length([for n in var.nodes : n if n.role == "controlplane"]) >= 1
+    condition     = length([for h, n in var.nodes : h if n.role == "controlplane"]) >= 1
     error_message = "At least one controlplane node is required."
   }
 
+  # etcd quorum: an even control-plane count tolerates no more failures than the
+  # odd count below it (2 tolerates 0 like 1; 4 tolerates 1 like 3) while adding a
+  # member that can break quorum. Rejected at plan time rather than left as a
+  # cluster one failure away from a surprise. Consequence: growing 3 -> 5 must be
+  # declared in ONE step; a transient 4-member control plane is not plannable, and
+  # a control plane cannot be shrunk to an even count to eject a dead member —
+  # replace the entry instead of deleting it (UPGRADING §Unreleased).
+  #
+  # The count == 0 arm keeps this rule OFF the empty case, so the
+  # at-least-one-controlplane rule above owns it alone and stays isolatable
+  # red-green (0 % 2 == 0 would otherwise make both fire on the same input).
+  #
+  # NOTE: this counts DECLARED controlplanes, not live etcd members. A member
+  # removed out-of-band leaves the declared count unchanged — the rule prevents
+  # declaring an even topology, it does not observe the cluster.
   validation {
-    condition     = alltrue([for n in var.nodes : contains(["controlplane", "worker"], n.role)])
+    condition = (
+      length([for h, n in var.nodes : h if n.role == "controlplane"]) == 0 ||
+      length([for h, n in var.nodes : h if n.role == "controlplane"]) % 2 == 1
+    )
+    error_message = "The number of controlplane nodes must be ODD (etcd quorum): 1, 3, 5, … An even count tolerates no more failures than the odd count below it."
+  }
+
+  validation {
+    condition     = alltrue([for h, n in var.nodes : contains(["controlplane", "worker"], n.role)])
     error_message = "Each node.role must be either \"controlplane\" or \"worker\"."
   }
 
-  # Hostnames key the per-node apply resource; duplicates would silently collapse
-  # a node out of the apply set. IPs target talosctl; duplicates make bootstrap
-  # ambiguous. Catch both at plan time rather than as a silent mis-provision.
+  # Node keys must ALREADY be canonical Kubernetes node names — deliberately
+  # stricter than what either platform accepts. Talos validates the hostname's
+  # LENGTH only (HostnameConfigV1Alpha1.Validate: first label 1..63, whole value
+  # <= 253; no character class, no lowercasing), and what reaches the kubelet is
+  # then silently rewritten by nodename.FromHostname(): lowercased, '_' -> '-',
+  # every other non-[a-z0-9.-] rune dropped, leading/trailing '-'/'.' trimmed. So
+  # "NODE_01" and "node-01" are two distinct keys here that arrive in Kubernetes
+  # as ONE node. Rejecting what Talos would REWRITE — not merely what Kubernetes
+  # would reject — is what keeps the declared name and the live name identical.
   validation {
-    condition     = length(distinct([for n in var.nodes : n.hostname])) == length(var.nodes)
-    error_message = "node.hostname values must be unique."
+    condition = alltrue([for h, n in var.nodes :
+      can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$", h))
+      && length(h) <= 253
+      && alltrue([for label in split(".", h) : length(label) <= 63])
+    ])
+    error_message = "Node keys must be canonical Kubernetes node names: lowercase [a-z0-9-.], no leading/trailing '-' or '.', <= 63 chars per label, <= 253 total. Talos does NOT reject uppercase or '_' — it silently rewrites them, so two keys could collapse onto one Kubernetes node."
   }
 
+  # Talos splits the hostname at the FIRST dot (HostnameSpecSpec.ParseFQDN:
+  # Hostname = parts[0], Domainname = parts[1]) and registers the SHORT hostname
+  # with Kubernetes UNLESS register_with_fqdn is set. So while it is off, two keys
+  # sharing a first label are two kubelets claiming one Kubernetes Node object —
+  # rejected. With it ON, the full key is the Kubernetes identity and the map key
+  # already makes that unique, so a shared first label is permitted.
+  #
+  # Residual the operator owns in that case: the two machines still carry the same
+  # OS hostname (Talos sets only the first label via sethostname). That is visible
+  # in Talos-level output and in anything keyed on the short name; the module does
+  # not police it because it is no longer a Kubernetes-identity collision.
   validation {
-    condition     = length(distinct([for n in var.nodes : n.ip])) == length(var.nodes)
+    condition = (
+      var.register_with_fqdn ||
+      length(distinct([for h, n in var.nodes : split(".", h)[0]])) == length(var.nodes)
+    )
+    error_message = "The first label of every node key must be unique while register_with_fqdn is false: Talos splits the hostname at the first dot and uses the SHORT hostname as the Kubernetes node name, so two such keys would put two kubelets on one Node object."
+  }
+
+  # A dotted key without the switch is a lie: Kubernetes only ever sees the first
+  # label, so the domain part silently disappears from the cluster's identity.
+  validation {
+    condition     = var.register_with_fqdn || alltrue([for h, n in var.nodes : !strcontains(h, ".")])
+    error_message = "A dotted node key requires register_with_fqdn = true — otherwise Kubernetes only sees the first label and the domain part is silently dropped."
+  }
+
+  # IPs target talosctl and fill every Talos-facing argument; duplicates make
+  # bootstrap ambiguous. The map key already makes the NAME unique — the IP is a
+  # value, so it needs its own check. nodes.tf's node_name_by_ip is the structural
+  # backstop; this is the readable error that fires first.
+  validation {
+    condition     = length(distinct([for h, n in var.nodes : n.ip])) == length(var.nodes)
     error_message = "node.ip values must be unique."
   }
+
+  # …and uniqueness by STRING is only as good as the string being canonical:
+  # "192.0.2.11", "192.0.2.011" and "::ffff:192.0.2.11" are three distinct strings
+  # naming one host, so a duplicate would slip past the check above and put two
+  # apply resources on one machine. Round-tripping through cidrhost() rejects
+  # every non-canonical spelling (and every non-address) for both families: the
+  # function normalises, so a value that differs from its own normalisation was
+  # not canonical.
+  validation {
+    condition = alltrue([for h, n in var.nodes :
+      (can(cidrhost("${n.ip}/32", 0)) && cidrhost("${n.ip}/32", 0) == n.ip) ||
+      (can(cidrhost("${n.ip}/128", 0)) && cidrhost("${n.ip}/128", 0) == n.ip)
+    ])
+    error_message = "Each node.ip must be a single IP address in canonical form (no leading zeros, no IPv4-mapped IPv6, no CIDR suffix, no hostname). Non-canonical spellings of one address compare unequal, so they would defeat the ip-uniqueness check and put two nodes on one machine."
+  }
+}
+
+variable "register_with_fqdn" {
+  description = <<-EOT
+    Set machine.kubelet.registerWithFQDN, so the kubelet registers with the
+    node's FQDN instead of its short hostname.
+
+    Talos splits a dotted hostname at the first dot into hostname + domainname
+    and, by default, registers only the SHORT hostname with Kubernetes — so a
+    dotted node key is meaningless to Kubernetes unless this is true, which is
+    why var.nodes rejects dotted keys while it is false. Leave it off for
+    single-label node names.
+
+    ALL-OR-NOTHING: this is an all-nodes machine-config patch, so a single dotted
+    node key flips FQDN registration for every node in the cluster, including
+    short-named ones — which changes their Kubernetes node name. Do not mix
+    short and dotted node names unless that is what you want.
+  EOT
+  type        = bool
+  default     = false
 }
 
 variable "images" {

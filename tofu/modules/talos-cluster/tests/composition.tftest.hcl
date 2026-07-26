@@ -31,9 +31,9 @@ variables {
     storage-replicated = { requires_features = ["drbd-kernel-module"], provisioning_profiles = ["drbd"], emits_label = "platform.io/hardware-capability.storage-replicated" }
     virt-passthrough   = { requires_features = ["vt-x-or-amd-v", "kvm-kernel-module", "iommu-enabled"], provisioning_profiles = ["iommu"], emits_label = "platform.io/hardware-capability.virt-passthrough" }
   }
-  nodes = [
-    { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["storage-replicated"] },
-  ]
+  nodes = {
+    cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["storage-replicated"] },
+  }
 }
 
 # Valid topology: dedup + determinism. w-1 and w-2 list the same two capabilities
@@ -41,12 +41,12 @@ variables {
 run "valid_dedup_and_determinism" {
   command = plan
   variables {
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["storage-replicated"] },
-      { hostname = "w-1", ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["storage-replicated", "virt-passthrough"] },
-      { hostname = "w-2", ip = "192.0.2.22", role = "worker", image = "intel", hardware_capabilities = ["virt-passthrough", "storage-replicated"] },
-      { hostname = "node-arm", ip = "192.0.2.41", role = "worker", image = "arm", hardware_capabilities = [] },
-    ]
+    nodes = {
+      cp-1     = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["storage-replicated"] },
+      w-1      = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["storage-replicated", "virt-passthrough"] },
+      w-2      = { ip = "192.0.2.22", role = "worker", image = "intel", hardware_capabilities = ["virt-passthrough", "storage-replicated"] },
+      node-arm = { ip = "192.0.2.41", role = "worker", image = "arm", hardware_capabilities = [] },
+    }
   }
   assert {
     condition     = output.distinct_schematic_count == 3
@@ -76,10 +76,10 @@ run "image_extra_kernel_args_land_in_the_rendered_schematic" {
     images = {
       intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucode"], extra_kernel_args = ["hugepagesz=1G"] }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-      { hostname = "w-1", ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["virt-passthrough"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["virt-passthrough"] },
+    }
   }
   assert {
     condition = alltrue([for a in ["hugepagesz=1G", "intel_iommu=on"] : contains(
@@ -96,7 +96,7 @@ run "symmetry_forward_violation" {
     hardware_capabilities = {
       bad = { requires_features = ["drbd-kernel-module"], provisioning_profiles = [], emits_label = "platform.io/hardware-capability.bad" }
     }
-    nodes = [{ hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["bad"] }]
+    nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["bad"] } }
   }
   expect_failures = [terraform_data.composition_guards]
 }
@@ -108,7 +108,7 @@ run "symmetry_inverse_violation" {
     hardware_capabilities = {
       bad = { requires_features = [], provisioning_profiles = ["drbd"], emits_label = "platform.io/hardware-capability.bad" }
     }
-    nodes = [{ hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["bad"] }]
+    nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["bad"] } }
   }
   expect_failures = [terraform_data.composition_guards]
 }
@@ -127,7 +127,7 @@ run "symmetry_per_capability_not_masked_by_union" {
       label_only     = { requires_features = ["drbd-kernel-module"], provisioning_profiles = [], emits_label = "platform.io/hardware-capability.label-only" }
       provision_only = { requires_features = [], provisioning_profiles = ["drbd"], emits_label = "platform.io/hardware-capability.provision-only" }
     }
-    nodes = [{ hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["label_only", "provision_only"] }]
+    nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["label_only", "provision_only"] } }
   }
   expect_failures = [terraform_data.composition_guards]
 }
@@ -139,10 +139,10 @@ run "variant_mismatch" {
     hardware_capabilities = {
       vp = { requires_features = ["iommu-enabled"], provisioning_profiles = ["iommu"], emits_label = "platform.io/hardware-capability.vp" }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-      { hostname = "arm-1", ip = "192.0.2.41", role = "worker", image = "arm", hardware_capabilities = ["vp"] },
-    ]
+    nodes = {
+      cp-1  = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      arm-1 = { ip = "192.0.2.41", role = "worker", image = "arm", hardware_capabilities = ["vp"] },
+    }
   }
   expect_failures = [terraform_data.composition_guards]
 }
@@ -151,7 +151,7 @@ run "variant_mismatch" {
 run "undefined_image" {
   command = plan
   variables {
-    nodes = [{ hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "ghost", hardware_capabilities = [] }]
+    nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "ghost", hardware_capabilities = [] } }
   }
   expect_failures = [terraform_data.composition_guards]
 }
@@ -160,7 +160,7 @@ run "undefined_image" {
 run "undefined_capability" {
   command = plan
   variables {
-    nodes = [{ hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["ghost"] }]
+    nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["ghost"] } }
   }
   expect_failures = [terraform_data.composition_guards]
 }
@@ -173,7 +173,7 @@ run "emits_label_reserved_namespace_rejected" {
     hardware_capabilities = {
       forge = { requires_features = [], provisioning_profiles = [], emits_label = "platform.io/hardware-feature.iommu-enabled" }
     }
-    nodes = [{ hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] }]
+    nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] } }
   }
   expect_failures = [var.hardware_capabilities]
 }
@@ -191,9 +191,9 @@ run "argocd_namespace_seed_carries_psa_floor_and_recommended_labels" {
   variables {
     deploy_argocd = true
     sops_age_key  = "AGE-SECRET-KEY-1TESTONLYPLACEHOLDERNOTAREALKEY00000000000000000000000000000"
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
   }
   assert {
     condition     = lookup(output.argocd_namespace_labels, "pod-security.kubernetes.io/enforce", "<absent>") == "baseline"
@@ -218,10 +218,10 @@ run "argocd_namespace_seed_carries_psa_floor_and_recommended_labels" {
 run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
   command = plan
   variables {
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-      { hostname = "w-1", ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
   }
 
   # Rotation is per-kubelet -> must be wired into BOTH roles' patch lists.
@@ -355,10 +355,10 @@ run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
 run "cert_approver_ha_and_config_override" {
   command = plan
   variables {
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-      { hostname = "w-1", ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
     cert_approver_replicas             = 2
     cert_approver_provider_regex       = "^node:[0-9]+$"
     cert_approver_provider_ip_prefixes = ["192.0.2.0/24"]
@@ -445,9 +445,9 @@ run "cilium_seed_render_carries_observability_markers" {
     cilium_operator_metrics = true
     cilium_hubble_enabled   = true
     cilium_hubble_metrics   = ["dns"]
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
   }
   assert {
     condition = anytrue([

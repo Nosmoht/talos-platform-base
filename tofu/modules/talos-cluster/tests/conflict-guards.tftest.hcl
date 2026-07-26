@@ -68,9 +68,9 @@ run "module_param_conflict_guard_fires" {
         emits_label           = "platform.io/hardware-capability.modparam"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["modparam"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["modparam"] },
+    }
   }
   expect_failures = [terraform_data.composition_guards]
 }
@@ -88,9 +88,9 @@ run "sysctl_conflict_guard_fires" {
         emits_label           = "platform.io/hardware-capability.sysctl"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["sysctl"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["sysctl"] },
+    }
   }
   expect_failures = [terraform_data.composition_guards]
 }
@@ -109,9 +109,9 @@ run "kernel_arg_conflict_guard_fires" {
         emits_label           = "platform.io/hardware-capability.karg"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["karg"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["karg"] },
+    }
   }
   expect_failures = [terraform_data.composition_guards]
 }
@@ -134,9 +134,9 @@ run "console_multivalue_is_not_a_conflict" {
         emits_label           = "platform.io/hardware-capability.console"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["console"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["console"] },
+    }
   }
   assert {
     condition     = contains(output.node_kernel_args["cp-1"], "console=ttyS0,115200n8") && contains(output.node_kernel_args["cp-1"], "console=tty0")
@@ -170,9 +170,9 @@ run "image_karg_conflicting_with_a_profile_karg_fails_the_plan" {
         emits_label           = "platform.io/hardware-capability.virt"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["virt"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["virt"] },
+    }
   }
   expect_failures = [terraform_data.composition_guards]
 }
@@ -191,9 +191,9 @@ run "image_karg_restating_a_profile_karg_is_not_a_conflict" {
         emits_label           = "platform.io/hardware-capability.virt"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["virt"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["virt"] },
+    }
   }
   assert {
     condition     = join(",", output.node_kernel_args["cp-1"]) == "intel_iommu=on"
@@ -220,9 +220,9 @@ run "consumer_only_key_is_not_guarded" {
       intel = { architecture = "amd64", cpu_vendor = "intel", extensions = [], extra_kernel_args = ["hugepagesz=2M", "hugepages=512", "hugepagesz=1G", "hugepages=8"] }
     }
     hardware_capabilities = {}
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
   }
   assert {
     condition     = length(output.node_kernel_args["cp-1"]) == 4
@@ -252,9 +252,9 @@ run "an_exempt_multivalue_key_coexists_across_sources" {
         emits_label           = "platform.io/hardware-capability.console"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["console"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["console"] },
+    }
   }
   assert {
     condition     = tolist(output.node_kernel_args["cp-1"]) == tolist(["console=tty0", "console=tty1", "console=ttyS0,115200n8"])

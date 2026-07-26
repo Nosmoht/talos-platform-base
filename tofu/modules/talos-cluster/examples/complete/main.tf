@@ -40,16 +40,16 @@ module "complete" {
   service_cidr                      = try(local.cfg.cluster.service_cidr, ["10.96.0.0/12"])
   dual_stack                        = try(local.cfg.cluster.dual_stack, false)
   allow_scheduling_on_controlplanes = try(local.cfg.cluster.allow_scheduling_on_controlplanes, false)
+  register_with_fqdn                = try(local.cfg.cluster.register_with_fqdn, false)
 
   # --- Topology (node config_patches re-encoded to YAML strings) ---
-  nodes = [for n in local.cfg.nodes : {
-    hostname              = n.hostname
+  nodes = { for name, n in local.cfg.nodes : name => {
     ip                    = n.ip
     role                  = n.role
     image                 = n.image
     hardware_capabilities = try(n.hardware_capabilities, [])
     config_patches        = [for p in try(n.config_patches, []) : yamlencode(p)]
-  }]
+  } }
 
   images = { for name, img in local.cfg.images : name => {
     architecture      = try(img.architecture, "amd64")

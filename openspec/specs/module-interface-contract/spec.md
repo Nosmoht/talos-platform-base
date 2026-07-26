@@ -85,18 +85,70 @@ newline, the module's does not — no plain YAML scalar carries one).
   that is not a `-`/`+`-introduced suffix
 - **THEN** variable validation fails with the variable's error message
 
+### Requirement: Node identity
+
+`nodes` SHALL be a map keyed by node name. The key SHALL be the node's Talos
+hostname, its Kubernetes node name, and the key of the per-node apply resource,
+and SHALL NOT additionally exist as a field of the node object — a node is
+declared exactly once, in exactly one place, and a duplicate node name is not
+expressible.
+
+Every Talos-facing list the module emits SHALL be a projection of that map,
+ordered by node name, so declaration order is not observable in any emitted
+value.
+
+#### Scenario: Declaration order is not observable
+
+- **WHEN** the same node set is declared in a different order
+- **THEN** `cluster_health.{control_plane_nodes, worker_nodes, endpoints}`, the
+  talosconfig `endpoints`/`nodes` and `output.controlplane_ips` are
+  byte-identical, and the bootstrap target is unchanged
+
 ### Requirement: Topology input validation
 
-The module SHALL reject a node set without at least one controlplane, a
-node role outside `controlplane`/`worker`, duplicate node hostnames,
-duplicate node IPs, an empty image map, an image architecture outside
-`amd64`/`arm64`, and an image `cpu_vendor` outside `intel`/`amd`/`arm`.
+The module SHALL reject a node set without at least one controlplane, an EVEN
+number of controlplanes, a node role outside `controlplane`/`worker`, duplicate
+node IPs, a node key that is not already a canonical Kubernetes node name, two
+node keys sharing a first label, a dotted node key while `register_with_fqdn` is
+false, an empty image map, an image architecture outside `amd64`/`arm64`, and an
+image `cpu_vendor` outside `intel`/`amd`/`arm`.
 
-#### Scenario: Duplicate hostnames are rejected
+#### Scenario: An even controlplane count is rejected
 
-- **WHEN** two nodes declare the same hostname
-- **THEN** variable validation fails — hostnames key the per-node apply,
-  and a duplicate would silently collapse a node out of the apply set
+- **WHEN** the node set declares 2 or 4 controlplanes
+- **THEN** variable validation fails — an even count tolerates no more etcd
+  failures than the odd count below it, while adding a member that can break
+  quorum
+
+#### Scenario: A non-canonical node key is rejected
+
+- **WHEN** a node key carries uppercase, an underscore, a leading or trailing
+  `-`/`.`, or a label longer than 63 characters
+- **THEN** variable validation fails — Talos validates hostname LENGTH only and
+  silently rewrites the rest on the way to Kubernetes, so the node would arrive
+  under a different name than the one declared, and two distinct keys could
+  collapse onto one Kubernetes node
+
+#### Scenario: Colliding first labels are rejected
+
+- **WHEN** two node keys share their first label (e.g.
+  `node-a.site1.example.org` and `node-a.site2.example.org`)
+- **THEN** variable validation fails regardless of `register_with_fqdn` — Talos
+  splits the hostname at the first dot, so both machines would carry the same OS
+  hostname
+
+#### Scenario: A dotted node key without FQDN registration is rejected
+
+- **WHEN** a node key contains a dot while `register_with_fqdn` is false
+- **THEN** variable validation fails — Kubernetes would only ever see the first
+  label, silently dropping the domain part from the cluster's identity
+
+#### Scenario: Duplicate node IPs are rejected
+
+- **WHEN** two nodes declare the same IP
+- **THEN** variable validation fails with an error naming the rule; the module's
+  IP-keyed view is the structural backstop that fails the plan even if that
+  validation is removed
 
 ### Requirement: Capability label namespace validation
 
