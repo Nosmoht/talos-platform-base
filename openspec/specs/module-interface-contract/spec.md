@@ -4,6 +4,7 @@ sources:
     - tofu/modules/talos-cluster/variables.tf
     - tofu/modules/talos-cluster/outputs.tf
     - tofu/modules/talos-cluster/versions.tf
+    - tofu/modules/talos-cluster/nodes.tf
 ---
 
 # module-interface-contract
@@ -18,6 +19,12 @@ constraints. The module is backend- and caller-agnostic: the caller
 supplies the provider configuration and the state backend, and all
 cluster identity arrives through these inputs — the module ships none of
 its own.
+
+`nodes.tf` is part of that typed surface rather than of the runtime flow:
+it is provider-less, pure `var.nodes`-derived, and holds the node
+identity model — the keyed views that make the two node identifiers
+structurally unique, and the name-ordered projections the Talos
+arguments in `main.tf` consume.
 
 ## Requirements
 
