@@ -84,7 +84,7 @@ resources:
 The `resources:` edit is the load-bearing change but NOT the whole
 migration: grep your consumer tree for
 `vendor/base/kubernetes/base/infrastructure/argocd` and update **every**
-hit — incident runbooks (e.g. a self-cutover recovery step that
+hit — incident runbooks (for example a self-cutover recovery step that
 `kubectl apply`s the vendored render) and render scripts carry the same
 path, and because the puller wipes `vendor/base/` on every pull, a stale
 runbook path is discovered mid-incident, not at migration time. Then
