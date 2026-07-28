@@ -192,12 +192,12 @@ converges only what the seed cannot carry.
 Once the `root` Application syncs, GitOps owns the cluster: the consumer
 overlay fans out AppProjects and Applications, and ArgoCD transitions to
 self-management through the base's one kustomize component
-(`kubernetes/base/infrastructure/argocd/`, rendered manifests committed —
+(`kubernetes/substrate/argocd/`, rendered manifests committed —
 see [manifest-pipeline](../reference/manifest-pipeline.md)).
 
 ArgoCD therefore ships through **two render paths** — the slim Day-0 seed
 values (`tofu/modules/talos-cluster/helm/argocd-values.yaml`) and the
-steady-state values (`kubernetes/base/infrastructure/argocd/values.yaml`).
+steady-state values (`kubernetes/substrate/argocd/values.yaml`).
 Shared invariants must hold in both so they cannot drift silently, gated by
 `scripts/check-argocd-substrate-invariants.sh` (run in `task gitops:validate`
 and CI):
@@ -211,7 +211,7 @@ and CI):
   legitimate `configMapKeyRef` *consumers* of those keys are not violations).
 
 Both paths render from the same chart tarball, pinned and sha256-verified
-against `kubernetes/base/infrastructure/argocd/chart.lock.yaml`. Consumer
+against `kubernetes/substrate/argocd/chart.lock.yaml`. Consumer
 `values_override` content is out of base scope (consumer-cluster policy owns
 it). Day-2 boundaries follow from the seed semantics: ArgoCD upgrades itself
 via GitOps, Kubernetes upgrades run out-of-band via `talosctl upgrade-k8s`,

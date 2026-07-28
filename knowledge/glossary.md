@@ -14,7 +14,7 @@ sources:
   - scripts/check-render-determinism.sh
   - .github/workflows/oci-publish.yml
   - .releaserc.json
-  - kubernetes/base/infrastructure/argocd/chart.lock.yaml
+  - kubernetes/substrate/argocd/chart.lock.yaml
   - cluster.yaml.example
 ---
 

@@ -82,7 +82,7 @@ jobs:
             # `BREAKING CHANGE:` footer / `type!:` — prose "BREAKING" is ignored.
             last_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
             if [ -n "$last_tag" ]; then
-              base_values_changed="$(git diff --name-only "${last_tag}..HEAD" -- 'kubernetes/base/**/values.yaml' || true)"
+              base_values_changed="$(git diff --name-only "${last_tag}..HEAD" -- 'kubernetes/substrate/**/values.yaml' || true)"
               if [ -n "$base_values_changed" ]; then
                 echo ""
                 echo "> ⚠️ **Base Helm values changed since \`${last_tag}\`** — confirm MAJOR-vs-MINOR per AGENTS.md before approving. A genuine breaking change needs a \`BREAKING CHANGE:\` footer to bump MAJOR."
@@ -145,7 +145,7 @@ jobs:
           surface="$(git diff --name-only "${last_tag}..HEAD" -- \
             '.ci-oci-tarball-include.txt' '.ci-oci-tarball-expected.txt' \
             'schemas/**' 'platform-hardware-features.yaml' 'contracts/**' \
-            'kubernetes/base/**/values.yaml' || true)"
+            'kubernetes/substrate/**/values.yaml' || true)"
           if [ -z "$surface" ]; then
             echo "No breaking base-surface change since ${last_tag}; guard n/a."
             exit 0

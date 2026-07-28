@@ -83,7 +83,7 @@ receives a frozen tree containing:
   config). `task cluster:init-yaml` copies it to a `cluster.yaml` the
   consumer fills in.
 - **The substrate-only infrastructure component** under
-  `kubernetes/base/infrastructure/` — `argocd/`, the only component
+  `kubernetes/substrate/` — `argocd/`, the only component
   delivered as a base kustomize manifest set. ArgoCD is a co-equal
   substrate pillar. `cert-approver` is also substrate (Talos serving-cert
   glue — it approves the `kubernetes.io/kubelet-serving` CSRs the base's
@@ -168,7 +168,7 @@ spec:
       path: kubernetes/overlays/<cluster>/<component>/
       helm:
         valueFiles:
-          - $base/kubernetes/base/infrastructure/<component>/values.yaml
+          - $base/kubernetes/substrate/<component>/values.yaml
           - values-<cluster>.yaml
 ```
 

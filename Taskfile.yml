@@ -267,7 +267,7 @@ tasks:
   gitops:render-all:
     desc: Render every component that has a chart.lock.yaml
     cmd: |
-      components="$(find kubernetes/base/infrastructure -mindepth 2 -maxdepth 2 -name chart.lock.yaml -exec dirname {} \; | xargs -n1 basename | sort)"
+      components="$(find kubernetes/substrate -mindepth 2 -maxdepth 2 -name chart.lock.yaml -exec dirname {} \; | xargs -n1 basename | sort)"
       if [ -z "$components" ]; then echo "no chart.lock.yaml files yet — nothing to render"; exit 0; fi
       for c in $components; do ./scripts/render-component.sh "$c"; done
 

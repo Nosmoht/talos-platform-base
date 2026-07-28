@@ -146,7 +146,7 @@ flowchart LR
     direction TB
     Make[Makefile<br/>validate-gitops<br/>argocd-bootstrap]
     Boot["kubernetes/bootstrap/<br/>(parameterized templates)"]
-    Infra["kubernetes/base/infrastructure/<br/>substrate component<br/>(argocd)"]
+    Infra["kubernetes/substrate/<br/>substrate component<br/>(argocd)"]
     Talos["tofu/modules/talos-cluster/<br/>OpenTofu cluster-lifecycle module<br/>(per-class Image-Factory + bootstrap,<br/>Cilium + ArgoCD + cert-approver inlineManifest seeds)"]
     Pol["policies/<br/>conftest Rego"]
     Scripts["scripts/<br/>render + lint helpers"]
@@ -164,7 +164,7 @@ flowchart LR
 
 | Subsystem | Purpose | Key files |
 |---|---|---|
-| `kubernetes/base/infrastructure/` | substrate component (`argocd`), renderable in isolation (cert-approver is a Talos seed, not here — adr-0019, superseding adr-0013 §D2) | `argocd/{kustomization,namespace,values}.yaml` + `_rendered/` |
+| `kubernetes/substrate/` | substrate component (`argocd`), renderable in isolation (cert-approver is a Talos seed, not here — adr-0019, superseding adr-0013 §D2) | `argocd/{kustomization,namespace,values}.yaml` + `_rendered/` |
 | `kubernetes/bootstrap/` | parameterized ArgoCD + Cilium bootstrap templates (envsubst) | `argocd/*.tmpl`, `cilium/extras.yaml` |
 | `tofu/modules/talos-cluster/` | OpenTofu cluster-lifecycle module — sole Talos provisioning path (per-class Image-Factory installer, Cilium + ArgoCD + cert-approver inlineManifest seeds, machine config, bootstrap, kubeconfig) | `*.tf`, `manifests/` (chart-rendered `kubelet-csr-approver` seed), `examples/complete/` |
 | `policies/` | conftest Rego — label hygiene over rendered manifests | `policies/conftest/*` |

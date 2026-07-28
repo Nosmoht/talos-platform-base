@@ -31,10 +31,10 @@ Top-level keys in [`values.yaml`](./values.yaml) — anything not listed below u
 
 ArgoCD ships through **two render paths** serving different lifecycle phases:
 
-- **Day-0 bootstrap seed** — [`tofu/modules/talos-cluster/helm/argocd-values.yaml`](../../../../tofu/modules/talos-cluster/helm/argocd-values.yaml), rendered by `data.helm_template.argocd` into a Talos `cluster.inlineManifest` (deliberately slim; no kustomize overlay; `include_crds = false`).
+- **Day-0 bootstrap seed** — [`tofu/modules/talos-cluster/helm/argocd-values.yaml`](../../../tofu/modules/talos-cluster/helm/argocd-values.yaml), rendered by `data.helm_template.argocd` into a Talos `cluster.inlineManifest` (deliberately slim; no kustomize overlay; `include_crds = false`).
 - **Steady-state self-management** — [`values.yaml`](./values.yaml), rendered (helm → kustomize) into [`_rendered/manifests.yaml`](./_rendered/manifests.yaml).
 
-Both files are valid and necessary (the slim seed cannot depend on steady-state services). The risk is that values which must stay aligned drift silently because each path independently inherits upstream chart defaults. These **shared invariants** must hold in **both** paths and are gated in CI by [`scripts/check-argocd-substrate-invariants.sh`](../../../../scripts/check-argocd-substrate-invariants.sh) (the executable source of truth; run on every PR and locally via `task gitops:validate`):
+Both files are valid and necessary (the slim seed cannot depend on steady-state services). The risk is that values which must stay aligned drift silently because each path independently inherits upstream chart defaults. These **shared invariants** must hold in **both** paths and are gated in CI by [`scripts/check-argocd-substrate-invariants.sh`](../../../scripts/check-argocd-substrate-invariants.sh) (the executable source of truth; run on every PR and locally via `task gitops:validate`):
 
 | # | Invariant | Why |
 |---|---|---|
@@ -51,5 +51,5 @@ Both files are valid and necessary (the slim seed cannot depend on steady-state 
 
 ## See also
 
-- [`knowledge/reference/manifest-pipeline.md`](../../../../knowledge/reference/manifest-pipeline.md) — how this component is rendered into `_rendered/manifests.yaml`
-- [`UPGRADING.md`](../../../../UPGRADING.md) — release-to-release migration steps
+- [`knowledge/reference/manifest-pipeline.md`](../../../knowledge/reference/manifest-pipeline.md) — how this component is rendered into `_rendered/manifests.yaml`
+- [`UPGRADING.md`](../../../UPGRADING.md) — release-to-release migration steps

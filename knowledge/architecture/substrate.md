@@ -12,8 +12,8 @@ sources:
   - .github/workflows/oci-publish.yml
   - tofu/modules/talos-cluster/main.tf
   - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
-  - kubernetes/base/infrastructure/argocd/kustomization.yaml
-  - kubernetes/base/infrastructure/argocd/values.yaml
+  - kubernetes/substrate/argocd/kustomization.yaml
+  - kubernetes/substrate/argocd/values.yaml
   - AGENTS.md
 ---
 
@@ -97,7 +97,7 @@ base — see the note below):
 contracts/                   primitive-contract.md
 knowledge/                   this OKF bundle (architecture, reference,
                              workflows, decisions, glossary, rules)
-kubernetes/base/infrastructure/argocd/
+kubernetes/substrate/argocd/
                              the ONE base kustomize component (namespace +
                              committed _rendered/ manifests + values.yaml)
 kubernetes/bootstrap/argocd/ root-project / root-application *.tmpl seeds
@@ -113,7 +113,7 @@ Taskfile.yml                 the single task runner
 ```
 
 **Only `argocd/` is a tracked component.** `git ls-files` shows exactly one
-directory under `kubernetes/base/infrastructure/`, and the renderable-component
+directory under `kubernetes/substrate/`, and the renderable-component
 fixture `.ci-renderable-components.txt` contains the single line `argocd`. Any
 other directory found there on a working copy is untracked local chart
 residue, not shipped content. Post-ablation there is therefore no base
@@ -180,7 +180,7 @@ by a CI cross-reference gate, not read by the module at plan time
 
 Everything else is repo content, not artifact content — notably the CI
 workflows, `policies/conftest/`, `scripts/`, the
-`kubernetes/base/infrastructure/argocd/` component with its committed
+`kubernetes/substrate/argocd/` component with its committed
 `_rendered/` manifests ([manifest-pipeline](../reference/manifest-pipeline.md)),
 the `kubernetes/bootstrap/argocd/*.tmpl` root seeds, `Taskfile.yml`
 ([tasks](../reference/tasks.md)), `schemas/cluster.schema.json`, and
