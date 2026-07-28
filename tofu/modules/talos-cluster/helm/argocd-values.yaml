@@ -4,7 +4,7 @@
 # DELIBERATELY slim: only what ArgoCD needs at cluster bootstrap to come alive
 # and decrypt SOPS. The full configuration (cert-manager ClusterIssuer cert,
 # RBAC, OIDC/Dex) arrives in the steady state via ArgoCD self-management
-# (kubernetes/base/infrastructure/argocd). NO server.certificate here, because
+# (kubernetes/substrate/argocd). NO server.certificate here, because
 # the vault-internal ClusterIssuer does not exist yet at bootstrap.
 #
 # A consumer can replace this wholesale via var.argocd_values_override.
@@ -27,7 +27,7 @@ server:
 # steady-state render. Consumers wire ArgoCD SSO via an external OIDC provider
 # (configs.cm `oidc.config`), so the chart-default dex-server is idle dead weight
 # — and even in the slim bootstrap seed it would bloat the Talos inlineManifest.
-# Mirrors kubernetes/base/infrastructure/argocd/values.yaml. The CI gate
+# Mirrors kubernetes/substrate/argocd/values.yaml. The CI gate
 # scripts/check-argocd-substrate-invariants.sh asserts this across both paths;
 # see that component's README §Substrate invariants.
 dex:

@@ -154,7 +154,7 @@ jobs:
           expected_file="$(mktemp)"
           actual_file="$(mktemp)"
           sort -u < .ci-renderable-components.txt > "$expected_file"
-          awk -F/ '$3 == "infrastructure" {print $4}' \
+          awk -F/ '$2 == "substrate" {print $3}' \
               .work/kustomize-safe-targets.txt 2>/dev/null \
             | sort -u > "$actual_file"
           if ! cmp -s "$expected_file" "$actual_file"; then
@@ -389,6 +389,12 @@ jobs:
             echo "To update the fixture: mv .work/oci-check-contents.txt .ci-oci-tarball-expected.txt"
             exit 1
           fi
+
+      - name: Renderable substrate components are consumable + kubernetes/base stays retired
+        # Shared script with `task supply-chain:oci-allowlist` — closes the
+        # #156 class (renderable-but-unlisted component) and enforces the
+        # ADR-0024 layout invariant mechanically.
+        run: ./scripts/check-substrate-consumability.sh
 
   shellcheck:
     name: ShellCheck

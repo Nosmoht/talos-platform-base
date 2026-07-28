@@ -5,14 +5,14 @@ This is a *placeholder* licence identifier per REUSE Specification v3.3
 §"Custom licences" (https://reuse.software/spec/#custom-licenses).
 
 It applies to files under
-`kubernetes/base/infrastructure/<component>/_rendered/` which are the
+`kubernetes/substrate/<component>/_rendered/` which are the
 output of `helm template` + `kubectl kustomize` against an upstream
 Helm chart. The repo redistributes these rendered manifests verbatim
 under the rendered-manifests pattern; the *actual* licence is whatever
 the upstream chart project declares.
 
 To resolve the actual licence for a given component, read that
-component's `kubernetes/base/infrastructure/<component>/README.md`
+component's `kubernetes/substrate/<component>/README.md`
 which records:
 
 - The upstream Helm chart name and repository URL.

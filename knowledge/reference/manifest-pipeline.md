@@ -25,7 +25,7 @@ sources:
 The base ships Helm-based infrastructure components as **rendered, committed
 YAML** (the Rendered Manifests Pattern): the render happens at authoring time
 from a pinned, checksum-verified chart, the output lands in git under
-`kubernetes/base/infrastructure/<component>/_rendered/`, and CI proves the
+`kubernetes/substrate/<component>/_rendered/`, and CI proves the
 committed output is byte-reproducible from its inputs. What consumers and
 ArgoCD see is plain reviewable YAML — no chart is templated at sync time, and
 a hand-edit to committed output cannot ship silently because the drift gate
@@ -81,7 +81,7 @@ Per-component layout (tracked vs intermediate, per the render script and
 `.gitignore`):
 
 ```text
-kubernetes/base/infrastructure/<component>/
+kubernetes/substrate/<component>/
 ├── chart.lock.yaml        # pin spec (committed)
 ├── values.yaml            # Stage-1 input: repo-wide defaults (committed)
 ├── kustomization.yaml     # validation entry point (committed)
@@ -131,7 +131,7 @@ The aggregate validation task chains five scripts plus kubeconform
 1. **Discovery** — `scripts/discover_kustomize_targets.sh` finds
    kustomization directories under `kubernetes/overlays/`,
    `kubernetes/bootstrap/`, and one-level-deep component dirs in
-   `kubernetes/base/infrastructure/` (avoiding chart-internal
+   `kubernetes/substrate/` (avoiding chart-internal
    kustomizations), excluding `.git/`, `knowledge/`, `vendor/`,
    `third_party/`, generated Talos output, and `resources/` subpaths. Output:
    `.work/kustomize-targets.txt`.
@@ -187,7 +187,7 @@ The aggregate validation task chains five scripts plus kubeconform
 `scripts/check-argocd-substrate-invariants.sh` guards the shared ArgoCD
 invariants across **both** render paths — the Day-0 bootstrap seed values
 (`tofu/modules/talos-cluster/helm/argocd-values.yaml`) and the steady-state
-self-management values (`kubernetes/base/infrastructure/argocd/values.yaml`)
+self-management values (`kubernetes/substrate/argocd/values.yaml`)
 — by rendering each fresh with the single pinned chart from the argocd
 component's `chart.lock.yaml` (tarball sha256-verified, same posture as the
 component render):

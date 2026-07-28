@@ -10,7 +10,7 @@ This repository is the **substrate-only platform base** for the
 Talos-on-Kubernetes deployment family. The substrate is Talos + Cilium +
 ArgoCD (three co-equal pillars) plus `cert-approver` as serving-cert glue (a
 Talos `inlineManifest` seed, not a rendered component — adr-0013);
-`kubernetes/base/infrastructure/` ships only `argocd/`. Contributions that fit
+`kubernetes/substrate/` ships only `argocd/`. Contributions that fit
 this scope:
 
 - Improvements to the substrate components (`argocd/` rendered component; the
@@ -102,7 +102,7 @@ task spec:check-staleness        # primary-source diff must touch the owning spe
 For changes touching a single component:
 
 ```bash
-kubectl kustomize --enable-helm kubernetes/base/infrastructure/<comp>/
+kubectl kustomize --enable-helm kubernetes/substrate/<comp>/
 ```
 
 For Layer-C hardware-feature / provisioning-catalog changes:
@@ -163,7 +163,7 @@ it with `task knowledge:rules-apply` after changing a rule document — do not
 hand-edit it, or `task knowledge:rules-check` (a required CI gate) fails.
 
 If your change adds, removes, or renames a component in
-`kubernetes/base/infrastructure/`, or changes a service-DNS or
+`kubernetes/substrate/`, or changes a service-DNS or
 `ClusterIssuer` cross-reference between components, also update
 [`knowledge/architecture/substrate.md`](knowledge/architecture/substrate.md).
 The graph is human-maintained — no render script enforces it; PR

@@ -40,7 +40,7 @@ platform layer model (recorded in the platform architecture decision records).
 
 ## Project Structure & Module Organization
 
-- `kubernetes/base/infrastructure/`: base Helm values and namespace/kustomization manifests per infrastructure component.
+- `kubernetes/substrate/`: base Helm values and namespace/kustomization manifests per infrastructure component.
 - `kubernetes/bootstrap/argocd/`: parameterized bootstrap templates (`*.tmpl`) consumed by `task bootstrap:argocd`.
 - `kubernetes/bootstrap/cilium/`: reference Cilium Helm values + `extras.yaml` (GatewayClass) for optional Day-2 self-management. Cilium itself is delivered by the `talos-cluster` module as a controlplane `inlineManifest` seed (`deploy_cilium`); the former consumer-side render path is retired.
 - `tofu/modules/talos-cluster/`: the OpenTofu module that is the sole Talos cluster-lifecycle path (machine secrets, per-node composed Image-Factory installer — content-hash-deduped, config apply, bootstrap, kubeconfig). Backend- and identity-agnostic; called by a consumer-side OpenTofu root that is a thin `yamldecode` shim over the declarative `cluster.yaml` SoT. See [`knowledge/decisions/0006-opentofu-cluster-lifecycle.md`](knowledge/decisions/0006-opentofu-cluster-lifecycle.md) and [`knowledge/decisions/0007-cluster-yaml-sot.md`](knowledge/decisions/0007-cluster-yaml-sot.md).
@@ -75,7 +75,7 @@ referencing both the cluster repo and this base.
 - Required before opening a PR:
   - `task gitops:validate`
   - `task spec:validate` when `openspec/` or a spec's `primary` source changed
-  - `kubectl kustomize kubernetes/base/infrastructure/<component>/` for any touched component
+  - `kubectl kustomize kubernetes/substrate/<component>/` for any touched component
 - Live runtime verification belongs in consumer cluster repos.
 
 ## Commit & Pull Request Guidelines
@@ -147,7 +147,7 @@ After wiki updates:
 ## Validation Checklist For Codex Changes
 
 - For base/infrastructure changes:
-  - `kubectl kustomize kubernetes/base/infrastructure/<component>/`
+  - `kubectl kustomize kubernetes/substrate/<component>/`
   - `task gitops:validate`
 - For Talos cluster-lifecycle (`tofu/`) changes:
   - `task tofu:ci` (or `tofu fmt -check -recursive tofu/` + per-dir `tofu init -backend=false && tofu validate` + `tflint`)

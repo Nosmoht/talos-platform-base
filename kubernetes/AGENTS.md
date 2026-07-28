@@ -10,7 +10,7 @@ auto-loading.
 
 | Path | Purpose |
 |------|---------|
-| `kubernetes/base/infrastructure/<app>/` | Shared Helm values and base Kustomize manifests (cluster-agnostic) |
+| `kubernetes/substrate/<app>/` | Shared Helm values and base Kustomize manifests (cluster-agnostic) |
 | `kubernetes/bootstrap/argocd/` | Parameterized templates (`*.tmpl`) — do NOT hand-edit `_out/`; managed by Makefile targets |
 | `kubernetes/bootstrap/cilium/` | Reference Cilium Helm values + `extras.yaml` (GatewayClass) for Day-2 self-management; Cilium is delivered by the `talos-cluster` module as a controlplane `inlineManifest` seed (`deploy_cilium`), render path retired |
 

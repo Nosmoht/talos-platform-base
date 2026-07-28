@@ -185,3 +185,21 @@ Consumer-side signature/provenance verification is covered in
    signs, attests (SLSA + SBOM), publishes to
    `ghcr.io/nosmoht/talos-platform-base:<tag>`, and attaches the tarball,
    checksums, and SBOM to the Release.
+
+## Rollback — a defective tag
+
+There is no un-publish and no automatic interception (ADR-0020 removed the
+manual gate). The model is **forward-fix plus new tag**:
+
+1. Fix the defect on `main` (revert commit or corrective commit); the merge
+   releases the corrected version unattended.
+2. Move `:latest` off the bad digest if consumers resolve it — the pipeline
+   never does this by itself:
+   `oras tag ghcr.io/nosmoht/talos-platform-base:v<fixed> latest`.
+3. Leave the bad tag in place (immutable history; consumers pin exact tags
+   and verify cosign identity), but note it in `CHANGELOG.md` and, when a
+   consumer action is needed, in `UPGRADING.md`.
+4. Consumers that already adopted the bad tag roll their pin forward to the
+   fixed tag — never backward past a MAJOR/layout boundary without applying
+   the paired consumer-side reverts documented in the relevant `UPGRADING.md`
+   section (e.g. the ADR-0024 relocation's pin+paths pairing).

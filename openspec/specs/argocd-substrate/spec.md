@@ -1,14 +1,14 @@
 ---
 sources:
   primary:
-    - kubernetes/base/infrastructure/argocd/README.md
-    - kubernetes/base/infrastructure/argocd/chart.lock.yaml
-    - kubernetes/base/infrastructure/argocd/kustomization.yaml
-    - kubernetes/base/infrastructure/argocd/namespace.yaml
-    - kubernetes/base/infrastructure/argocd/values.yaml
-    - kubernetes/base/infrastructure/argocd/_rendered/crds.yaml
-    - kubernetes/base/infrastructure/argocd/_rendered/manifests.yaml
-    - kubernetes/base/infrastructure/argocd/_rendered-overlay/kustomization.yaml
+    - kubernetes/substrate/argocd/README.md
+    - kubernetes/substrate/argocd/chart.lock.yaml
+    - kubernetes/substrate/argocd/kustomization.yaml
+    - kubernetes/substrate/argocd/namespace.yaml
+    - kubernetes/substrate/argocd/values.yaml
+    - kubernetes/substrate/argocd/_rendered/crds.yaml
+    - kubernetes/substrate/argocd/_rendered/manifests.yaml
+    - kubernetes/substrate/argocd/_rendered-overlay/kustomization.yaml
 references:
   - knowledge/decisions/0002-namespace-ownership-rendered-manifests.md
 ---
@@ -19,7 +19,7 @@ references:
 
 The committed, steady-state ArgoCD substrate component: a pinned Helm-chart
 render shipped as `_rendered/` artifacts under
-`kubernetes/base/infrastructure/argocd/`, consumed by clusters through the
+`kubernetes/substrate/argocd/`, consumed by clusters through the
 component's kustomization for ArgoCD self-management after bootstrap.
 
 ## Requirements
@@ -28,7 +28,7 @@ component's kustomization for ArgoCD self-management after bootstrap.
 
 The component SHALL ship its rendered manifests as committed artifacts
 produced from the Helm chart pinned in
-`kubernetes/base/infrastructure/argocd/chart.lock.yaml`, which records the
+`kubernetes/substrate/argocd/chart.lock.yaml`, which records the
 chart repository, chart name, exact chart version, and the chart tarball's
 SHA-256 checksum.
 
@@ -54,7 +54,7 @@ are exactly the namespace manifest and the two committed rendered artifacts.
 
 #### Scenario: Component builds from committed inputs only
 
-- **WHEN** `kubectl kustomize kubernetes/base/infrastructure/argocd/` runs
+- **WHEN** `kubectl kustomize kubernetes/substrate/argocd/` runs
 - **THEN** the output is assembled from `namespace.yaml`,
   `_rendered/manifests.yaml`, and `_rendered/crds.yaml` with no live chart
   fetch or template step

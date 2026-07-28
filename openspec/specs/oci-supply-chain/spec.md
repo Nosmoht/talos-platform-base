@@ -75,6 +75,26 @@ the fail-closed allowlist excludes everything unlisted.
 - **WHEN** the published tarball's contents are listed
 - **THEN** no entry begins with `openspec/`, `.claude/`, or `.codex/`
 
+### Requirement: Steady-state ArgoCD consumables ship in the payload
+
+Per ADR-0024 (`knowledge/decisions/0024-argocd-substrate-relocation.md`),
+the steady-state ArgoCD component's consumable files SHALL be in the
+payload: `kubernetes/substrate/argocd/namespace.yaml`,
+`kubernetes/substrate/argocd/_rendered/manifests.yaml`, and
+`kubernetes/substrate/argocd/_rendered/crds.yaml` appear in
+`.ci-oci-tarball-include.txt`. The component's authoring inputs
+(`values.yaml`, `chart.lock.yaml`, `kustomization.yaml`,
+`_rendered-overlay/`) stay outside the payload — consumers receive the
+render, not the render pipeline.
+
+#### Scenario: Consumer can source the steady-state render from the artifact
+
+- **WHEN** the published tarball's contents are listed
+- **THEN** `kubernetes/substrate/argocd/namespace.yaml`,
+  `kubernetes/substrate/argocd/_rendered/manifests.yaml` and
+  `kubernetes/substrate/argocd/_rendered/crds.yaml` are present, and no
+  other `kubernetes/substrate/` path is
+
 ### Requirement: Keyless signature keyed to the digest
 
 The published artifact SHALL be cosign-signed with keyless OIDC, anchored to

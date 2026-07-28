@@ -5,7 +5,7 @@
 # Usage:
 #   scripts/render-component.sh <component>
 #
-# Reads kubernetes/base/infrastructure/<component>/chart.lock.yaml as the
+# Reads kubernetes/substrate/<component>/chart.lock.yaml as the
 # pin spec, runs helm template with the component's values.yaml (Stage 1),
 # then kustomize build of the component's _rendered-overlay/ to apply
 # platform-base standard patches (Stage 2). Splits the final output into
@@ -47,7 +47,7 @@ if [ "$#" -ne 1 ]; then
   exit 1
 fi
 COMP="$1"
-COMP_DIR="${ROOT}/kubernetes/base/infrastructure/${COMP}"
+COMP_DIR="${ROOT}/kubernetes/substrate/${COMP}"
 LOCK="${COMP_DIR}/chart.lock.yaml"
 STAGE1_DIR="${COMP_DIR}/.render-stage1"
 RENDERED_DIR="${COMP_DIR}/_rendered"

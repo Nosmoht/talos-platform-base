@@ -6,6 +6,7 @@ sources:
     - tofu/modules/talos-cluster/main.tf
 references:
   - AGENTS.md §Repository Purpose (ArgoCD opt-out, never Day-2 add-on)
+  - kubernetes/substrate/argocd/ (steady-state twin; relocated per knowledge/decisions/0024-argocd-substrate-relocation.md)
 ---
 
 # argocd-module-seed

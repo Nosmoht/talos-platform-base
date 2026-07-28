@@ -16,7 +16,7 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 nosmoht"
 SPDX-License-Identifier = "Apache-2.0"
 
-# Generated artifacts under kubernetes/base/infrastructure/<component>/_rendered/
+# Generated artifacts under kubernetes/substrate/<component>/_rendered/
 # are derivative outputs of upstream Helm charts. They carry the upstream
 # chart's licence, not the repo's Apache-2.0. Per-chart licence attribution
 # lives in each component's README.md (see PR #46 series). LicenseRef-
@@ -24,7 +24,7 @@ SPDX-License-Identifier = "Apache-2.0"
 # upstream licence" so SBOM consumers do not silently inherit Apache-2.0 for
 # code the project does not own the copyright to.
 [[annotations]]
-path = "kubernetes/base/infrastructure/**/_rendered/**"
+path = "kubernetes/substrate/**/_rendered/**"
 precedence = "override"
 SPDX-FileCopyrightText = "various upstream Helm chart authors"
 SPDX-License-Identifier = "LicenseRef-UpstreamHelm"

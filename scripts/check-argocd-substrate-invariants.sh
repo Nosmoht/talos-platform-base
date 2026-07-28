@@ -2,10 +2,10 @@
 # check-argocd-substrate-invariants.sh — gate the shared ArgoCD substrate
 # invariants across BOTH render paths so they cannot drift silently:
 #   - Day-0 bootstrap seed   : tofu/modules/talos-cluster/helm/argocd-values.yaml
-#   - steady-state self-mgmt : kubernetes/base/infrastructure/argocd/values.yaml
+#   - steady-state self-mgmt : kubernetes/substrate/argocd/values.yaml
 #
 # The declared source-of-truth for these invariants is
-# kubernetes/base/infrastructure/argocd/README.md §Substrate invariants.
+# kubernetes/substrate/argocd/README.md §Substrate invariants.
 # Invariants asserted here:
 #   I1  No bundled-Dex resource: no rendered document carries the label
 #       app.kubernetes.io/component=dex-server (nor metadata.name
@@ -19,7 +19,7 @@
 #       NOT a violation (a naïve `grep server.dex.server` would match them).
 #
 # Both base-shipped values files are rendered FRESH with the pinned argo-cd chart
-# (kubernetes/base/infrastructure/argocd/chart.lock.yaml — the single version
+# (kubernetes/substrate/argocd/chart.lock.yaml — the single version
 # source) and asserted structurally. This is a values-property check ("does this
 # values file disable the bundled Dex"), NOT a byte-reproduction of the tofu
 # inlineManifest: the dex templates are gated on `dex.enabled`, not on K8s API
@@ -39,7 +39,7 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "::error::not inside a git work-tree — run this from within the repository" >&2; exit 1; }
-ARGOCD_DIR="${ROOT}/kubernetes/base/infrastructure/argocd"
+ARGOCD_DIR="${ROOT}/kubernetes/substrate/argocd"
 LOCK="${ARGOCD_DIR}/chart.lock.yaml"
 STEADY_VALUES="${ARGOCD_DIR}/values.yaml"
 BOOTSTRAP_VALUES="${ROOT}/tofu/modules/talos-cluster/helm/argocd-values.yaml"
@@ -148,7 +148,7 @@ check_path "steady-state"   "$tmp/steady.yaml"
 check_path "bootstrap-seed" "$tmp/bootstrap.yaml"
 
 if [ "$violations" -ne 0 ]; then
-  echo "::error::ArgoCD substrate invariants FAILED (see above). Declared in kubernetes/base/infrastructure/argocd/README.md §Substrate invariants." >&2
+  echo "::error::ArgoCD substrate invariants FAILED (see above). Declared in kubernetes/substrate/argocd/README.md §Substrate invariants." >&2
   exit 3
 fi
 echo "OK: ArgoCD substrate invariants hold across both render paths (bundled Dex disabled; no server.dex.server* cmd-params)."

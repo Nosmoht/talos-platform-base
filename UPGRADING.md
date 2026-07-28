@@ -27,14 +27,17 @@ cosign verify \
 #     catalog as of v2.0.0 — run its scan against your manifests there, not
 #     against the substrate base.)
 
-# 3. Render diff between current and target
-kubectl kustomize --enable-helm vendor/base/kubernetes/base/infrastructure/ \
-  > /tmp/before.yaml
+# 3. Render diff between current and target (steady-state argocd is the only
+#    rendered component the artifact ships; compare its published render).
+#    NOTE: `oras pull` deposits the tarball layer — it does NOT extract it;
+#    the tar -xzf step is mandatory (consumer repos typically wrap this as
+#    `task supply-chain:pull-base-oci` — prefer that where it exists).
+cp vendor/base/kubernetes/substrate/argocd/_rendered/manifests.yaml /tmp/before.yaml
 echo "${TAG}" > .base-version
-rm -rf vendor/base && oras pull "ghcr.io/${OWNER}/talos-platform-base:${TAG}" --output vendor/base
-kubectl kustomize --enable-helm vendor/base/kubernetes/base/infrastructure/ \
-  > /tmp/after.yaml
-diff -u /tmp/before.yaml /tmp/after.yaml | less
+rm -rf /tmp/base-pull && oras pull "ghcr.io/${OWNER}/talos-platform-base:${TAG}" --output /tmp/base-pull
+rm -rf vendor/base && mkdir -p vendor/base
+tar -xzf /tmp/base-pull/talos-platform-base-${TAG}.tar.gz -C vendor/base
+diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manifests.yaml | less
 
 # 4. Apply consumer-overlay patches for any MAJOR-listed breaking change below.
 # 5. Commit, open PR, let ArgoCD reconcile after merge.
@@ -42,7 +45,67 @@ diff -u /tmp/before.yaml /tmp/after.yaml | less
 
 ---
 
-## Unreleased (next MAJOR) — `nodes` is keyed by node name (MAJOR — consumer-facing)
+## Unreleased (next MINOR) — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (MINOR — manual action for argocd-overlay consumers)
+
+**Type:** MINOR (additive for consumers). Decision: ADR-0024
+(`knowledge/decisions/0024-argocd-substrate-relocation.md`, issue #156,
+Option 3). Two changes land together:
+
+1. The steady-state ArgoCD component moved from
+   `kubernetes/base/infrastructure/argocd/` to `kubernetes/substrate/argocd/`;
+   the now-empty `kubernetes/base/` tree is retired.
+2. The component's consumable files are now **in the OCI artifact** —
+   `kubernetes/substrate/argocd/{namespace.yaml,_rendered/manifests.yaml,_rendered/crds.yaml}`
+   were added to `.ci-oci-tarball-include.txt`. Before this release the
+   steady-state tree existed only in git and was unconsumable at every
+   published tag (the gap #156 documents; tracked downstream as the
+   consumer's render-reproducibility issue).
+
+This is NOT a breaking change for OCI consumers: the old path was never
+present in any published artifact, so no consumer overlay that rendered
+successfully from a published tag can break. Consumers whose argocd overlay
+referenced the old path (and therefore only rendered against a stale
+hand-pulled `vendor/base/`) update their `resources:` entries:
+
+```yaml
+# BEFORE (never satisfiable from a published artifact)
+resources:
+  - ../../../../../../vendor/base/kubernetes/base/infrastructure/argocd/namespace.yaml
+  - ../../../../../../vendor/base/kubernetes/base/infrastructure/argocd/_rendered/manifests.yaml
+  - ../../../../../../vendor/base/kubernetes/base/infrastructure/argocd/_rendered/crds.yaml
+
+# AFTER
+resources:
+  - ../../../../../../vendor/base/kubernetes/substrate/argocd/namespace.yaml
+  - ../../../../../../vendor/base/kubernetes/substrate/argocd/_rendered/manifests.yaml
+  - ../../../../../../vendor/base/kubernetes/substrate/argocd/_rendered/crds.yaml
+```
+
+The `resources:` edit is the load-bearing change but NOT the whole
+migration: grep your consumer tree for
+`vendor/base/kubernetes/base/infrastructure/argocd` and update **every**
+hit — incident runbooks (for example a self-cutover recovery step that
+`kubectl apply`s the vendored render) and render scripts carry the same
+path, and because the puller wipes `vendor/base/` on every pull, a stale
+runbook path is discovered mid-incident, not at migration time. Then
+re-pull the artifact and verify render-equivalence against your
+previously committed consumer render (kustomize-patched values like
+`argocd-cm.url` ride on top unchanged).
+
+**Back-out:** the revert is paired, never partial. Rolling the base pin
+back to a pre-relocation tag restores a tarball WITHOUT
+`kubernetes/substrate/argocd/**`, so the pin revert and the consumer-side
+path revert (the `resources:` lines and every grep hit above) must land
+together — reverting only one half leaves kustomize pointing at paths no
+artifact satisfies. `vendor/base/` does not preserve old files across
+pulls.
+
+Adjacency note: #105 (deliver ArgoCD CRDs without imperative `kubectl
+apply`) governs the same `crds.yaml` payload the artifact now ships; its
+outcome may reshape how the *bootstrap seed* delivers CRDs but does not
+change this steady-state publication path.
+
+## `v8.0.0` — `nodes` is keyed by node name (MAJOR — consumer-facing)
 
 **Type:** MAJOR (input-shape breaking, runtime-neutral). `var.nodes` /
 `cluster.yaml` `nodes:` change from a LIST of node objects to a MAP keyed by the
@@ -219,7 +282,7 @@ tofu plan                                   # empty for an unchanged node set,
 
 ---
 
-## Unreleased (next MAJOR) — kubelet-serving CSR approver replaced with `postfinance/kubelet-csr-approver` (MAJOR — consumer-facing)
+## `v6.0.0` — kubelet-serving CSR approver replaced with `postfinance/kubelet-csr-approver` (MAJOR — consumer-facing)
 
 **Type:** MAJOR (consumer-runtime breaking). The seeded kubelet-serving CSR
 approver changes from `alex1989hu/kubelet-serving-cert-approver` to
@@ -337,7 +400,7 @@ it.
 
 ---
 
-## Unreleased (next MAJOR) — Cilium observability inputs + opt-in ArgoCD self-management (MAJOR — consumer-facing)
+## `v7.0.0` — Cilium observability inputs + opt-in ArgoCD self-management (MAJOR — consumer-facing)
 
 **Type:** MAJOR (bundles two independent compatibility breaks). Adds
 first-class default-off Cilium observability inputs and an opt-in

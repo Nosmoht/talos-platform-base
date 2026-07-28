@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # render-component-readmes.sh — generate per-component README.md files
-# under kubernetes/base/infrastructure/<comp>/.
+# under kubernetes/substrate/<comp>/.
 #
 # Per knowledge/workflows/issue-lifecycle.md issue #35: each component dir must contain
 # a README with sections (Purpose, Upstream chart, Namespace,
@@ -23,7 +23,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INFRA_DIR="$REPO_ROOT/kubernetes/base/infrastructure"
+INFRA_DIR="$REPO_ROOT/kubernetes/substrate"
 COMP_LIST="$REPO_ROOT/.ci-renderable-components.txt"
 
 command -v yq >/dev/null 2>&1 || { echo "ERROR: yq not found in PATH" >&2; exit 2; }

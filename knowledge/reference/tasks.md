@@ -63,7 +63,7 @@ modules rather than standalone modules.
 | --- | --- |
 | `gitops:validate` | Full pipeline: kustomize-target discovery → safe render → SOPS check → conftest → kubeconform → conftest bite-check → ArgoCD substrate invariants → `scripts/check-bootstrap-render.sh`. Stage detail in [manifest pipeline](manifest-pipeline.md). |
 | `gitops:render-component` | Stage-1 (helm template) + Stage-2 (kustomize build) render of one component. Usage: `task gitops:render-component COMPONENT=<name>`; fails with usage text when `COMPONENT` is unset. |
-| `gitops:render-all` | Render every component under `kubernetes/base/infrastructure/` that has a `chart.lock.yaml`; exits 0 with a notice when none exist. |
+| `gitops:render-all` | Render every component under `kubernetes/substrate/` that has a `chart.lock.yaml`; exits 0 with a notice when none exist. |
 | `gitops:verify-rendered` | Re-render all components and fail if the committed `_rendered/` tree drifts (`scripts/verify-rendered.sh`). |
 
 Precondition: the safe-render stage requires ripgrep (`rg`) on PATH for
