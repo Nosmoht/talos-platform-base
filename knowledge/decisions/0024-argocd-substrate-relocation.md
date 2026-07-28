@@ -83,7 +83,9 @@ groups naturally beside `kubernetes/bootstrap/`.
 - Follow-up: #105 decides how the *bootstrap seed* delivers the same CRD
   payload declaratively; it may consume the now-published
   `_rendered/crds.yaml` but does not change this publication path.
-  Downstream consumers migrate per `UPGRADING.md` (three-line path edit).
+  Downstream consumers migrate per `UPGRADING.md` — the three-line
+  `resources:` edit plus every other consumer-tree reference to the old
+  vendored path (incident runbooks and render scripts carry it too).
 
 ## Pros and Cons of the Options
 

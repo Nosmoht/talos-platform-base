@@ -390,6 +390,12 @@ jobs:
             exit 1
           fi
 
+      - name: Renderable substrate components are consumable + kubernetes/base stays retired
+        # Shared script with `task supply-chain:oci-allowlist` — closes the
+        # #156 class (renderable-but-unlisted component) and enforces the
+        # ADR-0024 layout invariant mechanically.
+        run: ./scripts/check-substrate-consumability.sh
+
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest

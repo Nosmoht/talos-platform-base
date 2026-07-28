@@ -28,10 +28,15 @@ cosign verify \
 #     against the substrate base.)
 
 # 3. Render diff between current and target (steady-state argocd is the only
-#    rendered component the artifact ships; compare its published render)
+#    rendered component the artifact ships; compare its published render).
+#    NOTE: `oras pull` deposits the tarball layer — it does NOT extract it;
+#    the tar -xzf step is mandatory (consumer repos typically wrap this as
+#    `task supply-chain:pull-base-oci` — prefer that where it exists).
 cp vendor/base/kubernetes/substrate/argocd/_rendered/manifests.yaml /tmp/before.yaml
 echo "${TAG}" > .base-version
-rm -rf vendor/base && oras pull "ghcr.io/${OWNER}/talos-platform-base:${TAG}" --output vendor/base
+rm -rf /tmp/base-pull && oras pull "ghcr.io/${OWNER}/talos-platform-base:${TAG}" --output /tmp/base-pull
+rm -rf vendor/base && mkdir -p vendor/base
+tar -xzf /tmp/base-pull/talos-platform-base-${TAG}.tar.gz -C vendor/base
 diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manifests.yaml | less
 
 # 4. Apply consumer-overlay patches for any MAJOR-listed breaking change below.
@@ -76,9 +81,24 @@ resources:
   - ../../../../../../vendor/base/kubernetes/substrate/argocd/_rendered/crds.yaml
 ```
 
-Then re-pull the artifact and verify render-equivalence against your
+The `resources:` edit is the load-bearing change but NOT the whole
+migration: grep your consumer tree for
+`vendor/base/kubernetes/base/infrastructure/argocd` and update **every**
+hit — incident runbooks (e.g. a self-cutover recovery step that
+`kubectl apply`s the vendored render) and render scripts carry the same
+path, and because the puller wipes `vendor/base/` on every pull, a stale
+runbook path is discovered mid-incident, not at migration time. Then
+re-pull the artifact and verify render-equivalence against your
 previously committed consumer render (kustomize-patched values like
 `argocd-cm.url` ride on top unchanged).
+
+**Back-out:** the revert is paired, never partial. Rolling the base pin
+back to a pre-relocation tag restores a tarball WITHOUT
+`kubernetes/substrate/argocd/**`, so the pin revert and the consumer-side
+path revert (the `resources:` lines and every grep hit above) must land
+together — reverting only one half leaves kustomize pointing at paths no
+artifact satisfies. `vendor/base/` does not preserve old files across
+pulls.
 
 Adjacency note: #105 (deliver ArgoCD CRDs without imperative `kubectl
 apply`) governs the same `crds.yaml` payload the artifact now ships; its

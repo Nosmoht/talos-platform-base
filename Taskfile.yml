@@ -484,6 +484,7 @@ tasks:
         exit 1
       fi
       rm -f .work/oci-check.tar.gz
+      ./scripts/check-substrate-consumability.sh
 
   # ===========================================================================
   # knowledge:* — OKF knowledge bundle (knowledge/) authoring + validation
