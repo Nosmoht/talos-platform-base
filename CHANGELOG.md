@@ -162,6 +162,14 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it is safe for a consumer still pinning the previous minor. This file is
   reference-only (not consumed by the seed render), but it is what a consumer
   copies into a Day-2 self-managed Application.
+- **`kubernetes/bootstrap/cilium/values.yaml`: three inert keys removed.**
+  `policySecrets.enabled`, `encryption.wireguard.userspaceFallback` and
+  `loadBalancer.l2.enabled` are recognized by **neither** chart 1.19.4 nor
+  1.20.0 — no `values.yaml` entry and no template reference in either. Verified
+  inert by rendering the file against both charts before and after removal: the
+  output is byte-identical, so nothing a consumer copying this file relies on
+  changes. `loadBalancer.l2.enabled` was also redundant with the adjacent
+  `l2announcements.enabled`, which does render.
 
 ### Fixed
 

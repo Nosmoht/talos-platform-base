@@ -132,13 +132,12 @@ silently rather than rejected), and a value whose **default or enforcement
 behavior the chart has changed** under a spelling that still parses. In either
 case the consumer's cluster is misconfigured or newly failing with no error at
 render or apply time, so the bump SHALL either fix the file or document the
-consequence in `UPGRADING.md`. Known exceptions, pre-dating this requirement
-and tracked separately: the file carries inert keys that the pinned chart does
-not recognize (`policySecrets.enabled`,
-`encryption.wireguard.userspaceFallback`, `loadBalancer.l2.enabled` — the last
-redundant with the `l2announcements.enabled` key that does render), and a full
-audit of every value in the file against the pinned chart is out of scope for a
-version bump.
+consequence in `UPGRADING.md`. Known exception: a full audit of every value in
+the file against the pinned chart is out of scope for a version bump, so the
+file MAY still carry a value the chart does not recognize. Such a value is inert
+rather than harmful — Helm drops it, and removing it leaves the rendered output
+byte-identical — but it misleads a consumer copying the file, so a value found to
+be unrecognized by the pinned chart SHALL be removed.
 
 #### Scenario: Reference values are marked as non-live
 

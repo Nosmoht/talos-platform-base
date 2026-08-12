@@ -41,16 +41,10 @@ envoy:
     capabilities:
       keepCapNetBindService: true
 
-# --- Policy secrets ---
-policySecrets:
-  enabled: true
-
 # --- Encryption ---
 encryption:
   enabled: true
   type: wireguard
-  wireguard:
-    userspaceFallback: false
   # Cilium 1.20 REMOVED the flat encryption.strictMode.{enabled,cidr,
   # allowRemoteNodeIdentities} keys (deprecated in 1.19). The nested egress.* form
   # below is the only supported spelling — and it renders identically on 1.19.x, so
@@ -144,14 +138,11 @@ securityContext:
 bpf:
   vlanBypass: []
 
-# --- L2 announcements / LoadBalancer ---
+# --- L2 announcements ---
 # Enable Cilium as the L2 announcer for Service type=LoadBalancer VIPs.
 # Replaces kube-vip / MetalLB for L2 ARP announcements on the cluster LAN.
 l2announcements:
   enabled: true
-loadBalancer:
-  l2:
-    enabled: true
 
 # --- cilium-secrets Namespace labels ---
 # PSA labels match the live state and prevent non-SSA apply from stripping them.
