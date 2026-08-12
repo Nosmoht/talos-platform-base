@@ -121,7 +121,10 @@ sync_merge() { # sync_merge <label> — merge the base in, must be conflict-free
 }
 sync_merge sync-far && assert_merge_commit && verdict 0 "far-apart base-sync merge keeps the escape"
 
-echo "B) base-sync merge, branch edit 3 lines from the base's — clean, SHARED diff hunk"
+# B is not extra branch coverage — it runs the same path as A. It is a
+# regression lock against reintroducing the cheaper `diff-tree --cc`-emptiness
+# test, which the comment below explains and which measurement rejected.
+echo "B) regression lock vs --cc: base-sync merge, edits 3 lines apart, SHARED hunk"
 git checkout -q -B sync-near "$base"
 edit 23 "line23-BRANCH"
 git commit -qam "branch edits line 23

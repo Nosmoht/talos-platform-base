@@ -12,7 +12,14 @@
   freshness link to it; `timestamp` bumped for the re-verification.
 - `reference/tasks.md`: `spec:validate` and `spec:check-staleness` rows updated
   for the same attribution rule and the new bite-check step. `timestamp` left at
-  2026-07-22 — one row was re-verified, not the inventory.
+  2026-07-22 — one row was re-verified, not the inventory. The
+  `spec:check-staleness` row was then thinned to the practical consequence plus
+  a pointer to the workflow concept: a task-inventory row restating a mechanism
+  and both its failure directions is out of altitude, and the bundle's own rule
+  prefers source pointers over copied code-derived truth. Independent
+  simplicity review counted six prose restatements of one rationale; two of
+  those (both in `CONTRIBUTING.md`) carry only the consequence and stay, and
+  `CHANGELOG.md` stays self-contained by genre.
 
 - `decisions/0022-cilium-observability-and-argocd-self-management.md`: dated
   addendum recording the re-verification at the Cilium `1.20.0` chart bump. All
