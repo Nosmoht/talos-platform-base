@@ -42,7 +42,17 @@ securityContext:
       - KILL
       - NET_ADMIN
       - NET_RAW
-      - NET_BIND_SERVICE # Gateway API / envoy listeners on privileged ports
+      # NET_BIND_SERVICE is NOT in the chart's own ciliumAgent default (13 entries;
+      # this floor forks to 12 by withholding SYS_MODULE + SYSLOG and adding this).
+      # The old justification here read "Gateway API / envoy listeners on privileged
+      # ports", which does not explain the grant for THIS container: with the
+      # chart default (`envoy.enabled` unset => true for new installs) Envoy runs
+      # as the standalone `cilium-envoy` DaemonSet, so the agent serves no Gateway
+      # listener. Retained defensively for a consumer who sets
+      # `envoy.enabled: false` via cilium_values_override and runs Envoy embedded
+      # in the agent. Whether embedded mode actually needs it is NOT established —
+      # that verdict needs a live cluster, tracked in issue #214.
+      - NET_BIND_SERVICE
       - IPC_LOCK
       - SYS_ADMIN
       - SYS_RESOURCE
