@@ -240,8 +240,11 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   merge that flips an exec bit or turns the path into a symlink contributed
   something even when the blob is unchanged, and two spec-owned primary sources
   are shell scripts CI runs with no interpreter prefix). Anything the comparison
-  cannot decide counts as a contribution. Both failure directions are bound by
-  `scripts/check-staleness-gate-bite.sh` from `task spec:validate`.
+  cannot decide counts as a contribution, and every git call now runs under
+  `GIT_LITERAL_PATHSPECS` so a source name git would otherwise read as pathspec
+  magic (a leading `:`, or `*?[`) is treated as the literal path it is. Both
+  failure directions are bound by `scripts/check-staleness-gate-bite.sh` from
+  `task spec:validate`.
   `talos_cluster_kubeconfig.this` fetched the admin kubeconfig once at
   bootstrap and never re-fetched it: its own arguments (`node`/`endpoint =
   local.first_controlplane.ip`) are the Talos-API (talosclient, port 50000)

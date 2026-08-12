@@ -206,6 +206,46 @@ else
   fi
 fi
 
+echo "E) source name that git would read as pathspec MAGIC, clean base-sync merge"
+# A source whose name starts with ':' is a legal path, and `diff --name-only`
+# prints it unquoted so it reaches the ownership map — but without
+# GIT_LITERAL_PATHSPECS git reads it as pathspec magic, `log -- <path>` matches
+# no commit, and the escape is refused on a merge that deserved it. The gate is
+# fail-closed there, so the symptom is a FAIL nobody can explain, not a leak.
+git checkout -q -B magic "$base"
+printf -- '---\nsources:\n  primary:\n    - :magic.txt\n---\n\n# m\n' > openspec/specs/x/spec.md
+seq 1 40 | sed 's/^/line/' > ':magic.txt'
+git add -A >/dev/null 2>&1
+git commit -qm "fixture: a source git would read as pathspec magic"
+magic_base="$(git rev-parse HEAD)"
+awk 'NR==20{print "line20-MAIN"; next} {print}' ':magic.txt' > src.next && mv src.next ':magic.txt'
+git commit -qam "base edits line 20 of the magic-named source"
+magic_main="$(git rev-parse HEAD)"
+git checkout -q -B magic-branch "$magic_base"
+awk 'NR==39{print "line39-BRANCH"; next} {print}' ':magic.txt' > src.next && mv src.next ':magic.txt'
+git commit -qam "branch edits line 39 of the magic-named source
+
+Spec-Impact: none"
+if git merge -q --no-edit "$magic_main" -m "Merge into magic-branch" >/dev/null 2>&1; then
+  if [ "$(git rev-list --parents -n1 HEAD | wc -w | tr -d ' ')" != 3 ]; then
+    echo "  SETUP BROKEN: HEAD is not a two-parent merge"; rc=1
+  else
+    # `--base` needs a ref, and this scenario's base line is not `main`.
+    git branch -f magic-main "$magic_main"
+    got=0
+    out="$(python3 "$gate" --base magic-main 2>&1)" || got=$?
+    if [ "$got" = 0 ]; then
+      echo "  PASS  a magic-named source is treated as a literal path (exit 0)"
+    else
+      echo "  FAIL  a magic-named source is treated as a literal path (exit $got, expected 0)"
+      printf '%s\n' "$out" | sed 's/^/          /'
+      rc=1
+    fi
+  fi
+else
+  echo "  SETUP BROKEN: the base-sync merge conflicted"; git merge --abort || true; rc=1
+fi
+
 if [ "$rc" = 0 ]; then
   echo "staleness-gate bite-check OK: merge attribution holds in both directions"
 else
