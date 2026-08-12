@@ -10,7 +10,16 @@
   `operator.prometheus.enabled` revisit trigger did not fire (still defaults to
   `true`), so the audit-only caveat on
   `cilium_seed_observability_markers.operator_metrics` stands. Nothing
-  superseded.
+  superseded. The addendum also inventories the new default-on 1.20 surface in
+  the seed, re-measured by diffing the FULL rendered `cilium-config` map in both
+  directions rather than scanning for added keys: 12 added, 0 removed, and one
+  changed value (`bpf-lb-algorithm-annotation` `"false"` → `"true"`, forced by
+  `gatewayAPI.enabled`). Two corrections to the first pass of that inventory:
+  `enable-drift-checker` is NOT new (`configDriftDetection` exists in 1.19.4 and
+  the key renders `"true"` in both), and `envoy-node-locality-enabled` was
+  missing. The `gateway-api-use-remote-address` row is corrected from "genuine
+  new default-on behavior" to behavior-PRESERVING — Cilium 1.19 hardcoded the
+  same Envoy field, so 1.20 adds the knob, not a new posture.
 - `decisions/0007-cluster-yaml-sot.md`: Gateway API CRD floor updated v1.4.1 →
   v1.6.1 (Cilium 1.20 minimum; `TLSRoute` joined the standard channel at
   v1.6.1), and the chart-provenance residual re-verified —

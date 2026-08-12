@@ -119,6 +119,22 @@ Cilium 1.20.0 was released 2026-07-29 and becomes the base's substrate CNI seed
 version. Re-verification at the new pin is recorded as a dated addendum in
 [`knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md`](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
+**Before anything else: nothing below reaches you until you move your own pin.**
+The module default (`cilium_chart_version`, now `1.20.0`) is consulted only when
+the caller passes nothing, and both shipped consumer paths pass it explicitly:
+`cluster.yaml` carries `substrate.cilium.chart_version`, and the example shim
+reads that as `try(local.cilium.chart_version, "<literal>")` — where the literal
+is whatever the base shipped when you copied the shim. A consumer created from an
+earlier tag therefore keeps rendering 1.19.4 after vendoring this one: no 1.20
+render, no self-management move, and §2–§5 not yet in effect. Two edits, both in
+files you own:
+
+1. Set `substrate.cilium.chart_version: "1.20.0"` in your `cluster.yaml`.
+2. Update the fallback literal in your copied shim if it still reads `1.19.4`.
+
+A fresh bootstrap from the current `cluster.yaml.example` already carries 1.20.0
+and needs neither edit.
+
 ### 1. Running clusters are NOT upgraded by this bump — but the frozen seed goes stale (affects anyone who adds or replaces a controlplane)
 
 `cilium_chart_version` is a **seed knob**. `terraform_data.cilium_render` carries
@@ -127,9 +143,10 @@ adopting a base tag that pins Cilium 1.20.0 does **not** upgrade Cilium on an
 already-bootstrapped cluster. The new pin applies to fresh bootstraps, and to a
 deliberate `tofu apply -replace=terraform_data.cilium_render[0]`.
 
-What the bump *does* do on every existing consumer: `data.helm_template.cilium`
-is re-read on every `tofu plan`, so your next plan pulls chart 1.20.0 and
-re-renders in memory. **Your plan should still show no machine-config change.**
+What the bump *does* do on an existing consumer who moved the pin:
+`data.helm_template.cilium` is re-read on every `tofu plan`, so your next plan
+pulls chart 1.20.0 and re-renders in memory. **Your plan should still show no
+machine-config change.**
 `ignore_changes = [input]` means the re-render never reaches the frozen output,
 so the controlplane patch — and therefore the machine configuration — is
 unchanged; that is the contract in
@@ -145,8 +162,18 @@ runs without `--strict`, so it is dropped silently (that is the whole point of
 §3). So a clean plan is **not** evidence that your `cilium_values_override`
 survived; audit it against §3 by hand.
 
-Kubernetes is unaffected: the base pins `v1.35.0`, inside Cilium 1.20's
-supported range (1.33–1.36). No Kubernetes or Talos bump is required.
+**Check your Kubernetes version first — the base does not pin it.**
+`kubernetes_version` is a required module input with no default (its only
+constraint is a v-prefixed-semver validation), so the version in play is whatever
+your `cluster.yaml` sets. The `v1.35.0` in `cluster.yaml.example` is an example
+value, not a pin. Cilium 1.20 lists Kubernetes **1.33–1.36** as e2e-tested
+(`Documentation/network/kubernetes/requirements.rst` at tag `v1.20.0`), against
+1.31–1.34 for Cilium 1.19 — the overlap is 1.33 and 1.34. Below 1.33 the
+combination is outside the tested set: the agent still starts, since Cilium's
+coded floor is 1.21 (`pkg/k8s/version/version.go`, `MinimalVersionConstraint`,
+unchanged between the two versions), but upstream does not test it. If your
+cluster runs 1.32 or earlier, raise Kubernetes to at least 1.33 before moving the
+pin, or stay on Cilium 1.19 for now. No Talos bump is required either way.
 
 **The flip side — a stale seed outlives the pin, and this bump is the first time
 the gap is a whole minor.** `ignore_changes = [input]` freezes the render in
@@ -228,19 +255,53 @@ CRDs via GitOps already and simply point that at v1.6.1.
 
 Order matters: Gateway API first, Cilium second.
 
-**Also new and default-ON: `gatewayAPI.useRemoteAddress`.** This Helm value does
-not exist in chart 1.19.4 and defaults to **`true`** in 1.20.0, so every
-consumer inherits it — the base sets `cilium_gateway_api = true` by default and
-does not override the key. It renders as `gateway-api-use-remote-address: "true"`
-in `cilium-config`. Effect: the Gateway derives the client address from the
-request's forwarded headers rather than the connection peer, which is what you
-want behind a trusted L4 load balancer and what you do **not** want when clients
-can reach the Gateway directly — there, a client-supplied `X-Forwarded-For`
-becomes the source of truth for anything downstream that reads it (logging,
-rate-limiting, IP allow-lists). Tune with `xffNumTrustedHops` (present in both
-versions) via `cilium_values_override`, or set
-`gatewayAPI.useRemoteAddress: false` to restore 1.19 behavior. Review this if any
-policy or application trusts the client IP a Gateway reports.
+**Also newly tunable, but NOT a behavior change: `gatewayAPI.useRemoteAddress`.**
+This Helm value does not exist in chart 1.19.4 and defaults to **`true`** in
+1.20.0, rendering `gateway-api-use-remote-address: "true"` in `cilium-config`.
+The default **preserves** 1.19 behavior instead of changing it: Cilium 1.19
+already hardcoded the same Envoy setting in its Gateway listener translation
+(`operator/pkg/model/translation/envoy_http_connection_manager.go` at tag
+`v1.19.4` sets `UseRemoteAddress: true` alongside `SkipXffAppend: false`), and
+1.20 keeps that same literal while adding a mutator that lets the config override
+it (`envoy_listener.go`, `withUseRemoteAddress`). What 1.20 adds is the knob, not
+a new posture — so no action is required unless you deliberately want the
+non-default value.
+
+Get the direction right before touching it. Per the chart's own description of
+the value, enabling it means the source IP is determined from the client's remote
+address instead of the proxy-protocol header. So `true` trusts the connection
+peer, and a client-supplied `X-Forwarded-For` is not what the Gateway treats as
+the client address; `false` is the setting that makes a forwarded address
+authoritative, which is safe only where a trusted proxy is the sole path to the
+Gateway. Setting `false` does not return you to 1.19 — it departs from 1.19.
+Change it, or `xffNumTrustedHops` (present in both versions), only for a
+deliberate trusted-proxy topology, and check the combination against Envoy's
+`use_remote_address` and X-Forwarded-For documentation for that topology.
+
+**Enabling Gateway API in 1.20 also forces two datapath keys on.** The base sets
+`cilium_gateway_api = true` by default, so this applies unless you turned it off.
+Rendering the base's own default value set (floor ⊕ computed) against both charts
+produces exactly one changed `cilium-config` value, plus one newly emitted key:
+
+| `cilium-config` key | 1.19.4 | 1.20.0 | Why |
+|---|---|---|---|
+| `bpf-lb-algorithm-annotation` | `"false"` | `"true"` | 1.20's ConfigMap template forces it `"true"` whenever `gatewayAPI.enabled`, so per-backend weights on TCPRoute/UDPRoute take effect. |
+| `bpf-lb-sock-hostns-only` | not emitted | `"true"` | Same forcing branch. 1.19.4 emits this key only when `socketLB.hostNamespaceOnly` is set, and neither the chart nor the base sets it. |
+
+The first one needs an audit. `bpf-lb-algorithm-annotation` gates whether the
+`service.cilium.io/lb-algorithm` annotation is honored per Service. While it was
+`"false"`, any such annotation already on your Services was **inert**; once it is
+`"true"` those annotations start selecting the load-balancing algorithm for real.
+Before a fresh 1.20 bootstrap or a self-management sync, find them and confirm
+each value is one you want in effect — your GitOps repo is the authoritative
+place to look:
+
+```shell
+git grep -n "service.cilium.io/lb-algorithm"
+```
+
+For anything applied outside GitOps, the same grep over
+`kubectl get svc -A -o yaml` gives a coarse cluster-side listing.
 
 ### 3. Removed Helm values — audit your `cilium_values_override` (affects consumers who set encryption strict mode, or any removed key)
 
@@ -327,8 +388,10 @@ sync.
 ### 5. Self-management consumers get Cilium 1.20 on next sync (affects `cilium_self_management = true`)
 
 The emitted Application's `spec.source.targetRevision` tracks
-`cilium_chart_version`, so adopting this base tag moves your self-managed Cilium
-to 1.20.0 the next time ArgoCD syncs that Application. The module emits no
+`cilium_chart_version`, so once you move the pin (see the note above §1) your
+self-managed Cilium goes to 1.20.0 the next time ArgoCD syncs that Application.
+Vendoring this base tag alone does not do it — the pin your shim passes is the
+one that lands in `targetRevision`. The module emits no
 `syncPolicy` — sync timing is yours. Read the upstream 1.20 upgrade notes and
 §2/§3 above before syncing, and note that traffic through user-space proxies
 (L7 policy, Gateway API) is disrupted during the agent roll.

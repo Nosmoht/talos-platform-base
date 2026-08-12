@@ -414,14 +414,27 @@ rendered values in the DEFAULT seed (floor ⊕ computed, no override):
 
 | New `cilium-config` key | Rendered value | Note |
 |---|---|---|
-| `gateway-api-use-remote-address` | `"true"` | Backing Helm value `gatewayAPI.useRemoteAddress` is NEW in 1.20 and defaults true. Genuine new default-on behavior; see `UPGRADING.md` §2. |
+| `gateway-api-use-remote-address` | `"true"` | Backing Helm value `gatewayAPI.useRemoteAddress` is NEW in 1.20 and defaults true, but the default is behavior-PRESERVING, not a new default-on behavior: Cilium 1.19 hardcoded the same Envoy field (`operator/pkg/model/translation/envoy_http_connection_manager.go` at `v1.19.4`, `UseRemoteAddress: true` with `SkipXffAppend: false`), and 1.20 keeps that literal while adding the `withUseRemoteAddress` mutator (`envoy_listener.go`) so config can override it. New knob, unchanged posture; see `UPGRADING.md` §2. |
 | `bpf-lb-sock-hostns-only` | `"true"` | NOT a marker of the 1.20 NodePort change: the 1.20 template forces this key `"true"` whenever `gatewayAPI.enabled` (for Maglev per-backend weights), and the key exists in the 1.19.4 template too. It does mean the base satisfies the second trigger condition of the upstream NodePort note (`UPGRADING.md` §4), whose basis is the release notes, not this key. |
-| `enable-drift-checker` | `"true"` | New `configDriftDetection` group, default on. Emits a Prometheus metric counting unapplied ConfigMap keys. |
+| `envoy-node-locality-enabled` | `"false"` | Off. Backing `envoy.nodeLocality.enabled`; the key has no 1.19.4 counterpart. |
 | `envoy-access-log-enabled` | `"true"` | Newly EMITTED key; the backing `envoy.accessLog` value is unset (null) in BOTH 1.19.4 and 1.20.0, so this records the emitted default — it is NOT established that the underlying behavior changed. |
 | `envoy-xds-mode` | `"ads"` | Same caveat: `envoy.xdsMode` is null in both charts. |
 | `enable-host-firewall` | `"false"` | Off. |
 | `enable-datapath-plugins` | `"false"` | Off — the new plugin-loading surface is not opened. |
 | `devices`, `datapath-plugins-state-dir`, `clustermesh-default-global-namespace`, `enable-dynamic-source-lookup-nodeport`, `proxy-cluster-max-pending-requests` | — | No security-relevant default change observed. |
+
+Added keys are not the whole delta. Diffing the FULL rendered `cilium-config` map
+in both directions (158 keys at 1.19.4, 170 at 1.20.0 — 12 added, 0 removed)
+turns up exactly one **changed value on a key that exists in both**:
+
+| Changed `cilium-config` key | 1.19.4 | 1.20.0 | Note |
+|---|---|---|---|
+| `bpf-lb-algorithm-annotation` | `"false"` | `"true"` | 1.20's ConfigMap template forces it `"true"` whenever `gatewayAPI.enabled`, which is the base default. Turns a previously inert `service.cilium.io/lb-algorithm` Service annotation live. Consumer-facing; documented in `UPGRADING.md` §2. |
+
+Method note for the next bump: diff the full rendered map in both directions,
+added / removed / changed. Scanning only for keys the new chart ADDS misses a
+changed default on an existing key, which is exactly what
+`bpf-lb-algorithm-annotation` is — and it is the only such key here.
 
 Object inventory is unchanged between the two charts (same kinds, same counts;
 the two DaemonSets are `cilium` and `cilium-envoy` in both), so 1.20 adds no new

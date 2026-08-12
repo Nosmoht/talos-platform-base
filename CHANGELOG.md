@@ -103,22 +103,37 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Talos `inlineManifests` are create-only, so the bump does not upgrade a
   running Cilium — it applies to fresh bootstraps, and to consumers who
   deliberately sync the emitted self-management Application (whose
-  `targetRevision` tracks the pin). The pinned Kubernetes version (`v1.35.0`)
-  is inside Cilium 1.20's supported range (1.33–1.36), so no Kubernetes bump is
-  required. Re-verified at the new pin: seed render determinism, the four
+  `targetRevision` tracks the pin). It also does not reach an existing consumer
+  by itself: `cluster.yaml` and the example shim both pass `chart_version`
+  explicitly, so the module default applies only to a caller that passes nothing
+  — move `substrate.cilium.chart_version` (and any copied shim fallback) to
+  `1.20.0` to adopt it. Kubernetes is a **precondition, not a given**: the module
+  does not pin `kubernetes_version`, and Cilium 1.20 lists 1.33–1.36 as
+  e2e-tested, so a cluster on 1.32 or earlier needs a Kubernetes upgrade first or
+  should stay on Cilium 1.19. Re-verified at the new pin: seed render
+  determinism, the four
   `cilium-config` observability marker keys, and the `hubble-metrics` `:9965`
   Service all hold, and ADR-0022's `operator.prometheus.enabled` revisit
   trigger did not fire — recorded as a dated addendum in
   [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
-- **New default-on Gateway API behavior inherited from Cilium 1.20:
-  `gatewayAPI.useRemoteAddress`.** The Helm value does not exist in chart 1.19.4
-  and defaults to `true` in 1.20.0, so every consumer inherits it — the base
-  enables the Gateway API controller by default and does not override the key.
-  The Gateway now derives the client address from forwarded headers rather than
-  the connection peer (`gateway-api-use-remote-address: "true"` in
-  `cilium-config`). Correct behind a trusted L4 load balancer; a spoofing vector
-  where clients reach the Gateway directly. Tune `xffNumTrustedHops` or set the
-  value false. See [UPGRADING.md](UPGRADING.md) §2.
+- **Newly tunable Gateway API knob, same behavior: `gatewayAPI.useRemoteAddress`.**
+  The Helm value does not exist in chart 1.19.4 and defaults to `true` in 1.20.0
+  (`gateway-api-use-remote-address: "true"` in `cilium-config`). The default
+  preserves 1.19 behavior — Cilium 1.19 hardcoded the same Envoy
+  `UseRemoteAddress: true` in its Gateway listener translation, and 1.20 keeps
+  that literal while making it overridable. `true` means the source IP comes from
+  the connection peer rather than a forwarded or proxy-protocol header, so a
+  client-supplied `X-Forwarded-For` is not authoritative; `false` is the setting
+  that makes a forwarded address authoritative and belongs only behind a trusted
+  proxy. No action required. See [UPGRADING.md](UPGRADING.md) §2.
+- **Datapath default flipped by Cilium 1.20 when Gateway API is enabled:
+  `bpf-lb-algorithm-annotation` `"false"` → `"true"`.** 1.20's ConfigMap template
+  forces this key on whenever `gatewayAPI.enabled`, which the base sets by
+  default. Consequence: a `service.cilium.io/lb-algorithm` annotation that was
+  inert now selects the per-Service load-balancing algorithm for real — audit any
+  existing annotation before a fresh bootstrap or self-management sync. Rendering
+  the base's default value set against both charts shows this as the **only**
+  changed `cilium-config` value. See [UPGRADING.md](UPGRADING.md) §2.
 - **Datapath behavior change inherited from Cilium 1.20: in-cluster NodePort
   traffic is load-balanced at the client pod.** With kube-proxy replacement on
   (the base default) and SocketLB disabled (the chart default the base does not
