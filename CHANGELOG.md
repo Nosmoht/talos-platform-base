@@ -97,6 +97,18 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`talos-cluster`: the Cilium seed's rendered `cilium-config` surface is now
+  pinned.** The seed bypasses the kustomize/conftest render gate, and nothing
+  asserted a single key of it — so a chart bump could move a datapath- or
+  security-relevant default into the create-only machine config unnoticed. That is
+  what the 1.20 bump did with `bpf-lb-algorithm-annotation`. Two layers now bind
+  it: the full key set against `tests/fixtures/cilium-config-keys.txt`, and the
+  values of a curated set (`bpf-lb-algorithm-annotation`,
+  `kube-proxy-replacement`, `enable-host-firewall`, `enable-datapath-plugins`,
+  `gateway-api-use-remote-address`). Both are needed — the key set alone would not
+  have caught 1.20, since only the value moved. A future bump refreshes the fixture
+  deliberately and answers the consumer-facing question in
+  [UPGRADING.md](UPGRADING.md). See #212.
 - **`talos-cluster`: the summed inlineManifest payload is now bounded at plan
   time.** Talos receives ONE controlplane document carrying every seed at once
   (cilium + argocd + cert-approver), and an oversized document failed at APPLY

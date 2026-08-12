@@ -494,3 +494,85 @@ run "cilium_seed_render_carries_observability_markers" {
     error_message = "ADR-0021 §g (C1 grounding): the render must carry the hubble-metrics Service on port 9965 even though hubble.tls.enabled=false — the Hubble metrics scrape endpoint must NOT be disabled by turning observer-API TLS off"
   }
 }
+
+# Seed cilium-config surface binding (issue #212). The Cilium seed bypasses the
+# kustomize/conftest render gate, and until this run nothing pinned a single key
+# in its rendered cilium-config — so a chart bump could move a datapath- or
+# security-relevant default straight into the create-only controlplane machine
+# config with nothing failing. The Cilium 1.20 bump proved it: the chart forces
+# `bpf-lb-algorithm-annotation` from "false" to "true" whenever gatewayAPI is
+# enabled (the base default), which makes a previously inert
+# `service.cilium.io/lb-algorithm` Service annotation live. That was found only by
+# a hand-run render diff, not by this suite.
+#
+# Two layers, deliberately:
+#   1. The KEY SET is compared against tests/fixtures/cilium-config-keys.txt, so a
+#      chart bump that adds or removes any key fails until the fixture is
+#      refreshed on purpose. Catches the class, not just the keys someone thought
+#      to enumerate.
+#   2. A curated set of VALUES is pinned below. The key set alone would not have
+#      caught the 1.20 regression, because `bpf-lb-algorithm-annotation` exists in
+#      both charts and only its value moved.
+#
+# Refresh procedure for a deliberate bump: render the pinned chart with the floor
+# (helm/cilium-values.yaml) plus the module's computed layer for default inputs,
+# take `sort(keys(.data))` of the cilium-config ConfigMap, and rewrite the fixture.
+# Review the diff — every added, removed or changed key is a consumer-facing
+# question, and UPGRADING.md is where the answer goes.
+#
+# Red-green: delete any line from the fixture, or change any pinned value below,
+# and this run fails.
+run "cilium_seed_config_surface_is_pinned" {
+  command = plan
+  variables {
+    deploy_cilium = true
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+
+  assert {
+    condition = join("\n", sort(keys(one([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : yamldecode(doc).data
+      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
+    ])))) == trimspace(file("${path.module}/tests/fixtures/cilium-config-keys.txt"))
+    error_message = "cilium-cni-delivery §'Seed configuration surface is pinned': the seed's cilium-config key set diverged from tests/fixtures/cilium-config-keys.txt — a chart bump added or removed a key. Refresh the fixture ON PURPOSE and answer the consumer-facing question in UPGRADING.md; do not silently re-generate it."
+  }
+
+  # Curated value pins. One predicate per assert so a failure names the key.
+  assert {
+    condition = try(one([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : yamldecode(doc).data
+      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
+    ])["bpf-lb-algorithm-annotation"], "") == "true"
+    error_message = "seed config pin: bpf-lb-algorithm-annotation must be \"true\" (chart 1.20 forces it on with gatewayAPI enabled). A flip back to \"false\" silently makes every service.cilium.io/lb-algorithm annotation inert again"
+  }
+  assert {
+    condition = try(one([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : yamldecode(doc).data
+      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
+    ])["kube-proxy-replacement"], "") == "true"
+    error_message = "seed config pin: kube-proxy-replacement must be \"true\" at the module default — it is paired with Talos cluster.proxy.disabled, so a silent flip leaves the cluster with no service load-balancer at all"
+  }
+  assert {
+    condition = try(one([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : yamldecode(doc).data
+      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
+    ])["enable-host-firewall"], "") == "false"
+    error_message = "seed config pin: enable-host-firewall must stay \"false\" — the base ships no host-policy set, so enabling it by chart default would filter host traffic against an empty policy"
+  }
+  assert {
+    condition = try(one([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : yamldecode(doc).data
+      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
+    ])["enable-datapath-plugins"], "") == "false"
+    error_message = "seed config pin: enable-datapath-plugins must stay \"false\" — it opens a plugin-loading surface the base does not use"
+  }
+  assert {
+    condition = try(one([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : yamldecode(doc).data
+      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
+    ])["gateway-api-use-remote-address"], "") == "true"
+    error_message = "seed config pin: gateway-api-use-remote-address must be \"true\" — \"false\" makes a client-supplied X-Forwarded-For authoritative for the Gateway's source IP, which is only safe behind a trusted proxy"
+  }
+}
