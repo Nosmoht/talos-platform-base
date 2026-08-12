@@ -604,7 +604,7 @@ variable "cilium_chart_version" {
     NOT upgrade a running Cilium. VERIFY the exact current chart version at push.
   EOT
   type        = string
-  default     = "1.19.4"
+  default     = "1.20.0"
 }
 
 variable "cilium_chart_repository" {
@@ -717,8 +717,9 @@ variable "cilium_gateway_api" {
     at runtime once the Gateway API CRDs exist. The CRDs themselves are NOT seeded
     by default — apply them via GitOps / the apps catalog (Day-1), or opt into
     bootstrap seeding via cilium_gateway_api_crds_url. Until the CRDs land the
-    gateway controller errors (harmless to the CNI). Cilium 1.19 needs Gateway API
-    v1.4.1 standard channel (TLSRoute is experimental and degrades gracefully).
+    gateway controller errors (harmless to the CNI). Cilium 1.20 needs Gateway API
+    v1.6.1 AT A MINIMUM; the standard channel now carries TLSRoute at v1, so the
+    standard bundle alone satisfies the Gateway-API-only Hard Constraint.
   EOT
   type        = bool
   default     = true
@@ -735,9 +736,13 @@ variable "cilium_gateway_api_crds_url" {
 
     Set this to a CRD manifest URL ONLY if you want Talos to seed it at bootstrap via
     cluster.extraManifests — appropriate for a CONNECTED cluster that accepts the
-    dependency. Cilium 1.19 needs Gateway API v1.4.1 STANDARD channel:
-    https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml
-    (use the EXPERIMENTAL bundle for TLSRoute). Point only at a source you trust —
+    dependency. Cilium 1.20 needs Gateway API v1.6.1 at a MINIMUM; STANDARD channel:
+    https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml
+    TLSRoute is in the standard channel as of v1.6.1 (served at v1), so standard is
+    the right bundle for a fresh cluster. Use the EXPERIMENTAL bundle ONLY if you
+    carry pre-existing v1alpha2 TLSRoute objects: standard v1.6.1 declares v1alpha2
+    but does not SERVE it, so those objects become unreadable.
+    Point only at a source you trust —
     no digest pin; extraManifests applies WHATEVER the URL returns at the most
     privileged moment of bootstrap. WARNING: a failed/blocked fetch is NOT graceful —
     Talos' ExtraManifestController crashloops with backoff and bootstrap does not

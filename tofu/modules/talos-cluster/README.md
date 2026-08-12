@@ -203,7 +203,7 @@ provider "talos" {}
 | `dual_stack` | bool | `false` | IPv4/IPv6 dual-stack (enables Cilium `ipv6`). |
 | `allow_scheduling_on_controlplanes` | bool | `false` | remove the control-plane taint (single-node / edge). |
 | `deploy_cilium` | bool | `true` | deliver Cilium as a controlplane `inlineManifest` seed AND disable the Talos default CNI (`cni.name: none`) + kube-proxy. Opt-out keeps Flannel / a caller-supplied CNI. |
-| `cilium_chart_version` | string | `"1.19.4"` | cilium Helm chart version. **SEED knob** (inlineManifests are create-only), not an upgrade knob. |
+| `cilium_chart_version` | string | `"1.20.0"` | cilium Helm chart version. **SEED knob** (inlineManifests are create-only), not an upgrade knob. |
 | `cilium_chart_repository` | string | `"https://helm.cilium.io"` | Helm repo for the cilium chart (override for a private mirror / air-gap). |
 | `cilium_namespace` | string | `"kube-system"` | namespace Cilium renders into. |
 | `cilium_values_override` | string | `""` | consumer Helm values merged on the floor + computed values (long tail: Hubble, L2/BGP, bpf). |
@@ -214,7 +214,7 @@ provider "talos" {}
 | `cilium_encryption` | object | `{type="none"}` | `type` ∈ {none, wireguard, ipsec}. ipsec requires `cilium_ipsec_key`. |
 | `cilium_ipsec_key` | string (sensitive) | `""` | IPsec PSK seeded as the `cilium-ipsec-keys` Secret; required for `type=ipsec` (wireguard is keyless). Lands in (encrypted) state. |
 | `cilium_gateway_api` | bool | `true` | enable the Cilium **gateway controller** (operator creates the GatewayClass once CRDs exist). The CRDs are NOT seeded by default — apply them via GitOps (Day-1), or opt into bootstrap seeding below. Controller errors harmlessly until CRDs land; CNI unaffected. |
-| `cilium_gateway_api_crds_url` | string | `""` (no boot seed) | **OPT-IN** bootstrap seeding of the Gateway API CRDs via `cluster.extraManifests`. Empty = CRDs are a Day-1 GitOps concern (air-gap-safe). Set to the GW-API **v1.4.1 standard** bundle URL (or an internal mirror) for a connected cluster. ⚠️ a failed fetch crashloops Talos' ExtraManifestController and blocks clean bootstrap. |
+| `cilium_gateway_api_crds_url` | string | `""` (no boot seed) | **OPT-IN** bootstrap seeding of the Gateway API CRDs via `cluster.extraManifests`. Empty = CRDs are a Day-1 GitOps concern (air-gap-safe). Set to the GW-API **v1.6.1 standard** bundle URL (or an internal mirror) for a connected cluster — Cilium 1.20 requires v1.6.1 at a minimum, and TLSRoute is in the standard channel as of v1.6.1. Use the **experimental** bundle only if you carry pre-existing `v1alpha2` TLSRoute objects. ⚠️ a failed fetch crashloops Talos' ExtraManifestController and blocks clean bootstrap. |
 | `cilium_agent_metrics` | bool | `false` | enable Cilium **agent** Prometheus metrics (`prometheus.enabled`). Default off. |
 | `cilium_operator_metrics` | bool | `false` | enable Cilium **operator** Prometheus metrics (`operator.prometheus.enabled`). Default off. Note: the upstream chart's OWN default for this value is already `true`, so the rendered `cilium-config` ConfigMap's `operator-prometheus-serve-addr` key is present regardless of this toggle — it does not discriminate at the render layer (a pre-existing chart-default fact, not introduced by this input). |
 | `cilium_hubble_enabled` | bool | `false` | enable Hubble flow/metrics observability. **Forces `hubble.tls.enabled=false`** (metrics-only scope — no Relay/UI; the Hubble metrics endpoint is independent of observer-API TLS since Cilium 1.16). Default off. |

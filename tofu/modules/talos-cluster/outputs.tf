@@ -348,7 +348,7 @@ output "cilium_seed_observability_markers" {
     Booleans decoded from the FROZEN bootstrap seed render
     (terraform_data.cilium_render[0].output — NOT a second data.helm_template.cilium
     read), filtered by kind=="ConfigMap" && metadata.name=="cilium-config". Marker
-    keys verified against the pinned chart (1.19.4) cilium-configmap.yaml template:
+    keys verified against the pinned chart (1.20.0) cilium-configmap.yaml template:
     `agent_metrics` <- presence of "prometheus-serve-addr" (gated by
     `{{- if .Values.prometheus.enabled }}`); `hubble` <- the "enable-hubble" value
     (unconditionally rendered, reflects hubble.enabled directly); `hubble_metrics`

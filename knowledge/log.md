@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-08-12
+
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: dated
+  addendum recording the re-verification at the Cilium `1.20.0` chart bump. All
+  §Validation claims established against 1.19.4 still hold — the
+  `hubble-metrics` `:9965` Service, all four `cilium-config` observability
+  marker keys, and seed render determinism — and the ADR's explicit
+  `operator.prometheus.enabled` revisit trigger did not fire (still defaults to
+  `true`), so the audit-only caveat on
+  `cilium_seed_observability_markers.operator_metrics` stands. Nothing
+  superseded. The addendum also inventories the new default-on 1.20 surface in
+  the seed, re-measured by diffing the FULL rendered `cilium-config` map in both
+  directions rather than scanning for added keys: 12 added, 0 removed, and one
+  changed value (`bpf-lb-algorithm-annotation` `"false"` → `"true"`, forced by
+  `gatewayAPI.enabled`). Two corrections to the first pass of that inventory:
+  `enable-drift-checker` is NOT new (`configDriftDetection` exists in 1.19.4 and
+  the key renders `"true"` in both), and `envoy-node-locality-enabled` was
+  missing. The `gateway-api-use-remote-address` row is corrected from "genuine
+  new default-on behavior" to behavior-PRESERVING — Cilium 1.19 hardcoded the
+  same Envoy field, so 1.20 adds the knob, not a new posture.
+- `decisions/0007-cluster-yaml-sot.md`: Gateway API CRD floor updated v1.4.1 →
+  v1.6.1 (Cilium 1.20 minimum; `TLSRoute` joined the standard channel at
+  v1.6.1), and the chart-provenance residual re-verified —
+  `cilium-1.20.0.prov` is HTTP 404 like its predecessor, so the deferred
+  digest-pinning finding is unchanged.
+- `architecture/day-zero-bootstrap.md`: re-verified at the Cilium `1.20.0`
+  bump — two of its `sources` changed (`cluster.yaml.example`,
+  `kubernetes/bootstrap/cilium/values.yaml`). Its claims are version-agnostic
+  (`*_chart_version` are seed knobs, not upgrade knobs; the Gateway-API CRD
+  boot-seed is opt-in) and needed no edit; `timestamp` bumped to record the
+  verification.
+- `reference/cluster-yaml.md`: re-verified at the same bump — its
+  `cluster.yaml.example` source changed (`substrate.cilium.chart_version`). It
+  asserts no chart version, so no edit; `timestamp` bumped.
+- `workflows/first-consumer-cluster.md`: re-verified at the same bump — three
+  of its `sources` changed (`cluster.yaml.example`,
+  `examples/complete/{main.tf,cluster.yaml}`). It asserts no chart version, so
+  no edit; `timestamp` bumped.
+
+Note on the two decision concepts above: their `timestamp` is deliberately
+NOT bumped. `decisions/index.md` makes frontmatter canonical for dates, so for
+a `decision` concept `timestamp` is the decision date; decisions also omit
+`sources`, so the re-verify-on-source-change rule cannot apply to them. The
+dated `## Addendum 2026-08-12` heading inside ADR-0022 carries the freshness
+signal instead, which is also what "append clarifications, do not rewrite
+decision history" requires.
+
 ## 2026-07-26
 
 - `decisions/0023-node-identity-map-key.md` added (issue #204): `var.nodes`
