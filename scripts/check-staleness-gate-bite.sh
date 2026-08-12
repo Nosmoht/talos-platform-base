@@ -152,6 +152,30 @@ git add src.txt
 git commit -qm "Merge branch 'main' into evil"
 assert_merge_commit && verdict 1 "evil merge must not inherit another commit's trailer"
 
+echo "C2) merge flips only the FILE MODE — same blob id, different tree entry"
+git checkout -q -B modeflip "$base"
+edit 39 "line39-BRANCH"
+git commit -qam "branch edits line 39
+
+Spec-Impact: none"
+git merge --no-commit --no-ff "$main_tip" >/dev/null 2>&1
+chmod +x src.txt
+git add src.txt
+git commit -qm "Merge branch 'main' into modeflip"
+if assert_merge_commit; then
+  # The mode change is the merge's own contribution, and the blob id is
+  # unchanged — so a blob-id-only comparison reports "replayed the parents" and
+  # hands the merge someone else's trailer. Two spec-owned primary sources in
+  # this repo are shell scripts CI runs with no interpreter prefix, so a dropped
+  # exec bit on one of them is a behavior change of exactly this shape.
+  mode_now="$(git ls-tree HEAD -- src.txt | awk '{print $1}')"
+  mode_parent="$(git ls-tree HEAD^1 -- src.txt | awk '{print $1}')"
+  if [ "$mode_now" = "$mode_parent" ]; then
+    echo "  SETUP BROKEN: the merge did not change the file mode ($mode_now)"; rc=1
+  fi
+  verdict 1 "a mode-only merge contribution certifies itself ($mode_parent -> $mode_now)"
+fi
+
 echo "D) hand-resolved conflict — resolution keeps one branch change alive"
 git checkout -q -B resolved "$base"
 edit 20 "line20-BRANCH"

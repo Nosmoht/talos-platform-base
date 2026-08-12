@@ -37,7 +37,10 @@ void an otherwise valid escape and leave history rewriting as the only
 remedy. A merge that INVENTED content (hand-resolved conflict, evil merge)
 stays in the set and must carry the trailer itself. Residual: when every
 listed commit for a violating file is such a skipped merge, nothing is left
-to attribute the change to and the violation fails closed.
+to attribute the change to and the violation fails closed. That state is not
+known to be reachable — a probe could not construct it, because a merge whose
+result matches the base side is TREESAME to it and then the file is absent
+from the diff as well — so the branch is a backstop, not a live risk.
 
 Usage: check-spec-staleness.py --base <ref>   (e.g. origin/main)
 
@@ -87,20 +90,32 @@ def merge_shas(base):
     return set(out.split())
 
 
-def blob_oid(rev, path):
-    """Blob OID of `path` at `rev` (commit or tree), None when absent."""
-    rc, out = git("rev-parse", "--verify", "--quiet", f"{rev}:{path}",
-                  ok_codes=None)
-    return out.strip() if rc == 0 else None
+def tree_entry(rev, path):
+    """`<mode> <type> <oid>` for `path` at `rev` (commit or tree); None if absent.
+
+    Mode and type are part of the identity, not just the object id. A merge that
+    flips the executable bit, or turns the path into a symlink (120000) or a
+    gitlink (160000), recorded something its parents did not supply even though
+    the blob id can be unchanged — and this is not academic here: two spec-owned
+    primary sources (scripts/lint-cluster-yaml.sh, scripts/lint-hardware-features.sh)
+    are invoked by CI with no interpreter prefix, so their mode IS behavior.
+    Comparing the blob id alone let such a merge pass as a non-contributor.
+    """
+    rc, out = git("ls-tree", "--full-tree", rev, "--", path, ok_codes=None)
+    if rc != 0 or not out.strip():
+        return None
+    fields = out.split("\t", 1)[0].split()
+    return " ".join(fields[:3]) if len(fields) >= 3 else None
 
 
 def merge_invented_content(sha, path):
     """True when merge `sha`'s `path` is not what a mechanical merge yields.
 
     Re-runs git's own merge machinery over the two parents (`merge-tree
-    --write-tree`, git >= 2.38) and compares the resulting blob against the one
-    the merge actually recorded. Equal means the merge only replayed what the
-    3-way merge produces unaided — nothing of its own to certify. Everything
+    --write-tree`, git >= 2.38) and compares the resulting tree entry — mode,
+    type AND object id — against the one the merge actually recorded. Equal means
+    the merge only replayed what the 3-way merge produces unaided — nothing of
+    its own to certify. Everything
     else counts as a contribution, so the probe fails CLOSED: a hand-resolved
     conflict (the mechanical merge exits non-zero), an evil merge, an octopus
     merge, or a git too old for `--write-tree`.
@@ -121,7 +136,7 @@ def merge_invented_content(sha, path):
     if rc != 0 or not tree_out.strip():
         return True
     tree = tree_out.splitlines()[0].strip()
-    return blob_oid(tree, path) != blob_oid(sha, path)
+    return tree_entry(tree, path) != tree_entry(sha, path)
 
 
 def fragment_range(head_lines, frag):
