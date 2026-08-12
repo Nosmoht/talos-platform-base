@@ -51,10 +51,17 @@ encryption:
   type: wireguard
   wireguard:
     userspaceFallback: false
+  # Cilium 1.20 REMOVED the flat encryption.strictMode.{enabled,cidr,
+  # allowRemoteNodeIdentities} keys (deprecated in 1.19). The nested egress.* form
+  # below is the only supported spelling — and it renders identically on 1.19.x, so
+  # it is safe for a consumer still pinning the previous minor. Helm does not run
+  # --strict, so the removed flat keys would be silently DROPPED on 1.20: strict
+  # mode would simply not be configured, with no error.
   strictMode:
-    enabled: true
-    cidr: "10.244.0.0/16"
-    allowRemoteNodeIdentities: true
+    egress:
+      enabled: true
+      cidr: "10.244.0.0/16"
+      allowRemoteNodeIdentities: true
 
 # --- Hubble ---
 hubble:

@@ -138,7 +138,7 @@ substrate:
   cilium:
     # namespace is fixed to kube-system by Talos convention (not a SoT-settable field)
     enabled: true # false keeps Talos-default Flannel (opt-out)
-    chart_version: "1.19.4" # SEED knob (install-time), not an upgrade knob
+    chart_version: "1.20.0" # SEED knob (install-time), not an upgrade knob
     chart_repository: https://helm.cilium.io # baked into machineConfig WITHOUT a digest pin — point ONLY at a trusted source
     routing_mode: tunnel # tunnel | native (native needs native_routing_cidr or pod_cidr)
     kube_proxy_replacement: true # Cilium replaces kube-proxy (Talos cluster.proxy.disabled)

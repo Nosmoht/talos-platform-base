@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-08-12
+
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: dated
+  addendum recording the re-verification at the Cilium `1.20.0` chart bump. All
+  §Validation claims established against 1.19.4 still hold — the
+  `hubble-metrics` `:9965` Service, all four `cilium-config` observability
+  marker keys, and seed render determinism — and the ADR's explicit
+  `operator.prometheus.enabled` revisit trigger did not fire (still defaults to
+  `true`), so the audit-only caveat on
+  `cilium_seed_observability_markers.operator_metrics` stands. Nothing
+  superseded.
+- `decisions/0007-cluster-yaml-sot.md`: Gateway API CRD floor updated v1.4.1 →
+  v1.6.1 (Cilium 1.20 minimum; `TLSRoute` joined the standard channel at
+  v1.6.1), and the chart-provenance residual re-verified —
+  `cilium-1.20.0.prov` is HTTP 404 like its predecessor, so the deferred
+  digest-pinning finding is unchanged.
+
 ## 2026-07-26
 
 - `decisions/0023-node-identity-map-key.md` added (issue #204): `var.nodes`

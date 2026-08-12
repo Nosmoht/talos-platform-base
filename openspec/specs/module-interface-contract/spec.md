@@ -57,6 +57,16 @@ precondition requires `sops_age_key` to be a valid age private key
 whenever ArgoCD is deployed, `sops_age_key` is de-facto required under the
 default toggles.
 
+`cilium_gateway_api_crds_url` carries a cross-component version coupling the
+module cannot validate at plan time: Cilium's Gateway API support requires a
+minimum Gateway API CRD bundle version that changes across Cilium minors, and
+the input is an opaque URL that Talos applies verbatim. Its documentation
+SHALL therefore state the Gateway-API CRD floor required by the Cilium chart
+version currently pinned by `cilium_chart_version`, together with the channel
+(standard vs experimental) that satisfies the platform's Gateway-API-only
+Hard Constraint — so a `cilium_chart_version` bump cannot leave the documented
+CRD floor silently stale.
+
 #### Scenario: Optional groups fall back to documented defaults
 
 - **WHEN** a caller supplies only the required inputs (identity,
@@ -68,6 +78,14 @@ default toggles.
   `talos_version`, the health timeout defaults to `"10m"`, and the
   Cilium observability + self-management group defaults to all-off /
   empty
+
+#### Scenario: Gateway API CRD floor tracks the pinned Cilium chart
+
+- **WHEN** the `cilium_gateway_api_crds_url` input documentation is read at
+  any pinned `cilium_chart_version`
+- **THEN** it names the minimum Gateway API bundle version that pinned Cilium
+  version requires, and states which channel to seed — including when the
+  experimental channel is required instead of standard
 
 ### Requirement: Identity and version input validation
 

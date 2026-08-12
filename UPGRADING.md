@@ -105,6 +105,113 @@ apply`) governs the same `crds.yaml` payload the artifact now ships; its
 outcome may reshape how the *bootstrap seed* delivers CRDs but does not
 change this steady-state publication path.
 
+---
+
+## Unreleased (next MINOR) — Cilium chart `1.19.4` → `1.20.0` (MINOR — manual action for Gateway-API and self-management consumers)
+
+**Type:** MINOR (additive for consumers; no input renamed, no schema change).
+Cilium 1.20.0 was released 2026-07-29 and becomes the base's substrate CNI seed
+version. Re-verification at the new pin is recorded as a dated addendum in
+[`knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md`](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
+### 1. Running clusters are NOT upgraded by this bump (affects nobody — read it anyway)
+
+`cilium_chart_version` is a **seed knob**. `terraform_data.cilium_render` carries
+`ignore_changes = [input]` and Talos `inlineManifests` are create-only, so
+adopting a base tag that pins Cilium 1.20.0 does **not** upgrade Cilium on an
+already-bootstrapped cluster. The new pin applies to fresh bootstraps, and to a
+deliberate `tofu apply -replace=terraform_data.cilium_render[0]`.
+
+What the bump *does* do on every existing consumer: `data.helm_template.cilium`
+is re-read on every `tofu plan`, so your next plan pulls chart 1.20.0 and
+re-renders. Expect a machine-config diff that is **not** applied to running
+nodes (the render is frozen in state). If your plan errors here, the chart
+rejected one of your `cilium_values_override` keys — see §3.
+
+Kubernetes is unaffected: the base pins `v1.35.0`, inside Cilium 1.20's
+supported range (1.33–1.36). No Kubernetes or Talos bump is required.
+
+### 2. Gateway API must reach v1.6.1 BEFORE Cilium 1.20 (affects every Gateway-API consumer)
+
+Cilium 1.20 requires **Gateway API v1.6.1 at a minimum**, because `TLSRoute`
+graduated from `v1alpha2` to `v1`. The base previously documented v1.4.1.
+
+- **Fresh clusters, or clusters with no `TLSRoute` objects:** seed or apply the
+  **standard** channel bundle. `TLSRoute` is in the standard channel as of
+  v1.6.1 (served at `v1`), so standard alone satisfies the Gateway-API-only Hard
+  Constraint. The previous "use the experimental bundle for TLSRoute" guidance is
+  retired.
+
+  ```text
+  https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml
+  ```
+
+- **Clusters carrying pre-existing `v1alpha2` TLSRoute objects:** use the
+  **experimental** bundle instead. Standard v1.6.1 declares `v1alpha2` but does
+  **not serve** it, so existing `v1alpha2` objects become unreadable and
+  effectively disappear. Back up your `TLSRoute` resources first, upgrade Gateway
+  API to v1.6.1, and only then move Cilium to 1.20.
+
+Order matters: Gateway API first, Cilium second.
+
+### 3. Removed Helm values — audit your `cilium_values_override` (affects consumers who set encryption strict mode, or any removed key)
+
+Cilium 1.20 **removed** the flat `encryption.strictMode.{enabled,cidr,
+allowRemoteNodeIdentities}` values (deprecated in 1.19). Helm does not run
+`--strict`, so a removed key is **silently dropped** — strict-mode encryption
+would simply not be configured, with no error at plan, render, or apply time.
+
+The base's reference file `kubernetes/bootstrap/cilium/values.yaml` is migrated
+for you. If your own `cilium_values_override` sets the flat form, migrate it:
+
+```yaml
+# BEFORE (silently ignored on Cilium 1.20)
+encryption:
+  strictMode:
+    enabled: true
+    cidr: "10.244.0.0/16"
+    allowRemoteNodeIdentities: true
+
+# AFTER (also renders correctly on 1.19.x)
+encryption:
+  strictMode:
+    egress:
+      enabled: true
+      cidr: "10.244.0.0/16"
+      allowRemoteNodeIdentities: true
+```
+
+Other values removed in 1.20 that an override might carry:
+`clustermesh.enableMCSAPISupport` (use `clustermesh.mcsapi.enabled`),
+`encryption.ipsec.interface`, `encryption.ipsec.encryptedOverlay`,
+`loadBalancer` legacy `--node-port-algorithm` / `--node-port-mode` spellings,
+`hubble.redact.kafka.apiKey`, and `preflight.tofqdnsPreCache`. Kafka-aware
+network policies and Envoy Go extensions (proxylib) are removed outright — if
+any `CiliumNetworkPolicy` carries a `kafka`, `l7`, or `l7proto` rules section,
+remove it **before** upgrading. `CiliumNodeConfig` must be `cilium.io/v2`
+(`v2alpha1` is removed). `hubble.preferIpv6` is deprecated in favor of the
+top-level `preferIpv6`.
+
+### 4. Self-management consumers get Cilium 1.20 on next sync (affects `cilium_self_management = true`)
+
+The emitted Application's `spec.source.targetRevision` tracks
+`cilium_chart_version`, so adopting this base tag moves your self-managed Cilium
+to 1.20.0 the next time ArgoCD syncs that Application. The module emits no
+`syncPolicy` — sync timing is yours. Read the upstream 1.20 upgrade notes and
+§2/§3 above before syncing, and note that traffic through user-space proxies
+(L7 policy, Gateway API) is disrupted during the agent roll.
+
+### Validation steps after upgrade
+
+1. `task tofu:ci` in the base (or your vendored copy) — offline gates.
+2. `task tofu:test` — **networked**; the only gate that actually pulls chart
+   1.20.0 and re-binds the seed-render assertions. Not run by `tofu:ci`.
+3. `tofu plan` in your consumer root — confirm the Cilium re-render produces no
+   *applied* machine-config change and no chart error.
+4. `task gitops:validate` in your consumer repo.
+5. Confirm Gateway API is at v1.6.1 before syncing Cilium:
+   `kubectl get crd tlsroutes.gateway.networking.k8s.io -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}'`
+
 ## `v8.0.0` — `nodes` is keyed by node name (MAJOR — consumer-facing)
 
 **Type:** MAJOR (input-shape breaking, runtime-neutral). `var.nodes` /

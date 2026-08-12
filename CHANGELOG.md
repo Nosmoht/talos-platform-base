@@ -95,6 +95,41 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `try()`-based shim. Fix by removing/correcting the offending key. See
   [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
+### Changed
+
+- **`talos-cluster`: Cilium chart pin `1.19.4` → `1.20.0`.** Cilium 1.20.0
+  (released 2026-07-29) is the base's new substrate CNI seed version. This is a
+  **SEED knob**: `terraform_data.cilium_render` carries `ignore_changes` and
+  Talos `inlineManifests` are create-only, so the bump does not upgrade a
+  running Cilium — it applies to fresh bootstraps, and to consumers who
+  deliberately sync the emitted self-management Application (whose
+  `targetRevision` tracks the pin). The pinned Kubernetes version (`v1.35.0`)
+  is inside Cilium 1.20's supported range (1.33–1.36), so no Kubernetes bump is
+  required. Re-verified at the new pin: seed render determinism, the four
+  `cilium-config` observability marker keys, and the `hubble-metrics` `:9965`
+  Service all hold, and ADR-0022's `operator.prometheus.enabled` revisit
+  trigger did not fire — recorded as a dated addendum in
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+- **Gateway API CRD floor documentation: v1.4.1 → v1.6.1.** Cilium 1.20
+  requires Gateway API v1.6.1 at a minimum, because `TLSRoute` graduated from
+  `v1alpha2` to `v1`. `cilium_gateway_api_crds_url` still defaults to `""`
+  (CRDs remain a Day-1 GitOps concern), but its documented bundle URL and the
+  module README now point at v1.6.1. TLSRoute is in the **standard** channel as
+  of v1.6.1, so standard alone now satisfies the Gateway-API-only Hard
+  Constraint — the previous "use the experimental bundle for TLSRoute" guidance
+  is retired. Consumers carrying pre-existing `v1alpha2` TLSRoute objects must
+  still use the experimental bundle: standard v1.6.1 declares `v1alpha2` but
+  does not serve it. See [UPGRADING.md](UPGRADING.md).
+- **`kubernetes/bootstrap/cilium/values.yaml`: `encryption.strictMode.*`
+  migrated to the nested `egress.*` form.** Cilium 1.20 removed the flat
+  `strictMode.{enabled,cidr,allowRemoteNodeIdentities}` keys (deprecated in
+  1.19). Because Helm does not run `--strict`, the old spelling was **silently
+  dropped** on chart 1.20 — strict-mode encryption would not have been
+  configured, with no error. The new spelling renders identically on 1.19.x, so
+  it is safe for a consumer still pinning the previous minor. This file is
+  reference-only (not consumed by the seed render), but it is what a consumer
+  copies into a Day-2 self-managed Application.
+
 ### Fixed
 
 - **`talos-cluster`: `module.<name>.kubeconfig` now regenerates when the

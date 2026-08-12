@@ -373,6 +373,32 @@ five parity dimensions:
   re-checked against the pinned chart version at any future
   `cilium_chart_version` bump.
 
+## Addendum 2026-08-12 — re-verified at the Cilium 1.20.0 bump
+
+The §Validation claims above were established against chart 1.19.4. The
+`cilium_chart_version` bump to 1.20.0 re-ran them against the new chart. All
+hold unchanged; nothing in this ADR is superseded.
+
+- **§(g) `hubble-metrics` / `:9965`** — still rendered by chart 1.20.0
+  independently of `hubble.tls.enabled`. The `tests/composition.tftest.hcl`
+  assertion continues to bind it at the new pin.
+- **The §Validation revisit trigger did NOT fire** — `operator.prometheus.enabled`
+  still defaults to `true` in 1.20.0, so
+  `cilium_seed_observability_markers.operator_metrics` remains audit-only and its
+  caveat in `outputs.tf` stands as written.
+- **All four marker keys survive** — `prometheus-serve-addr`,
+  `operator-prometheus-serve-addr`, `enable-hubble`, and
+  `hubble-metrics-server` are all still emitted by the 1.20.0
+  `cilium-configmap.yaml` template, so the `try(..., {})`-wrapped output did not
+  silently degrade.
+- **Seed determinism holds** — two successive renders of the floor ⊕ computed
+  layers at 1.20.0 are byte-identical, so the `hubble.enabled: false` floor still
+  suppresses the chart's default template-time `genCA` path.
+- **Seed size grew ~4.9 %** (57 458 → 60 268 bytes for the default seed). Still
+  within the budget noted at `main.tf:368-369`, but the trend is worth watching:
+  nothing gates the Talos machine-config size limit, and an overflow surfaces at
+  Talos apply time rather than plan time.
+
 ## Links
 
 - Issue #188.

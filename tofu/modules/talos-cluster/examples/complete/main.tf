@@ -76,7 +76,7 @@ module "complete" {
 
   # --- Substrate: Cilium ---
   deploy_cilium                  = try(local.cilium.enabled, true)
-  cilium_chart_version           = try(local.cilium.chart_version, "1.19.4")
+  cilium_chart_version           = try(local.cilium.chart_version, "1.20.0")
   cilium_chart_repository        = try(local.cilium.chart_repository, "https://helm.cilium.io")
   cilium_routing_mode            = try(local.cilium.routing_mode, "tunnel")
   cilium_native_routing_cidr     = try(local.cilium.native_routing_cidr, "")
