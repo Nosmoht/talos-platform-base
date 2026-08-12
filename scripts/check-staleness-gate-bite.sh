@@ -359,7 +359,31 @@ else
   fi
 fi
 
-echo "F) source name git would read as pathspec MAGIC, clean base-sync merge"
+echo "F) octopus merge — three parents, must fail closed even with trailers"
+# merge_invented_content() refuses to reason about anything other than a
+# two-parent merge, so an octopus merge can never be escaped. Asserted rather
+# than assumed: nothing else in the suite reaches that branch, and a wrong
+# implementation returning False there would let an octopus evil merge inherit a
+# trailer. Both side branches carry the trailer, so a PASS here can only come
+# from the parent-count guard.
+git checkout -q -B oct-a "$base"
+edit 39 "line39-A"
+git commit -qam "side branch A edits line 39
+
+Spec-Impact: none"
+git checkout -q -B oct-b "$base"
+edit 35 "line35-B"
+git commit -qam "side branch B edits line 35
+
+Spec-Impact: none"
+git checkout -q oct-a
+if git merge -q --no-edit oct-b "$main_tip" -m "octopus merge" >/dev/null 2>&1; then
+  assert_merge_commit 3 && verdict 1 "FAIL stale spec" "an octopus merge cannot be escaped"
+else
+  echo "  SETUP BROKEN: the octopus merge did not complete"; git merge --abort || true; rc=1
+fi
+
+echo "G) source name git would read as pathspec MAGIC, clean base-sync merge"
 # A source whose name starts with ':' is a legal path and `diff --name-only`
 # prints it unquoted, so it reaches the ownership map — but read as pathspec
 # magic, `log -- <path>` matches no commit and the escape is refused on a merge
