@@ -95,6 +95,82 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `try()`-based shim. Fix by removing/correcting the offending key. See
   [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
+### Changed
+
+- **`talos-cluster`: Cilium chart pin `1.19.4` → `1.20.0`.** Cilium 1.20.0
+  (released 2026-07-29) is the base's new substrate CNI seed version. This is a
+  **SEED knob**: `terraform_data.cilium_render` carries `ignore_changes` and
+  Talos `inlineManifests` are create-only, so the bump does not upgrade a
+  running Cilium — it applies to fresh bootstraps, and to consumers who
+  deliberately sync the emitted self-management Application (whose
+  `targetRevision` tracks the pin). It also does not reach an existing consumer
+  by itself: `cluster.yaml` and the example shim both pass `chart_version`
+  explicitly, so the module default applies only to a caller that passes nothing
+  — move `substrate.cilium.chart_version` (and any copied shim fallback) to
+  `1.20.0` to adopt it. Kubernetes is a **precondition, not a given**: the module
+  does not pin `kubernetes_version`, and Cilium 1.20 lists 1.33–1.36 as
+  e2e-tested, so a cluster on 1.32 or earlier needs a Kubernetes upgrade first or
+  should stay on Cilium 1.19. Re-verified at the new pin: seed render
+  determinism, the four
+  `cilium-config` observability marker keys, and the `hubble-metrics` `:9965`
+  Service all hold, and ADR-0022's `operator.prometheus.enabled` revisit
+  trigger did not fire — recorded as a dated addendum in
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+- **Newly tunable Gateway API knob, same behavior: `gatewayAPI.useRemoteAddress`.**
+  The Helm value does not exist in chart 1.19.4 and defaults to `true` in 1.20.0
+  (`gateway-api-use-remote-address: "true"` in `cilium-config`). The default
+  preserves 1.19 behavior — Cilium 1.19 hardcoded the same Envoy
+  `UseRemoteAddress: true` in its Gateway listener translation, and 1.20 keeps
+  that literal while making it overridable. `true` means the source IP comes from
+  the connection peer rather than a forwarded or proxy-protocol header, so a
+  client-supplied `X-Forwarded-For` is not authoritative; `false` is the setting
+  that makes a forwarded address authoritative and belongs only behind a trusted
+  proxy. No action required. See [UPGRADING.md](UPGRADING.md) §2.
+- **Datapath default flipped by Cilium 1.20 when Gateway API is enabled:
+  `bpf-lb-algorithm-annotation` `"false"` → `"true"`.** 1.20's ConfigMap template
+  forces this key on whenever `gatewayAPI.enabled`, which the base sets by
+  default. Consequence: a `service.cilium.io/lb-algorithm` annotation that was
+  inert now selects the per-Service load-balancing algorithm for real — audit any
+  existing annotation before a fresh bootstrap or self-management sync. Rendering
+  the base's default value set against both charts shows this as the **only**
+  changed `cilium-config` value. See [UPGRADING.md](UPGRADING.md) §2.
+- **Datapath behavior change inherited from Cilium 1.20: in-cluster NodePort
+  traffic is load-balanced at the client pod.** With kube-proxy replacement on
+  (the base default) and SocketLB disabled (the chart default the base does not
+  override), connections from regular pods to NodePort Services are now
+  load-balanced as traffic leaves the client pod instead of at the target node,
+  per Cilium's 1.20 release notes. Client NetworkPolicy must now allow egress to the Service's
+  backends, and backend NetworkPolicy must allow ingress from the client. No
+  base value changed; this is upstream behavior every consumer on default
+  settings inherits. See [UPGRADING.md](UPGRADING.md) §4.
+- **Gateway API CRD floor documentation: v1.4.1 → v1.6.1.** Cilium 1.20
+  requires Gateway API v1.6.1 at a minimum, because `TLSRoute` graduated from
+  `v1alpha2` to `v1`. `cilium_gateway_api_crds_url` still defaults to `""`
+  (CRDs remain a Day-1 GitOps concern), but its documented bundle URL and the
+  module README now point at v1.6.1. TLSRoute is in the **standard** channel as
+  of v1.6.1, so standard alone now satisfies the Gateway-API-only Hard
+  Constraint — the previous "use the experimental bundle for TLSRoute" guidance
+  is retired. Consumers carrying pre-existing `v1alpha2` TLSRoute objects must
+  still use the experimental bundle: standard v1.6.1 declares `v1alpha2` but
+  does not serve it. See [UPGRADING.md](UPGRADING.md).
+- **`kubernetes/bootstrap/cilium/values.yaml`: `encryption.strictMode.*`
+  migrated to the nested `egress.*` form.** Cilium 1.20 removed the flat
+  `strictMode.{enabled,cidr,allowRemoteNodeIdentities}` keys (deprecated in
+  1.19). Because Helm does not run `--strict`, the old spelling was **silently
+  dropped** on chart 1.20 — strict-mode encryption would not have been
+  configured, with no error. The new spelling renders identically on 1.19.x, so
+  it is safe for a consumer still pinning the previous minor. This file is
+  reference-only (not consumed by the seed render), but it is what a consumer
+  copies into a Day-2 self-managed Application.
+- **`kubernetes/bootstrap/cilium/values.yaml`: three inert keys removed.**
+  `policySecrets.enabled`, `encryption.wireguard.userspaceFallback` and
+  `loadBalancer.l2.enabled` are recognized by **neither** chart 1.19.4 nor
+  1.20.0 — no `values.yaml` entry and no template reference in either. Verified
+  inert by rendering the file against both charts before and after removal: the
+  output is byte-identical, so nothing a consumer copying this file relies on
+  changes. `loadBalancer.l2.enabled` was also redundant with the adjacent
+  `l2announcements.enabled`, which does render.
+
 ### Fixed
 
 - **`talos-cluster`: `module.<name>.kubeconfig` now regenerates when the

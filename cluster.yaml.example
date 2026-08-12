@@ -113,7 +113,7 @@ substrate:
   cilium:
     # namespace is fixed to kube-system by Talos convention (not a settable field).
     enabled: true # false keeps Talos-default Flannel (opt-out)
-    chart_version: "1.19.4" # SEED knob (install-time), not an upgrade knob
+    chart_version: "1.20.0" # SEED knob (install-time), not an upgrade knob
     # SECURITY: chart_repository + gateway_api_crds_url below are pulled WITHOUT a
     # digest pin and baked into the controlplane machine config — point ONLY at a
     # source you trust (a poisoned repo/URL injects arbitrary bootstrap manifests).
