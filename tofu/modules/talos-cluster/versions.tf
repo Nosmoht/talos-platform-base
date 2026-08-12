@@ -13,7 +13,7 @@ terraform {
   # 1.7.x/1.8.x gets a hard parse break the instant they consume a tag carrying
   # this bump — a permanent, consumer-visible compatibility floor for one
   # opt-in, default-off feature. See
-  # knowledge/decisions/0021-cilium-observability-and-argocd-self-management.md.
+  # knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
   required_version = ">= 1.9.0"
 
   required_providers {

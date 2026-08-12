@@ -396,14 +396,14 @@ run "cert_approver_ha_and_config_override" {
   }
 }
 
-# AC #1 network seed-marker binding (issue #188, ADR-0021) — proves the
+# AC #1 network seed-marker binding (issue #188, ADR-0022) — proves the
 # observability fold reaches the ACTUAL rendered bootstrap seed manifest, not
 # just the offline cilium_effective_values map (tests/input-validation.tftest.hcl
 # already binds that half). Also binds addendum-2's render-level check: with
 # cilium_hubble_enabled=true + a non-empty hubble_metrics + the module's forced
 # hubble.tls.enabled=false, the rendered manifest still carries the
 # hubble-metrics Service / :9965 scrape endpoint — mechanically confirming the
-# C1 grounding (ADR-0021 §g) at the PINNED chart version actually shipped, not
+# C1 grounding (ADR-0022 §g) at the PINNED chart version actually shipped, not
 # just via the T1 docs citation.
 #
 # Reads data.helm_template.cilium[0].manifest DIRECTLY rather than through
@@ -427,7 +427,7 @@ run "cert_approver_ha_and_config_override" {
 # become absent). (operator_metrics is NOT asserted here as a discriminating
 # marker — the upstream chart's own default already renders
 # operator-prometheus-serve-addr regardless of the toggle (verified against
-# the pinned chart, ADR-0021 §l caveat); the offline
+# the pinned chart, ADR-0022 §l caveat); the offline
 # cilium_effective_values.operator.prometheus.enabled assertion in
 # tests/input-validation.tftest.hcl is what genuinely binds the
 # operator-metrics leg of AC #1.)
@@ -491,6 +491,6 @@ run "cilium_seed_render_carries_observability_markers" {
         contains([for p in try(yamldecode(doc).spec.ports, []) : try(p.port, 0)], 9965)
       )
     ])
-    error_message = "ADR-0021 §g (C1 grounding): the render must carry the hubble-metrics Service on port 9965 even though hubble.tls.enabled=false — the Hubble metrics scrape endpoint must NOT be disabled by turning observer-API TLS off"
+    error_message = "ADR-0022 §g (C1 grounding): the render must carry the hubble-metrics Service on port 9965 even though hubble.tls.enabled=false — the Hubble metrics scrape endpoint must NOT be disabled by turning observer-API TLS off"
   }
 }

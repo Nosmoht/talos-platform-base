@@ -211,7 +211,7 @@ run "cert_approver_replicas_rejects_zero" {
   expect_failures = [var.cert_approver_replicas]
 }
 
-# --- Cilium observability + ArgoCD self-management (issue #188, ADR-0021) ---
+# --- Cilium observability + ArgoCD self-management (issue #188, ADR-0022) ---
 #
 # Uses the fixture's cilium_effective_values / cilium_self_management_app
 # outputs (cilium-values.tf is pure var.*-derived locals, so it is
@@ -298,7 +298,7 @@ run "cilium_hubble_tls_is_forced_off" {
   }
   assert {
     condition     = output.cilium_effective_values.hubble.tls.enabled == false
-    error_message = "AC#2: cilium_hubble_enabled=true must force cilium_effective_values.hubble.tls.enabled=false (metrics-only scope, ADR-0021 §g)"
+    error_message = "AC#2: cilium_hubble_enabled=true must force cilium_effective_values.hubble.tls.enabled=false (metrics-only scope, ADR-0022 §g)"
   }
 }
 

@@ -229,8 +229,10 @@ and describe observable outcomes.
 - A PR touching a spec's `primary` source file (frontmatter `sources:`)
   updates the owning spec — CI-enforced by `task spec:check-staleness`;
   verified no-behavior-change diffs escape via the `Spec-Impact: none`
-  trailer on EVERY commit touching the file (per-commit scope; the PR
-  reviewer judges the claim).
+  trailer on EVERY commit that contributed to the file (per-commit scope;
+  a merge that only replayed the mechanical 3-way merge of its parents is
+  not one, so syncing your branch with `main` never voids the escape; the
+  PR reviewer judges the claim).
 - Full workflow incl. tool-pin upgrades:
   [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
 - Do not confuse the tools: `openspec` validates behavioral specs

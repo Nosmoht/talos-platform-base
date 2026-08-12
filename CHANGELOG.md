@@ -25,7 +25,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `hubble.tls.enabled=false`; grounded via T1 Cilium docs that the Hubble
   metrics scrape endpoint is independent of the observer-API TLS setting, so
   this does not disable metrics export. See
-  [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 - **`talos-cluster`: opt-in Cilium ArgoCD self-management delivery mode
   (default off).** `cilium_self_management` emits a new
   `cilium_self_management_app` output — a rendered Cilium ArgoCD
@@ -40,7 +40,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it on adoption. `cilium_self_management_project` selects the target
   `AppProject` (default `"default"`; a scoped project is recommended
   hardening — see the module README). See
-  [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
 ### Changed — BREAKING
 
@@ -87,13 +87,13 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   **every** consumer of the module, not only those opting into
   `cilium_self_management` — a consumer on OpenTofu `< 1.9` cannot
   `plan`/`apply` this module version at all until upgrading their OpenTofu
-  binary. See [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+  binary. See [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 - **`schemas/cluster.schema.json`: `substrate.cilium` is now closed
   (`additionalProperties: false`).** A consumer `cluster.yaml` with an
   extra or misspelled key under `substrate.cilium` now fails
   `check-jsonschema` at lint time instead of being silently dropped by the
   `try()`-based shim. Fix by removing/correcting the offending key. See
-  [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
 ### Changed
 
@@ -173,8 +173,22 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- **`talos-cluster`: `module.<name>.kubeconfig` now regenerates when the
-  advertised cluster endpoint changes.** Previously,
+- **Spec-staleness gate: syncing a branch with `main` no longer voids the
+  `Spec-Impact: none` escape.** The gate granted the escape only when EVERY
+  commit git lists for the violating file carried the trailer — and a base-sync
+  merge is listed for every file both sides touched. Branch protection requires
+  up-to-date branches, so that merge is forced on every PR, and the only
+  remedies left were rewriting history or editing a spec the change does not
+  affect. Attribution is now by CONTRIBUTION: a merge whose content for the file
+  equals what a mechanical 3-way merge of its parents yields introduced nothing
+  to certify and is skipped, while a hand-resolved conflict or an evil merge
+  stays a contributor and must carry the trailer itself. The obvious cheaper
+  test, `diff-tree --cc` emptiness, is unsound — `--cc` compresses per hunk, so
+  a clean auto-merge of two edits three lines apart still prints hunks — so the
+  gate re-runs the merge (`merge-tree --write-tree`, git >= 2.38) and compares
+  blobs; anything it cannot decide counts as a contribution. Both failure
+  directions are bound by `scripts/check-staleness-gate-bite.sh` from
+  `task spec:validate`.
   `talos_cluster_kubeconfig.this` fetched the admin kubeconfig once at
   bootstrap and never re-fetched it: its own arguments (`node`/`endpoint =
   local.first_controlplane.ip`) are the Talos-API (talosclient, port 50000)

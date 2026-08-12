@@ -171,7 +171,7 @@
       "additionalProperties": false,
       "properties": {
         "cilium": {
-          "description": "Cilium CNI delivery + first-class observability inputs (default off) + opt-in ArgoCD self-management delivery mode (default off, module-emitted Application output only). Closed (additionalProperties:false) so a typo'd key is caught at lint time instead of being silently dropped. See knowledge/decisions/0021-cilium-observability-and-argocd-self-management.md.",
+          "description": "Cilium CNI delivery + first-class observability inputs (default off) + opt-in ArgoCD self-management delivery mode (default off, module-emitted Application output only). Closed (additionalProperties:false) so a typo'd key is caught at lint time instead of being silently dropped. See knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
@@ -239,7 +239,7 @@
               }
             },
             "self_management": {
-              "description": "Opt-in: emit a Cilium ArgoCD Application (module output only, never applied by the module) as the Day-2 delivery path. HARD-REJECTED at plan time when values_override is non-empty (the emitted Application does not inherit it — see ADR-0021). Requires enabled=true and the ArgoCD substrate enabled. Default off.",
+              "description": "Opt-in: emit a Cilium ArgoCD Application (module output only, never applied by the module) as the Day-2 delivery path. HARD-REJECTED at plan time when values_override is non-empty (the emitted Application does not inherit it — see ADR-0022). Requires enabled=true and the ArgoCD substrate enabled. Default off.",
               "type": "boolean"
             },
             "self_management_project": {
