@@ -76,7 +76,7 @@ module "complete" {
 
   # --- Substrate: Cilium ---
   deploy_cilium                  = try(local.cilium.enabled, true)
-  cilium_chart_version           = try(local.cilium.chart_version, "1.20.0")
+  cilium_chart_version           = try(local.cilium.chart_version, null) # null = take the base pin
   cilium_chart_repository        = try(local.cilium.chart_repository, "https://helm.cilium.io")
   cilium_routing_mode            = try(local.cilium.routing_mode, "tunnel")
   cilium_native_routing_cidr     = try(local.cilium.native_routing_cidr, "")
@@ -96,7 +96,7 @@ module "complete" {
 
   # --- Substrate: ArgoCD ---
   deploy_argocd          = try(local.argocd.enabled, true)
-  argocd_chart_version   = try(local.argocd.chart_version, "9.4.5")
+  argocd_chart_version   = try(local.argocd.chart_version, null) # null = take the base pin
   argocd_namespace       = try(local.argocd.namespace, "argocd")
   argocd_values_override = try(local.argocd.values_override, "")
 

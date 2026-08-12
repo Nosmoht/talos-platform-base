@@ -97,6 +97,21 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`talos-cluster`: the chart-version pin is now single-source, and a `null`
+  input selects the base's pin.** `cilium_chart_version` and `argocd_chart_version`
+  declare `nullable = false` beside their defaults, so a caller may pass `null`
+  and OpenTofu substitutes the module default. The example shim now passes
+  `try(local.<component>.chart_version, null)` and the shipped `cluster.yaml`
+  examples leave `chart_version` commented out, which means the version literal
+  exists in exactly one place per component (`variables.tf`) instead of three.
+  Why it matters: previously both consumer-facing copies passed the version
+  explicitly, so the module default was never consulted and a base chart bump
+  could not reach an existing consumer at all. **Non-breaking** — an explicit
+  value still wins; a consumer who omits the key moves from "whatever literal my
+  shim was copied with" to the base's pin. The contract is per-input, not
+  module-wide: no other input promises null-means-default, and passing `null` to
+  one without `nullable = false` yields `null`. Adoption steps in
+  [UPGRADING.md](UPGRADING.md). See #210.
 - **`talos-cluster`: Cilium chart pin `1.19.4` → `1.20.0`.** Cilium 1.20.0
   (released 2026-07-29) is the base's new substrate CNI seed version. This is a
   **SEED knob**: `terraform_data.cilium_render` carries `ignore_changes` and
@@ -104,10 +119,9 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   running Cilium — it applies to fresh bootstraps, and to consumers who
   deliberately sync the emitted self-management Application (whose
   `targetRevision` tracks the pin). It also does not reach an existing consumer
-  by itself: `cluster.yaml` and the example shim both pass `chart_version`
-  explicitly, so the module default applies only to a caller that passes nothing
-  — move `substrate.cilium.chart_version` (and any copied shim fallback) to
-  `1.20.0` to adopt it. Kubernetes is a **precondition, not a given**: the module
+  by itself, because their own `cluster.yaml` and shim pin the chart and win over
+  the module default — see the chart-version single-source entry below for the two
+  ways to adopt it. Kubernetes is a **precondition, not a given**: the module
   does not pin `kubernetes_version`, and Cilium 1.20 lists 1.33–1.36 as
   e2e-tested, so a cluster on 1.32 or earlier needs a Kubernetes upgrade first or
   should stay on Cilium 1.19. Re-verified at the new pin: seed render

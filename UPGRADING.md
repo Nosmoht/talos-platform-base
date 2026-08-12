@@ -119,21 +119,28 @@ Cilium 1.20.0 was released 2026-07-29 and becomes the base's substrate CNI seed
 version. Re-verification at the new pin is recorded as a dated addendum in
 [`knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md`](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
-**Before anything else: nothing below reaches you until you move your own pin.**
-The module default (`cilium_chart_version`, now `1.20.0`) is consulted only when
-the caller passes nothing, and both shipped consumer paths pass it explicitly:
-`cluster.yaml` carries `substrate.cilium.chart_version`, and the example shim
-reads that as `try(local.cilium.chart_version, "<literal>")` — where the literal
-is whatever the base shipped when you copied the shim. A consumer created from an
-earlier tag therefore keeps rendering 1.19.4 after vendoring this one: no 1.20
-render, no self-management move, and §2–§5 not yet in effect. Two edits, both in
-files you own:
+**Before anything else: nothing below reaches you until the pin your own files
+pass actually moves.** A consumer created from an earlier tag pins the chart
+twice in files they own — `substrate.cilium.chart_version` in `cluster.yaml`, and
+the `try(local.cilium.chart_version, "<literal>")` fallback in the copied shim —
+and both win over the module default. So vendoring this tag alone keeps rendering
+1.19.4: no 1.20 render, no self-management move, and §2–§5 not yet in effect.
 
-1. Set `substrate.cilium.chart_version: "1.20.0"` in your `cluster.yaml`.
-2. Update the fallback literal in your copied shim if it still reads `1.19.4`.
+Pick one:
 
-A fresh bootstrap from the current `cluster.yaml.example` already carries 1.20.0
-and needs neither edit.
+1. **Recommended — stop pinning, inherit the base.** Delete
+   `substrate.cilium.chart_version` from your `cluster.yaml` and change the shim
+   fallback to `try(local.cilium.chart_version, null)`. `null` now means "take
+   the base's pin", so this bump and every future one reach you by vendoring
+   alone. This is what the shipped examples do as of this release.
+2. **Keep pinning deliberately.** Set `substrate.cilium.chart_version: "1.20.0"`
+   in your `cluster.yaml` and bump the shim's literal too if it still reads
+   `1.19.4`. You keep control and keep the maintenance.
+
+Option 1 relies on `nullable = false`, added to both chart-version inputs in this
+release — without it a passed `null` stays `null` rather than falling back, so do
+not apply the shim change against an older base tag. A fresh bootstrap from the
+current `cluster.yaml.example` already inherits 1.20.0 and needs neither edit.
 
 ### 1. Running clusters are NOT upgraded by this bump — but the frozen seed goes stale (affects anyone who adds or replaces a controlplane)
 
