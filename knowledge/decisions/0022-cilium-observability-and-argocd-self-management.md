@@ -400,9 +400,30 @@ hold unchanged; nothing in this ADR is superseded.
   Talos apply time rather than plan time. Two caveats on that figure: it is the
   **Cilium term only**, whereas Talos sees the SUM of the Cilium, ArgoCD and
   cert-approver inlineManifests; and the `~66 KB` budget in the `main.tf`
-  comment is prose with no cited Talos-side ceiling and no mechanical check. A
-  plan-time bound on the summed payload — a `postcondition` or `check` against a
-  sourced ceiling — remains unbuilt and is tracked separately from this bump.
+  comment is prose with no cited Talos-side ceiling and no mechanical check.
+  **Closed after this bump (issue #213).** The sourced ceiling is Talos'
+  `GRPCMaxMessageSize = 32 * 1024 * 1024` (`pkg/machinery/constants/constants.go`
+  at tag `v1.11.0`), wired into machined's gRPC server via
+  `grpc.MaxRecvMsgSize` and into the client in `pkg/machinery/client/connection.go`;
+  `ApplyConfiguration` carries the document in one such message. The unsourced
+  `~66 KB` figure is three orders of magnitude off and was removed rather than
+  kept. The bound is a **precondition over the summed patch locals** on
+  `data.talos_machine_configuration.controlplane`, not a postcondition over its
+  `machine_configuration`: that attribute depends on `talos_machine_secrets`, so on
+  a first plan it is unknown and a postcondition over it defers to apply — the very
+  failure the gate exists to move earlier. Measured, not assumed: the postcondition
+  form did not fire even with the ceiling lowered to 1000 bytes, while the
+  precondition form fails at plan with the summed byte count.
+
+  Two residuals stay open, stated rather than hidden. First, 32 MiB is the bound
+  that could be SOURCED, not proof that nothing tighter binds first — whether the
+  STATE partition, etcd, or maintenance mode imposes a smaller practical limit is
+  not established. Second, the gate has no permanent test: binding it would need a
+  synthetic ~32 MiB seed, so the red-green is a re-runnable procedure (lower
+  `local.controlplane_payload_ceiling_bytes`, run `task tofu:test`) rather than a
+  committed assertion. An output exposing the summed bytes for trend-watching was
+  considered and left out to keep the module's output surface stable; the gate's
+  failure message carries the numbers instead.
 
 ### New default-on 1.20 surface in the seed (measured, not inferred)
 

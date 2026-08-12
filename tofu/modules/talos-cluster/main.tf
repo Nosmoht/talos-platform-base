@@ -365,8 +365,10 @@ data "helm_template" "cilium" {
   chart        = "cilium"
   version      = var.cilium_chart_version
   kube_version = var.kubernetes_version
-  # Cilium ships no CRDs that need the separate large-CRD treatment ArgoCD needs;
-  # the chart's own CRDs render inline within the size budget (~66 KB total).
+  # Cilium ships no CRDs that need the separate large-CRD treatment ArgoCD needs,
+  # so its own CRDs render inline. The payload is bounded where it belongs — on the
+  # SUMMED controlplane document, at the postcondition on
+  # data.talos_machine_configuration.controlplane — not by a per-seed guess here.
   include_crds = true
 
   values = compact([
@@ -611,6 +613,26 @@ resource "talos_machine_secrets" "this" {
 # correctness holds under both; only last-wins-replace would break it, and prod
 # falsifies that.)
 locals {
+  # SOURCED ceiling for the machine-config payload. Talos caps every API message
+  # at pkg/machinery/constants/constants.go's `GRPCMaxMessageSize = 32 * 1024 * 1024`
+  # (verified at tag v1.11.0), wired into the machined gRPC server via
+  # grpc.MaxRecvMsgSize(constants.GRPCMaxMessageSize) in
+  # internal/app/machined/pkg/system/services/machined.go, and into the client in
+  # pkg/machinery/client/connection.go. ApplyConfiguration carries the document in
+  # one such message, so this is the hard upper bound on a machine config.
+  #
+  # RESIDUAL, stated rather than hidden: this is the bound we could SOURCE, not
+  # proof that nothing tighter binds first. Whether the STATE partition, etcd, or
+  # maintenance mode imposes a smaller practical limit is NOT established here.
+  # The previous figure in this file — "~66 KB total" — had no source at all and is
+  # three orders of magnitude off this one; it is removed rather than kept.
+  talos_grpc_max_message_bytes = 32 * 1024 * 1024
+
+  # 1 MiB of headroom for the pass-2 per-node overlays (install.image, hostname,
+  # capability + node patches) that the measured document does not include, plus
+  # gRPC framing and metadata.
+  controlplane_payload_ceiling_bytes = local.talos_grpc_max_message_bytes - (1024 * 1024)
+
   controlplane_base_patches = concat(
     [local.base_cluster_patch],
     [local.base_kubelet_rotation_patch],
@@ -644,6 +666,32 @@ data "talos_machine_configuration" "controlplane" {
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
   config_patches     = local.controlplane_machine_config_patches
+
+  lifecycle {
+    # Bound the SUMMED controlplane payload. Talos sees ONE document carrying every
+    # inlineManifest seed at once (cilium + argocd + cert-approver), and an
+    # oversized document surfaces as an APPLY failure against real hardware, after
+    # the plan looked clean.
+    #
+    # A PRECONDITION over the patch locals, deliberately, not a postcondition over
+    # `self.machine_configuration`: that attribute depends on
+    # talos_machine_secrets.this, so on a first plan it is UNKNOWN and a
+    # postcondition over it silently defers to apply — which is exactly the
+    # apply-time failure this gate exists to move earlier. Verified: a
+    # postcondition form did not fire even with the ceiling lowered to 1000 bytes.
+    # local.controlplane_machine_config_patches is var- and render-derived, so it
+    # is known at plan and this fails where it should.
+    #
+    # Measures the patch sum, which is the term this module controls and the
+    # dominant one; the generated base document adds a few KB on top, and the
+    # pass-2 per-node overlays applied at talos_machine_configuration_apply
+    # (install.image, hostname, capability and node patches) add a little more.
+    # local.controlplane_payload_ceiling_bytes reserves headroom for both.
+    precondition {
+      condition     = sum([for p in local.controlplane_machine_config_patches : length(p)]) <= local.controlplane_payload_ceiling_bytes
+      error_message = "controlplane config patches sum to ${sum([for p in local.controlplane_machine_config_patches : length(p)])} bytes, over the ${local.controlplane_payload_ceiling_bytes}-byte ceiling (Talos API gRPC limit ${local.talos_grpc_max_message_bytes} bytes, minus headroom for the generated base document and the pass-2 per-node overlays). Enabled inlineManifest seeds: cert-approver (always on), argocd=${var.deploy_argocd}, cilium=${var.deploy_cilium}. Shrink a seed, move manifests to cluster.extraManifests, or disable a substrate component."
+    }
+  }
 }
 
 data "talos_machine_configuration" "worker" {

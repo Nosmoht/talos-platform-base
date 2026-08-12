@@ -97,6 +97,17 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`talos-cluster`: the summed inlineManifest payload is now bounded at plan
+  time.** Talos receives ONE controlplane document carrying every seed at once
+  (cilium + argocd + cert-approver), and an oversized document failed at APPLY
+  against real hardware after a clean plan. A precondition on
+  `data.talos_machine_configuration.controlplane` now rejects it at plan, naming
+  the summed byte count, the ceiling, and which seeds are enabled. The ceiling is
+  **sourced**: Talos' `GRPCMaxMessageSize = 32 * 1024 * 1024`
+  (`pkg/machinery/constants/constants.go` at `v1.11.0`), which caps the
+  `ApplyConfiguration` message, minus headroom for the generated base document and
+  the pass-2 per-node overlays. The previous `~66 KB` figure in `main.tf` had no
+  source and is three orders of magnitude off — removed. See #213.
 - **`talos-cluster`: the chart-version pin is now single-source, and a `null`
   input selects the base's pin.** `cilium_chart_version` and `argocd_chart_version`
   declare `nullable = false` beside their defaults, so a caller may pass `null`
