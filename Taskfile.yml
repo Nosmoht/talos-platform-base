@@ -698,7 +698,15 @@ tasks:
       # invented-content merge inherits someone else's trailer) is observable
       # from this repo's own history. Bound against a throwaway fixture repo,
       # controls first, so a regression in either direction turns this red.
-      ./scripts/check-staleness-gate-bite.sh
+      # Require a completion marker, not just exit 0: on a git without
+      # 'merge-tree --write-tree' the script runs its controls and reports
+      # PARTIAL (CI itself exits 2 there — see the script), and a bare exit code
+      # cannot tell that apart from a full pass. Neither marker means the script
+      # crashed or was edited into returning 0 without running.
+      bite_out="$(./scripts/check-staleness-gate-bite.sh)" || { printf '%s\n' "$bite_out"; exit 1; }
+      printf '%s\n' "$bite_out"
+      printf '%s\n' "$bite_out" | grep -qE '^staleness-gate bite-check (OK|PARTIAL)' || {
+        echo "ERROR: the staleness-gate bite-check produced no completion marker"; exit 1; }
       # Source-ownership partition: exclusivity + completeness over the
       # enumerated substrate source universe (ADR-0015 ownership model).
       python3 scripts/check-spec-partition.py .
