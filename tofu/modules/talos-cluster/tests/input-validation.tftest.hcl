@@ -328,9 +328,18 @@ run "cilium_floor_preservation_under_observability" {
     error_message = "floor-preservation (M1): cgroup.autoMount.enabled from the floor must survive the top-level merge"
   }
   assert {
-    # Transcribed verbatim from helm/cilium-values.yaml:41-52 (ordered list —
-    # HCL list equality is order-sensitive). Do not copy from plan.md without
-    # re-checking the file (builder-addenda.md item 6).
+    # Transcribed verbatim from the floor's ciliumAgent list in
+    # helm/cilium-values.yaml (ordered list — HCL list equality is
+    # order-sensitive). Do not copy from a plan without re-checking the file.
+    #
+    # WHAT this pins and WHY (issue #214): it pins that the FLOOR's list — not the
+    # chart's — reaches the effective values, i.e. that the top-level merge does
+    # not let the computed layer replace it. It deliberately does NOT justify the
+    # fork from the chart default; the floor withholds SYS_MODULE and SYSLOG
+    # (Talos invariants, see the floor header) and adds NET_BIND_SERVICE (retained
+    # defensively for embedded-Envoy consumers — justification and the case for
+    # dropping it are open in #214). So a chart-side change to the default list
+    # will NOT fail this assert: it binds the merge, not the divergence.
     condition = output.cilium_effective_values.securityContext.capabilities.ciliumAgent == [
       "CHOWN", "KILL", "NET_ADMIN", "NET_RAW", "NET_BIND_SERVICE",
       "IPC_LOCK", "SYS_ADMIN", "SYS_RESOURCE", "DAC_OVERRIDE", "FOWNER",
@@ -384,6 +393,39 @@ run "cilium_self_management_app_on_shape" {
   assert {
     condition     = !contains(keys(yamldecode(output.cilium_self_management_app).spec), "syncPolicy")
     error_message = "app-on shape: spec must carry NO syncPolicy (consumer controls sync timing — README)"
+  }
+}
+
+# A caller passing `null` for a chart-version input must receive the module's
+# DECLARED DEFAULT, not null. This is the mechanism the example shim relies on so
+# a consumer who omits substrate.cilium.chart_version from cluster.yaml inherits
+# every future base pin instead of freezing the literal their shim was copied
+# with (issue #210). It works ONLY because the variable declares
+# `nullable = false`; a passed null otherwise stays null.
+#
+# Red-green: remove `nullable = false` from variable "cilium_chart_version" in
+# variables.tf and re-run `tofu test -filter=tests/input-validation.tftest.hcl`
+# — targetRevision becomes null and the first assert below fails.
+#
+# Deliberately asserts the SHAPE of the substituted value, never the literal
+# version: hard-coding "1.20.0" here would add back the fourth copy of the pin
+# that #210 exists to remove.
+run "null_chart_version_falls_back_to_the_declared_default" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management = true
+    deploy_argocd          = true
+    deploy_cilium          = true
+    cilium_chart_version   = null
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.source.targetRevision != null
+    error_message = "module-interface-contract §'Grouped typed input surface': cilium_chart_version = null must resolve to the variable's declared default (nullable = false); got null in spec.source.targetRevision"
+  }
+  assert {
+    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", yamldecode(output.cilium_self_management_app).spec.source.targetRevision))
+    error_message = "module-interface-contract §'Grouped typed input surface': the default substituted for a null cilium_chart_version must be a bare semver chart version"
   }
 }
 

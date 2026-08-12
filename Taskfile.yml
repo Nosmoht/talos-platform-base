@@ -256,6 +256,13 @@ tasks:
       # the pre-PR requirement. Wired in CI only, a contributor following the
       # documented checklist would never run it.
       ./scripts/check-bootstrap-render.sh
+      # kubernetes/bootstrap/cilium/values.yaml ships in the OCI artifact and is
+      # what a consumer copies into a Day-2 self-managed Application, but no gate
+      # ever rendered it — so a value the pinned chart REMOVED was dropped silently
+      # (issue #211). Validates its key paths against the pinned chart's own
+      # values.schema.json. Networked: SKIPS loudly if the registry is unreachable,
+      # FAILS on a value the chart does not declare.
+      ./scripts/check-cilium-reference-values.py
 
   gitops:render-component:
     desc: 'Stage-1+2 render of one component. Usage: task gitops:render-component COMPONENT=<name>'

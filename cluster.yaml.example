@@ -113,7 +113,10 @@ substrate:
   cilium:
     # namespace is fixed to kube-system by Talos convention (not a settable field).
     enabled: true # false keeps Talos-default Flannel (opt-out)
-    chart_version: "1.20.0" # SEED knob (install-time), not an upgrade knob
+    # chart_version: OMITTED ON PURPOSE — omitting it inherits the base's pinned
+    # chart, so vendoring a newer base tag moves the pin for you. Set it ONLY to
+    # pin against the base deliberately; a stale value here silently overrides
+    # every future bump. SEED knob either way (install-time, not an upgrade knob).
     # SECURITY: chart_repository + gateway_api_crds_url below are pulled WITHOUT a
     # digest pin and baked into the controlplane machine config — point ONLY at a
     # source you trust (a poisoned repo/URL injects arbitrary bootstrap manifests).
@@ -134,7 +137,7 @@ substrate:
     self_management_project: default # ArgoCD AppProject the emitted Application targets — scope to a dedicated project for hardening
   argocd:
     enabled: true # false opts out of ArgoCD delivery
-    chart_version: "9.4.5" # SEED knob (install-time), not an upgrade knob
+    # chart_version: omitted on purpose — see the cilium block above.
     namespace: argocd
     values_override: "" # consumer Helm values merged on the shipped slim values
   cert_approver: # postfinance/kubelet-csr-approver — always seeded; these only TUNE it (cannot disable)

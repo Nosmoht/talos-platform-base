@@ -97,6 +97,57 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`kubernetes/bootstrap/cilium/values.yaml` is now gated against the pinned
+  chart's schema.** Nothing in CI ever rendered this file, so a value the chart had
+  REMOVED was dropped silently by Helm — exactly what happened to
+  `encryption.strictMode.*` at Cilium 1.20, leaving strict-mode encryption
+  unconfigured for anyone who copied it. `scripts/check-cilium-reference-values.py`
+  validates every value path against the chart's own `values.schema.json` and fails
+  naming each undeclared path. Wired into both `task gitops:validate` and the
+  `gitops-validate.yml` validate job — same script, same verdict. It reads the chart
+  version from `variables.tf`, so it cannot drift from what the module renders. Two
+  stated trade-offs: a chart-registry outage SKIPS loudly rather than failing (an
+  outage must not block unrelated merges, so during one a removed spelling can
+  merge), and a changed DEFAULT under a spelling that still parses stays
+  reviewer-enforced, since no values schema can express it. See #211.
+- **`talos-cluster`: the Cilium seed's rendered `cilium-config` surface is now
+  pinned.** The seed bypasses the kustomize/conftest render gate, and nothing
+  asserted a single key of it — so a chart bump could move a datapath- or
+  security-relevant default into the create-only machine config unnoticed. That is
+  what the 1.20 bump did with `bpf-lb-algorithm-annotation`. Two layers now bind
+  it: the full key set against `tests/fixtures/cilium-config-keys.txt`, and the
+  values of a curated set (`bpf-lb-algorithm-annotation`,
+  `kube-proxy-replacement`, `enable-host-firewall`, `enable-datapath-plugins`,
+  `gateway-api-use-remote-address`). Both are needed — the key set alone would not
+  have caught 1.20, since only the value moved. A future bump refreshes the fixture
+  deliberately and answers the consumer-facing question in
+  [UPGRADING.md](UPGRADING.md). See #212.
+- **`talos-cluster`: the summed inlineManifest payload is now bounded at plan
+  time.** Talos receives ONE controlplane document carrying every seed at once
+  (cilium + argocd + cert-approver), and an oversized document failed at APPLY
+  against real hardware after a clean plan. A precondition on
+  `data.talos_machine_configuration.controlplane` now rejects it at plan, naming
+  the summed byte count, the ceiling, and which seeds are enabled. The ceiling is
+  **sourced**: Talos' `GRPCMaxMessageSize = 32 * 1024 * 1024`
+  (`pkg/machinery/constants/constants.go` at `v1.11.0`), which caps the
+  `ApplyConfiguration` message, minus headroom for the generated base document and
+  the pass-2 per-node overlays. The previous `~66 KB` figure in `main.tf` had no
+  source and is three orders of magnitude off — removed. See #213.
+- **`talos-cluster`: the chart-version pin is now single-source, and a `null`
+  input selects the base's pin.** `cilium_chart_version` and `argocd_chart_version`
+  declare `nullable = false` beside their defaults, so a caller may pass `null`
+  and OpenTofu substitutes the module default. The example shim now passes
+  `try(local.<component>.chart_version, null)` and the shipped `cluster.yaml`
+  examples leave `chart_version` commented out, which means the version literal
+  exists in exactly one place per component (`variables.tf`) instead of three.
+  Why it matters: previously both consumer-facing copies passed the version
+  explicitly, so the module default was never consulted and a base chart bump
+  could not reach an existing consumer at all. **Non-breaking** — an explicit
+  value still wins; a consumer who omits the key moves from "whatever literal my
+  shim was copied with" to the base's pin. The contract is per-input, not
+  module-wide: no other input promises null-means-default, and passing `null` to
+  one without `nullable = false` yields `null`. Adoption steps in
+  [UPGRADING.md](UPGRADING.md). See #210.
 - **`talos-cluster`: Cilium chart pin `1.19.4` → `1.20.0`.** Cilium 1.20.0
   (released 2026-07-29) is the base's new substrate CNI seed version. This is a
   **SEED knob**: `terraform_data.cilium_render` carries `ignore_changes` and
@@ -104,10 +155,9 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   running Cilium — it applies to fresh bootstraps, and to consumers who
   deliberately sync the emitted self-management Application (whose
   `targetRevision` tracks the pin). It also does not reach an existing consumer
-  by itself: `cluster.yaml` and the example shim both pass `chart_version`
-  explicitly, so the module default applies only to a caller that passes nothing
-  — move `substrate.cilium.chart_version` (and any copied shim fallback) to
-  `1.20.0` to adopt it. Kubernetes is a **precondition, not a given**: the module
+  by itself, because their own `cluster.yaml` and shim pin the chart and win over
+  the module default — see the chart-version single-source entry below for the two
+  ways to adopt it. Kubernetes is a **precondition, not a given**: the module
   does not pin `kubernetes_version`, and Cilium 1.20 lists 1.33–1.36 as
   e2e-tested, so a cluster on 1.32 or earlier needs a Kubernetes upgrade first or
   should stay on Cilium 1.19. Re-verified at the new pin: seed render

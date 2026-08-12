@@ -32,6 +32,15 @@
   missing. The `gateway-api-use-remote-address` row is corrected from "genuine
   new default-on behavior" to behavior-PRESERVING — Cilium 1.19 hardcoded the
   same Envoy field, so 1.20 adds the knob, not a new posture.
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: the
+  summed-inlineManifest residual is CLOSED (issue #213). Records the sourced
+  ceiling — Talos `GRPCMaxMessageSize = 32 * 1024 * 1024`
+  (`pkg/machinery/constants/constants.go` at `v1.11.0`) — the removal of the
+  unsourced `~66 KB` figure, and why the gate is a precondition over the patch
+  locals rather than a postcondition over `machine_configuration` (the latter is
+  unknown on a first plan and defers to apply; measured, not assumed). Two
+  residuals stay open: nothing proves a tighter limit does not bind first, and the
+  gate has no permanent test because binding it needs a synthetic ~32 MiB seed.
 - `decisions/0007-cluster-yaml-sot.md`: Gateway API CRD floor updated v1.4.1 →
   v1.6.1 (Cilium 1.20 minimum; `TLSRoute` joined the standard channel at
   v1.6.1), and the chart-provenance residual re-verified —

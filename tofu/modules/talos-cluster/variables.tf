@@ -486,9 +486,14 @@ variable "argocd_chart_version" {
     re-renders the machine config — it does NOT upgrade a running ArgoCD. Steady-
     state version is owned by ArgoCD self-management (the app reconciles itself
     from git). VERIFY the exact current chart version at push.
+
+    As with `cilium_chart_version`, this default is the single source of truth
+    and `nullable = false` lets a caller pass `null` to mean "take the base's
+    pin" — see that variable for why the attribute is load-bearing.
   EOT
   type        = string
   default     = "9.4.5"
+  nullable    = false
 }
 
 variable "argocd_values_override" {
@@ -602,9 +607,18 @@ variable "cilium_chart_version" {
     knob: Talos applies inlineManifests once at bootstrap and never re-runs them,
     so bumping this after bootstrap only re-renders the machine config — it does
     NOT upgrade a running Cilium. VERIFY the exact current chart version at push.
+
+    This default is the SINGLE source of truth for the pinned chart version.
+    `nullable = false` is what makes that true: a caller may pass `null` to mean
+    "take the base's pin", and OpenTofu then substitutes this default. Without
+    `nullable = false` a passed `null` stays null. That is the mechanism the
+    example shim relies on, so a consumer who omits
+    `substrate.cilium.chart_version` from `cluster.yaml` inherits every future
+    bump instead of freezing whatever literal their shim was copied with.
   EOT
   type        = string
   default     = "1.20.0"
+  nullable    = false
 }
 
 variable "cilium_chart_repository" {

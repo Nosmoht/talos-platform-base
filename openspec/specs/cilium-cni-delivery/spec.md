@@ -74,6 +74,32 @@ deliberate re-seed requires an explicit resource replacement.
 - **THEN** the frozen render output — and therefore the machine
   configuration — is unchanged
 
+### Requirement: Seed configuration surface is pinned
+
+The seed bypasses the kustomize/conftest render gate, so a chart bump can move a
+datapath- or security-relevant default into the create-only controlplane machine
+configuration with nothing failing. The repo SHALL therefore pin the seed's
+rendered `cilium-config` surface at two levels: its full KEY SET against a
+committed fixture, so a bump that adds or removes any key fails until the fixture
+is refreshed deliberately; and the VALUES of a curated set of datapath- and
+security-relevant keys, because a key set alone cannot catch a default that
+changed under an unchanged key. A refresh SHALL be a deliberate act that answers
+the consumer-facing question in `UPGRADING.md`, never a silent regeneration.
+
+The curated value set is intentionally open: it starts from the keys whose flip
+would break the cluster silently or widen its exposure, and grows as bumps reveal
+more. Its purpose is not exhaustive coverage but to make the class of regression
+visible — the Cilium 1.20 bump moved `bpf-lb-algorithm-annotation` from `"false"`
+to `"true"`, turning a previously inert `service.cilium.io/lb-algorithm` Service
+annotation live, and nothing in the suite noticed.
+
+#### Scenario: A chart bump that changes the seed's config surface fails the suite
+
+- **WHEN** the pinned chart renders a `cilium-config` whose key set differs from
+  the committed fixture, or whose value for a curated key differs from its pin
+- **THEN** the module's test target fails, naming the divergence, rather than
+  freezing the new default into the machine configuration unnoticed
+
 ### Requirement: Cluster-agnostic floor values with layered configuration
 
 The module SHALL render the seed from three value layers, later layer
@@ -132,7 +158,15 @@ silently rather than rejected), and a value whose **default or enforcement
 behavior the chart has changed** under a spelling that still parses. In either
 case the consumer's cluster is misconfigured or newly failing with no error at
 render or apply time, so the bump SHALL either fix the file or document the
-consequence in `UPGRADING.md`. Known exception: a full audit of every value in
+consequence in `UPGRADING.md`. The removed-spelling half SHALL be enforced
+mechanically rather than by review: a check SHALL validate every value path in the
+file against the pinned chart's own `values.schema.json` and fail on a path the
+chart does not declare, running from the same script locally and in CI so a local
+pass means what a CI pass means. Because it needs the chart registry, the check
+SHALL skip loudly rather than fail when the registry is unreachable — an outage
+must not block unrelated merges — which leaves one stated hole: during an outage a
+removed spelling can merge. The changed-default half stays reviewer-enforced, since
+no schema can express it. Known exception: a full audit of every value in
 the file against the pinned chart is out of scope for a version bump, so the
 file MAY still carry a value the chart does not recognize. Such a value is inert
 rather than harmful — Helm drops it, and removing it leaves the rendered output
@@ -151,6 +185,14 @@ be unrecognized by the pinned chart SHALL be removed.
 - **WHEN** `kubernetes/bootstrap/cilium/extras.yaml` is applied
 - **THEN** it creates exactly one resource — a GatewayClass named `cilium`
   with the Cilium gateway controller name — and no `kind: Ingress` resource
+
+#### Scenario: A value the pinned chart removed fails the check
+
+- **WHEN** `kubernetes/bootstrap/cilium/values.yaml` sets a value path the pinned
+  chart's `values.schema.json` does not declare — for example the flat
+  `encryption.strictMode.enabled` spelling that Cilium 1.20 removed
+- **THEN** the check fails and names the offending path, instead of Helm dropping
+  the value silently at render time
 
 #### Scenario: Encryption strict mode survives the pinned chart
 
