@@ -397,7 +397,69 @@ hold unchanged; nothing in this ADR is superseded.
 - **Seed size grew ~4.9 %** (57 458 → 60 268 bytes for the default seed). Still
   within the budget noted at `main.tf:368-369`, but the trend is worth watching:
   nothing gates the Talos machine-config size limit, and an overflow surfaces at
-  Talos apply time rather than plan time.
+  Talos apply time rather than plan time. Two caveats on that figure: it is the
+  **Cilium term only**, whereas Talos sees the SUM of the Cilium, ArgoCD and
+  cert-approver inlineManifests; and the `~66 KB` budget in the `main.tf`
+  comment is prose with no cited Talos-side ceiling and no mechanical check. A
+  plan-time bound on the summed payload — a `postcondition` or `check` against a
+  sourced ceiling — remains unbuilt and is tracked separately from this bump.
+
+### New default-on 1.20 surface in the seed (measured, not inferred)
+
+The seed bypasses the kustomize/conftest render gate, and
+`cilium_seed_observability_markers` decodes only four booleans — so a chart bump
+can move a default into the create-only controlplane machine config with nothing
+asserting it. The `cilium-config` keys chart 1.20.0 adds over 1.19.4, with their
+rendered values in the DEFAULT seed (floor ⊕ computed, no override):
+
+| New `cilium-config` key | Rendered value | Note |
+|---|---|---|
+| `gateway-api-use-remote-address` | `"true"` | Backing Helm value `gatewayAPI.useRemoteAddress` is NEW in 1.20 and defaults true. Genuine new default-on behavior; see `UPGRADING.md` §2. |
+| `bpf-lb-sock-hostns-only` | `"true"` | NOT a marker of the 1.20 NodePort change: the 1.20 template forces this key `"true"` whenever `gatewayAPI.enabled` (for Maglev per-backend weights), and the key exists in the 1.19.4 template too. It does mean the base satisfies the second trigger condition of the upstream NodePort note (`UPGRADING.md` §4), whose basis is the release notes, not this key. |
+| `enable-drift-checker` | `"true"` | New `configDriftDetection` group, default on. Emits a Prometheus metric counting unapplied ConfigMap keys. |
+| `envoy-access-log-enabled` | `"true"` | Newly EMITTED key; the backing `envoy.accessLog` value is unset (null) in BOTH 1.19.4 and 1.20.0, so this records the emitted default — it is NOT established that the underlying behavior changed. |
+| `envoy-xds-mode` | `"ads"` | Same caveat: `envoy.xdsMode` is null in both charts. |
+| `enable-host-firewall` | `"false"` | Off. |
+| `enable-datapath-plugins` | `"false"` | Off — the new plugin-loading surface is not opened. |
+| `devices`, `datapath-plugins-state-dir`, `clustermesh-default-global-namespace`, `enable-dynamic-source-lookup-nodeport`, `proxy-cluster-max-pending-requests` | — | No security-relevant default change observed. |
+
+Object inventory is unchanged between the two charts (same kinds, same counts;
+the two DaemonSets are `cilium` and `cilium-envoy` in both), so 1.20 adds no new
+default-on workload to the seed.
+
+Not fixed here and tracked separately: there is no `cilium_seed_missing_labels`
+output mirroring `cert_approver_seed_missing_labels`, and no assert pinning any
+of the keys above — so the next bump can flip one silently. The agent capability
+lists in `helm/cilium-values.yaml` are likewise hard forks of the chart defaults
+with no test binding them; measured at this bump, the divergence is IDENTICAL in
+1.19.4 and 1.20.0 (the floor withholds `SYS_MODULE` and `SYSLOG` and adds
+`NET_BIND_SERVICE`), so the bump introduces no new drift — but the
+`NET_BIND_SERVICE` grant's stated justification ("Gateway API / envoy listeners
+on privileged ports") is questionable in both versions, since `cilium-envoy`
+renders as a standalone DaemonSet rather than running in the agent.
+
+### §k gains a second dimension: chart-version seed skew
+
+§k and §"Bootstrap-window datapath gap" record stale-seed skew for the
+`cilium_values_override` dimension. The chart version is a second dimension of
+the same gap, and a minor bump is the first time it is material.
+
+`ignore_changes = [input]` freezes the render for the life of the state, and
+`local.cilium_controlplane_patch` feeds that one frozen value into EVERY
+controlplane machine config — including one generated for a controlplane added
+or replaced later. So a cluster bootstrapped at 1.19.4 and since moved to
+1.20.0 via the emitted self-management Application will re-seed 1.19.4 Cilium
+objects on a controlplane join, against a running 1.20.0 datapath. Cilium
+supports skew only between consecutive minors, so the gap is tolerable at one
+minor and is not a general licence.
+
+Same shape of mitigation as §"Bootstrap-window datapath gap", and no code fix:
+re-freeze deliberately (`tofu apply -replace=terraform_data.cilium_render[0]`)
+so the seed and the running version agree BEFORE touching controlplane
+membership, or hold membership changes until that is done. Note the freeze is
+symmetric — it blocks re-capture on the way back too, so a rollback that was
+adopted via `-replace` needs a second `-replace` to revert the seed.
+Operator-facing form: `UPGRADING.md` §1 and its Back-out paragraph.
 
 ## Links
 

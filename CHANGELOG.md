@@ -110,6 +110,24 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Service all hold, and ADR-0022's `operator.prometheus.enabled` revisit
   trigger did not fire — recorded as a dated addendum in
   [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+- **New default-on Gateway API behavior inherited from Cilium 1.20:
+  `gatewayAPI.useRemoteAddress`.** The Helm value does not exist in chart 1.19.4
+  and defaults to `true` in 1.20.0, so every consumer inherits it — the base
+  enables the Gateway API controller by default and does not override the key.
+  The Gateway now derives the client address from forwarded headers rather than
+  the connection peer (`gateway-api-use-remote-address: "true"` in
+  `cilium-config`). Correct behind a trusted L4 load balancer; a spoofing vector
+  where clients reach the Gateway directly. Tune `xffNumTrustedHops` or set the
+  value false. See [UPGRADING.md](UPGRADING.md) §2.
+- **Datapath behavior change inherited from Cilium 1.20: in-cluster NodePort
+  traffic is load-balanced at the client pod.** With kube-proxy replacement on
+  (the base default) and SocketLB disabled (the chart default the base does not
+  override), connections from regular pods to NodePort Services are now
+  load-balanced as traffic leaves the client pod instead of at the target node,
+  per Cilium's 1.20 release notes. Client NetworkPolicy must now allow egress to the Service's
+  backends, and backend NetworkPolicy must allow ingress from the client. No
+  base value changed; this is upstream behavior every consumer on default
+  settings inherits. See [UPGRADING.md](UPGRADING.md) §4.
 - **Gateway API CRD floor documentation: v1.4.1 → v1.6.1.** Cilium 1.20
   requires Gateway API v1.6.1 at a minimum, because `TLSRoute` graduated from
   `v1alpha2` to `v1`. `cilium_gateway_api_crds_url` still defaults to `""`

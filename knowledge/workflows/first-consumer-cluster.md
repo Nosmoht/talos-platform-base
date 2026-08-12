@@ -3,7 +3,7 @@ type: workflow
 title: First Consumer Cluster
 description: End-to-end walk-through from verifying a published base release to a reconciling App-of-Apps root on a freshly provisioned Talos cluster.
 tags: [bootstrap, consumer, day-zero]
-timestamp: 2026-07-15
+timestamp: 2026-08-12
 sources:
   - README.md
   - Taskfile.yml

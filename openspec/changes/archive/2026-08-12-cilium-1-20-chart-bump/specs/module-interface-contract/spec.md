@@ -36,8 +36,13 @@ the input is an opaque URL that Talos applies verbatim. Its documentation
 SHALL therefore state the Gateway-API CRD floor required by the Cilium chart
 version currently pinned by `cilium_chart_version`, together with the channel
 (standard vs experimental) that satisfies the platform's Gateway-API-only
-Hard Constraint — so a `cilium_chart_version` bump cannot leave the documented
-CRD floor silently stale.
+Hard Constraint — in every copy that documents it, the module README's Inputs
+row included. No mechanical gate enforces this: `spec:check-staleness` proves
+only that the owning spec was touched, `check-module-readme-parity.sh` checks
+row presence and not prose, and no check compares the CRD version literal
+against the chart pin. It is therefore a **reviewer-enforced** obligation on
+every `cilium_chart_version` bump, and a mechanical coupling remains desirable
+and unbuilt.
 
 #### Scenario: Optional groups fall back to documented defaults
 

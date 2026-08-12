@@ -9,11 +9,21 @@ it is not consumed by the module's seed render — and SHALL ship
 GatewayClass that the Helm chart does not generate, consistent with the
 platform's Gateway-API-only stance (normative: AGENTS.md §Hard Constraints —
 Gateway API only). Because the file is offered to consumers as copy-ready
-input for a self-managed Application, every Helm value it sets SHALL use a
-spelling the currently pinned `cilium_chart_version` still accepts: Helm
-merges value layers without `--strict`, so a value the pinned chart has
-removed is dropped silently rather than rejected, and the consumer's
-resulting cluster is misconfigured with no error at render or apply time.
+input for a self-managed Application, a `cilium_chart_version` bump SHALL
+reconcile this file against the newly pinned chart for its **datapath- and
+security-critical** values, covering both failure modes: a value spelling the
+chart has **removed** (Helm merges without `--strict`, so it is dropped
+silently rather than rejected), and a value whose **default or enforcement
+behavior the chart has changed** under a spelling that still parses. In either
+case the consumer's cluster is misconfigured or newly failing with no error at
+render or apply time, so the bump SHALL either fix the file or document the
+consequence in `UPGRADING.md`. Known exceptions, pre-dating this requirement
+and tracked separately: the file carries inert keys that the pinned chart does
+not recognize (`policySecrets.enabled`,
+`encryption.wireguard.userspaceFallback`, `loadBalancer.l2.enabled` — the last
+redundant with the `l2announcements.enabled` key that does render), and a full
+audit of every value in the file against the pinned chart is out of scope for a
+version bump.
 
 #### Scenario: Reference values are marked as non-live
 
@@ -28,12 +38,13 @@ resulting cluster is misconfigured with no error at render or apply time.
 - **THEN** it creates exactly one resource — a GatewayClass named `cilium`
   with the Cilium gateway controller name — and no `kind: Ingress` resource
 
-#### Scenario: Reference values use value spellings the pinned chart accepts
+#### Scenario: Encryption strict mode survives the pinned chart
 
 - **WHEN** `kubernetes/bootstrap/cilium/values.yaml` is rendered with
   `helm template` against the chart version pinned by
   `cilium_chart_version`
-- **THEN** every value the file sets reaches the rendered output — in
-  particular the encryption strict-mode settings appear as
-  `encryption-strict-*` keys in the `cilium-config` ConfigMap — and no value
-  is silently dropped as an unknown key
+- **THEN** the file's encryption strict-mode settings reach the rendered
+  `cilium-config` ConfigMap as `enable-encryption-strict-mode-egress`,
+  `encryption-strict-egress-cidr` and
+  `encryption-strict-egress-allow-remote-node-identities` — they are not
+  silently dropped as unknown keys

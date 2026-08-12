@@ -107,14 +107,19 @@ change this steady-state publication path.
 
 ---
 
-## Unreleased (next MINOR) — Cilium chart `1.19.4` → `1.20.0` (MINOR — manual action for Gateway-API and self-management consumers)
+## Unreleased (next MINOR) — Cilium chart `1.19.4` → `1.20.0` (MINOR — action required for EVERY consumer)
 
-**Type:** MINOR (additive for consumers; no input renamed, no schema change).
+**Type:** MINOR by interface (no input renamed, no input removed, no schema
+change) — but **not** low-effort to adopt, and the SemVer label is the wrong
+signal to plan from. Read §1–§5 before adopting: §4 requires a NetworkPolicy
+audit from every consumer on default settings, §3 requires policy edits before
+upgrading, §2 requires a Gateway API CRD move first, and §1 changes how you
+treat controlplane add/replace.
 Cilium 1.20.0 was released 2026-07-29 and becomes the base's substrate CNI seed
 version. Re-verification at the new pin is recorded as a dated addendum in
 [`knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md`](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
-### 1. Running clusters are NOT upgraded by this bump (affects nobody — read it anyway)
+### 1. Running clusters are NOT upgraded by this bump — but the frozen seed goes stale (affects anyone who adds or replaces a controlplane)
 
 `cilium_chart_version` is a **seed knob**. `terraform_data.cilium_render` carries
 `ignore_changes = [input]` and Talos `inlineManifests` are create-only, so
@@ -124,12 +129,58 @@ deliberate `tofu apply -replace=terraform_data.cilium_render[0]`.
 
 What the bump *does* do on every existing consumer: `data.helm_template.cilium`
 is re-read on every `tofu plan`, so your next plan pulls chart 1.20.0 and
-re-renders. Expect a machine-config diff that is **not** applied to running
-nodes (the render is frozen in state). If your plan errors here, the chart
-rejected one of your `cilium_values_override` keys — see §3.
+re-renders in memory. **Your plan should still show no machine-config change.**
+`ignore_changes = [input]` means the re-render never reaches the frozen output,
+so the controlplane patch — and therefore the machine configuration — is
+unchanged; that is the contract in
+`openspec/specs/cilium-cni-delivery/spec.md` ("Render drift does not churn
+machine config"). If your plan *does* want to change machine config here, treat
+it as this repo treats any unexpected plan: **stop and investigate**, do not
+apply.
+
+What the re-read *can* do is fail: the data source carries a postcondition
+rejecting an empty render, and `helm template` errors on a malformed or
+type-invalid value. A key that 1.20 merely **removed** does not error — Helm
+runs without `--strict`, so it is dropped silently (that is the whole point of
+§3). So a clean plan is **not** evidence that your `cilium_values_override`
+survived; audit it against §3 by hand.
 
 Kubernetes is unaffected: the base pins `v1.35.0`, inside Cilium 1.20's
 supported range (1.33–1.36). No Kubernetes or Talos bump is required.
+
+**The flip side — a stale seed outlives the pin, and this bump is the first time
+the gap is a whole minor.** `ignore_changes = [input]` freezes the render in
+state *for the life of that state*, and `local.cilium_controlplane_patch` feeds
+that one frozen value into **every** controlplane machine config — including the
+config generated for a controlplane you add or replace later. So on a cluster
+that was bootstrapped at the old pin and has since been moved to 1.20.0 through
+the emitted self-management Application, a controlplane join re-seeds *1.19.4*
+Cilium objects into a cluster running 1.20.0. ADR-0022 already recognizes this
+class of stale-seed skew for the `cilium_values_override` dimension
+(§k and §"Bootstrap-window datapath gap", whose advice is to hold node
+reboots/replacements until ArgoCD's adoption sync is confirmed); the chart
+version is a second dimension of the same gap.
+
+The conservative response, and the only one this base can recommend without
+qualification: **treat controlplane add/replace on such a cluster as a planned
+operation** — know that the joining node is seeded at the old chart version, and
+verify the running Cilium version on it after ArgoCD reconciles, rather than
+assuming the join produced a 1.20.0 node.
+
+`tofu apply -replace=terraform_data.cilium_render[0]` is the only mechanism that
+re-captures the render, but it is **not** a drop-in "make them agree" step and
+this base does not recommend it blind. At minimum it rewrites the controlplane
+patch, so machine config re-pushes to **every** controlplane — the churn and
+single-node-controlplane self-eviction hazard the seed floor's own header
+documents. Beyond that, two things are unverified here and you must establish
+them for your own cluster before running it: whether Talos' manifest reconcile
+*updates* Cilium objects it already created or only creates missing ones (a
+create-only reconcile yields a mixed-version install, not agreement), and
+whether the objects it would create are already owned by your self-management
+`Application` (two writers on the same cluster-scoped resources — the ownership
+problem v3.0.0 §3 and v7.0.0 §6 both treat as needing deliberate orphaning).
+Dry-run it with `tofu plan` and inspect the `talos_machine_configuration_apply`
+diff before deciding.
 
 ### 2. Gateway API must reach v1.6.1 BEFORE Cilium 1.20 (affects every Gateway-API consumer)
 
@@ -147,12 +198,49 @@ graduated from `v1alpha2` to `v1`. The base previously documented v1.4.1.
   ```
 
 - **Clusters carrying pre-existing `v1alpha2` TLSRoute objects:** use the
-  **experimental** bundle instead. Standard v1.6.1 declares `v1alpha2` but does
-  **not serve** it, so existing `v1alpha2` objects become unreadable and
-  effectively disappear. Back up your `TLSRoute` resources first, upgrade Gateway
-  API to v1.6.1, and only then move Cilium to 1.20.
+  **experimental** bundle instead. We verified the served flags: in standard
+  v1.6.1 `TLSRoute` serves only `v1` (`v1alpha2` and `v1alpha3` are declared with
+  `served: false`), while experimental v1.6.1 serves all three. Upstream's own
+  warning is that with the standard bundle existing `TLSRoute` objects "will not
+  be able to be read by the apiserver from etcd, and will effectively disappear
+  from your cluster" — that consequence is upstream's claim, not something this
+  base has reproduced, but the served flags are consistent with it and the
+  downside of being wrong is losing route objects. Back up your `TLSRoute`
+  resources first regardless, upgrade Gateway API to v1.6.1, then move Cilium.
+
+- **Clusters that followed the base's PREVIOUS guidance** ("use the experimental
+  bundle for TLSRoute") already have the **experimental** bundle installed. Do
+  not read bullet one as "switch to standard": applying `standard-install.yaml`
+  over an experimental installation replaces the shared CRDs, drops served
+  `v1alpha2` from `TLSRoute`, and leaves the experimental-only CRDs
+  (`TCPRoute`, `UDPRoute`, …) orphaned at stale versions rather than removing
+  them. Stay on experimental v1.6.1 unless you deliberately plan that migration.
+
+**Which knob:** if you opted into bootstrap seeding, the CRD bundle URL lives in
+`cluster.yaml` at `substrate.cilium.gateway_api_crds_url` (module input
+`cilium_gateway_api_crds_url`). Editing it changes what Talos fetches via
+`cluster.extraManifests` — but Talos' manifest handling is create-oriented, so
+do **not** assume editing the URL upgrades CRDs Talos already created. Verify the
+CRDs' actual `bundle-version` annotation in-cluster after applying (command in
+§Validation), and if they did not move, apply the new bundle through your normal
+Day-1 GitOps path instead. Consumers who left the input empty (the default) apply
+CRDs via GitOps already and simply point that at v1.6.1.
 
 Order matters: Gateway API first, Cilium second.
+
+**Also new and default-ON: `gatewayAPI.useRemoteAddress`.** This Helm value does
+not exist in chart 1.19.4 and defaults to **`true`** in 1.20.0, so every
+consumer inherits it — the base sets `cilium_gateway_api = true` by default and
+does not override the key. It renders as `gateway-api-use-remote-address: "true"`
+in `cilium-config`. Effect: the Gateway derives the client address from the
+request's forwarded headers rather than the connection peer, which is what you
+want behind a trusted L4 load balancer and what you do **not** want when clients
+can reach the Gateway directly — there, a client-supplied `X-Forwarded-For`
+becomes the source of truth for anything downstream that reads it (logging,
+rate-limiting, IP allow-lists). Tune with `xffNumTrustedHops` (present in both
+versions) via `cilium_values_override`, or set
+`gatewayAPI.useRemoteAddress: false` to restore 1.19 behavior. Review this if any
+policy or application trusts the client IP a Gateway reports.
 
 ### 3. Removed Helm values — audit your `cilium_values_override` (affects consumers who set encryption strict mode, or any removed key)
 
@@ -181,18 +269,62 @@ encryption:
       allowRemoteNodeIdentities: true
 ```
 
-Other values removed in 1.20 that an override might carry:
+Other **Helm values** removed in 1.20 that an override might carry:
 `clustermesh.enableMCSAPISupport` (use `clustermesh.mcsapi.enabled`),
 `encryption.ipsec.interface`, `encryption.ipsec.encryptedOverlay`,
-`loadBalancer` legacy `--node-port-algorithm` / `--node-port-mode` spellings,
-`hubble.redact.kafka.apiKey`, and `preflight.tofqdnsPreCache`. Kafka-aware
-network policies and Envoy Go extensions (proxylib) are removed outright — if
-any `CiliumNetworkPolicy` carries a `kafka`, `l7`, or `l7proto` rules section,
-remove it **before** upgrading. `CiliumNodeConfig` must be `cilium.io/v2`
-(`v2alpha1` is removed). `hubble.preferIpv6` is deprecated in favor of the
-top-level `preferIpv6`.
+`encryption.strictMode.{enabled,cidr,allowRemoteNodeIdentities}` (above),
+`hubble.redact.kafka.apiKey`, and `preflight.tofqdnsPreCache`.
+`hubble.preferIpv6` is deprecated in favor of the top-level `preferIpv6`.
 
-### 4. Self-management consumers get Cilium 1.20 on next sync (affects `cilium_self_management = true`)
+Upstream also removes the `--node-port-algorithm` and `--node-port-mode` **agent
+flags** in favor of `--bpf-lb-algorithm` / `--bpf-lb-mode`. Those are flag
+spellings, not Helm keys, so grepping your override for them finds nothing even
+when you are affected: the Helm surface is `loadBalancer.algorithm` and
+`loadBalancer.mode`. Audit the Helm keys, not the flags.
+
+`CiliumNodeConfig` resources must be `cilium.io/v2` (`v2alpha1` is removed).
+
+Kafka-aware network policies and Envoy Go extensions (proxylib) are removed
+outright. Upstream's instruction is to remove the `rules` section from any
+`CiliumNetworkPolicy` / `CiliumClusterwideNetworkPolicy` carrying `kafka`, `l7`
+or `l7proto` **before** upgrading — but do not apply it mechanically:
+
+> ⚠️ Those rules live under `.spec.{ingress,egress}[].toPorts[].rules`. Deleting
+> the `rules` block while leaving its `toPorts` entry in place converts "allow
+> only these L7 requests on this port" into **"allow all traffic on this
+> port"** — a silent policy widening, done as an upgrade prerequisite. If the L7
+> restriction was load-bearing, remove or tighten the whole `toPorts` entry
+> instead, or replace the L7 constraint with an equivalent the 1.20 proxy still
+> supports. Diff your effective policy set before and after.
+
+### 4. NodePort traffic is now load-balanced at the CLIENT pod — audit NetworkPolicy (affects EVERY consumer on default settings)
+
+This is a **datapath behavior change**, not a config change, and the base's
+defaults put every consumer in its scope: `cilium_kube_proxy_replacement`
+defaults to `true`, and the base does not set `socketLB`, so the chart default
+`socketLB.enabled: false` applies.
+
+Upstream's 1.20 release notes state it directly: with `KubeProxyReplacement` for
+Service load-balancing and SocketLB either **disabled** or configured with
+`socketLB.hostNamespaceOnly=true`, in-cluster connections to NodePort Services by
+regular pods "are now immediately load-balanced when network traffic leaves the
+client pod (and not at the targeted node)", matching the behavior when SocketLB
+is enabled. The base meets the first trigger condition on its defaults, and — via
+`cilium_gateway_api = true` — the second as well, since the chart forces
+`bpf-lb-sock-hostns-only: "true"` whenever Gateway API is enabled. Note that key
+is forced for Maglev per-backend-weight reasons, so treat it as a config
+observation, **not** as proof of this behavior change; the release notes are the
+basis for the claim.
+
+Consequence: the client pod's NetworkPolicy must allow **egress to the
+Service's backend pods**, and each backend's NetworkPolicy must allow **ingress
+from the client pod**. A policy that previously only allowed egress to the node
+IP / NodePort will now drop the connection. Audit any `CiliumNetworkPolicy`,
+`CiliumClusterwideNetworkPolicy` or Kubernetes `NetworkPolicy` governing
+in-cluster NodePort access before a fresh 1.20 bootstrap or a self-management
+sync.
+
+### 5. Self-management consumers get Cilium 1.20 on next sync (affects `cilium_self_management = true`)
 
 The emitted Application's `spec.source.targetRevision` tracks
 `cilium_chart_version`, so adopting this base tag moves your self-managed Cilium
@@ -201,16 +333,92 @@ to 1.20.0 the next time ArgoCD syncs that Application. The module emits no
 §2/§3 above before syncing, and note that traffic through user-space proxies
 (L7 policy, Gateway API) is disrupted during the agent roll.
 
+One new failure mode if you copied this base's reference values
+(`kubernetes/bootstrap/cilium/values.yaml`) with Hubble Relay/UI enabled: that
+file sets `hubble.tls.auto.method: cronJob`, and Cilium 1.20 makes certgen
+**hard-fail** when the CA chain is not valid for the entire leaf-certificate
+duration (new `certgen.enforceCAValidityThroughoutLeavesDuration`, default
+enabled).
+
+State the trigger as a relation, not a date: the rotation CronJob now errors
+whenever the CA's **remaining** validity is shorter than the leaf validity it
+is being asked to issue. Leaf validity is
+`hubble.tls.auto.certValidityDuration`, which defaults to **365** days in both
+1.19.4 and 1.20.0; the reference file does not pin it, and the chart exposes no
+CA-duration knob (`certgen.generateCA: true` uses certgen's own default), so the
+margin is whatever your CA was created with. Consequence: this can fire on a
+routine rotation well before the CA itself expires, not only when the CA is
+nearly dead — and regenerating the CA buys only (CA duration − leaf duration)
+before it recurs. Either set `certgen.enforceCAValidityThroughoutLeavesDuration=false`
+to keep the old silently-over-long-leaf behavior, or pin
+`hubble.tls.auto.certValidityDuration` short enough to stay inside your CA's
+remaining life. The failure is quiet: a failing CronJob emits no readiness
+signal and Relay/UI keep serving the existing leaf, so without alerting on
+CronJob failures you learn about it at leaf expiry.
+
+This does not affect the bootstrap seed (Hubble is off in the floor) or the
+module's `cilium_hubble_enabled` observability path, which forces
+`hubble.tls.enabled=false` — metrics-only, no certgen.
+
+**Back-out:** the two delivery paths roll back differently and must not be
+confused. For the **seed**, `ignore_changes = [input]` blocks re-capture in
+**both** directions, so which action reverts it depends on how you adopted it:
+
+- If you never re-froze, re-pinning an earlier base tag is enough and touches
+  nothing running — the frozen render is still the old one, so no machine config
+  changes and no node is disturbed.
+- If you adopted the new pin via `tofu apply -replace=terraform_data.cilium_render[0]`
+  (the path §1 recommends), re-pinning the tag alone does **not** revert the
+  seed — the 1.20.0 render stays frozen in state and the next controlplane join
+  would seed it into a cluster you believe is rolled back. Run a second
+  `-replace` at the earlier pin and confirm the plan's machine-config diff shows
+  the 1.19.4 render. Land that paired revert **before** any controlplane
+  add/replace, not after.
+
+For **self-management**, a rollback is a real running downgrade of the CNI: pin
+the previous
+`cilium_chart_version` and re-sync. Cilium supports rollback only between
+consecutive minors, and only before new-minor features have been consumed — so
+roll back promptly if at all, and consult the upstream version notes first if
+any 1.20-only feature (for example `encryption.strictMode.ingress`,
+`bpf.datapathMode=auto`) was enabled in the interim.
+
+Reverting §2 needs care and is **not** simply "leave the CRDs alone". Cilium
+1.19 documents support for Gateway API v1.4.1 and expects `TLSRoute` at
+`v1alpha2`, which the v1.6.1 **standard** bundle declares but does not serve —
+so a Cilium downgrade to 1.19 while standard v1.6.1 is installed leaves 1.19
+unable to read `TLSRoute`. If you use `TLSRoute` and must roll Cilium back,
+install the v1.6.1 **experimental** bundle (it serves `v1alpha2`) before
+downgrading, or plan a coordinated CRD downgrade. Consumers with no `TLSRoute`
+objects are unaffected: HTTPRoute/Gateway/GatewayClass are `v1` in both
+bundles.
+
 ### Validation steps after upgrade
 
 1. `task tofu:ci` in the base (or your vendored copy) — offline gates.
 2. `task tofu:test` — **networked**; the only gate that actually pulls chart
    1.20.0 and re-binds the seed-render assertions. Not run by `tofu:ci`.
-3. `tofu plan` in your consumer root — confirm the Cilium re-render produces no
-   *applied* machine-config change and no chart error.
+3. `tofu plan` in your consumer root — the Cilium re-render must produce **no**
+   machine-config change and no chart error (§1). A machine-config diff here is a
+   signal to stop and investigate, not something to apply.
 4. `task gitops:validate` in your consumer repo.
-5. Confirm Gateway API is at v1.6.1 before syncing Cilium:
-   `kubectl get crd tlsroutes.gateway.networking.k8s.io -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}'`
+5. Confirm Gateway API actually reached v1.6.1 **before** syncing Cilium — this
+   is also the check for whether editing `gateway_api_crds_url` updated
+   already-created CRDs (§2):
+
+   ```shell
+   kubectl get crd tlsroutes.gateway.networking.k8s.io \
+     -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}{"\n"}'
+   kubectl get crd tlsroutes.gateway.networking.k8s.io \
+     -o jsonpath='{range .spec.versions[*]}{.name}{" served="}{.served}{"\n"}{end}'
+   ```
+
+   The second command tells you which `TLSRoute` versions are actually served —
+   the standard-vs-experimental distinction §2 turns on.
+6. If you have `TLSRoute` objects, confirm they still list after the CRD move:
+   `kubectl get tlsroutes.gateway.networking.k8s.io -A`.
+
+---
 
 ## `v8.0.0` — `nodes` is keyed by node name (MAJOR — consumer-facing)
 

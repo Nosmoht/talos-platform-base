@@ -18,7 +18,7 @@ behavior:
    error at render or apply time. Verified by rendering the current file against
    chart 1.20.0 — no `encryption-strict-*` key appears in `cilium-config`.
 
-2. **Cilium 1.20 raises the Gateway API floor from v1.6.1 to a hard minimum**,
+2. **Cilium 1.20 raises the Gateway API floor from v1.4.1 to v1.6.1**,
    because `TLSRoute` graduated from `v1alpha2` to `v1`. The base documents the
    old floor (GW-API v1.4.1 standard channel) in two `variables.tf` input
    descriptions, the module README, and ADR-0007. Left stale, a consumer

@@ -16,6 +16,27 @@
   v1.6.1), and the chart-provenance residual re-verified —
   `cilium-1.20.0.prov` is HTTP 404 like its predecessor, so the deferred
   digest-pinning finding is unchanged.
+- `architecture/day-zero-bootstrap.md`: re-verified at the Cilium `1.20.0`
+  bump — two of its `sources` changed (`cluster.yaml.example`,
+  `kubernetes/bootstrap/cilium/values.yaml`). Its claims are version-agnostic
+  (`*_chart_version` are seed knobs, not upgrade knobs; the Gateway-API CRD
+  boot-seed is opt-in) and needed no edit; `timestamp` bumped to record the
+  verification.
+- `reference/cluster-yaml.md`: re-verified at the same bump — its
+  `cluster.yaml.example` source changed (`substrate.cilium.chart_version`). It
+  asserts no chart version, so no edit; `timestamp` bumped.
+- `workflows/first-consumer-cluster.md`: re-verified at the same bump — three
+  of its `sources` changed (`cluster.yaml.example`,
+  `examples/complete/{main.tf,cluster.yaml}`). It asserts no chart version, so
+  no edit; `timestamp` bumped.
+
+Note on the two decision concepts above: their `timestamp` is deliberately
+NOT bumped. `decisions/index.md` makes frontmatter canonical for dates, so for
+a `decision` concept `timestamp` is the decision date; decisions also omit
+`sources`, so the re-verify-on-source-change rule cannot apply to them. The
+dated `## Addendum 2026-08-12` heading inside ADR-0022 carries the freshness
+signal instead, which is also what "append clarifications, do not rewrite
+decision history" requires.
 
 ## 2026-07-26
 
