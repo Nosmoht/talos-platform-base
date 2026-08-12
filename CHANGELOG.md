@@ -97,6 +97,19 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`kubernetes/bootstrap/cilium/values.yaml` is now gated against the pinned
+  chart's schema.** Nothing in CI ever rendered this file, so a value the chart had
+  REMOVED was dropped silently by Helm — exactly what happened to
+  `encryption.strictMode.*` at Cilium 1.20, leaving strict-mode encryption
+  unconfigured for anyone who copied it. `scripts/check-cilium-reference-values.py`
+  validates every value path against the chart's own `values.schema.json` and fails
+  naming each undeclared path. Wired into both `task gitops:validate` and the
+  `gitops-validate.yml` validate job — same script, same verdict. It reads the chart
+  version from `variables.tf`, so it cannot drift from what the module renders. Two
+  stated trade-offs: a chart-registry outage SKIPS loudly rather than failing (an
+  outage must not block unrelated merges, so during one a removed spelling can
+  merge), and a changed DEFAULT under a spelling that still parses stays
+  reviewer-enforced, since no values schema can express it. See #211.
 - **`talos-cluster`: the Cilium seed's rendered `cilium-config` surface is now
   pinned.** The seed bypasses the kustomize/conftest render gate, and nothing
   asserted a single key of it — so a chart bump could move a datapath- or

@@ -138,6 +138,18 @@ jobs:
         # Uses the helm + yq already installed above; runs on every PR.
         run: ./scripts/check-argocd-substrate-invariants.sh
 
+      - name: Check Cilium reference values against the pinned chart schema
+        # kubernetes/bootstrap/cilium/values.yaml ships in the OCI artifact and is
+        # what a consumer copies into a Day-2 self-managed Application, but nothing
+        # ever rendered it — so a value the pinned chart REMOVED was dropped
+        # silently by Helm (no --strict), leaving the consumer misconfigured with no
+        # error. That is what happened to encryption.strictMode.* at Cilium 1.20.
+        # Same script `task gitops:validate` runs, so local green means what CI
+        # green means. Uses the yq installed above; needs the chart registry, and
+        # SKIPS loudly rather than failing when it is unreachable — an outage must
+        # not block unrelated merges (same trade-off tofu-validate.yml makes).
+        run: ./scripts/check-cilium-reference-values.py
+
       - name: Discover kustomize targets
         run: ./scripts/discover_kustomize_targets.sh
 
