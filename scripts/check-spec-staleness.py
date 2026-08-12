@@ -152,11 +152,19 @@ def merge_invented_content(sha, path):
     `--write-tree` deposits loose objects in the local object store; they are
     unreferenced and `git gc` collects them.
 
-    Disclosed assumption: "mechanical" means git's DEFAULT merge machinery. The
-    repo ships no `.gitattributes`, so nothing currently redirects a path to a
-    custom `merge=` driver. Adding one on a spec-owned `primary` source would
-    make this comparison depend on whether that driver is defined where the check
-    runs, which is not established either way — re-validate before doing so.
+    Disclosed assumption, now measured: "mechanical" means git's DEFAULT merge
+    machinery, and `merge-tree` honours a `.gitattributes` `merge=` driver when
+    one is DEFINED where it runs. So the same history verdicts differently across
+    machines — with the driver defined the recorded merge matches the mechanical
+    one and is skipped; without it (a CI runner that lacks the driver config)
+    `merge-tree` conflicts, the entries differ, and the merge is counted as a
+    contributor. The disagreement fails CLOSED: CI is the strict side, so the
+    symptom is a local pass followed by an unexplainable CI failure, never a leak.
+
+    Latent, not live: the repo ships no `.gitattributes`
+    (`find . -name .gitattributes` outside `.git/` is empty), so no path is
+    redirected to a driver. Adding one on a spec-owned `primary` source makes the
+    above real — either define the driver in CI too, or expect that failure.
     """
     _, out = git("rev-list", "--parents", "-n", "1", sha)
     parents = out.split()[1:]
