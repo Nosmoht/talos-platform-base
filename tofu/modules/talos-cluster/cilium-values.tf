@@ -6,7 +6,7 @@
 # data-flow, no double-application. Pure `var.*`-derived locals only (no `data`/
 # `terraform_data` blocks) so this file is symlinkable into the provider-less
 # tests/fixtures/colliding-catalog offline fixture.
-# See knowledge/decisions/0021-cilium-observability-and-argocd-self-management.md.
+# See knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
 
 locals {
   # First IPv4 / IPv6 entries of pod_cidr by family (":" marks IPv6), so the
@@ -56,7 +56,7 @@ locals {
     # CONFIRMED independent of the metrics scrape endpoint (`hubble-metrics`
     # Service, :9965, gated by hubble.enabled + a non-empty hubble.metrics.enabled;
     # since Cilium 1.16 the metrics API carries its OWN hubble.metrics.tls.enabled
-    # knob) — see ADR-0021 §(g). tls.enabled=false is strictly stronger than a
+    # knob) — see ADR-0022 §(g). tls.enabled=false is strictly stronger than a
     # non-regenerating TLS method: zero cert material generated at render OR
     # runtime, so this also satisfies the seed-determinism half of AC #2.
     var.cilium_hubble_enabled ? {
@@ -82,7 +82,7 @@ locals {
   # Bounded, module-controlled merge: floor ⊕ computed-incl-observability ONLY —
   # NO cilium_values_override term (steer 1). This is deliberately NOT an
   # arbitrary-depth recursive merge (the primary revision-2 "unbounded HCL
-  # deep-merge" design was declined — see ADR-0021 §Alternatives): today's
+  # deep-merge" design was declined — see ADR-0022 §Alternatives): today's
   # floor∩computed key set has exactly ONE lossy collision under a plain
   # top-level merge() — the `operator` parent (floor sets operator.replicas=1,
   # cilium-values.yaml; the observability layer above adds operator.prometheus

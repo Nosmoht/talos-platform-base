@@ -329,7 +329,7 @@ output "cilium_self_management_app" {
     app-of-apps repo. "" when cilium_self_management = false (default). NEVER
     applied by the module (AGENTS.md §Hard Constraints — no kubectl apply of
     ArgoCD-managed resources); the consumer's own GitOps is the single writer.
-    See knowledge/decisions/0021-cilium-observability-and-argocd-self-management.md.
+    See knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
   EOT
   value       = local.cilium_self_management_app
 

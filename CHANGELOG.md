@@ -25,7 +25,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `hubble.tls.enabled=false`; grounded via T1 Cilium docs that the Hubble
   metrics scrape endpoint is independent of the observer-API TLS setting, so
   this does not disable metrics export. See
-  [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 - **`talos-cluster`: opt-in Cilium ArgoCD self-management delivery mode
   (default off).** `cilium_self_management` emits a new
   `cilium_self_management_app` output — a rendered Cilium ArgoCD
@@ -40,7 +40,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it on adoption. `cilium_self_management_project` selects the target
   `AppProject` (default `"default"`; a scoped project is recommended
   hardening — see the module README). See
-  [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
 ### Changed — BREAKING
 
@@ -87,13 +87,13 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   **every** consumer of the module, not only those opting into
   `cilium_self_management` — a consumer on OpenTofu `< 1.9` cannot
   `plan`/`apply` this module version at all until upgrading their OpenTofu
-  binary. See [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+  binary. See [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 - **`schemas/cluster.schema.json`: `substrate.cilium` is now closed
   (`additionalProperties: false`).** A consumer `cluster.yaml` with an
   extra or misspelled key under `substrate.cilium` now fails
   `check-jsonschema` at lint time instead of being silently dropped by the
   `try()`-based shim. Fix by removing/correcting the offending key. See
-  [ADR-0021](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
 ### Fixed
 
