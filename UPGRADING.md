@@ -157,7 +157,7 @@ that was bootstrapped at the old pin and has since been moved to 1.20.0 through
 the emitted self-management Application, a controlplane join re-seeds *1.19.4*
 Cilium objects into a cluster running 1.20.0. ADR-0022 already recognizes this
 class of stale-seed skew for the `cilium_values_override` dimension
-(§k and §"Bootstrap-window datapath gap", whose advice is to hold node
+(§k and the bootstrap-window datapath gap section, whose advice is to hold node
 reboots/replacements until ArgoCD's adoption sync is confirmed); the chart
 version is a second dimension of the same gap.
 
@@ -198,7 +198,7 @@ graduated from `v1alpha2` to `v1`. The base previously documented v1.4.1.
   ```
 
 - **Clusters carrying pre-existing `v1alpha2` TLSRoute objects:** use the
-  **experimental** bundle instead. We verified the served flags: in standard
+  **experimental** bundle instead. The served flags were verified: in standard
   v1.6.1 `TLSRoute` serves only `v1` (`v1alpha2` and `v1alpha3` are declared with
   `served: false`), while experimental v1.6.1 serves all three. Upstream's own
   warning is that with the standard bundle existing `TLSRoute` objects "will not
@@ -307,8 +307,8 @@ defaults to `true`, and the base does not set `socketLB`, so the chart default
 Upstream's 1.20 release notes state it directly: with `KubeProxyReplacement` for
 Service load-balancing and SocketLB either **disabled** or configured with
 `socketLB.hostNamespaceOnly=true`, in-cluster connections to NodePort Services by
-regular pods "are now immediately load-balanced when network traffic leaves the
-client pod (and not at the targeted node)", matching the behavior when SocketLB
+regular pods are now immediately load-balanced when network traffic leaves the
+client pod, and not at the targeted node — matching the behavior when SocketLB
 is enabled. The base meets the first trigger condition on its defaults, and — via
 `cilium_gateway_api = true` — the second as well, since the chart forces
 `bpf-lb-sock-hostns-only: "true"` whenever Gateway API is enabled. Note that key
@@ -383,7 +383,7 @@ roll back promptly if at all, and consult the upstream version notes first if
 any 1.20-only feature (for example `encryption.strictMode.ingress`,
 `bpf.datapathMode=auto`) was enabled in the interim.
 
-Reverting §2 needs care and is **not** simply "leave the CRDs alone". Cilium
+Reverting §2 needs care — leaving the CRDs untouched is **not** safe. Cilium
 1.19 documents support for Gateway API v1.4.1 and expects `TLSRoute` at
 `v1alpha2`, which the v1.6.1 **standard** bundle declares but does not serve —
 so a Cilium downgrade to 1.19 while standard v1.6.1 is installed leaves 1.19
