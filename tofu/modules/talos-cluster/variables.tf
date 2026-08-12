@@ -774,7 +774,7 @@ variable "cilium_gateway_api_crds_url" {
 # values map (cilium-values.tf) that serves both the frozen bootstrap seed and
 # the opt-in emitted self-management Application — single observability
 # data-flow, no double-application. See
-# knowledge/decisions/0021-cilium-observability-and-argocd-self-management.md.
+# knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
 # ---------------------------------------------------------------------------
 
 variable "cilium_agent_metrics" {
@@ -807,7 +807,7 @@ variable "cilium_hubble_enabled" {
     (hubble-metrics Service, :9965) is gated by hubble.enabled + a non-empty
     hubble.metrics.enabled and is architecturally INDEPENDENT of
     hubble.tls.enabled (its own hubble.metrics.tls.enabled knob since Cilium
-    1.16) — see ADR-0021 §(g). Enabling this on an already-running cluster
+    1.16) — see ADR-0022 §(g). Enabling this on an already-running cluster
     (via the emitted self-management Application, cilium_self_management)
     changes the DaemonSet pod template (new ports + scrape annotations) -> a
     rolling restart; graceful-restart-gate on BGP-speaking clusters (UPGRADING.md).
@@ -852,7 +852,7 @@ variable "cilium_self_management" {
     error_message = "cilium_self_management requires deploy_argocd = true AND deploy_cilium = true (self-management hands the Day-2 config off from the module-delivered Cilium seed to the consumer's ArgoCD)."
   }
 
-  # Override-drop HARD-REJECT guard (ADR-0021): the emitted Application's
+  # Override-drop HARD-REJECT guard (ADR-0022): the emitted Application's
   # valuesObject does NOT inherit cilium_values_override — a seed-active
   # datapath override (BGP control-plane / L2 announcements / bpf tuning)
   # would be SILENTLY DROPPED on ArgoCD adoption if this guard did not fire.
@@ -884,7 +884,7 @@ variable "cilium_self_management_project" {
     https://kubernetes.default.svc and the cluster-scoped resources Cilium
     needs (its CRDs, ClusterRoles, ClusterRoleBindings) in
     clusterResourceWhitelist — an under-scoped project makes the adopted
-    Application inert/degraded. See README + ADR-0021.
+    Application inert/degraded. See README + ADR-0022.
   EOT
   type        = string
   default     = "default"

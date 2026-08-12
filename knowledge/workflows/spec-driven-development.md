@@ -3,11 +3,12 @@ type: workflow
 title: "Spec-Driven Development (OpenSpec)"
 description: "How behavioral requirements are maintained in the OpenSpec surface — the change lifecycle, the scope demarcation against knowledge/, and the pinned-tool upgrade procedure."
 tags: [workflow, openspec, spec-driven-development]
-timestamp: 2026-07-13
+timestamp: 2026-08-12
 sources:
   - openspec/config.yaml
   - Taskfile.yml
   - .github/workflows/docs-lint.yml
+  - scripts/check-spec-staleness.py
 ---
 
 # Spec-Driven Development (OpenSpec)
@@ -99,8 +100,15 @@ implement.
   touch. For verified no-behavior-change diffs (comment-only edits,
   refactors) the `Spec-Impact: none` trailer — in the commit BODY, never
   the subject — downgrades the failure to a warning, scoped per commit:
-  EVERY commit touching the violating file must carry it. The PR
-  reviewer judges the no-behavior-change claim.
+  EVERY commit that CONTRIBUTED to the violating file must carry it. A
+  merge commit counts as a contributor only when its content for the file
+  differs from what a mechanical 3-way merge of its parents yields, so
+  syncing the branch with its base (which branch protection requires
+  before merging) never voids the escape, while a hand-resolved conflict
+  or an evil merge must carry the trailer itself. The PR reviewer judges
+  the no-behavior-change claim. Both directions of that attribution rule
+  are bound by `scripts/check-staleness-gate-bite.sh`, run from
+  `task spec:validate`.
 
 ## Tool pin and upgrades
 

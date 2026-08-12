@@ -650,7 +650,7 @@ tasks:
   # behavioral capability specs). See knowledge/workflows/spec-driven-development.md.
   # ===========================================================================
   spec:validate:
-    desc: Validate the openspec/ behavioral specs (strict + bite-check + source partition) + offline link check
+    desc: Validate the openspec/ behavioral specs (strict + bite-checks + source partition) + offline link check
     cmd: |
       set -e
       command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
@@ -692,6 +692,13 @@ tasks:
       # declares-primary detector have no committed spec exercising them —
       # this unit test is their only binding.
       python3 scripts/test/test_spec_lib.py >/dev/null || { echo "ERROR: spec_lib parser self-test failed"; python3 scripts/test/test_spec_lib.py; exit 1; }
+      # Staleness-gate merge attribution: which commits must carry the
+      # 'Spec-Impact: none' trailer is decided by re-running each merge, and
+      # neither failure direction (base-sync merge voids the escape / an
+      # invented-content merge inherits someone else's trailer) is observable
+      # from this repo's own history. Bound against a throwaway fixture repo,
+      # controls first, so a regression in either direction turns this red.
+      ./scripts/check-staleness-gate-bite.sh
       # Source-ownership partition: exclusivity + completeness over the
       # enumerated substrate source universe (ADR-0015 ownership model).
       python3 scripts/check-spec-partition.py .
