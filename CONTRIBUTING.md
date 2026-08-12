@@ -96,7 +96,8 @@ task spec:validate               # when openspec/ or a spec's primary source cha
 task spec:check-staleness        # primary-source diff must touch the owning spec
                                  # (escape for no-behavior-change diffs:
                                  #  'Spec-Impact: none' trailer on EVERY commit
-                                 #  touching the file)
+                                 #  that contributed to the file — a merge that
+                                 #  only synced your branch with main is not one)
 ```
 
 For changes touching a single component:
@@ -125,7 +126,7 @@ task tofu:ci   # tofu fmt -check + tofu validate + tflint
 | `gitops-validate` | full render+lint+policy pipeline |
 | `hard-constraints-check` | no Ingress/Endpoints kinds, etc. |
 | `secret-scan` (gitleaks) | last-backstop on bypassed pre-commit |
-| `docs-lint` | tool-pin drift, markdownlint, OKF bundle validation, offline link gate, AGENTS.md managed-block drift, OpenSpec strict validate (incl. bite-check + source-ownership partition), regeneration parity of the committed tool trees, and spec staleness (escape: a `Spec-Impact: none` trailer on every commit touching the file) |
+| `docs-lint` | tool-pin drift, markdownlint, OKF bundle validation, offline link gate, AGENTS.md managed-block drift, OpenSpec strict validate (incl. bite-check + source-ownership partition), regeneration parity of the committed tool trees, and spec staleness (escape: a `Spec-Impact: none` trailer on every commit that contributed to the file; a base-sync merge does not count as one) |
 | `preflight` | asserts the required-check contexts are wired |
 | `oci-publish` dry-run (on tag PRs only) | confirms signing path works |
 

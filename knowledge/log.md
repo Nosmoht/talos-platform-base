@@ -2,6 +2,18 @@
 
 ## 2026-08-12
 
+- `workflows/spec-driven-development.md`: §Validation's staleness-gate
+  description corrected — the `Spec-Impact: none` escape is scoped to the
+  commits that CONTRIBUTED to the violating file, not to every commit git lists
+  for it, so a base-sync merge (which branch protection forces before merging)
+  no longer voids it while a hand-resolved conflict still certifies itself.
+  Names the bite-check that binds both directions. `scripts/check-spec-staleness.py`
+  added to `sources` — the section describes that script's behavior and had no
+  freshness link to it; `timestamp` bumped for the re-verification.
+- `reference/tasks.md`: `spec:validate` and `spec:check-staleness` rows updated
+  for the same attribution rule and the new bite-check step. `timestamp` left at
+  2026-07-22 — one row was re-verified, not the inventory.
+
 - `decisions/0022-cilium-observability-and-argocd-self-management.md`: dated
   addendum recording the re-verification at the Cilium `1.20.0` chart bump. All
   §Validation claims established against 1.19.4 still hold — the
