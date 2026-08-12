@@ -127,6 +127,12 @@ def merge_invented_content(sha, path):
 
     `--write-tree` deposits loose objects in the local object store; they are
     unreferenced and `git gc` collects them.
+
+    Disclosed assumption: "mechanical" means git's DEFAULT merge machinery. The
+    repo ships no `.gitattributes`, so nothing currently redirects a path to a
+    custom `merge=` driver. Adding one on a spec-owned `primary` source would
+    make this comparison depend on whether that driver is defined where the check
+    runs, which is not established either way — re-validate before doing so.
     """
     _, out = git("rev-list", "--parents", "-n", "1", sha)
     parents = out.split()[1:]
