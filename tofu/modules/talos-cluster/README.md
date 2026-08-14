@@ -275,7 +275,8 @@ read. Full semantics live in each output's `description` in
 | Name | Sensitive | Description |
 |---|---|---|
 | `argocd_namespace_labels` | no | PSA floor + recommended labels the argocd namespace seed bakes |
-| `argocd_day0_apply_kinds` | no | distinct kinds in the manifest the module kubectl-applies after the health gate — CRD-only since #218, so anything but `["CustomResourceDefinition"]` means chart-default resources leaked past the projection |
+| `argocd_day0_apply_kinds` | no | distinct kinds decoded from the manifest the module kubectl-applies after the health gate — CRD-only since #218, so anything but `["CustomResourceDefinition"]` means chart-default resources leaked past the projection |
+| `argocd_day0_apply_crd_names` | no | sorted `metadata.name`s from the same applied manifest — binds CRD-set completeness, which the kind list cannot see |
 | `cert_approver_namespace_labels` | no | PSA-restricted floor + labels of the cert-approver namespace seed |
 | `cert_approver_seeded` | no | red-green binding: cert-approver seed wired into the controlplane patch list |
 | `kubelet_serving_cert_rotation` | no | per-role booleans: rotation patch present in each role's patch list |

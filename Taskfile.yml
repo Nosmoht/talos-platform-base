@@ -167,6 +167,23 @@ tasks:
     desc: "CI fence: Cilium/ArgoCD/CRD helm renders must use frozen terraform_data (ignore_changes), not live data.helm_template"
     cmd: scripts/check-render-determinism.sh
 
+  tofu:check:argocd-day0-apply-shape:
+    # #218 — full rationale in scripts/check-argocd-day0-apply-shape.sh. The
+    # provisioner's command string is not observable from a `tofu test`, and the
+    # tftest that binds the PAYLOAD needs the network, so it runs only in the
+    # advisory `tofu:test`. This offline fence is the blocking layer.
+    desc: "CI fence: the Day-0 ArgoCD apply stays server-side, CRD-only-guarded, and never forces conflicts"
+    cmd: scripts/check-argocd-day0-apply-shape.sh
+
+  tofu:check:argocd-gate-bites:
+    # #218 — both fences above are static text analysis, and the module has one
+    # shape at a time (the compliant one), so a fence that matched nothing would
+    # report OK forever. This mutates a COPY of main.tf per regression and
+    # asserts each fence's error message, not just its exit code. Rationale and
+    # the two real near-misses that motivated it: the script header.
+    desc: "CI fence: prove the Day-0 ArgoCD fences actually bite (mutation bite-check over a main.tf copy)"
+    cmd: scripts/check-argocd-gate-bites.sh
+
   tofu:check:kubeconfig-endpoint-regen:
     # PR #187 review blocker #3 — full rationale in scripts/check-kubeconfig-endpoint-regen.sh.
     # Without this, deleting the entire lifecycle block from main.tf leaves the
@@ -211,12 +228,14 @@ tasks:
         -filter=tests/kubeconfig-endpoint-marker.tftest.hcl
 
   tofu:ci:
-    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + test:offline — mirrors CI, stays offline"
+    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + test:offline — mirrors CI, stays offline"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
       - task: tofu:lint
       - task: tofu:check:render-determinism
+      - task: tofu:check:argocd-day0-apply-shape
+      - task: tofu:check:argocd-gate-bites
       - task: tofu:check:readme-parity
       - task: tofu:check:kubeconfig-endpoint-regen
       - task: tofu:check:node-projection-wiring

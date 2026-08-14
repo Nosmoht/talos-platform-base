@@ -86,16 +86,29 @@ output "argocd_namespace_labels" {
 
 output "argocd_day0_apply_kinds" {
   description = <<-EOT
-    Distinct Kubernetes kinds in the manifest the module kubectl-applies after
-    the health gate, or [] when deploy_argocd = false. Since #218 that apply is
-    CRD-only, so this is expected to be exactly ["CustomResourceDefinition"];
-    anything else means chart-default workloads or ConfigMaps leaked past the
-    projection and would be force-applied over ArgoCD's own state. Audit surface
-    and the binding point for the argocd-crd-scope test — the frozen render's
-    output is unknown until apply, so the property has to be asserted here.
-    Non-sensitive (kind names only).
+    Distinct Kubernetes kinds decoded from the exact manifest the module
+    kubectl-applies after the health gate, or [] when deploy_argocd = false.
+    Since #218 that apply is CRD-only, so this is expected to be exactly
+    ["CustomResourceDefinition"]; anything else means chart-default workloads or
+    ConfigMaps leaked past the projection and would be applied over ArgoCD's own
+    state, and "<unparseable>" means a document in the payload does not decode.
+    Audit surface and a binding point for the argocd-crd-scope test — the frozen
+    render's output is unknown until apply, so the property has to be asserted
+    here. Non-sensitive (kind names only).
   EOT
   value       = local.argocd_crd_kinds
+}
+
+output "argocd_day0_apply_crd_names" {
+  description = <<-EOT
+    Sorted metadata.names decoded from the same applied manifest, or [] when
+    deploy_argocd = false. Expected to be exactly the three ArgoCD CRDs
+    (applications, applicationsets, appprojects). Kinds alone cannot detect a
+    MISSING CRD — distinct() collapses one and three CRDs to the same value — so
+    this is the oracle that binds set completeness, alongside the plan-time
+    precondition on the frozen render. Non-sensitive (resource names only).
+  EOT
+  value       = local.argocd_crd_names
 }
 
 output "kubelet_serving_cert_rotation" {

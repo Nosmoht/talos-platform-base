@@ -54,12 +54,42 @@ block_of() {
 }
 
 # Does the single live-render reference sit inside a top-level `locals {` block?
-# Same column-0 block model as block_of. Prints "yes" / "no".
+# Column-0 block model: a top-level block opens at column 0 and closes at the
+# first subsequent line whose first character is `}`. Comment lines are skipped
+# BEFORE the membership test so a `#`-quoted mention cannot decide the verdict.
+# Prints "yes" / "no" (empty when the pattern does not occur).
 ref_inside_locals() {
   awk -v pat="$1" '
-    /^[a-z]/ && /\{[[:space:]]*$/ { inloc = ($0 ~ /^locals[[:space:]]*\{/) }
-    /^}/                          { inloc = 0 }
+    /^[[:space:]]*#/              { next }
+    /^locals[[:space:]]*\{/       { inloc = 1; next }
+    /^[a-z][a-zA-Z_]*[[:space:]]/ { inloc = 0 }
+    /^}/                          { inloc = 0; next }
     index($0, pat) > 0            { print (inloc ? "yes" : "no"); exit }
+  ' "$MAIN"
+}
+
+# Names defined in the top-level locals{} block(s), one per line. Used to trace
+# which locals could be carrying a live render downstream.
+locals_names() {
+  awk '
+    /^[[:space:]]*#/              { next }
+    /^locals[[:space:]]*\{/       { inloc = 1; next }
+    /^}/                          { inloc = 0; next }
+    inloc && match($0, /^[[:space:]]+[a-z_][a-zA-Z0-9_]*[[:space:]]*=/) {
+      s = $0; sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]*=.*$/, "", s); print s
+    }
+  ' "$MAIN"
+}
+
+# Lines OUTSIDE every top-level locals{} block, comments stripped. The apply-path
+# scan below runs over these: inside locals a value is still just a value, but
+# outside it is wired to something that writes or executes.
+lines_outside_locals() {
+  awk '
+    /^[[:space:]]*#/              { next }
+    /^locals[[:space:]]*\{/       { inloc = 1; next }
+    /^}/                          { if (inloc) { inloc = 0; next } }
+    !inloc                        { print }
   ' "$MAIN"
 }
 
@@ -95,6 +125,32 @@ for r in $renders; do
     printf '%s\n' "$blk" | grep -qE '^[[:space:]]*input[[:space:]]+= local\.'; then
     projected=1
   fi
+
+  # The PROJECTED shape admits a transform, so "referenced once as input=" no
+  # longer implies "no consumer reaches the live render". Re-establish the second
+  # half explicitly: no local defined in the locals{} block may reach an
+  # apply-path sink outside it. Without this a one-line change —
+  #   resource "local_file" "x" { content = local.<the projection> }
+  # — passes the three checks above while handing the non-byte-stable live render
+  # straight to kubectl, which is the #121/#123 defect this fence exists for.
+  # Sinks are the attributes that write or execute: content(s), command, and any
+  # sha256() (the re-apply trigger). `input =` on the freeze is the sanctioned
+  # consumer and is excluded by matching the sink attributes, not by name.
+  if [ "$projected" -eq 1 ]; then
+    outside="$(lines_outside_locals)"
+    while IFS= read -r lname; do
+      [ -n "$lname" ] || continue
+      if printf '%s\n' "$outside" |
+        grep -E '(content[s]?[[:space:]]*=|command[[:space:]]*=|sha256\()' |
+        grep -qE "local\.${lname}([^a-zA-Z0-9_]|\$)"; then
+        echo "::error::check-render-determinism: local.${lname} — derived from the live data.helm_template.${r} render — reaches an apply-path sink (content/contents/command/sha256) outside the locals block. Every apply-path consumer must read terraform_data.${r}_render[0].output instead, or the non-byte-stable render is re-pushed on every plan (#121/#123)." >&2
+        fail=1
+      fi
+    done <<EOF
+$(locals_names)
+EOF
+  fi
+
   if [ "$total" -ne 1 ] || { [ "$capture" -ne 1 ] && [ "$projected" -ne 1 ]; }; then
     echo "::error::check-render-determinism: data.helm_template.${r} must be referenced exactly once — either as the input= capture of terraform_data.${r}_render, or once inside a locals{} block whose value that freeze captures via input = local.* (found total=${total}, capture=${capture}, projected=${projected}). A direct consumer (contents=/content=/sha256()) or an unmatched reference shape re-introduces the #123 machineConfig re-push — route it through terraform_data.${r}_render[0].output." >&2
     fail=1

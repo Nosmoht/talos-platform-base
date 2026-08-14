@@ -57,6 +57,55 @@ run "day0_apply_manifest_carries_crds_only" {
     )
     error_message = "the Day-0 apply must deliver CustomResourceDefinitions and nothing else; got ${jsonencode(output.argocd_day0_apply_kinds)} — chart-default workloads/ConfigMaps leaked past the projection in main.tf (local.argocd_crd_docs) and would be applied over ArgoCD's own state"
   }
+
+  # Kinds alone cannot see a MISSING CRD: distinct() collapses one and three CRDs
+  # to the same value. Assert the set by name.
+  assert {
+    condition = alltrue([
+      for n in ["applications.argoproj.io", "applicationsets.argoproj.io", "appprojects.argoproj.io"] :
+      contains(output.argocd_day0_apply_crd_names, n)
+    ])
+    error_message = "the Day-0 apply must deliver all three ArgoCD CRDs; got ${jsonencode(output.argocd_day0_apply_crd_names)}"
+  }
+
+  # Both oracles are decoded from the applied manifest, so an undecodable
+  # document surfaces here rather than vanishing from the projection.
+  assert {
+    condition = !(
+      contains(output.argocd_day0_apply_kinds, "<unparseable>") ||
+      contains(output.argocd_day0_apply_crd_names, "<unparseable>")
+    )
+    error_message = "a document in the applied manifest does not decode as YAML — the \"\\n---\\n\" split cut inside a document (an embedded OpenAPI schema line that is exactly ---, say), so the payload carries a truncated CRD"
+  }
+}
+
+# triggers_replace deliberately omits kubernetes_version: Helm copies crds/ through
+# verbatim, so the payload cannot depend on it, and keeping it there made a routine
+# k8s upgrade re-fire a kubectl apply against CRDs argocd-controller owns by then.
+#
+# This run binds the STRUCTURAL half of that claim at a Kubernetes version far from
+# the suite default — same three CRDs, same single kind. A chart that starts
+# templating its CRDs on .Capabilities.KubeVersion in a way that adds, drops or
+# retypes a document turns this red. The stronger byte-level claim is measured, not
+# gated — see the deferred note in adr-0025; OpenTofu has no cross-run output
+# reference to compare two renders inside one suite.
+run "crd_payload_structure_is_independent_of_kubernetes_version" {
+  command = plan
+  variables {
+    kubernetes_version = "v1.31.0"
+  }
+
+  assert {
+    condition = (
+      length(output.argocd_day0_apply_kinds) == 1 &&
+      contains(output.argocd_day0_apply_kinds, "CustomResourceDefinition") &&
+      alltrue([
+        for n in ["applications.argoproj.io", "applicationsets.argoproj.io", "appprojects.argoproj.io"] :
+        contains(output.argocd_day0_apply_crd_names, n)
+      ])
+    )
+    error_message = "the CRD payload changed shape at a different Kubernetes version — kinds ${jsonencode(output.argocd_day0_apply_kinds)} names ${jsonencode(output.argocd_day0_apply_crd_names)}. The chart now templates its CRDs, so kubernetes_version must go back into terraform_data.argocd_crds_render.triggers_replace (main.tf) or an intended bump will not re-apply."
+  }
 }
 
 # deploy_argocd = false must not merely skip the apply — the projection locals
@@ -69,7 +118,10 @@ run "no_day0_apply_when_argocd_disabled" {
   }
 
   assert {
-    condition     = length(output.argocd_day0_apply_kinds) == 0
-    error_message = "with deploy_argocd = false the module must apply nothing; got ${jsonencode(output.argocd_day0_apply_kinds)}"
+    condition = (
+      length(output.argocd_day0_apply_kinds) == 0 &&
+      length(output.argocd_day0_apply_crd_names) == 0
+    )
+    error_message = "with deploy_argocd = false the module must apply nothing; got kinds ${jsonencode(output.argocd_day0_apply_kinds)} names ${jsonencode(output.argocd_day0_apply_crd_names)}"
   }
 }
