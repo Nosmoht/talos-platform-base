@@ -208,8 +208,20 @@
               "type": "integer"
             },
             "native_routing_cidr": {
-              "description": "ipv4NativeRoutingCIDR for routing_mode: native. Empty = derive from the first pod_cidr entry.",
-              "type": "string"
+              "description": "ipv4NativeRoutingCIDR for routing_mode: native. Empty = derive from the first pod_cidr entry. The chart renders this raw into cilium-config, which is baked into the machine config, so the value is format-validated on both paths.",
+              "type": "string",
+              "allOf": [
+                {
+                  "$comment": "Lexical mirror of variables.tf var.cilium_native_routing_cidr, whose guard is the semantic predicate can(cidrhost(...)) — not expressible in JSON Schema. This admits the CIDR SHAPE only; the module keeps the precise verdict. Empty stays legal (derive from pod_cidr).",
+                  "pattern": "^$|^[0-9A-Fa-f.:]+/[0-9]{1,3}$"
+                },
+                {
+                  "$comment": "Engine divergence, closed explicitly — same reason as agent_metric_overrides below: Python re matches $ before a trailing newline, RE2 does not.",
+                  "not": {
+                    "pattern": "[\\n\\r]|---"
+                  }
+                }
+              ]
             },
             "encryption": {
               "description": "Transparent pod-traffic encryption: { type: none|wireguard|ipsec }. ipsec requires cilium_ipsec_key via tfvar/env. Inner long tail stays loosely typed.",

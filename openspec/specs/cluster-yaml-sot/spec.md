@@ -3,6 +3,7 @@ sources:
   primary:
     - schemas/cluster.schema.json
     - scripts/lint-cluster-yaml.sh
+    - scripts/check-shim-key-parity.sh
 references:
   - knowledge/decisions/0007-cluster-yaml-sot.md
 ---
@@ -205,10 +206,20 @@ the machine configuration),
 `"default"`) — a typo'd key in any of these three closed substrate objects
 fails lint rather than being silently dropped.
 
+`native_routing_cidr` is in the same raw-render class as the two metric lists
+and SHALL carry a shape mirror of the module's guard: the CIDR form or the
+empty string, with the newline and document-separator exclusion the engine
+divergence between the two validators requires.
+
 Adding a key to a closed object is additive for consumers, but reaching the
 module still requires the consumer-owned shim to map it: the schema widening
 and the shipped example shim SHALL land together, or a consumer writing the
-new key passes lint and plan while the value silently never arrives.
+new key passes lint and plan while the value silently never arrives. Because
+the shim reads `cluster.yaml` through `try()` — a total function that answers a
+mistyped key with the default rather than an error — this obligation SHALL be
+mechanically gated rather than left to review: a repository check SHALL assert
+that every key of every CLOSED substrate object is read by the shipped shim,
+and it SHALL run on a diff that touches the schema alone.
 
 #### Scenario: Mistyped substrate key is rejected
 
@@ -223,6 +234,14 @@ new key passes lint and plan while the value silently never arrives.
   the enumerated seed-configuration and observability/self-management keys
 - **THEN** schema validation reports the additional property instead of the
   key being silently dropped downstream
+
+#### Scenario: A closed substrate key the shim never reads fails the gate
+
+- **WHEN** a closed substrate object declares a key that the shipped example
+  shim does not read, whether because the schema widened without the shim or
+  because the shim's read is misspelled
+- **THEN** the repository check fails and names the unmapped key, rather than
+  the consumer's declared value silently resolving to the module default
 
 #### Scenario: Empty cert-approver IP-prefix list is rejected
 

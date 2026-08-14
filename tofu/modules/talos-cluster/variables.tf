@@ -668,6 +668,21 @@ variable "cilium_native_routing_cidr" {
   description = "ipv4NativeRoutingCIDR for routing_mode = native. Empty = derive from the first pod_cidr entry."
   type        = string
   default     = ""
+
+  # Well-formedness guard — same MANDATORY class as the two metric-list format
+  # guards below, and for the same measured reason: the chart renders this value
+  # RAW and UNQUOTED into cilium-config (`ipv4-native-routing-cidr: {{ . }}`),
+  # and that ConfigMap is baked into the create-only controlplane machine config.
+  # Verified against the pinned chart (1.20.0): the value
+  # "10.244.0.0/16\n  injected-native-key: pwned" renders `injected-native-key`
+  # as a standalone cilium-config key. A CIDR predicate is the precise guard —
+  # it admits exactly the value shape the input is FOR, so every newline-bearing
+  # or otherwise malformed string is rejected without enumerating attack shapes.
+  # cidrhost() also rejects null, so the default-nullable variable fails closed.
+  validation {
+    condition     = var.cilium_native_routing_cidr == "" || can(cidrhost(var.cilium_native_routing_cidr, 0))
+    error_message = "cilium_native_routing_cidr must be empty (derive from pod_cidr) or a well-formed CIDR such as \"10.244.0.0/16\"."
+  }
 }
 
 variable "cilium_kube_proxy_replacement" {

@@ -32,6 +32,16 @@
   rules) all still hold, so only `timestamp` moved to 2026-08-14. The enumerated
   `substrate.cilium` key set lives in `openspec/specs/cluster-yaml-sot/` and was
   updated there, not here.
+- `reference/cluster-yaml.md`: new §How CI binds the schema to the shim, and
+  `scripts/check-shim-key-parity.sh` added to `sources`. The file already
+  documented how CI binds the schema to a `cluster.yaml`; what it did not
+  document is that lint proves conformance and not arrival — the shim's `try()`
+  reads are total, so an unmapped or misspelled substrate key resolves to the
+  module default with nothing anywhere reporting it. The violation count in the
+  lint-gate section was also stale at six; the fixture now carries ten.
+- `reference/tasks.md`: `tofu:check:shim-key-parity` added to the inventory and
+  to the `tofu:ci` aggregate line; `timestamp` bumped, since `Taskfile.yml` — a
+  listed source — changed.
 
 ## 2026-08-12
 

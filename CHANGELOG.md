@@ -115,6 +115,28 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`talos-cluster`: `cilium_native_routing_cidr` is now format-validated.**
+  It must be empty (derive from `pod_cidr`, unchanged) or a well-formed CIDR.
+  The chart renders the value raw and unquoted into `cilium-config`, which the
+  module bakes into the create-only controlplane machine config, so a value
+  carrying a newline wrote arbitrary ConfigMap keys — the same corruption class
+  the two Cilium metric lists already guard against, on the third input
+  reaching the same document. The guard is a semantic CIDR predicate rather
+  than a lexical rule, so it also rejects an address with no prefix length. A
+  consumer passing a malformed value now fails at plan time (and at
+  `cluster.yaml` lint time, via the schema mirror) instead of shipping it into
+  the machine config.
+
+- **New CI fence `task tofu:check:shim-key-parity`.** The worked example's
+  shim reads `cluster.yaml` through `try()`, which is total: a substrate key
+  the shim never reads — or reads misspelled — silently resolves to the module
+  default while schema lint, `tofu validate`, `tofu plan` and the whole test
+  suite stay green, so the consumer's declared value never reaches the module.
+  The check asserts every key of every closed `substrate` object in
+  `schemas/cluster.schema.json` is read by the shim. Carried by `task tofu:ci`;
+  `.github/workflows/tofu-validate.yml` now also triggers on
+  `schemas/cluster.schema.json` so a schema-only widening still runs it.
+
 - **`kubernetes/bootstrap/cilium/values.yaml` is now gated against the pinned
   chart's schema.** Nothing in CI ever rendered this file, so a value the chart had
   REMOVED was dropped silently by Helm — exactly what happened to

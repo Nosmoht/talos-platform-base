@@ -13,6 +13,10 @@ on:
       - 'tofu/**'
       - 'Taskfile.yml'
       - '.github/workflows/tofu-validate.yml'
+      # tofu:ci carries check:shim-key-parity, which reads the schema. Without
+      # this entry a schema-only widening — the exact diff shape that leaves a
+      # new substrate key unmapped in the shim — would not run the gate at all.
+      - 'schemas/cluster.schema.json'
   push:
     branches:
       - main
@@ -20,6 +24,10 @@ on:
       - 'tofu/**'
       - 'Taskfile.yml'
       - '.github/workflows/tofu-validate.yml'
+      # tofu:ci carries check:shim-key-parity, which reads the schema. Without
+      # this entry a schema-only widening — the exact diff shape that leaves a
+      # new substrate key unmapped in the shim — would not run the gate at all.
+      - 'schemas/cluster.schema.json'
 
 permissions:
   contents: read

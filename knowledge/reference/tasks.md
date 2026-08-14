@@ -3,7 +3,7 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-timestamp: 2026-07-22
+timestamp: 2026-08-14
 sources:
   - Taskfile.yml
   - Makefile
@@ -49,9 +49,10 @@ Conventions declared in `Taskfile.yml`:
 | `tofu:check:render-determinism` | CI fence: Cilium/ArgoCD/CRD helm renders must use frozen `terraform_data` (`ignore_changes`), not live `data.helm_template`. Runs `scripts/check-render-determinism.sh`. |
 | `tofu:check:kubeconfig-endpoint-regen` | CI fence: `talos_cluster_kubeconfig.this` keeps its `replace_triggered_by` wiring to the `terraform_data.kubeconfig_endpoint_marker` resource (whose `input` is `var.cluster_endpoint`), so a changed endpoint still forces kubeconfig regeneration (issue #186). Static, resource-scoped grep — no provider, no network. Runs `scripts/check-kubeconfig-endpoint-regen.sh`. |
 | `tofu:check:node-projection-wiring` | CI fence: the five Talos boundary arguments (`talos_client_configuration.{endpoints,nodes}`, `talos_cluster_health.{control_plane_nodes,worker_nodes,endpoints}`) stay bound to their intended `nodes.tf` projections, and `talos_machine_configuration_apply` keeps iterating `local.nodes_checked` so the duplicate-IP guard stays in the dependency chain (issue #204). The offline fixture omits `main.tf`, so no `tofu test` can see this wiring. Static, block-scoped, awk+POSIX-grep — no provider, no network, no GNU-grep dependency. Runs `scripts/check-node-projection-wiring.sh`. |
+| `tofu:check:shim-key-parity` | CI fence: every key of every CLOSED `substrate` object in `schemas/cluster.schema.json` is actually read by the worked example's shim (`tofu/modules/talos-cluster/examples/complete/main.tf`). The shim reads `cluster.yaml` through `try()`, which is total — a key it never reads, or reads misspelled, silently resolves to the module default while lint, `validate`, `plan` and the whole test suite stay green. Scope limit: closed objects only (`substrate.argocd` declares no key set; sections outside `substrate` restructure their data in the shim). Requires `jq`. Runs `scripts/check-shim-key-parity.sh`. |
 | `tofu:test` | `tofu test` — the full suite, including the node-capability composition regression tests. **Network-dependent** (resolves the live Image Factory), so deliberately NOT part of `tofu:ci`. Superset of `tofu:test:offline`. |
 | `tofu:test:offline` | The offline subset of `tofu:test`: the predicate-only catalog contract, the conflict guards, input validation, the consumer image-kernel-arg oracles (schematic re-image / no-re-image, issue #169), and the kubeconfig-endpoint-marker regression (issue #186 — the `terraform_data` marker tracks `var.cluster_endpoint`). Each points at a `tests/fixtures/*` stand-in module that symlinks the real code under test and declares no providers — a pure plan over `terraform_data`, so no network. Part of `tofu:ci`. |
-| `tofu:ci` | Aggregate: `fmt:check` + `validate` + `lint` + `check:render-determinism` + `check:readme-parity` + `check:kubeconfig-endpoint-regen` + `check:node-projection-wiring` + `test:offline` — mirrors CI, stays offline. |
+| `tofu:ci` | Aggregate: `fmt:check` + `validate` + `lint` + `check:render-determinism` + `check:readme-parity` + `check:kubeconfig-endpoint-regen` + `check:node-projection-wiring` + `check:shim-key-parity` + `test:offline` — mirrors CI, stays offline. |
 
 Both `tofu:validate` and `tofu:lint` exclude `tests/fixtures/**`: those are
 test inputs exercised via `tofu test` (`run { module }`), partial stand-in

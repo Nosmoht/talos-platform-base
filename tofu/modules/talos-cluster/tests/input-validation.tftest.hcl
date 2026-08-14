@@ -751,6 +751,79 @@ run "cilium_hubble_metrics_context_syntax_plans_cleanly" {
   }
 }
 
+# --- The same corruption class on cilium_native_routing_cidr ----------------
+#
+# The third sibling reaching the same rendered cilium-config document, and the
+# one the first pass of this suite left uncovered. Measured against the pinned
+# chart (1.20.0): the chart writes `ipv4-native-routing-cidr: {{ . }}` raw and
+# unquoted, so the value "10.244.0.0/16\n  injected-native-key: pwned" renders
+# `injected-native-key` as a standalone cilium-config key.
+#
+# The guard here is neither an allowlist nor an exclusion rule but a SEMANTIC
+# predicate — can(cidrhost(...)) — because unlike the two metric lists this
+# input's value space is a computable type. It admits exactly the shape the
+# input is for, so every corruption vector is rejected without enumerating one.
+#
+# Red-green for both rejection legs: delete the validation block on
+# var.cilium_native_routing_cidr in variables.tf => both report "Missing
+# expected failure" while the negative-space run below stays green.
+
+run "cilium_native_routing_cidr_with_embedded_newline_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_routing_mode        = "native"
+    cilium_native_routing_cidr = "10.244.0.0/16\n  injected-native-key: pwned"
+  }
+  expect_failures = [var.cilium_native_routing_cidr]
+}
+
+# A bare address with no prefix length is not a CIDR. This leg is what
+# distinguishes the semantic predicate from a mere newline exclusion: an
+# exclusion rule modelled on the sibling guards would accept this and hand Cilium
+# a value it cannot parse. Red-green: swap the predicate for a `[\n\r]`
+# exclusion and this leg alone goes green while the newline leg stays red.
+run "cilium_native_routing_cidr_without_prefix_length_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_routing_mode        = "native"
+    cilium_native_routing_cidr = "10.244.0.0"
+  }
+  expect_failures = [var.cilium_native_routing_cidr]
+}
+
+# Negative-space control: both documented forms — an explicit CIDR and the empty
+# string that means "derive from pod_cidr" — must survive. Red-green: drop the
+# `== ""` arm of the condition and the default-valued runs across this whole
+# suite fail to plan, which is the direction a too-narrow guard fails in.
+run "cilium_native_routing_cidr_documented_forms_plan_cleanly" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_routing_mode        = "native"
+    cilium_native_routing_cidr = "10.99.0.0/16"
+  }
+  assert {
+    condition     = output.cilium_computed_values.ipv4NativeRoutingCIDR == "10.99.0.0/16"
+    error_message = "negative-space: a well-formed CIDR must plan cleanly and reach the computed values layer verbatim"
+  }
+}
+
+run "cilium_native_routing_cidr_empty_derives_from_pod_cidr" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_routing_mode        = "native"
+    cilium_native_routing_cidr = ""
+    pod_cidr                   = ["10.244.0.0/16"]
+  }
+  assert {
+    condition     = output.cilium_computed_values.ipv4NativeRoutingCIDR == "10.244.0.0/16"
+    error_message = "negative-space: the empty string must stay accepted and keep deriving the CIDR from the first IPv4 pod_cidr entry"
+  }
+}
+
 # nullable = false on both new inputs, and now on cilium_hubble_metrics too. The
 # shipped shim reads cluster.yaml through try(), which does NOT catch a key
 # written with an empty value — `hubble_metrics:` in YAML is null, try() passes it
