@@ -219,6 +219,8 @@ provider "talos" {}
 | `cilium_operator_metrics` | bool | `false` | enable Cilium **operator** Prometheus metrics (`operator.prometheus.enabled`). Default off. Note: the upstream chart's OWN default for this value is already `true`, so the rendered `cilium-config` ConfigMap's `operator-prometheus-serve-addr` key is present regardless of this toggle — it does not discriminate at the render layer (a pre-existing chart-default fact, not introduced by this input). |
 | `cilium_hubble_enabled` | bool | `false` | enable Hubble flow/metrics observability. **Forces `hubble.tls.enabled=false`** (metrics-only scope — no Relay/UI; the Hubble metrics endpoint is independent of observer-API TLS since Cilium 1.16). Default off. |
 | `cilium_hubble_metrics` | list(string) | `[]` | Hubble metrics to export (`hubble.metrics.enabled`), e.g. `["dns", "drop", "tcp"]`. Scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side. An empty list with `cilium_hubble_enabled=true` is a valid **half-on** state (server on, no metrics exported). |
+| `cilium_agent_metric_overrides` | list(string) | `[]` | agent metric **delta** list (`prometheus.metrics`): `+name` adds a metric to the chart's default set, `-name` removes one — NOT a replacement of that set, and unrelated to `cilium_values_override` despite the name. Entries must match `^[+-][a-zA-Z_][a-zA-Z0-9_]*$`; the chart renders them raw into `cilium-config`, which is baked into the machine config. **Warns** (plan-time `check`, not a rejection) when `cilium_agent_metrics` is off. |
+| `cilium_hubble_open_metrics` | bool | `false` | export the Hubble metrics endpoint in OpenMetrics format (`hubble.metrics.enableOpenMetrics`). **No DaemonSet roll**: only the `cilium-config` ConfigMap changes, so a running cluster keeps the old exposition format until `kubectl -n kube-system rollout restart ds/cilium`. **Warns** when `cilium_hubble_enabled` is off. |
 | `cilium_self_management` | bool | `false` | **opt-in**: emit a Cilium ArgoCD `Application` (module OUTPUT only — see `cilium_self_management_app` — never applied by the module) as the Day-2 delivery path. Requires `deploy_argocd=true` AND `deploy_cilium=true`. **HARD-REJECTED at plan time** while `cilium_values_override` is non-empty — see the Cilium Self-Management section below. |
 | `cilium_self_management_project` | string | `"default"` | ArgoCD `AppProject` the emitted Application targets. Default `"default"` (the always-present permissive project) — scope to a dedicated project for hardening (see below). |
 | `deploy_argocd` | bool | `true` | deliver ArgoCD as a controlplane `inlineManifest`. Requires `sops_age_key` when true. |
@@ -283,7 +285,7 @@ read. Full semantics live in each output's `description` in
 | `cert_approver_seed_missing_labels` | no | recommended-label gaps across the vendored seed manifest — must be empty |
 | `cert_approver_rbac_rules` | no | raw decoded ClusterRole rule objects (inspection companion); INVARIANT at 3 signer-scoped rules. The binding closure is `cert_approver_clusterrole_signature` + `cert_approver_clusterrolebinding_targets` |
 | `cert_approver_clusterrole_signature` | no | normalized per-rule signature (apiGroups+resources+VERBS+resourceNames) of the ClusterRole — the composition suite asserts the exact set, so a re-vendor adding a verb (`sign`), widening apiGroups, or dropping the signer scope turns red |
-| `cilium_seed_observability_markers` | no | booleans decoded from the FROZEN bootstrap seed render (not a second Helm render), keyed `agent_metrics`/`operator_metrics`/`hubble`/`hubble_metrics`. `agent_metrics`, `hubble`, and `hubble_metrics` genuinely discriminate their respective toggles; `operator_metrics` is **audit-only** (see the `cilium_operator_metrics` input row — the upstream chart's own default makes this key always present at the render layer). `{}` when `deploy_cilium=false`. |
+| `cilium_seed_observability_markers` | no | booleans decoded from the FROZEN bootstrap seed render (not a second Helm render), keyed `agent_metrics`/`agent_metric_overrides`/`operator_metrics`/`hubble`/`hubble_metrics`/`hubble_open_metrics`. All but `operator_metrics` genuinely discriminate their toggle; `operator_metrics` is **audit-only** (see the `cilium_operator_metrics` input row — the upstream chart's own default makes this key always present at the render layer). Describes the **seed**, not the running cluster: under self-management the seed can be a chart minor behind what ArgoCD reconciles. `{}` when `deploy_cilium=false`. |
 | `cert_approver_clusterrolebinding_targets` | no | every ClusterRoleBinding as {role, subjects} — the suite asserts exactly one (approver SA → the scoped ClusterRole), so a second binding (e.g. → cluster-admin) or a repointed roleRef turns red |
 | `cert_approver_leaderelection_role_rules` | no | decoded namespaced leader-election Role rules (`coordination.k8s.io/leases` + events) — empty at `replicas:1` (least privilege), populated only at `replicas > 1` |
 | `cert_approver_pod_security_context` | no | decoded pod/container securityContext — restricted-PSA regression guard (runAsNonRoot, drop ALL, readOnlyRootFilesystem, seccomp RuntimeDefault) |
@@ -396,6 +398,28 @@ with `cilium_hubble_enabled=true` is a valid **half-on** state — the Hubble
 server runs but exports no metrics. `cilium_operator_metrics` does not
 discriminate the rendered `cilium-config` ConfigMap (see the input row above);
 `cilium_agent_metrics` and `cilium_hubble_enabled` do.
+
+`cilium_agent_metric_overrides` and `cilium_hubble_open_metrics` extend the same
+layer. Two things about them are easy to get wrong:
+
+- **They warn rather than reject when their prerequisite is off.** The chart
+  gates the whole `prometheus` / `hubble` values block, so either input is inert
+  without it — but a consumer may enable the prerequisite through
+  `cilium_values_override`, which the module cannot introspect. A hard rejection
+  would refuse a configuration that works, so these are plan-time `check` blocks.
+- **`cilium_hubble_open_metrics` does not restart anything.** It changes only the
+  `cilium-config` ConfigMap; the agent DaemonSet's pod template is byte-identical
+  either way and the chart emits no config checksum. ArgoCD reports
+  Synced/Healthy while the running agents keep serving the previous exposition
+  format. Finish the change with
+  `kubectl -n kube-system rollout restart ds/cilium`, or the scrape format flips
+  at the next unrelated restart instead.
+
+Grafana dashboards are deliberately NOT typed here. Cilium's chart ships them as
+static ConfigMaps whose `namespace` and sidecar `label` decide whether anything
+ever reads them — values this cluster-agnostic base cannot know. They are
+consumer/apps-catalog territory: apply them from the Grafana `Application` that
+owns the sidecar.
 
 **Self-management (opt-in, `cilium_self_management`).** When enabled, the module
 emits a rendered Cilium ArgoCD `Application` manifest as the

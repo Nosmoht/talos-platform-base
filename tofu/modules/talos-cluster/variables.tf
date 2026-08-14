@@ -828,6 +828,71 @@ variable "cilium_hubble_metrics" {
   default     = []
 }
 
+variable "cilium_agent_metric_overrides" {
+  description = <<-EOT
+    Cilium agent metric DELTA list (prometheus.metrics): "+name" ADDS a metric to
+    the agent's default metric set, "-name" REMOVES one, e.g.
+    ["+cilium_bpf_map_pressure", "-cilium_node_connectivity_status"]. It is NOT a
+    wholesale replacement of that set, and — despite the similar name — it is
+    unrelated to cilium_values_override, the free-form Helm-values escape hatch.
+    Default [] (chart defaults). Effective only with cilium_agent_metrics = true:
+    the chart renders the whole `prometheus` values block under
+    `{{- if .Values.prometheus.enabled }}`.
+
+    Reaches BOTH engines — the frozen bootstrap seed AND the emitted
+    self-management Application.
+  EOT
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  # Format guard — MANDATORY, and not merely a typo catcher. The chart renders
+  # these entries RAW and UNQUOTED into cilium-config as a multi-line plain
+  # scalar, and that ConfigMap is baked into the create-only controlplane
+  # machine config. An entry carrying a newline with matching indentation
+  # escapes the scalar and writes arbitrary cilium-config keys. Verified against
+  # the pinned chart: an entry "x\n  injected-key: pwned" renders `injected-key`
+  # as a standalone ConfigMap key. An embedded "---" is equally load-bearing: it
+  # would split the rendered document and silently blank the
+  # cilium_seed_observability_markers output (outputs.tf splits on that literal).
+  #
+  # The class is deliberately CONSERVATIVE — Prometheus metric-name characters
+  # minus ":" (no Cilium metric uses one). Widen it if a legitimate metric name
+  # is ever rejected; do not widen it to accommodate a value that needs quoting.
+  # Precedent for guarding a free-form list that reaches the machine config:
+  # var.images[*].extra_kernel_args.
+  validation {
+    condition = alltrue([
+      for m in var.cilium_agent_metric_overrides : can(regex("^[+-][a-zA-Z_][a-zA-Z0-9_]*$", m))
+    ])
+    error_message = "each cilium_agent_metric_overrides entry must be \"+metric_name\" or \"-metric_name\" (letters, digits and underscores only): the chart renders these raw and unquoted into the cilium-config ConfigMap that is baked into the controlplane machine config, so an entry containing a newline, a space or \"---\" corrupts that document."
+  }
+}
+
+variable "cilium_hubble_open_metrics" {
+  description = <<-EOT
+    Export the Hubble metrics endpoint in OpenMetrics format
+    (hubble.metrics.enableOpenMetrics). Default false. Effective only with
+    cilium_hubble_enabled = true — the chart renders the whole `hubble` values
+    block under that gate.
+
+    Reaches BOTH engines — the frozen bootstrap seed AND the emitted
+    self-management Application.
+
+    NO ROLLING RESTART: unlike cilium_hubble_enabled, this changes ONLY the
+    cilium-config ConfigMap (enable-hubble-open-metrics). Verified against the
+    pinned chart: the cilium DaemonSet pod template is byte-identical with the
+    flag on and off, and the chart emits no checksum/config annotation. So
+    ArgoCD reports Synced/Healthy while running agents keep the OLD exposition
+    format, and the switch would otherwise land at the next unrelated restart —
+    a scrape-format change at an unpredictable time. Make it effective with
+    `kubectl -n kube-system rollout restart ds/cilium`. See UPGRADING.md.
+  EOT
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
 variable "cilium_self_management" {
   description = <<-EOT
     Opt-in: emit a Cilium ArgoCD Application manifest (module OUTPUT only,

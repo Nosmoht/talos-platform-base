@@ -364,17 +364,30 @@ output "cilium_seed_observability_markers" {
     not introduced by this change). The offline `cilium_effective_values.operator.
     prometheus.enabled` assertion (tests/input-validation.tftest.hcl) is what
     genuinely red-green-binds the operator-metrics leg of AC #1; this field is
-    audit-only for that leg. {} when deploy_cilium = false or the name-filtered
-    ConfigMap list is empty (try()-wrapped, mirroring the cert_approver_env
-    precedent). Secret-free (booleans + one raw string value only).
+    audit-only for that leg. `agent_metric_overrides` <- presence of the "metrics"
+    key (gated by the same `{{- if .Values.prometheus.enabled }}` block, so it is
+    present only when the delta list actually reached the render).
+    `hubble_open_metrics` <- the "enable-hubble-open-metrics" VALUE, not its
+    presence: the chart emits that key unconditionally once Hubble is on, so a
+    presence check would not discriminate the toggle. {} when deploy_cilium = false
+    or the name-filtered ConfigMap list is empty (try()-wrapped, mirroring the
+    cert_approver_env precedent). Secret-free (booleans + one raw string value only).
+
+    SCOPE — this describes the SEED, not the running cluster. On a cluster that
+    has adopted the emitted self-management Application, the frozen seed can be an
+    entire chart minor behind what ArgoCD reconciles (ADR-0022, "§k gains a second
+    dimension"), so these booleans answer "what was baked in at bootstrap", never
+    "what is live now".
   EOT
   value = try(
     [
       for doc in split("---", try(terraform_data.cilium_render[0].output, "")) : {
-        agent_metrics    = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
-        operator_metrics = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")
-        hubble           = try(yamldecode(doc).data["enable-hubble"], "false") == "true"
-        hubble_metrics   = contains(keys(yamldecode(doc).data), "hubble-metrics-server")
+        agent_metrics          = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
+        agent_metric_overrides = contains(keys(yamldecode(doc).data), "metrics")
+        operator_metrics       = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")
+        hubble                 = try(yamldecode(doc).data["enable-hubble"], "false") == "true"
+        hubble_metrics         = contains(keys(yamldecode(doc).data), "hubble-metrics-server")
+        hubble_open_metrics    = try(yamldecode(doc).data["enable-hubble-open-metrics"], "false") == "true"
       }
       if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
     ][0],

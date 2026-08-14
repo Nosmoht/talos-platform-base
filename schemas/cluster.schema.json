@@ -238,6 +238,17 @@
                 "type": "string"
               }
             },
+            "agent_metric_overrides": {
+              "description": "Agent metric DELTA list (prometheus.metrics): \"+name\" adds a metric to the chart's default set, \"-name\" removes one. Not a replacement of that set, and unrelated to values_override. Each entry must match ^[+-][a-zA-Z_][a-zA-Z0-9_]*$ — the chart renders these raw into cilium-config, which is baked into the machine config. Default []. Warns when agent_metrics is off.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "hubble_open_metrics": {
+              "description": "Export the Hubble metrics endpoint in OpenMetrics format (hubble.metrics.enableOpenMetrics). Changes only the cilium-config ConfigMap — no DaemonSet roll — so a running cluster keeps the old exposition format until `kubectl -n kube-system rollout restart ds/cilium`. Default off. Warns when hubble_enabled is off.",
+              "type": "boolean"
+            },
             "self_management": {
               "description": "Opt-in: emit a Cilium ArgoCD Application (module output only, never applied by the module) as the Day-2 delivery path. HARD-REJECTED at plan time when values_override is non-empty (the emitted Application does not inherit it — see ADR-0022). Requires enabled=true and the ArgoCD substrate enabled. Default off.",
               "type": "boolean"

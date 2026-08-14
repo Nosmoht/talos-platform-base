@@ -33,6 +33,17 @@ output "cilium_self_management_app" {
   value = local.cilium_self_management_app
 }
 
+# The SEED-side map. Exposed because cilium_effective_values is NOT a superset of
+# it: cilium_effective_values ends in explicit sub-merge terms, and a trailing
+# `{ operator = merge(...) }` term REPLACES its parent wholesale, so a key present
+# in the computed layer can be absent from the effective one. Any assertion about
+# what the frozen seed carries — that is cilium_computed_values_yaml, fed straight
+# to data.helm_template.cilium in the real main.tf — has to be made on this map,
+# not inferred from the emitted Application's.
+output "cilium_computed_values" {
+  value = local.cilium_computed_values
+}
+
 # Fixture-only outputs exposing the node-identity projections from the symlinked
 # nodes.tf (provider-less, pure var.nodes-derived), so the ordering contract can
 # be asserted OFFLINE. The real module feeds these same locals straight into

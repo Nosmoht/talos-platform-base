@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-08-14
+
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: dated
+  addendum recording the two further typed metric-set inputs
+  (`cilium_agent_metric_overrides`, `cilium_hubble_open_metrics`). Nothing is
+  superseded — both reach both engines, so §(d) holds, and the floor∩computed
+  collision count in §(f) is still one. What the addendum adds is a second
+  collision LEVEL for §(f)'s invariant (intra-computed, where a shallow
+  `merge()` term replaces a sibling with no floor to preserve), the `check`
+  versus `validation` guard tier and why the override escape hatch forces it,
+  the measured raw-render injection vector behind the format validation, the
+  measured no-DaemonSet-roll behaviour of the OpenMetrics flag, and the declined
+  Grafana-dashboard scope with its 60 268 → 587 208 byte figure. `timestamp`
+  left at 2026-07-22 — it records the decision date, and no decision changed.
+  Residual stated in the addendum: chart-key spelling for both Helm paths is
+  bound only by the network-dependent, CI-advisory composition suite.
+- `reference/cluster-yaml.md`: re-verified against the widened
+  `schemas/cluster.schema.json` and the example shim in its `sources`; the prose
+  claims (no `schema_version`, unvalidated patch content, the secret-exclusion
+  rules) all still hold, so only `timestamp` moved to 2026-08-14. The enumerated
+  `substrate.cilium` key set lives in `openspec/specs/cluster-yaml-sot/` and was
+  updated there, not here.
+
 ## 2026-08-12
 
 - `workflows/spec-driven-development.md`: §Validation's staleness-gate

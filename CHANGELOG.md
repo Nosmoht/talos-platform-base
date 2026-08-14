@@ -15,6 +15,24 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   off. Default-off emits no machine-config change. See
   [ADR-0023](knowledge/decisions/0023-node-identity-map-key.md).
 
+- **`talos-cluster`: two further typed Cilium observability inputs (default off).**
+  `cilium_agent_metric_overrides` (the chart's `prometheus.metrics` `+metric` /
+  `-metric` delta list against its default metric set) and
+  `cilium_hubble_open_metrics` (`hubble.metrics.enableOpenMetrics`). Both flow
+  through the same computed-values map the seed and the emitted self-management
+  Application already share, so they are reachable without
+  `cilium_values_override` — which the override-drop guard makes mutually
+  exclusive with `cilium_self_management`. Each warns (plan-time `check`, not a
+  rejection) when its prerequisite toggle is off, because a consumer may enable
+  that prerequisite through `cilium_values_override`, which the module cannot
+  introspect. `cilium_agent_metric_overrides` entries are format-validated: the
+  chart renders them raw into `cilium-config`, which is baked into the
+  controlplane machine config. **`cilium_hubble_open_metrics` changes only the
+  ConfigMap and does not roll the agents** — see UPGRADING for the required
+  rollout restart. Grafana dashboards stay deliberately untyped (apps-catalog
+  territory — the base cannot know the consumer's Grafana sidecar label or
+  namespace). See
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 - **`talos-cluster`: first-class Cilium observability inputs (default off).**
   `cilium_agent_metrics`, `cilium_operator_metrics` (Cilium agent/operator
   Prometheus metrics), `cilium_hubble_enabled` + `cilium_hubble_metrics`

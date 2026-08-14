@@ -3,7 +3,7 @@ type: reference
 title: cluster.yaml — Declarative Cluster SoT
 description: The two consumers of the declarative cluster.yaml Source-of-Truth, its secret-handling rules, and how CI wires the schema lint gate red-green.
 tags: [cluster-yaml, sot, schema, bootstrap]
-timestamp: 2026-08-12
+timestamp: 2026-08-14
 sources:
   - cluster.yaml.example
   # Kept despite the schema-shape section moving to openspec/specs/cluster-yaml-sot/:

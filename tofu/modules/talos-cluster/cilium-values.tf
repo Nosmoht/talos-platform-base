@@ -3,8 +3,9 @@
 # local, main.tf's outputs.tf output). Moved out of main.tf verbatim (issue #188)
 # so BOTH consumers of the computed values (the frozen seed AND the emitted app)
 # read the SAME local.cilium_computed_values map — a single observability
-# data-flow, no double-application. Pure `var.*`-derived locals only (no `data`/
-# `terraform_data` blocks) so this file is symlinkable into the provider-less
+# data-flow, no double-application. Pure `var.*`-derived locals plus the two
+# `check` blocks at the foot of the file (no `data`/`terraform_data` blocks) so
+# this file stays symlinkable into the provider-less
 # tests/fixtures/colliding-catalog offline fixture.
 # See knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
 
@@ -15,6 +16,40 @@ locals {
   cilium_pod_v6 = [for c in var.pod_cidr : c if strcontains(c, ":")]
   cilium_native_v4 = var.cilium_native_routing_cidr != "" ? var.cilium_native_routing_cidr : (
     length(local.cilium_pod_v4) > 0 ? local.cilium_pod_v4[0] : var.pod_cidr[0]
+  )
+
+  # --- Sub-maps for the two computed-layer parents that carry TWO contributors ---
+  #
+  # Hoisted into their own locals so each parent appears EXACTLY ONCE as a term of
+  # the cilium_computed_values merge() below. That merge is SHALLOW: two terms
+  # setting the same top-level key do NOT combine — the later one replaces the
+  # earlier wholesale. This is the INTRA-COMPUTED half of the explicit-sub-merge
+  # obligation recorded further down (see the two-engine-drift invariant comment
+  # on cilium_effective_values); it is a different collision LEVEL from the
+  # floor∩computed one ADR-0022 §(f) describes, and both are now live.
+
+  # `prometheus`: cilium_agent_metrics -> .enabled, cilium_agent_metric_overrides
+  # -> .metrics (the chart's +metric/-metric DELTA list against its default metric
+  # set, NOT a replacement of it). Read ONLY from the cilium_agent_metrics arm
+  # below, so the delta list can never surface with the scrape endpoint off — the
+  # chart gates the whole `prometheus` values block on prometheus.enabled anyway
+  # (verified against the pinned chart's cilium-configmap.yaml).
+  cilium_prometheus_values = merge(
+    { enabled = true },
+    length(var.cilium_agent_metric_overrides) > 0 ? { metrics = var.cilium_agent_metric_overrides } : {},
+  )
+
+  # `hubble.metrics`: cilium_hubble_metrics -> .enabled, cilium_hubble_open_metrics
+  # -> .enableOpenMetrics. Read ONLY from the cilium_hubble_enabled arm below.
+  # Emitted conditionally: an unconditional `enableOpenMetrics = <bool>` would add
+  # the key to the emitted self-management Application's valuesObject of every
+  # existing Hubble consumer — a live-reconciled diff for someone who changed
+  # nothing. (The rendered seed is unaffected either way: the chart writes
+  # enable-hubble-open-metrics unconditionally once Hubble is on. The emitted
+  # Application, not the frozen seed, is the path that reaches a running cluster.)
+  cilium_hubble_metrics_values = merge(
+    { enabled = var.cilium_hubble_metrics },
+    var.cilium_hubble_open_metrics ? { enableOpenMetrics = true } : {},
   )
 
   # Module-computed Cilium values from the typed inputs, layered between the
@@ -49,7 +84,10 @@ locals {
     var.cilium_encryption.type == "ipsec" ? { encryption = { enabled = true, type = "ipsec" } } : {},
     # --- Observability (issue #188; default-off, first-class inputs) ---
     # Agent + operator Prometheus metrics: independent toggles, no shared gate.
-    var.cilium_agent_metrics ? { prometheus = { enabled = true } } : {},
+    # The agent term now carries TWO inputs (enabled + metrics) as ONE sub-map
+    # (local.cilium_prometheus_values) — never as two merge() terms, which would
+    # drop prometheus.enabled and leave the delta list inert.
+    var.cilium_agent_metrics ? { prometheus = local.cilium_prometheus_values } : {},
     var.cilium_operator_metrics ? { operator = { prometheus = { enabled = true } } } : {},
     # Hubble: metrics-only scope (no Relay/UI — issue Non-goal), so the observer
     # gRPC API's server TLS is unnecessary and is forced OFF (tls.enabled=false).
@@ -59,10 +97,15 @@ locals {
     # knob) — see ADR-0022 §(g). tls.enabled=false is strictly stronger than a
     # non-regenerating TLS method: zero cert material generated at render OR
     # runtime, so this also satisfies the seed-determinism half of AC #2.
+    # metrics is ONE sub-map (local.cilium_hubble_metrics_values) for the same
+    # reason as `prometheus` above: a sibling merge() term carrying
+    # enableOpenMetrics would replace this whole map, dropping hubble.enabled AND
+    # tls.enabled=false together — the latter re-arms the chart's template-time
+    # Sprig genCA path and de-determinizes the frozen seed render (ADR-0022 §g).
     var.cilium_hubble_enabled ? {
       hubble = {
         enabled = true
-        metrics = { enabled = var.cilium_hubble_metrics }
+        metrics = local.cilium_hubble_metrics_values
         tls     = { enabled = false }
       }
     } : {},
@@ -95,15 +138,27 @@ locals {
   # `cgroup` and `securityContext.capabilities.ciliumAgent` are untouched by the
   # computed layer, so they pass through the top-level merge() verbatim.
   #
-  # TWO-ENGINE-DRIFT INVARIANT (recorded, not code today — no second collision
-  # exists to bind): this shallow merge() + explicit `operator` sub-merge
-  # reproduces Helm's recursive deep-merge ONLY because today's floor∩computed
-  # key set has exactly this one lossy collision. ANY future computed-or-floor
-  # key added under a shared parent MUST add (i) an explicit sub-merge for that
-  # parent here AND (ii) a floor-preservation collision assert in
-  # tests/input-validation.tftest.hcl mirroring the operator.replicas pair
-  # (run 5) — otherwise a future change silently drops the colliding sibling
-  # with no test catching it.
+  # TWO-ENGINE-DRIFT INVARIANT — TWO COLLISION LEVELS, both live:
+  #
+  #   (A) floor∩computed, resolved HERE. Still exactly ONE lossy collision
+  #       (`operator`), so the shallow merge() + one explicit sub-merge below
+  #       still reproduces Helm's recursive deep-merge. The metric-override and
+  #       OpenMetrics inputs did NOT add to this level: `prometheus` is absent
+  #       from the floor, and `hubble` stays intentionally superseded.
+  #   (B) INTRA-COMPUTED, resolved at the top of this file. Two terms of the
+  #       cilium_computed_values merge() sharing a top-level key collide the same
+  #       lossy way, and that merge has no floor to preserve — the loss is
+  #       computed-vs-computed. Today: `prometheus` (enabled + metrics) and
+  #       `hubble.metrics` (enabled + enableOpenMetrics), each folded into ONE
+  #       term via local.cilium_prometheus_values / cilium_hubble_metrics_values.
+  #
+  # ANY future key added under a parent already written by another contributor —
+  # at EITHER level — MUST add (i) an explicit sub-merge for that parent (here for
+  # level A, a hoisted sub-map local for level B) AND (ii) a preservation assert
+  # in tests/input-validation.tftest.hcl mirroring the operator.replicas pair —
+  # otherwise the change silently drops the colliding sibling with no test
+  # catching it. Level B is the cheaper mistake to make: the sibling term reads
+  # as an independent feature toggle right up until it eats its neighbour.
   cilium_effective_values = merge(
     local.cilium_floor_values,
     local.cilium_computed_values,
@@ -153,4 +208,41 @@ locals {
       }
     }
   }) : ""
+}
+
+# --- Inert-input warnings -----------------------------------------------------
+#
+# `check` blocks, NOT variable validations, deliberately: a consumer may satisfy
+# either prerequisite through cilium_values_override — variables.tf documents
+# that as THE path for the Hubble long tail — and the module cannot introspect an
+# opaque YAML string to know it. A hard reject would refuse a configuration that
+# actually works. Every hard reject in this module guards against SILENT BREAKAGE
+# (a dropped datapath override, a fatally-exiting approver, an Application with
+# nothing to reconcile); an input that merely does nothing is a lower tier.
+#
+# Tier semantics differ by command, and both halves are load-bearing:
+#   `tofu plan` / `apply` — WARNING. The consumer sees it and proceeds, which is
+#       the whole point for the cilium_values_override case above.
+#   `tofu test`           — FAILURE, and a check block is a checkable object, so
+#       `expect_failures = [check.<name>]` binds it directly (see
+#       tests/input-validation.tftest.hcl). No warning-only escape hatch is
+#       needed to test these.
+#
+# One block per predicate, never merged: expect_failures matches the checkable
+# object, so merging the two conditions would collapse both legs onto one
+# untested predicate — the same trap ADR-0022 §Guard isolation records for the
+# variable validations.
+
+check "cilium_agent_metric_overrides_effective" {
+  assert {
+    condition     = length(var.cilium_agent_metric_overrides) == 0 || var.cilium_agent_metrics
+    error_message = "cilium_agent_metric_overrides is set but cilium_agent_metrics is false: the chart emits the whole `prometheus` values block only when the agent scrape endpoint is on, so the delta list is dropped from both the bootstrap seed and the emitted self-management Application. Set cilium_agent_metrics = true, or drop the list."
+  }
+}
+
+check "cilium_hubble_open_metrics_effective" {
+  assert {
+    condition     = !var.cilium_hubble_open_metrics || var.cilium_hubble_enabled
+    error_message = "cilium_hubble_open_metrics is true but cilium_hubble_enabled is false: the chart emits the whole `hubble` values block only when Hubble is on, so enableOpenMetrics is dropped from both engines. Disregard if you enable Hubble through cilium_values_override — the module cannot introspect that string."
+  }
 }

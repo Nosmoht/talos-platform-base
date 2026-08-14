@@ -48,14 +48,23 @@ self-management group: `cilium_agent_metrics`, `cilium_operator_metrics`
 (independent Prometheus toggles, default `false`), `cilium_hubble_enabled`
 (default `false`; forces the observer-API server TLS off in the computed
 values — metrics-only scope), `cilium_hubble_metrics` (a string list,
-default `[]`), `cilium_self_management` (default `false`, guarded by the
-cross-variable validations below), and `cilium_self_management_project`
+default `[]`), `cilium_agent_metric_overrides` (a string list, default `[]`,
+format-validated — the chart's add/remove delta against its default metric
+set, not a replacement for it), `cilium_hubble_open_metrics` (default
+`false`, the OpenMetrics exposition format), `cilium_self_management`
+(default `false`, guarded by the cross-variable validations below), and
+`cilium_self_management_project`
 (default `"default"`)); cluster network (`pod_cidr`, `service_cidr`,
 `dual_stack`, `allow_scheduling_on_controlplanes`); and the cluster health
 timeout. Because `deploy_argocd` defaults to true and a plan-time
 precondition requires `sops_age_key` to be a valid age private key
 whenever ArgoCD is deployed, `sops_age_key` is de-facto required under the
 default toggles.
+
+The two metric-set inputs SHALL declare `nullable = false`: the shipped
+example shim reads `cluster.yaml` through `try()`, which does not catch a
+key written with an empty value, so a bare key would otherwise deliver
+`null` into conditions that cannot accept it.
 
 `cilium_gateway_api_crds_url` carries a cross-component version coupling the
 module cannot validate at plan time: Cilium's Gateway API support requires a
@@ -281,10 +290,22 @@ for the restricted-PSA guard), `cert_approver_container_args` and
 environment, for the config-injection and leader-election checks), and
 `cert_approver_replicas` (the rendered replica count). For the Cilium seed
 the module SHALL additionally expose `cilium_seed_observability_markers`
-— booleans (`agent_metrics`, `operator_metrics`, `hubble`, `hubble_metrics`)
-decoded from the frozen seed render's `cilium-config` ConfigMap, `{}` when
-`deploy_cilium = false` — for tests binding the seed render to the
-observability inputs without re-rendering the chart.
+— booleans (`agent_metrics`, `agent_metric_overrides`, `operator_metrics`,
+`hubble`, `hubble_metrics`, `hubble_open_metrics`) decoded from the frozen
+seed render's `cilium-config` ConfigMap, `{}` when `deploy_cilium = false` —
+for tests binding the seed render to the observability inputs without
+re-rendering the chart.
+
+Because a marker's value must discriminate the input it reports, a marker
+SHALL test the rendered key's VALUE where the chart emits that key
+unconditionally, and its presence only where the chart gates emission on the
+input. The output's documentation SHALL name any marker that fails to
+discriminate at the render layer.
+
+The markers describe the SEED, not the running cluster. On a cluster that has
+adopted the emitted self-management Application the frozen seed may lag what
+is actually reconciled, so the output's documentation SHALL state that scope
+rather than leaving it to be inferred.
 
 #### Scenario: Audit outputs stay secret-free
 
@@ -380,6 +401,65 @@ validation is not the only enforcement point.
 - **WHEN** an image's `extra_kernel_args` contains only elements with a
   non-empty key, no leading `-`, no whitespace, and no `debugfs` key
 - **THEN** the plan proceeds past this validation
+
+### Requirement: Inert typed inputs warn rather than reject
+
+An input whose only failure mode is having no effect SHALL be reported by a
+plan-time `check` block, not by a variable `validation`. The module reserves
+hard rejection for inputs whose misuse causes silent BREAKAGE — a dropped
+datapath override, a fatally-exiting workload, an emitted resource with
+nothing to reconcile — and an input that merely does nothing is a lower tier.
+
+The distinction is load-bearing rather than stylistic: a prerequisite may be
+satisfied through `cilium_values_override`, an opaque string the module cannot
+introspect, so a hard rejection would refuse a configuration that works. The
+warning tier lets that consumer proceed while still surfacing the far more
+common case, where the prerequisite really is missing.
+
+Each such check SHALL be its own block. `expect_failures` matches the checkable
+object, so merging two conditions collapses both test legs onto one predicate
+and leaves either half untested — the same isolation obligation the module's
+cross-variable validations carry.
+
+#### Scenario: An inert input warns and still plans
+
+- **WHEN** a metric-set input is set while the toggle that makes it effective
+  is off
+- **THEN** the plan succeeds and reports a warning naming that input and its
+  missing prerequisite, rather than failing
+
+#### Scenario: Each check is independently bound
+
+- **WHEN** one such check block is removed
+- **THEN** exactly one test leg reports a missing expected failure and every
+  other leg stays green
+
+### Requirement: Free-form values reaching the machine config are format-validated
+
+A typed input whose value is rendered verbatim into a resource that becomes
+part of the controlplane machine configuration SHALL constrain its accepted
+character set by variable `validation`, and the module's test suite SHALL
+carry a rejection leg per corruption vector plus a negative-space control
+proving the documented form is still accepted.
+
+The Cilium agent metric-delta list is such an input: the chart renders its
+entries raw and unquoted into the `cilium-config` ConfigMap, which the module
+bakes into a create-only `inlineManifest`. An entry containing a newline with
+matching indentation escapes the surrounding scalar and injects arbitrary
+ConfigMap keys; an entry containing a document separator splits the rendered
+manifest and blanks the seed-marker output that parses it.
+
+#### Scenario: A corrupting entry is rejected at plan time
+
+- **WHEN** an entry contains an embedded newline, a document separator, or
+  omits the required add/remove prefix
+- **THEN** the plan fails at the variable, naming the offending value
+
+#### Scenario: The documented form is not rejected
+
+- **WHEN** every entry is a well-formed add or remove of a metric name
+- **THEN** the plan succeeds and the list reaches the computed values layer
+  intact
 
 ### Requirement: Cilium self-management guard validations
 

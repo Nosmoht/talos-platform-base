@@ -440,11 +440,13 @@ run "cert_approver_ha_and_config_override" {
 run "cilium_seed_render_carries_observability_markers" {
   command = plan
   variables {
-    deploy_cilium           = true
-    cilium_agent_metrics    = true
-    cilium_operator_metrics = true
-    cilium_hubble_enabled   = true
-    cilium_hubble_metrics   = ["dns"]
+    deploy_cilium                 = true
+    cilium_agent_metrics          = true
+    cilium_operator_metrics       = true
+    cilium_hubble_enabled         = true
+    cilium_hubble_metrics         = ["dns"]
+    cilium_agent_metric_overrides = ["+cilium_bpf_map_pressure"]
+    cilium_hubble_open_metrics    = true
     nodes = {
       cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
     }
@@ -492,6 +494,58 @@ run "cilium_seed_render_carries_observability_markers" {
       )
     ])
     error_message = "ADR-0022 §g (C1 grounding): the render must carry the hubble-metrics Service on port 9965 even though hubble.tls.enabled=false — the Hubble metrics scrape endpoint must NOT be disabled by turning observer-API TLS off"
+  }
+
+  # --- Chart-key SPELLING oracle for the two metric inputs ---
+  #
+  # This is the ONLY oracle in the repo that can catch a mistyped Helm value path.
+  # Helm silently ignores an unknown key, so `prometheus.metricz` or
+  # `hubble.metrics.enableOpenMetric` would sail through every offline assert
+  # (which only checks that the module put SOMETHING in its own values map) and
+  # ship an input that does nothing. Rendering the pinned chart is what turns the
+  # module's spelling into an observable fact.
+  #
+  # Red-green: misspell either path in cilium-values.tf => the matching assert
+  # goes red here while the whole offline suite stays green.
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "ConfigMap" &&
+        try(yamldecode(doc).metadata.name, "") == "cilium-config" &&
+        strcontains(try(yamldecode(doc).data["metrics"], ""), "+cilium_bpf_map_pressure")
+      )
+    ])
+    error_message = "chart-key spelling: cilium_agent_metric_overrides must reach the rendered cilium-config `metrics` key — if this is the only red assert, the Helm path `prometheus.metrics` is misspelled in cilium-values.tf and the input is a silent no-op"
+  }
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "ConfigMap" &&
+        try(yamldecode(doc).metadata.name, "") == "cilium-config" &&
+        try(yamldecode(doc).data["enable-hubble-open-metrics"], "false") == "true"
+      )
+    ])
+    error_message = "chart-key spelling: cilium_hubble_open_metrics must set the rendered cilium-config enable-hubble-open-metrics=true — if this is the only red assert, the Helm path `hubble.metrics.enableOpenMetrics` is misspelled in cilium-values.tf and the input is a silent no-op"
+  }
+
+  # The agent DaemonSet must be byte-identical to its no-OpenMetrics form: the
+  # chart emits no config checksum for this key, so enabling it does NOT roll the
+  # pods. That is a documented operational obligation (a rollout restart is
+  # required to make the exposition-format switch effective — see variables.tf and
+  # UPGRADING.md), and this assert is what keeps the claim true across chart bumps:
+  # if a future chart DOES add a checksum annotation, this goes red and the docs
+  # need updating rather than silently misleading an operator.
+  assert {
+    condition = alltrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") != "DaemonSet" ||
+        try(yamldecode(doc).metadata.name, "") != "cilium" ||
+        !anytrue([
+          for k in keys(try(yamldecode(doc).spec.template.metadata.annotations, {})) : strcontains(k, "checksum")
+        ])
+      )
+    ])
+    error_message = "no-roll claim: the cilium DaemonSet pod template must carry no checksum annotation — if the chart gained one, cilium_hubble_open_metrics now DOES roll the agents and both variables.tf and UPGRADING.md must stop telling operators to restart manually"
   }
 }
 

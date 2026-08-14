@@ -192,13 +192,21 @@ SAN-to-node binding and replica count but cannot disable the seed.
 admits the pre-existing seed-configuration keys (`enabled`, `chart_version`,
 `chart_repository`, `routing_mode`, `kube_proxy_replacement`, `gateway_api`,
 `gateway_api_crds_url`, `mtu`, `native_routing_cidr`, `encryption`,
-`values_override`) plus six observability + self-management keys:
+`values_override`) plus eight observability + self-management keys:
 `agent_metrics` and `operator_metrics` (booleans, default `false`),
 `hubble_enabled` (boolean, default `false`), `hubble_metrics` (a string
-array, default `[]`), `self_management` (boolean, default `false`), and
-`self_management_project` (string, default `"default"`) — a typo'd key in
-any of these three closed substrate objects fails lint rather than being
-silently dropped.
+array, default `[]`), `agent_metric_overrides` (a string array, default
+`[]`, whose entries the module additionally format-validates because the
+chart renders them raw into the machine configuration),
+`hubble_open_metrics` (boolean, default `false`), `self_management`
+(boolean, default `false`), and `self_management_project` (string, default
+`"default"`) — a typo'd key in any of these three closed substrate objects
+fails lint rather than being silently dropped.
+
+Adding a key to a closed object is additive for consumers, but reaching the
+module still requires the consumer-owned shim to map it: the schema widening
+and the shipped example shim SHALL land together, or a consumer writing the
+new key passes lint and plan while the value silently never arrives.
 
 #### Scenario: Mistyped substrate key is rejected
 

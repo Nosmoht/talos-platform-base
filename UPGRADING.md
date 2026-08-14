@@ -45,6 +45,95 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
+## Unreleased (next MINOR) — two further typed Cilium metric inputs (MINOR — additive, default off)
+
+**Type:** MINOR (additive). `substrate.cilium.agent_metric_overrides` and
+`substrate.cilium.hubble_open_metrics` are new, both default off. Nothing
+changes for a consumer who sets neither: the rendered seed and the emitted
+self-management `Application` are byte-identical to the previous tag.
+
+### 1. These keys do not reach you until your own shim passes them
+
+`tofu/modules/talos-cluster/examples/complete/main.tf` is a worked example you
+**copied** into a root module you own. Adding the keys to `cluster.yaml` is not
+enough — your copy must map them, exactly as it already maps `agent_metrics`.
+Without the two lines below the value passes `check-jsonschema`, passes
+`tofu plan`, and silently never reaches the module. This is the same trap the
+`chart_version` note in the v8.0.0 section describes.
+
+```hcl
+  cilium_agent_metric_overrides  = try(local.cilium.agent_metric_overrides, [])
+  cilium_hubble_open_metrics     = try(local.cilium.hubble_open_metrics, false)
+```
+
+### 2. `hubble_open_metrics` needs a manual rollout restart to take effect
+
+Unlike `hubble_enabled`, this input does **not** roll the agents. Verified
+against the pinned chart: the `cilium` DaemonSet pod template is byte-identical
+with the flag on and off, and the chart emits no config-checksum annotation.
+Only the `cilium-config` ConfigMap changes
+(`enable-hubble-open-metrics: "false" → "true"`).
+
+The consequence is a delayed-action change: ArgoCD reports Synced/Healthy, the
+running agents keep serving the previous exposition format, and the switch lands
+whenever the agents next restart for an unrelated reason — a Prometheus scrape
+format changing at an unpredictable time, which reads as a monitoring fault
+rather than a config change. Finish the change deliberately:
+
+```bash
+kubectl -n kube-system rollout restart ds/cilium
+```
+
+### 3. `agent_metric_overrides` entries are format-validated
+
+Each entry must match `^[+-][a-zA-Z_][a-zA-Z0-9_]*$`. This is not a style rule:
+the chart renders the list raw and unquoted into `cilium-config`, and that
+ConfigMap is baked into the create-only controlplane machine config, so an entry
+carrying a newline, a space or `---` corrupts that document. A rejected entry
+fails at plan time with the offending value named.
+
+Note the semantics: the list is a **delta** against the chart's default metric
+set (`+name` adds, `-name` removes), not a replacement for it, and it is
+unrelated to `values_override` despite the similar name.
+
+### 4. Inert inputs warn, they do not fail
+
+Setting either input while its prerequisite (`agent_metrics` / `hubble_enabled`)
+is off produces a plan-time **warning**, not a rejection — deliberately, because
+you may enable the prerequisite through `values_override`, which the module
+cannot introspect. If that is your setup, the warning is expected and safe to
+disregard.
+
+### 5. Grafana dashboards are not included
+
+Cilium's chart can also emit Grafana dashboard ConfigMaps. Those stay out of the
+base on purpose: their `namespace` and sidecar `label` decide whether anything
+reads them, and a cluster-agnostic base cannot know either. Apply them from the
+Grafana `Application` that owns the sidecar, where both are known.
+
+### Validation steps after upgrade
+
+```bash
+task tofu:ci                      # offline; includes the new input-validation legs
+task tofu:test                    # NETWORKED — the only gate that renders the chart
+```
+
+On a cluster where you enabled either input:
+
+```bash
+kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.metrics}'
+kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.enable-hubble-open-metrics}'
+```
+
+Then confirm the agents actually serve it — the ConfigMap changing is not proof
+the running pods picked it up (see §2):
+
+```bash
+kubectl -n kube-system rollout status ds/cilium
+```
+
+---
+
 ## Unreleased (next MINOR) — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (MINOR — manual action for argocd-overlay consumers)
 
 **Type:** MINOR (additive for consumers). Decision: ADR-0024
