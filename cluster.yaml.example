@@ -133,6 +133,8 @@ substrate:
     operator_metrics: false # Cilium operator Prometheus metrics (operator.prometheus.enabled)
     hubble_enabled: false # Hubble flow/metrics observability (forces hubble.tls.enabled=false — metrics-only scope)
     hubble_metrics: [] # e.g. ["dns", "drop", "tcp"] — scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side
+    agent_metric_overrides: [] # e.g. ["+cilium_bpf_map_pressure"] — +add/-remove against the chart's DEFAULT metric set; needs agent_metrics
+    hubble_open_metrics: false # OpenMetrics exposition format; needs hubble_enabled + a rollout restart to take effect on a running cluster
     self_management: false # opt-in: emit a Cilium ArgoCD Application output (module-emitted only, never applied). HARD-REJECTED with values_override non-empty
     self_management_project: default # ArgoCD AppProject the emitted Application targets — scope to a dedicated project for hardening
   argocd:

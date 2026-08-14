@@ -3,7 +3,7 @@ type: reference
 title: cluster.yaml — Declarative Cluster SoT
 description: The two consumers of the declarative cluster.yaml Source-of-Truth, its secret-handling rules, and how CI wires the schema lint gate red-green.
 tags: [cluster-yaml, sot, schema, bootstrap]
-timestamp: 2026-08-12
+timestamp: 2026-08-14
 sources:
   - cluster.yaml.example
   # Kept despite the schema-shape section moving to openspec/specs/cluster-yaml-sot/:
@@ -13,6 +13,7 @@ sources:
   # reader those claims went stale.
   - schemas/cluster.schema.json
   - scripts/lint-cluster-yaml.sh
+  - scripts/check-shim-key-parity.sh
   - schemas/fixtures/cluster.invalid.yaml
   - Taskfile.yml
   - tofu/modules/talos-cluster/examples/complete/main.tf
@@ -124,15 +125,35 @@ the wiring is what makes the gate bite:
 1. Positive step: `scripts/lint-cluster-yaml.sh cluster.yaml.example` must
    pass.
 2. Negative (schema red-green) step: the intentionally invalid fixture
-   `schemas/fixtures/cluster.invalid.yaml` — valid in every respect except six
+   `schemas/fixtures/cluster.invalid.yaml` — valid in every respect except ten
    deliberate violations, each binding one schema rule owned by
-   `openspec/specs/cluster-yaml-sot/` — must fail, and CI names all six
+   `openspec/specs/cluster-yaml-sot/` — must fail, and CI names all ten
    violations individually in the output. See the spec for the gate's exact
-   pass/fail/error behavior. Relaxing any one of the six rules in the schema
-   turns this step red without affecting the other five.
+   pass/fail/error behavior. Relaxing any one of the ten rules in the schema
+   turns this step red without affecting the other nine.
 3. `tofu/modules/talos-cluster/examples/complete/cluster.yaml` is linted the
    same way (issue #169) — the module's worked example is otherwise reachable
    by no CI job.
+
+## How CI binds the schema to the shim
+
+Lint proves a `cluster.yaml` matches the schema. It does not prove the declared
+value reaches the module: the shim reads the file through `try()`, which is
+total, so a key the shim never reads — or reads misspelled — resolves to the
+module default with no error anywhere. Schema lint passes, `tofu validate` and
+`tofu plan` pass, and the module's own test suite never loads the shim.
+
+`scripts/check-shim-key-parity.sh` closes that gap by asserting every key of
+every CLOSED substrate object in the schema is actually read by
+`tofu/modules/talos-cluster/examples/complete/main.tf`. It runs as
+`task tofu:check:shim-key-parity`, is carried by `task tofu:ci`, and
+`.github/workflows/tofu-validate.yml` lists `schemas/cluster.schema.json` among
+its trigger paths so a schema-only widening — the diff shape that leaves a new
+key unmapped — still runs it. Its scope is the closed objects only:
+`substrate.argocd` is deliberately loosely typed and declares no key set to
+bind, and the sections outside `substrate` restructure their data in the shim
+(node and image maps go through for-expressions), so key-name presence is not
+the right oracle for them.
 
 ## Worked references
 

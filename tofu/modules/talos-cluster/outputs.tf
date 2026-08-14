@@ -364,17 +364,43 @@ output "cilium_seed_observability_markers" {
     not introduced by this change). The offline `cilium_effective_values.operator.
     prometheus.enabled` assertion (tests/input-validation.tftest.hcl) is what
     genuinely red-green-binds the operator-metrics leg of AC #1; this field is
-    audit-only for that leg. {} when deploy_cilium = false or the name-filtered
-    ConfigMap list is empty (try()-wrapped, mirroring the cert_approver_env
-    precedent). Secret-free (booleans + one raw string value only).
+    audit-only for that leg. `agent_metric_overrides` <- presence of the "metrics"
+    key (gated by the same `{{- if .Values.prometheus.enabled }}` block, so it is
+    present only when the delta list actually reached the render).
+    `hubble_open_metrics` <- the "enable-hubble-open-metrics" VALUE, not its
+    presence. Measured: the key sits under the same
+    `{{- if or .Values.hubble.metrics.enabled … }}` gate as `hubble-metrics-server`,
+    so it is absent entirely when the metrics list is empty and present as "false"
+    when the list is non-empty and the flag is off — a presence check would
+    therefore report the metrics list, not the flag. The try() default reads an
+    absent key as off, which is correct in both directions.
+    {} when deploy_cilium = false
+    or the name-filtered ConfigMap list is empty (try()-wrapped, mirroring the
+    cert_approver_env precedent). Secret-free (booleans + one raw string value only).
+
+    SCOPE — this describes the SEED, not the running cluster. On a cluster that
+    has adopted the emitted self-management Application, the frozen seed can be an
+    entire chart minor behind what ArgoCD reconciles (ADR-0022, "§k gains a second
+    dimension"), so these booleans answer "what was baked in at bootstrap", never
+    "what is live now".
   EOT
   value = try(
     [
-      for doc in split("---", try(terraform_data.cilium_render[0].output, "")) : {
-        agent_metrics    = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
-        operator_metrics = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")
-        hubble           = try(yamldecode(doc).data["enable-hubble"], "false") == "true"
-        hubble_metrics   = contains(keys(yamldecode(doc).data), "hubble-metrics-server")
+      # Split on the DOCUMENT boundary ("\n---\n"), not the bare literal. Several
+      # consumer-controlled strings reach this render — cilium_values_override
+      # above all, which is free-form YAML the module cannot introspect — and a
+      # "---" occurring mid-scalar (PEM material carries it too) would split a
+      # document in half. Both halves then fail yamldecode, the comprehension
+      # yields nothing, and the outer try() reports {} — "nothing enabled" rather
+      # than an error. An audit output that goes silent on malformed input is
+      # exactly the wrong failure direction.
+      for doc in split("\n---\n", try(terraform_data.cilium_render[0].output, "")) : {
+        agent_metrics          = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
+        agent_metric_overrides = contains(keys(yamldecode(doc).data), "metrics")
+        operator_metrics       = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")
+        hubble                 = try(yamldecode(doc).data["enable-hubble"], "false") == "true"
+        hubble_metrics         = contains(keys(yamldecode(doc).data), "hubble-metrics-server")
+        hubble_open_metrics    = try(yamldecode(doc).data["enable-hubble-open-metrics"], "false") == "true"
       }
       if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
     ][0],

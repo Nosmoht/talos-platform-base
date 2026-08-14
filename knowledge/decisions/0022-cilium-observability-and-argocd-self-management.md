@@ -504,3 +504,104 @@ Operator-facing form: `UPGRADING.md` §1 and its Back-out paragraph.
 - [ADR-0002: Namespace Ownership in the Rendered Manifests
   Pattern](./0002-namespace-ownership-rendered-manifests.md) — the
   single-owner invariant confirmed not engaged (§j).
+
+## Addendum 2026-08-14 — two further typed metric-set inputs
+
+`cilium_agent_metric_overrides` (`prometheus.metrics`) and
+`cilium_hubble_open_metrics` (`hubble.metrics.enableOpenMetrics`) join the
+observability group. Nothing in this ADR is superseded: both are layered into
+BOTH engines through `local.cilium_computed_values`, so §(d)'s single-data-flow
+property holds, and §(f)'s bounded floor ⊕ computed merge is untouched — `prometheus` is
+absent from the floor and `hubble` remains intentionally superseded, so the
+floor∩computed collision count is still exactly one (`operator`).
+
+**"Both engines" is a data-flow statement, not a delivery promise.** §k and
+§"Bootstrap-window datapath gap" already record that the seed is frozen
+(`ignore_changes`) and that `inlineManifests` are create-only; the consequence
+for these two inputs is worth stating plainly because their documentation is
+what a consumer reads first. On an ALREADY-BOOTSTRAPPED cluster with
+`cilium_self_management = false`, setting either input changes the plan and
+nothing else — the seed will not re-render, and no Application is emitted to
+carry it. The value arrives at the next fresh bootstrap, at a deliberate
+`-replace` of the render, or through self-management. This is the seed-freeze
+architecture working as designed, not a defect of these inputs; it is called out
+in `variables.tf`, the schema descriptions and `UPGRADING.md` so the word "both"
+is not read as "now".
+
+**§(f) gains a second collision LEVEL, not a second collision.** The invariant
+was written for floor-versus-computed collisions. The same lossy-replace
+mechanic exists one layer earlier, INSIDE `local.cilium_computed_values`: it is
+a shallow `merge()` over conditional maps, so two terms writing the same
+top-level key do not combine — the later replaces the earlier wholesale, and
+there is no floor to preserve because the loss is computed-versus-computed. Both
+new inputs land on parents an existing term already writes (`prometheus`,
+`hubble.metrics`), so each is folded into a single hoisted sub-map
+(`local.cilium_prometheus_values`, `local.cilium_hubble_metrics_values`) rather
+than added as a sibling term. The clause-(i)/(ii) obligation now reads: an
+explicit sub-merge at the level where the collision occurs, plus a preservation
+assert. Level B is the cheaper mistake — a sibling term reads as an independent
+feature toggle right up until it eats its neighbour, and for `hubble` it would
+take `tls.enabled = false` with it, re-arming the template-time `genCA` path
+§(g) exists to keep out of the seed.
+
+**Guard tier: `check`, not `validation`.** An input that is merely inert gets a
+plan-time warning. Each check models the FULL effectiveness condition, which for
+OpenMetrics is not the obvious one: measured against the pinned chart,
+`enable-hubble-open-metrics` sits under the same
+`{{- if or .Values.hubble.metrics.enabled … }}` gate as `hubble-metrics-server`,
+so an empty metrics list renders neither key and the flag is inert in exactly the
+half-on state §k blesses. Both checks additionally require `deploy_cilium`, since
+without a seed and without an emitted Application every metric input is inert
+regardless of its own prerequisite. A hard reject would refuse a working configuration, because
+the prerequisite can be satisfied through `cilium_values_override` — an opaque
+string the module cannot introspect, by the same argument §(f) uses to justify
+hard-rejecting the override under self-management. The two tiers are consistent:
+this module hard-rejects silent BREAKAGE and warns about no-ops. `tofu test`
+promotes a failing check to a run failure and a check block is a checkable
+object, so `expect_failures = [check.<name>]` binds each block directly; the
+one-block-per-predicate rule from §Guard isolation carries over unchanged.
+
+**Format validation is not optional here.** Measured against the pinned chart:
+`prometheus.metrics` entries render RAW and UNQUOTED into `cilium-config` as a
+multi-line plain scalar, so an entry carrying a newline with matching
+indentation escapes it and writes standalone ConfigMap keys into the create-only
+machine config. An entry containing `---` additionally splits the rendered
+document and silently blanks `cilium_seed_observability_markers`, which parses
+on that literal. The accepted class is deliberately conservative
+(`^[+-][a-zA-Z_][a-zA-Z0-9_]*$`).
+
+**`enableOpenMetrics` does not roll the agents** — measured, and the reason it
+needs an operator-facing note rather than a footnote. The `cilium` DaemonSet pod
+template is byte-identical with the flag on and off and the chart emits no
+config-checksum annotation, so ArgoCD reports Synced/Healthy while running
+agents keep the previous exposition format until some unrelated restart. A
+composition-suite assert pins the no-checksum fact, so a future chart that adds
+one turns the docs red rather than leaving them quietly wrong.
+
+**Grafana dashboards were considered and declined.** The chart's three
+`dashboards.enabled` toggles were in an earlier draft of this change. They emit
+six Grafana-JSON ConfigMaps, growing the seed render from 60 268 to 587 208
+bytes — well under the payload ceiling, so no gate would have caught it. They
+were dropped on the routing rule in `AGENTS.md §Repository Purpose`: their only
+consumer is a Grafana from the apps catalog, and the `namespace` / sidecar
+`label` that decide whether anything reads them are values a cluster-agnostic
+base cannot know. Typing them would also have forced the first deliberate
+divergence between the two engines. They belong in the consumer's Grafana
+Application.
+
+**Schema parity (§l) is inherited, not re-decided.** The two new
+`substrate.cilium` properties are additive to an object whose five parity
+decisions §l already fixed: the object stays CLOSED, duplicate keys remain file
+corruption, the migration signal remains the OCI tag, `cluster.yaml` remains
+trusted operator-authored config needing no untrusted-data sentinel, and both
+new fields are mutable-in-place and carry no confidentiality requirement. What
+IS new is that both fields carry a `pattern`/`not` constraint mirroring the
+module's own validation, so the declarative path rejects a corrupting entry at
+lint time rather than only at plan time — the convention `cert_approver.provider_regex`
+and the kernel-arg rules already established, and bound the same way through
+`schemas/fixtures/cluster.invalid.yaml`.
+
+**Residual.** The chart-key spelling of both Helm paths is bound only by
+`tests/composition.tftest.hcl`, which is network-dependent and advisory in CI.
+Helm ignores an unknown value key silently, so an offline suite cannot tell a
+correct path from a typo — it only ever sees the module's own map.

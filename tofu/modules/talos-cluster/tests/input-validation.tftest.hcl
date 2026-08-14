@@ -239,6 +239,58 @@ run "cilium_all_off_default_carries_no_observability_keys" {
     condition     = output.cilium_self_management_app == ""
     error_message = "default-off: cilium_self_management_app must be the empty string when cilium_self_management is unset (default false)"
   }
+
+  # --- Default pins for the EMITTED engine (metric-overrides / OpenMetrics change) ---
+  #
+  # The frozen seed is inert for an existing consumer: terraform_data.cilium_render
+  # carries ignore_changes=[input], so a seed diff only lands on a fresh bootstrap,
+  # a -replace, or a controlplane join. The emitted Application is the path that
+  # reaches a RUNNING cluster on the next ArgoCD reconcile with no operator action,
+  # and until now nothing pinned its all-defaults shape.
+  #
+  # The hubble.metrics assert is the specific trap: local.cilium_hubble_metrics_values
+  # is NOT empty when Hubble is off (it always carries `enabled = <the list>`), so an
+  # implementation that reads it directly in the effective layer instead of back
+  # through local.cilium_computed_values.hubble.metrics leaks `hubble.metrics.enabled: []`
+  # into the valuesObject of every Hubble-disabled self-managing consumer. Paired with
+  # the hubble.enabled assert above, which anchors the parent so this cannot pass
+  # vacuously through a dropped `hubble` key.
+  assert {
+    condition     = try(output.cilium_effective_values.hubble.metrics, null) == null
+    error_message = "default-off: cilium_effective_values.hubble must carry NO metrics key while Hubble is off — reading local.cilium_hubble_metrics_values directly instead of through local.cilium_computed_values leaks `metrics.enabled: []` into the emitted Application"
+  }
+  assert {
+    condition     = output.cilium_effective_values.operator.replicas == 1
+    error_message = "default-off: the floor's operator.replicas=1 must survive into cilium_effective_values when no observability input is set"
+  }
+
+  # --- Default pins for the SEED engine ---
+  #
+  # Asserted on cilium_computed_values directly, NOT inferred from
+  # cilium_effective_values: the effective map ends in explicit sub-merge terms that
+  # REPLACE their parent, so it is not a superset of the computed one.
+  assert {
+    condition     = !contains(keys(output.cilium_computed_values), "prometheus")
+    error_message = "default-off: cilium_computed_values (the seed's values layer) must not carry a prometheus key when cilium_agent_metrics is unset"
+  }
+  assert {
+    condition     = !contains(keys(output.cilium_computed_values), "hubble")
+    error_message = "default-off: cilium_computed_values must not carry a hubble key when cilium_hubble_enabled is unset"
+  }
+  # Positive anchor for the two absence asserts above — they are the only
+  # references to this map in this run, and both are negative, so a fixture output
+  # wired to {} would satisfy both. This key is default-derived and floor-
+  # independent, so it holds regardless of the observability inputs.
+  assert {
+    condition     = output.cilium_computed_values.kubeProxyReplacement == true
+    error_message = "positive anchor: cilium_computed_values must be the real computed map, not an empty object — without this the two absence asserts above pass vacuously on a mis-wired fixture output"
+  }
+
+  # This run is also the positive control for BOTH check blocks and the format
+  # validation. Each check is written `<unset> || <prerequisite>`; the classic
+  # miswrite — `&&` for `||`, or dropping the unset-arm — makes the condition
+  # false at all-defaults, and `tofu test` promotes a failing check to a run
+  # failure, so this run goes red. No extra assert is needed to express that.
 }
 
 # AC #1 — all three observability legs on. Red-green: dropping any one of the
@@ -300,6 +352,563 @@ run "cilium_hubble_tls_is_forced_off" {
     condition     = output.cilium_effective_values.hubble.tls.enabled == false
     error_message = "AC#2: cilium_hubble_enabled=true must force cilium_effective_values.hubble.tls.enabled=false (metrics-only scope, ADR-0022 §g)"
   }
+}
+
+# --- Agent metric-override delta list + Hubble OpenMetrics -------------------
+#
+# Both inputs reach BOTH engines, so every run below asserts on
+# cilium_computed_values (the seed's values layer, fed to data.helm_template.cilium)
+# AND cilium_effective_values (the emitted Application's valuesObject). Neither is
+# derivable from the other: the effective map ends in sub-merge terms that replace
+# their parent wholesale.
+
+# The intra-computed `prometheus` collision. Mutants:
+#   M-P1 — write the overrides as their OWN merge() term in
+#          local.cilium_computed_values instead of folding them into
+#          local.cilium_prometheus_values. merge() is shallow, so the second
+#          `prometheus` term replaces the first wholesale => the two
+#          prometheus.enabled asserts go red while the metrics asserts stay green.
+#          This pair is the intra-computed mirror of the operator.replicas pair in
+#          run "cilium_floor_preservation_under_observability".
+#   M-P2 — drop the metrics leg from local.cilium_prometheus_values => both
+#          metrics asserts go red.
+run "cilium_agent_metric_overrides_reach_both_engines" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metrics          = true
+    cilium_agent_metric_overrides = ["+cilium_bpf_map_pressure", "-cilium_node_connectivity_status"]
+  }
+  assert {
+    condition     = output.cilium_computed_values.prometheus.enabled == true
+    error_message = "intra-computed collision (M-P1), seed engine: prometheus.enabled from cilium_agent_metrics must survive alongside prometheus.metrics"
+  }
+  assert {
+    # tolist() on both sides — see run "cilium_hubble_metrics_list_is_carried_through".
+    condition     = tolist(output.cilium_computed_values.prometheus.metrics) == tolist(["+cilium_bpf_map_pressure", "-cilium_node_connectivity_status"])
+    error_message = "seed engine (M-P2): cilium_agent_metric_overrides must reach cilium_computed_values.prometheus.metrics verbatim and in order"
+  }
+  assert {
+    condition     = output.cilium_effective_values.prometheus.enabled == true
+    error_message = "intra-computed collision (M-P1), emitted engine: prometheus.enabled must survive into cilium_effective_values alongside prometheus.metrics"
+  }
+  assert {
+    condition     = tolist(output.cilium_effective_values.prometheus.metrics) == tolist(["+cilium_bpf_map_pressure", "-cilium_node_connectivity_status"])
+    error_message = "emitted engine (M-P2): cilium_agent_metric_overrides must reach cilium_effective_values.prometheus.metrics verbatim and in order"
+  }
+}
+
+# Conditional emission for the override list. Red-green: drop the
+# `length(...) > 0 ?` guard in local.cilium_prometheus_values so `metrics` is
+# emitted unconditionally => `prometheus.metrics: []` appears in the emitted
+# Application's valuesObject for every existing agent-metrics consumer, a
+# live-reconciled diff for someone who changed nothing, and this run goes red.
+# The enabled assert is the positive anchor for the try()-based absence assert:
+# without it, a mutant that drops the whole `prometheus` parent would leave the
+# absence assert vacuously green.
+run "cilium_agent_metrics_without_overrides_emits_no_metrics_key" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metrics = true
+  }
+  assert {
+    condition     = try(output.cilium_computed_values.prometheus.metrics, null) == null
+    error_message = "conditional emission: an empty cilium_agent_metric_overrides must emit NO prometheus.metrics key at all"
+  }
+  assert {
+    condition     = output.cilium_computed_values.prometheus.enabled == true
+    error_message = "positive anchor for the absence assert above: cilium_computed_values.prometheus must EXIST, so the absence assert cannot pass through a dropped parent"
+  }
+  # The rationale for this run is about the EMITTED Application (a key appearing
+  # in a live-reconciled valuesObject for a consumer who changed nothing), so the
+  # oracle has to assert that object too. It holds transitively today only because
+  # `prometheus` passes through the top-level merge untouched — the very property
+  # cilium-values.tf's invariant warns will change when a future key forces a
+  # sub-merge on this parent.
+  assert {
+    condition     = try(output.cilium_effective_values.prometheus.metrics, null) == null
+    error_message = "conditional emission, emitted engine: an empty cilium_agent_metric_overrides must add no prometheus.metrics key to the emitted Application's valuesObject"
+  }
+  assert {
+    condition     = output.cilium_effective_values.prometheus.enabled == true
+    error_message = "positive anchor on the effective map for the assert above"
+  }
+}
+
+# The intra-computed `hubble.metrics` collision. Mutants:
+#   M-H1 — write enableOpenMetrics as its own merge() term in
+#          local.cilium_computed_values. The shallow merge replaces the whole
+#          computed `hubble` map => hubble.enabled, hubble.tls.enabled AND
+#          hubble.metrics.enabled go red together. The tls assert is the expensive
+#          one: without tls.enabled=false the chart re-arms its template-time Sprig
+#          genCA path and the frozen seed render stops being deterministic
+#          (helm/cilium-values.yaml header, ADR-0022 §g).
+#   M-H2 — write `metrics = { enableOpenMetrics = true }` inside
+#          local.cilium_hubble_metrics_values instead of merging => only the
+#          metrics.enabled asserts go red. The pair separates the two collision
+#          levels from each other.
+run "cilium_hubble_open_metrics_reaches_both_engines" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_hubble_enabled      = true
+    cilium_hubble_metrics      = ["dns", "drop"]
+    cilium_hubble_open_metrics = true
+  }
+  assert {
+    condition     = output.cilium_computed_values.hubble.metrics.enableOpenMetrics == true
+    error_message = "seed engine: cilium_hubble_open_metrics=true must set cilium_computed_values.hubble.metrics.enableOpenMetrics=true"
+  }
+  assert {
+    condition     = tolist(output.cilium_computed_values.hubble.metrics.enabled) == tolist(["dns", "drop"])
+    error_message = "intra-computed collision (M-H2): hubble.metrics.enabled must survive the enableOpenMetrics sibling under hubble.metrics"
+  }
+  assert {
+    condition     = output.cilium_computed_values.hubble.enabled == true
+    error_message = "intra-computed collision (M-H1): hubble.enabled must survive the addition of the enableOpenMetrics contributor"
+  }
+  assert {
+    condition     = output.cilium_computed_values.hubble.tls.enabled == false
+    error_message = "intra-computed collision (M-H1) + ADR-0022 §g: hubble.tls.enabled=false must survive the enableOpenMetrics contributor — losing it re-arms the chart's template-time genCA path and de-determinizes the frozen seed render"
+  }
+  assert {
+    condition     = output.cilium_effective_values.hubble.metrics.enableOpenMetrics == true
+    error_message = "emitted engine: cilium_hubble_open_metrics=true must reach cilium_effective_values.hubble.metrics.enableOpenMetrics"
+  }
+}
+
+# Conditional emission for OpenMetrics — same shape as the override run above.
+# Red-green: make `enableOpenMetrics` unconditional in
+# local.cilium_hubble_metrics_values => the key appears as `false` in the emitted
+# Application of every existing Hubble consumer and this run goes red.
+run "cilium_hubble_on_without_open_metrics_emits_no_key" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_hubble_enabled = true
+    cilium_hubble_metrics = ["dns"]
+  }
+  assert {
+    condition     = try(output.cilium_computed_values.hubble.metrics.enableOpenMetrics, null) == null
+    error_message = "conditional emission: cilium_hubble_open_metrics=false must emit NO hubble.metrics.enableOpenMetrics key at all"
+  }
+  assert {
+    condition     = tolist(output.cilium_computed_values.hubble.metrics.enabled) == tolist(["dns"])
+    error_message = "positive anchor for the absence assert above: cilium_computed_values.hubble.metrics must EXIST, so the absence assert cannot pass through a dropped parent"
+  }
+  # Same reasoning as the sibling run: the stated failure mode is a key appearing
+  # in the emitted Application, so assert on that map as well as the seed's.
+  assert {
+    condition     = try(output.cilium_effective_values.hubble.metrics.enableOpenMetrics, null) == null
+    error_message = "conditional emission, emitted engine: cilium_hubble_open_metrics=false must add no enableOpenMetrics key to the emitted Application's valuesObject"
+  }
+  assert {
+    condition     = tolist(output.cilium_effective_values.hubble.metrics.enabled) == tolist(["dns"])
+    error_message = "positive anchor on the effective map for the assert above"
+  }
+}
+
+# The only run setting BOTH new inputs at once. A single-input run cannot see an
+# omission or ordering mutant in a fold that has two contributors from two
+# different variables; this one can. Red-green: reorder the merge() arguments in
+# either hoisted local so the earlier contributor wins, or drop either
+# contributor => the corresponding assert goes red while the single-input runs
+# above stay green.
+run "cilium_both_new_inputs_on" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metrics          = true
+    cilium_agent_metric_overrides = ["+cilium_bpf_map_pressure"]
+    cilium_hubble_enabled         = true
+    cilium_hubble_metrics         = ["dns"]
+    cilium_hubble_open_metrics    = true
+  }
+  assert {
+    condition     = output.cilium_computed_values.prometheus.enabled == true
+    error_message = "both-on: prometheus.enabled must survive with both new inputs set"
+  }
+  assert {
+    condition     = tolist(output.cilium_computed_values.prometheus.metrics) == tolist(["+cilium_bpf_map_pressure"])
+    error_message = "both-on: prometheus.metrics must survive with both new inputs set"
+  }
+  assert {
+    condition     = tolist(output.cilium_computed_values.hubble.metrics.enabled) == tolist(["dns"])
+    error_message = "both-on: hubble.metrics.enabled must survive with both new inputs set"
+  }
+  assert {
+    condition     = output.cilium_computed_values.hubble.metrics.enableOpenMetrics == true
+    error_message = "both-on: hubble.metrics.enableOpenMetrics must survive with both new inputs set"
+  }
+  assert {
+    condition     = output.cilium_computed_values.hubble.tls.enabled == false
+    error_message = "both-on: hubble.tls.enabled=false must survive with both new inputs set"
+  }
+  # Both engines, since this is the run that exercises every new contributor at
+  # once — if a future sub-merge on either parent drops a sibling on the way to
+  # the emitted Application, this is where it shows.
+  assert {
+    condition     = tolist(output.cilium_effective_values.prometheus.metrics) == tolist(["+cilium_bpf_map_pressure"])
+    error_message = "both-on, emitted engine: prometheus.metrics must reach cilium_effective_values with both new inputs set"
+  }
+  assert {
+    condition     = output.cilium_effective_values.hubble.metrics.enableOpenMetrics == true
+    error_message = "both-on, emitted engine: hubble.metrics.enableOpenMetrics must reach cilium_effective_values with both new inputs set"
+  }
+  assert {
+    condition     = output.cilium_effective_values.hubble.tls.enabled == false
+    error_message = "both-on, emitted engine: hubble.tls.enabled=false must survive into cilium_effective_values with both new inputs set"
+  }
+}
+
+# The half-on state ADR-0022 §k explicitly blesses (Hubble server up, nothing
+# exported) must keep working unchanged. Red-green: gate the hubble.metrics fold
+# on a non-empty cilium_hubble_metrics => the enabled assert goes red and a
+# documented, supported configuration silently changes behaviour.
+run "cilium_hubble_half_on_state_is_preserved" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_hubble_enabled = true
+    cilium_hubble_metrics = []
+  }
+  assert {
+    condition     = length(output.cilium_computed_values.hubble.metrics.enabled) == 0
+    error_message = "half-on (ADR-0022 §k): cilium_hubble_metrics=[] must stay an empty list, not be dropped or defaulted"
+  }
+  assert {
+    condition     = output.cilium_computed_values.hubble.enabled == true
+    error_message = "half-on (ADR-0022 §k): the Hubble server must still be enabled with an empty metrics list"
+  }
+  assert {
+    condition     = length(output.cilium_effective_values.hubble.metrics.enabled) == 0
+    error_message = "half-on (ADR-0022 §k), emitted engine: the blessed half-on state must reach the emitted Application unchanged too"
+  }
+}
+
+# OpenMetrics on TOP of the half-on state is inert, and this is the non-obvious
+# case: it is not enough for Hubble to be on. Measured against the pinned chart —
+# `enable-hubble-open-metrics` sits under the same
+# `{{- if or .Values.hubble.metrics.enabled … }}` gate as `hubble-metrics-server`,
+# so with an empty metrics list the chart renders NEITHER key and the flag changes
+# the exposition format of an endpoint that exports nothing.
+#
+# Red-green: drop the `length(var.cilium_hubble_metrics) > 0` conjunct from the
+# check in cilium-values.tf => this leg reports "Missing expected failure" while
+# the hubble-disabled leg below stays green. That conjunct is the whole finding:
+# without it the module reports an inert input as effective.
+run "cilium_open_metrics_with_empty_metrics_list_warns" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_hubble_enabled      = true
+    cilium_hubble_metrics      = []
+    cilium_hubble_open_metrics = true
+  }
+  expect_failures = [check.cilium_hubble_open_metrics_effective]
+}
+
+# --- Format guard on cilium_agent_metric_overrides --------------------------
+#
+# The entries render RAW and UNQUOTED into cilium-config, which is baked into the
+# create-only controlplane machine config. Each leg below is a corruption vector
+# verified against the pinned chart, not a hypothetical. Red-green for all four:
+# delete the validation block in variables.tf => every leg reports "Missing
+# expected failure" while the positive control stays green.
+
+# The injection vector: an embedded newline with matching indentation escapes the
+# plain scalar and writes a standalone cilium-config key.
+run "cilium_metric_override_with_embedded_newline_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metrics          = true
+    cilium_agent_metric_overrides = ["x\n  injected-key: pwned"]
+  }
+  expect_failures = [var.cilium_agent_metric_overrides]
+}
+
+# A document separator would split the rendered manifest and silently blank the
+# cilium_seed_observability_markers output, which splits on this literal.
+run "cilium_metric_override_with_document_separator_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metrics          = true
+    cilium_agent_metric_overrides = ["+ok", "---"]
+  }
+  expect_failures = [var.cilium_agent_metric_overrides]
+}
+
+# An embedded space smuggles a second metric token into the same entry — the
+# entries render space-joined into cilium-config, so the guard's character class
+# is what keeps one list element to one metric. Same vector the kernel-arg rule W
+# leg covers for var.images[*].extra_kernel_args. Red-green: widen the class to
+# include a space and this leg alone goes green while the other three stay red.
+run "cilium_metric_override_with_embedded_space_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metrics          = true
+    cilium_agent_metric_overrides = ["+ok -smuggled"]
+  }
+  expect_failures = [var.cilium_agent_metric_overrides]
+}
+
+# A TRAILING newline on an otherwise well-formed entry. This is the one leg whose
+# outcome depends on the regex engine: OpenTofu's regex() is RE2, where `$` means
+# \z and this is rejected; Python's re (which check-jsonschema uses for the schema
+# mirror) matches `$` before a trailing newline and would accept it. Pinning the
+# behaviour here is what makes the schema mirror's explicit [\n\r] exclusion a
+# documented necessity rather than belt-and-braces.
+run "cilium_metric_override_with_trailing_newline_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metrics          = true
+    cilium_agent_metric_overrides = ["+cilium_bpf_map_pressure\n"]
+  }
+  expect_failures = [var.cilium_agent_metric_overrides]
+}
+
+# Missing +/- prefix: Cilium reads the list as deltas against its default metric
+# set, so an unprefixed entry has no defined meaning.
+run "cilium_metric_override_without_prefix_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metrics          = true
+    cilium_agent_metric_overrides = ["cilium_bpf_map_pressure"]
+  }
+  expect_failures = [var.cilium_agent_metric_overrides]
+}
+
+# Negative-space positive control: the guard must not reject the documented
+# form. Red-green: tighten the regex (e.g. drop the underscore from the
+# character class) => this run fails to plan while the three rejection legs
+# above stay green, which is the direction a too-narrow guard fails in.
+run "cilium_metric_overrides_wellformed_entries_plan_cleanly" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metrics          = true
+    cilium_agent_metric_overrides = ["+cilium_bpf_map_pressure", "-cilium_node_connectivity_status", "+_leading_underscore"]
+  }
+  assert {
+    condition     = length(output.cilium_computed_values.prometheus.metrics) == 3
+    error_message = "negative-space: well-formed +metric / -metric entries must plan cleanly and reach the computed layer"
+  }
+}
+
+# --- The same corruption class on cilium_hubble_metrics ---------------------
+#
+# Measured against the pinned chart: an entry "x\n  injected-hubble-key: pwned"
+# renders that key as a standalone cilium-config entry, exactly as on the sibling
+# input. The guard there is an ALLOWLIST; here it must be an EXCLUSION rule,
+# because the legitimate context syntax uses ":", ";", "=" and "," freely — the
+# negative-space run below is what keeps that distinction honest.
+#
+# Red-green for all three: delete the validation on var.cilium_hubble_metrics =>
+# both rejection legs report "Missing expected failure" while the context-syntax
+# run stays green.
+
+run "cilium_hubble_metric_with_embedded_newline_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_hubble_enabled = true
+    cilium_hubble_metrics = ["dns", "x\n  injected-hubble-key: pwned"]
+  }
+  expect_failures = [var.cilium_hubble_metrics]
+}
+
+run "cilium_hubble_metric_with_document_separator_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_hubble_enabled = true
+    cilium_hubble_metrics = ["dns", "drop---evil"]
+  }
+  expect_failures = [var.cilium_hubble_metrics]
+}
+
+# Negative-space control, and the reason the guard is not an allowlist: Hubble's
+# documented context syntax must survive. Red-green: replace the exclusion rule
+# with an allowlist modelled on the sibling input and this run fails to plan
+# while both rejection legs stay green — which is the direction a copy-paste of
+# the wrong guard shape fails in.
+run "cilium_hubble_metrics_context_syntax_plans_cleanly" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_hubble_enabled = true
+    cilium_hubble_metrics = ["dns:query;ignoreAAAA", "flow:sourceContext=pod;destinationContext=pod", "httpV2:exemplars=true"]
+  }
+  assert {
+    condition     = length(output.cilium_computed_values.hubble.metrics.enabled) == 3
+    error_message = "negative-space: Hubble's documented context syntax (colons, semicolons, equals signs) must plan cleanly and reach the computed layer"
+  }
+}
+
+# --- The same corruption class on cilium_native_routing_cidr ----------------
+#
+# The third sibling reaching the same rendered cilium-config document, and the
+# one the first pass of this suite left uncovered. Measured against the pinned
+# chart (1.20.0): the chart writes `ipv4-native-routing-cidr: {{ . }}` raw and
+# unquoted, so the value "10.244.0.0/16\n  injected-native-key: pwned" renders
+# `injected-native-key` as a standalone cilium-config key.
+#
+# The guard here is neither an allowlist nor an exclusion rule but a SEMANTIC
+# predicate — can(cidrhost(...)) — because unlike the two metric lists this
+# input's value space is a computable type. It admits exactly the shape the
+# input is for, so every corruption vector is rejected without enumerating one.
+#
+# Red-green for both rejection legs: delete the validation block on
+# var.cilium_native_routing_cidr in variables.tf => both report "Missing
+# expected failure" while the negative-space run below stays green.
+
+run "cilium_native_routing_cidr_with_embedded_newline_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_routing_mode        = "native"
+    cilium_native_routing_cidr = "10.244.0.0/16\n  injected-native-key: pwned"
+  }
+  expect_failures = [var.cilium_native_routing_cidr]
+}
+
+# A bare address with no prefix length is not a CIDR. This leg is what
+# distinguishes the semantic predicate from a mere newline exclusion: an
+# exclusion rule modelled on the sibling guards would accept this and hand Cilium
+# a value it cannot parse. Red-green: swap the predicate for a `[\n\r]`
+# exclusion and this leg alone goes green while the newline leg stays red.
+run "cilium_native_routing_cidr_without_prefix_length_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_routing_mode        = "native"
+    cilium_native_routing_cidr = "10.244.0.0"
+  }
+  expect_failures = [var.cilium_native_routing_cidr]
+}
+
+# Negative-space control: both documented forms — an explicit CIDR and the empty
+# string that means "derive from pod_cidr" — must survive. Red-green: drop the
+# `== ""` arm of the condition and the default-valued runs across this whole
+# suite fail to plan, which is the direction a too-narrow guard fails in.
+run "cilium_native_routing_cidr_documented_forms_plan_cleanly" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_routing_mode        = "native"
+    cilium_native_routing_cidr = "10.99.0.0/16"
+  }
+  assert {
+    condition     = output.cilium_computed_values.ipv4NativeRoutingCIDR == "10.99.0.0/16"
+    error_message = "negative-space: a well-formed CIDR must plan cleanly and reach the computed values layer verbatim"
+  }
+}
+
+run "cilium_native_routing_cidr_empty_derives_from_pod_cidr" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_routing_mode        = "native"
+    cilium_native_routing_cidr = ""
+    pod_cidr                   = ["10.244.0.0/16"]
+  }
+  assert {
+    condition     = output.cilium_computed_values.ipv4NativeRoutingCIDR == "10.244.0.0/16"
+    error_message = "negative-space: the empty string must stay accepted and keep deriving the CIDR from the first IPv4 pod_cidr entry"
+  }
+}
+
+# nullable = false on both new inputs, and now on cilium_hubble_metrics too. The
+# shipped shim reads cluster.yaml through try(), which does NOT catch a key
+# written with an empty value — `hubble_metrics:` in YAML is null, try() passes it
+# through, and a null reaches conditions that cannot accept it. Red-green: drop
+# `nullable = false` from any of the three and this run fails with a null-value
+# error instead of planning.
+run "cilium_metric_inputs_accept_null_as_their_default" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metric_overrides = null
+    cilium_hubble_open_metrics    = null
+    cilium_hubble_metrics         = null
+  }
+  assert {
+    condition     = !contains(keys(output.cilium_computed_values), "prometheus")
+    error_message = "nullable=false: a null passed for a metric input must fall back to its declared default, leaving the computed layer at its all-off shape"
+  }
+}
+
+# --- Inert-input check blocks -----------------------------------------------
+#
+# A check block is a checkable object, so expect_failures binds it directly — the
+# same mechanism the variable validations use, no warning-only escape hatch
+# needed. In `tofu plan`/`apply` these same blocks are WARNINGS, which is the
+# tier the cilium_values_override case requires; `tofu test` promotes them to
+# failures, which is what makes them testable at all.
+#
+# Leg isolation, exactly as for the validation legs: each run leaves the OTHER
+# check's input at its default so only one block can fire. Without that, deleting
+# one block would leave its leg green via the other's failure.
+#
+# Red-green for both: delete the named check block in cilium-values.tf => that
+# leg reports "Missing expected failure" while the other stays green.
+
+run "cilium_metric_overrides_without_agent_metrics_warns" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_agent_metrics          = false
+    cilium_agent_metric_overrides = ["+cilium_bpf_map_pressure"]
+  }
+  expect_failures = [check.cilium_agent_metric_overrides_effective]
+}
+
+# The Hubble-off arm. cilium_hubble_metrics is non-empty so this leg is
+# distinguishable from the empty-list arm above — both fire the same block, but
+# each pins a different conjunct, so dropping either one leaves a leg red.
+run "cilium_open_metrics_without_hubble_warns" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_hubble_enabled      = false
+    cilium_hubble_metrics      = ["dns"]
+    cilium_hubble_open_metrics = true
+  }
+  expect_failures = [check.cilium_hubble_open_metrics_effective]
+}
+
+# The deploy_cilium arm, for both checks. With Cilium not delivered there is no
+# seed and no emitted Application, so every metric input is inert regardless of
+# its own prerequisites — which are all satisfied here, so only the deploy_cilium
+# conjunct can be what fires. Red-green: drop `var.deploy_cilium` from either
+# check's condition => the matching leg reports "Missing expected failure".
+run "cilium_metric_overrides_without_deploy_cilium_warns" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    deploy_cilium                 = false
+    cilium_agent_metrics          = true
+    cilium_agent_metric_overrides = ["+cilium_bpf_map_pressure"]
+  }
+  expect_failures = [check.cilium_agent_metric_overrides_effective]
+}
+
+run "cilium_open_metrics_without_deploy_cilium_warns" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    deploy_cilium              = false
+    cilium_hubble_enabled      = true
+    cilium_hubble_metrics      = ["dns"]
+    cilium_hubble_open_metrics = true
+  }
+  expect_failures = [check.cilium_hubble_open_metrics_effective]
 }
 
 # Floor-preservation (steer 1) — the bounded floor⊕computed merge must not
