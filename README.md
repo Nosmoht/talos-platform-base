@@ -153,7 +153,9 @@ the module-seeded ArgoCD CRDs + server; the former Helm-based
 (`sops_age_key`, `cilium_ipsec_key`) are supplied via `TF_VAR_*`/env,
 never via `cluster.yaml`.
 
-Day-2 — reference both repos from a single ArgoCD Application:
+Day-2 — how a consumer Application reaches into the base depends on what it
+needs. For **Helm values**, a Multi-Source Application; `$ref` resolves inside
+`helm.valueFiles`:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -171,6 +173,25 @@ spec:
           - $base/kubernetes/substrate/<component>/values.yaml
           - values-<cluster>.yaml
 ```
+
+For a **kustomize component** — the `argocd` component is one — a single-source
+Application over the consumer repo, with the base entering as a tag-pinned
+Kustomize *remote base*. `$ref` does not resolve inside a kustomization, so this
+is the mechanism rather than a second option:
+
+```yaml
+# consumer-repo: kubernetes/overlays/<cluster>/argocd/kustomization.yaml
+resources:
+  - github.com/Nosmoht/talos-platform-base//kubernetes/substrate/argocd?ref=v1.0.0
+
+patches:
+  - path: argocd-cm.yaml       # url + oidc.config — the base ships neither
+  - path: argocd-rbac-cm.yaml  # policy.csv — the base ships no identity
+```
+
+Attaching an identity provider to the substrate's identity-free ArgoCD is its
+own contract, including the cut-over that retires the local `admin` account:
+[`knowledge/reference/argocd-sso-contract.md`](knowledge/reference/argocd-sso-contract.md).
 
 A worked walk-through (30 minutes, end-to-end):
 [`knowledge/workflows/first-consumer-cluster.md`](knowledge/workflows/first-consumer-cluster.md).

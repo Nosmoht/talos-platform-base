@@ -31,6 +31,7 @@ for tooling config, not a general licence to move contracts into the bundle.
 
 ## Reference
 
+- [ArgoCD SSO Wiring Contract](reference/argocd-sso-contract.md) - What a consumer cluster must supply to attach any external OIDC identity provider to the substrate's identity-free ArgoCD, and the mechanism that carries it across the base/consumer repo boundary.
 - [cluster.yaml — Declarative Cluster SoT](reference/cluster-yaml.md) - The two consumers of the declarative cluster.yaml Source-of-Truth, its secret-handling rules, and how CI wires the schema lint gate red-green.
 - [Manifest Pipeline](reference/manifest-pipeline.md) - How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 - [Task Runner Surface](reference/tasks.md) - Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.

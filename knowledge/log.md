@@ -2,6 +2,21 @@
 
 ## 2026-08-14
 
+- `reference/argocd-sso-contract.md`: new. The consumer-facing half of the
+  identity removal — what the base ships versus what the consumer owns, the
+  Kustomize remote-base mechanism (ArgoCD resolves `$ref` only in
+  `helm.valueFiles`, so a Multi-Source `$base/...` kustomization cannot work),
+  the external-Secret trust boundary, the PKCE caveats, the flat Casbin subject
+  namespace, and a cut-over whose predicate is authorization rather than login.
+- `architecture/substrate.md`: §What ships in the OCI artifact corrected. Its
+  entry list had drifted — it claimed 15 entries and omitted the three argocd
+  ones the allowlist has carried for some time, while §What stays git-only
+  listed the whole component as repo-only. Both are now accurate, and the fourth
+  argocd entry (`kustomization.yaml`) is recorded with the reason it ships: the
+  rendered manifests alone are not a buildable unit.
+- `workflows/first-consumer-cluster.md`: the Day-2 narration now names the
+  remote-base mechanism and points at the SSO contract for the identity step.
+  `timestamp` bumped.
 - `decisions/0025-argocd-crd-apply-scope.md`: new. The module's post-health-gate
   `kubectl apply` is projected down to CustomResourceDefinition documents and
   loses `--force-conflicts`. Records what the full-render apply actually did —
@@ -20,9 +35,11 @@
   gains I3 and corrects I1's SSO wording from a Helm-values path to a patch on
   the `argocd-cm` ConfigMap. `timestamp` bumped — `main.tf` and
   `check-argocd-substrate-invariants.sh`, both declared sources, changed.
-- `reference/manifest-pipeline.md`: §ArgoCD substrate invariants gains I3 and
-  distinguishes the shared invariants from the path-scoped one. `timestamp`
-  bumped — its declared source `check-argocd-substrate-invariants.sh` changed.
+- `reference/manifest-pipeline.md`: §ArgoCD substrate invariants now carries
+  I1-I4 with I3 shared across both paths, the presence-anchor rationale for the
+  name-scoped ones, and the consumer-overlay E-checks with their control build.
+  `timestamp` bumped — its declared source `check-argocd-substrate-invariants.sh`
+  changed.
 
 ## 2026-08-12
 

@@ -3,7 +3,7 @@ type: architecture
 title: Substrate Boundary
 description: What talos-platform-base is and ships — the three-pillar substrate, the base/apps/consumer layer model, the tracked repo layout, and the fail-closed OCI artifact allowlist.
 tags: [substrate, layer-model, oci-artifact, boundaries]
-timestamp: 2026-07-17
+timestamp: 2026-08-14
 sources:
   - .ci-oci-tarball-include.txt
   - .ci-oci-tarball-expected.txt
@@ -143,11 +143,15 @@ fails the publish. The same check runs locally via
 `task supply-chain:oci-allowlist`. The allowlist is the authoritative record
 of what ships; prose "what ships" summaries elsewhere are non-normative.
 
-The 15 shipped entries:
+The 19 shipped entries:
 
 ```text
 kubernetes/bootstrap/cilium/extras.yaml
 kubernetes/bootstrap/cilium/values.yaml
+kubernetes/substrate/argocd/_rendered/crds.yaml
+kubernetes/substrate/argocd/_rendered/manifests.yaml
+kubernetes/substrate/argocd/kustomization.yaml
+kubernetes/substrate/argocd/namespace.yaml
 platform-hardware-features.yaml
 schemas/hardware-features.schema.json
 tofu/modules/talos-cluster/README.md
@@ -165,9 +169,18 @@ tofu/modules/talos-cluster/versions.tf
 
 That is: a talos-cluster module subset (four of its `.tf` files, the helm
 value floors, the chart-rendered cert-approver seed, the adoption/PKI proof
-scripts), the Cilium Day-2 reference values + GatewayClass extra, and the
-hardware-capability vocabulary (`platform-hardware-features.yaml` at the
-repo root plus its schema under `schemas/`). Note the allowlist does NOT
+scripts), the Cilium Day-2 reference values + GatewayClass extra, the argocd
+component as a **buildable unit**, and the hardware-capability vocabulary
+(`platform-hardware-features.yaml` at the repo root plus its schema under
+`schemas/`).
+
+"Buildable unit" is the operative word for the argocd entries: the rendered
+manifests and the namespace alone would leave a vendoring consumer to
+reconstruct the resource list by hand, so `kustomization.yaml` ships with them
+and `scripts/check-substrate-consumability.sh` requires it for every renderable
+component. That is what makes the component's own spec claim — consumable as a
+single kustomization — true at a published tag rather than only in-repo. Note
+the allowlist does NOT
 ship `composition.tf` and `profiles.tf`, although `main.tf` requires locals
 defined there — the tarball-vendored module tree alone does not
 `tofu validate`; consumers currently need the git checkout at the pinned
@@ -179,10 +192,11 @@ by a CI cross-reference gate, not read by the module at plan time
 ### What stays git-only
 
 Everything else is repo content, not artifact content — notably the CI
-workflows, `policies/conftest/`, `scripts/`, the
-`kubernetes/substrate/argocd/` component with its committed
-`_rendered/` manifests ([manifest-pipeline](../reference/manifest-pipeline.md)),
-the `kubernetes/bootstrap/argocd/*.tmpl` root seeds, `Taskfile.yml`
+workflows, `policies/conftest/`, `scripts/`, the argocd component's
+**inputs** (`values.yaml`, `chart.lock.yaml`, `README.md`) as opposed to its
+shipped outputs ([manifest-pipeline](../reference/manifest-pipeline.md)), the
+worked consumer overlay under `kubernetes/examples/`, the
+`kubernetes/bootstrap/argocd/*.tmpl` root seeds, `Taskfile.yml`
 ([tasks](../reference/tasks.md)), `schemas/cluster.schema.json`, and
 `cluster.yaml.example`.
 

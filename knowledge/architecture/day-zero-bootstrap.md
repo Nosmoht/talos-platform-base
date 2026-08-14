@@ -137,10 +137,13 @@ Key properties:
   apiserver serving-cert SANs.
 - **CRD side-channel** — the three ArgoCD CRDs render to roughly 1.8 MB, far
   beyond inlineManifest budget (the app render is about 109 KB), so after
-  the health gate the module writes the kubeconfig plus the full ArgoCD
-  render to disk and runs `kubectl apply --server-side --force-conflicts`.
-  This is a deliberate, tofu-driven Day-2-convergent path (it re-runs on an
-  intended chart/version bump); every apply host must ship `kubectl`.
+  the health gate the module writes the kubeconfig plus the CRD documents to
+  disk and runs `kubectl apply --server-side`. The payload is projected down
+  to `CustomResourceDefinition` documents before the freeze and the apply
+  carries no `--force-conflicts`, so it delivers the CRDs and touches nothing
+  else — see [0025-argocd-crd-apply-scope](../decisions/0025-argocd-crd-apply-scope.md)
+  for what the former full-render, force-applying form did. It re-runs on an
+  intended chart/version bump; every apply host must ship `kubectl`.
   Rationale: [0006-opentofu-cluster-lifecycle](../decisions/0006-opentofu-cluster-lifecycle.md).
 
 ## Seeding the App-of-Apps root: `task bootstrap:argocd`

@@ -34,18 +34,24 @@ in the cluster.
 - `main.tf` projects the render down to `CustomResourceDefinition` documents
   **before** the freeze, so the frozen bytes, the trigger hash and the applied
   file are the same thing and the property stays visible at plan time. A
-  precondition on the freeze rejects a projection yielding fewer than three
+  precondition on the freeze rejects a projection that does not carry all three
+  ArgoCD CRDs by NAME — a count-based check would be satisfied by three wrong
   documents.
-- The apply drops `--force-conflicts`. Nothing else co-owns the three CRDs, so a
-  conflict there is a real signal.
+- The apply drops `--force-conflicts` and gains a dedicated `--field-manager`,
+  and `kubernetes_version` leaves `triggers_replace` (the CRD payload does not
+  depend on it — measured byte-identical across Kubernetes versions). This is a
+  seed-then-hand-off: the steady-state component ships the same three CRDs and
+  ArgoCD syncs them server-side, so ArgoCD owns them from its first sync and
+  forcing from the module would roll a GitOps-managed schema back to the seed
+  pin. A conflict there is a real signal.
 - `helm/argocd-values.yaml` sets `configs.cm.url: ""`, which wins the chart's
   merge and drops the key from `argocd-cm` entirely.
 - New output `argocd_day0_apply_kinds` exposes the surviving kinds as the binding
   point for the new `tests/argocd-crd-scope.tftest.hcl` — the frozen render's
   output is unknown until apply and cannot be asserted in a plan-only test.
-- `scripts/check-argocd-substrate-invariants.sh` gains **I3**: the seed render's
-  `argocd-cm` carries no `url` key. Scoped to the seed path; it extends to the
-  steady-state render when the operator identity is removed there.
+- `scripts/check-argocd-substrate-invariants.sh` gains **I3**: the render's
+  `argocd-cm` carries no `url` key. Widened to both paths by the identity removal
+  that ships in the same release.
 - `scripts/check-render-determinism.sh` gains a second accepted capture shape —
   the live render may be referenced once inside a `locals` block whose value the
   freeze captures. The #123 property is unchanged: one live read, every

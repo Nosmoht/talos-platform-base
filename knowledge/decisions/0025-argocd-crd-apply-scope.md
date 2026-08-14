@@ -81,12 +81,44 @@ defect into an outage primitive.
 
 ## Decision Outcome
 
-Chosen option: **3**.
+Chosen option: **3**, as a **seed-then-hand-off** path.
 
 The module projects the frozen render to documents whose `kind` is
-`CustomResourceDefinition`, and applies that with `kubectl apply --server-side`
-without `--force-conflicts`. Nothing else co-owns those three CRDs, so a conflict
-there is a real signal rather than something to steamroll.
+`CustomResourceDefinition` and applies that with
+`kubectl apply --server-side --field-manager=talos-platform-base-day0`, without
+`--force-conflicts`.
+
+**Ownership, stated correctly.** An earlier draft of this decision justified
+dropping the force flag with "nothing else co-owns those three CRDs". That is
+false in this repository: `kubernetes/substrate/argocd/kustomization.yaml` ships
+`_rendered/crds.yaml` — the same three CRDs — and the root Application syncs that
+component with `ServerSideApply=true`. `argocd-controller` is therefore a
+co-owner from the first steady-state sync onward, by design.
+
+The correct reasoning is ownership, not exclusivity. Kubernetes recommends that
+controllers force conflicts **on objects they own and manage**, precisely because
+they cannot resolve a conflict interactively. After Day 0 this module owns
+nothing here — Argo CD does, and Argo CD's own Server-Side Apply design states it
+forces on the objects it owns. Forcing from the module would strip Argo CD's
+ownership entries and roll a GitOps-managed CRD schema back to the older seed
+pin: silent data loss, and the failure this ADR set out to end rather than
+relocate. So the module seeds and steps back.
+
+Three properties make that safe rather than merely principled:
+
+- The **first** apply lands CRDs that do not yet exist, so it cannot conflict.
+- `kubernetes_version` leaves `triggers_replace`. Helm copies `crds/` through
+  verbatim, so the payload does not depend on it — measured: the CRD render is
+  byte-identical under `--kube-version` 1.31.0 and 1.35.0. Keeping it there made
+  a routine Kubernetes upgrade re-fire an apply against CRDs Argo CD owned by
+  then, with no payload change to justify the risk. What remains is a deliberate
+  `argocd_chart_version` bump, where a conflict is the true statement "the steady
+  state has moved past this pin" and deserves an operator decision.
+- A dedicated `--field-manager` replaces kubectl's generic `kubectl` default,
+  which an operator's ad-hoc apply also uses. Upstream gave kubectl's own
+  subcommands distinct manager names for exactly this reason, and Argo CD's SSA
+  design explicitly refuses to inherit the default. `managedFields` now
+  distinguishes the module's writes from a human's.
 
 The projection sits **before** the freeze, so the frozen bytes, the trigger hash
 and the applied file are the same thing, and so the property stays visible at
@@ -112,12 +144,32 @@ apply-path consumer through the freeze.
   fallback is now explicitly ArgoCD self-management plus, in the worst case, a
   re-bootstrap.
 - **Existing clusters are not retroactively repaired.** `kubectl` remains a
-  recorded field-manager on the ConfigMaps it already touched; this change only
-  stops future applies from re-taking them. Clearing that ownership is a
-  consumer-side operation.
+  recorded field-manager entry on the ConfigMaps it already touched; this change
+  only stops future applies from re-taking them.
+
+  Expected consumer action: **none**. Argo CD applies its desired state
+  client-side by default, which does not negotiate ownership with a server-side
+  manager, so it keeps writing the values it owns and the stale `kubectl` entry
+  is inert bookkeeping once the apply stops re-firing. A consumer who wants the
+  entry gone can drop it from `metadata.managedFields`. Flagged as reasoning
+  from the apply semantics, not an observation: no cluster is available to this
+  repository, so the inertness of the residual entry is unverified. A consumer
+  running server-side apply for the argocd component should confirm it on their
+  own cluster.
 - Verification is render-level and plan-level. No cluster is available to this
   repository, so "the apply now lands only CRDs" is proven by the projection test
   and the plan-time precondition, not by an observed apply.
+- **Deferred (named, not silently dropped): byte-level Kubernetes-version
+  independence of the CRD payload.** The trigger set omits `kubernetes_version`
+  on the strength of a measurement (byte-identical render under `--kube-version`
+  1.31.0 and 1.35.0) plus Helm's documented behaviour of copying `crds/` through
+  without templating. The test binds the **structural** half — same three CRDs,
+  same single kind, at a Kubernetes version far from the suite default — so a
+  chart that starts templating its CRDs into a different document set fails
+  loudly. A templating change that alters bytes without altering that structure
+  would slip through: OpenTofu has no cross-run output reference, so two renders
+  cannot be digest-compared inside one test suite. Revisit if the chart ever
+  gains templated CRDs.
 
 ## Addendum to adr-0024
 

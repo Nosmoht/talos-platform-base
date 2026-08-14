@@ -3,7 +3,7 @@ type: glossary
 title: Glossary
 description: Cross-domain vocabulary for the talos-platform-base substrate, its delivery pipeline, and its consumer contract.
 tags: [glossary, vocabulary, platform]
-timestamp: 2026-07-17
+timestamp: 2026-08-14
 sources:
   - AGENTS.md
   - Taskfile.yml
@@ -115,10 +115,13 @@ record; deep-dive pages are linked where they exist.
   [0009-node-capability-composition](decisions/0009-node-capability-composition.md).
 - **Render-determinism fence** — `scripts/check-render-determinism.sh`
   (wired into `task tofu:ci`): static guard asserting every
-  `data.helm_template` render is consumed only through a frozen
-  `terraform_data` with `ignore_changes = [input]` (CRD renders additionally
-  `triggers_replace`), so non-byte-stable helm renders cannot re-push a fresh
-  machineConfig every plan.
+  `data.helm_template` render is read exactly once and consumed only through a
+  frozen `terraform_data` with `ignore_changes = [input]` (CRD renders
+  additionally `triggers_replace`), so non-byte-stable helm renders cannot
+  re-push a fresh machineConfig every plan. The single read may be captured
+  directly as the freeze's `input`, or sit in a `locals` block whose value the
+  freeze captures — the second shape admits a pure transform between read and
+  freeze, such as the ArgoCD CRD projection.
 - **Rendered Manifests Pattern** — charts are rendered at build time, not in
   the cluster: `scripts/render-component.sh` runs helm template (Stage 1) +
   kustomize build (Stage 2) from `chart.lock.yaml` and commits the split
