@@ -66,7 +66,26 @@ Without the two lines below the value passes `check-jsonschema`, passes
   cilium_hubble_open_metrics     = try(local.cilium.hubble_open_metrics, false)
 ```
 
-### 2. `hubble_open_metrics` needs a manual rollout restart to take effect
+### 2. On an existing cluster, neither input reaches the cluster on its own
+
+Both are layered into the seed **and** into the emitted self-management
+Application — but the seed render is frozen at first capture
+(`terraform_data.cilium_render` carries `ignore_changes`, and `inlineManifests`
+are create-only). So on an already-bootstrapped cluster with
+`substrate.cilium.self_management: false`, setting either key changes the plan
+and nothing else. Three ways it actually arrives:
+
+- via the emitted Application (`self_management: true` — note the override-drop
+  guard applies, see the v7.0.0 §4 migration);
+- at the next fresh bootstrap;
+- after a deliberate `tofu apply -replace=terraform_data.cilium_render[0]`, with
+  the seed/live skew caveats in §1 of the Cilium 1.20 section.
+
+This is the seed-freeze architecture working as designed, not a defect — but
+"both engines" in the input documentation describes the data flow, not the
+delivery timing.
+
+### 3. `hubble_open_metrics` needs a manual rollout restart to take effect
 
 Unlike `hubble_enabled`, this input does **not** roll the agents. Verified
 against the pinned chart: the `cilium` DaemonSet pod template is byte-identical
@@ -84,7 +103,7 @@ rather than a config change. Finish the change deliberately:
 kubectl -n kube-system rollout restart ds/cilium
 ```
 
-### 3. `agent_metric_overrides` entries are format-validated
+### 4. `agent_metric_overrides` entries are format-validated
 
 Each entry must match `^[+-][a-zA-Z_][a-zA-Z0-9_]*$`. This is not a style rule:
 the chart renders the list raw and unquoted into `cilium-config`, and that
@@ -96,15 +115,26 @@ Note the semantics: the list is a **delta** against the chart's default metric
 set (`+name` adds, `-name` removes), not a replacement for it, and it is
 unrelated to `values_override` despite the similar name.
 
-### 4. Inert inputs warn, they do not fail
+### 5. Inert inputs warn, they do not fail
 
-Setting either input while its prerequisite (`agent_metrics` / `hubble_enabled`)
-is off produces a plan-time **warning**, not a rejection — deliberately, because
-you may enable the prerequisite through `values_override`, which the module
-cannot introspect. If that is your setup, the warning is expected and safe to
+Setting either input while it cannot take effect produces a plan-time
+**warning**, not a rejection — deliberately, because you may enable the
+prerequisite through `values_override`, which the module cannot introspect. If
+that is your setup, the Hubble/agent half of the warning is expected and safe to
 disregard.
 
-### 5. Grafana dashboards are not included
+The effectiveness conditions are wider than they look:
+
+- `agent_metric_overrides` needs `enabled: true` (Cilium delivered at all) **and**
+  `agent_metrics: true`.
+- `hubble_open_metrics` needs `enabled: true`, `hubble_enabled: true`, **and a
+  non-empty `hubble_metrics`**. That last one is not obvious: the chart gates the
+  OpenMetrics key on the metrics list, so with an empty list it would change the
+  exposition format of an endpoint that exports nothing. `hubble_enabled: true`
+  with an empty `hubble_metrics` remains a supported half-on state on its own —
+  it is only the OpenMetrics flag on top of it that is inert.
+
+### 6. Grafana dashboards are not included
 
 Cilium's chart can also emit Grafana dashboard ConfigMaps. Those stay out of the
 base on purpose: their `namespace` and sidecar `label` decide whether anything

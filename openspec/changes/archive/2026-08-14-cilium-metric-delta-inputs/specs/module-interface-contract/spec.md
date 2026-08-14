@@ -8,6 +8,15 @@ hard rejection for inputs whose misuse causes silent BREAKAGE — a dropped
 datapath override, a fatally-exiting workload, an emitted resource with
 nothing to reconcile — and an input that merely does nothing is a lower tier.
 
+Each such check SHALL model the input's FULL effectiveness condition, not the
+one that reads as obvious. That includes the substrate-delivery toggle (with the
+component undelivered there is neither a seed nor an emitted resource, so every
+one of its inputs is inert) and any downstream chart gate the module can observe
+— a condition that reports an inert input as effective is worse than no check,
+because it converts a silent no-op into an endorsed one. Where the effectiveness
+condition rests on a rendered-chart fact, that fact SHALL be measured against
+the pinned chart and recorded at the condition.
+
 The distinction is load-bearing rather than stylistic: a prerequisite may be
 satisfied through `cilium_values_override`, an opaque string the module cannot
 introspect, so a hard rejection would refuse a configuration that works. The
@@ -38,7 +47,23 @@ A typed input whose value is rendered verbatim into a resource that becomes
 part of the controlplane machine configuration SHALL constrain its accepted
 character set by variable `validation`, and the module's test suite SHALL
 carry a rejection leg per corruption vector plus a negative-space control
-proving the documented form is still accepted.
+proving the documented form is still accepted. The obligation is on the input
+CLASS, not on individual inputs: every sibling reaching the same rendered
+document carries it, or the guard documents a boundary it does not hold.
+
+The rule's FORM follows the value space. Where the documented form is a narrow
+token, an allowlist is correct. Where legitimate values carry structured
+punctuation — Hubble's context syntax uses colons, semicolons and equals signs —
+an allowlist would encode a grammar the module does not own and would break on
+the next upstream option; there the rule SHALL instead exclude the measured
+corruption vectors, and the negative-space control SHALL exercise the
+documented structured form so a later copy-paste of the wrong guard shape fails
+loudly.
+
+The schema SHALL mirror each such guard so the declarative path rejects a
+corrupting entry at lint time, and the mirror SHALL account for regex-engine
+divergence between the two validators rather than copying the expression
+verbatim.
 
 The Cilium agent metric-delta list is such an input: the chart renders its
 entries raw and unquoted into the `cilium-config` ConfigMap, which the module

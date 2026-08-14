@@ -5,7 +5,7 @@
 - `decisions/0022-cilium-observability-and-argocd-self-management.md`: dated
   addendum recording the two further typed metric-set inputs
   (`cilium_agent_metric_overrides`, `cilium_hubble_open_metrics`). Nothing is
-  superseded — both reach both engines, so §(d) holds, and the floor∩computed
+  superseded — both are layered into both engines, so §(d) holds, and the floor∩computed
   collision count in §(f) is still one. What the addendum adds is a second
   collision LEVEL for §(f)'s invariant (intra-computed, where a shallow
   `merge()` term replaces a sibling with no floor to preserve), the `check`
@@ -16,6 +16,16 @@
   left at 2026-07-22 — it records the decision date, and no decision changed.
   Residual stated in the addendum: chart-key spelling for both Helm paths is
   bound only by the network-dependent, CI-advisory composition suite.
+  Revised after adversarial review, all three corrections measured against the
+  pinned chart rather than reasoned: the OpenMetrics key turned out to sit under
+  the same gate as `hubble-metrics-server`, so it is inert with an empty metrics
+  list and the effectiveness check had been written on the wrong precondition;
+  `cilium_hubble_metrics` carried the identical raw-render injection vector the
+  addendum documents for the new input, so the guard obligation is recorded as
+  binding the input CLASS rather than one member; and "reaches both engines" is
+  now qualified as a data-flow statement, since the frozen seed means neither
+  input reaches an already-bootstrapped cluster without self-management, a fresh
+  bootstrap, or a deliberate `-replace`.
 - `reference/cluster-yaml.md`: re-verified against the widened
   `schemas/cluster.schema.json` and the example shim in its `sources`; the prose
   claims (no `schema_version`, unvalidated patch content, the secret-exclusion

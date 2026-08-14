@@ -195,9 +195,11 @@ admits the pre-existing seed-configuration keys (`enabled`, `chart_version`,
 `values_override`) plus eight observability + self-management keys:
 `agent_metrics` and `operator_metrics` (booleans, default `false`),
 `hubble_enabled` (boolean, default `false`), `hubble_metrics` (a string
-array, default `[]`), `agent_metric_overrides` (a string array, default
-`[]`, whose entries the module additionally format-validates because the
-chart renders them raw into the machine configuration),
+array, default `[]`, whose entries carry the same raw-render exclusion rule
+as `agent_metric_overrides` in a form that admits Hubble's context syntax),
+`agent_metric_overrides` (a string array, default `[]`, whose entries the
+module additionally format-validates because the chart renders them raw into
+the machine configuration),
 `hubble_open_metrics` (boolean, default `false`), `self_management`
 (boolean, default `false`), and `self_management_project` (string, default
 `"default"`) — a typo'd key in any of these three closed substrate objects

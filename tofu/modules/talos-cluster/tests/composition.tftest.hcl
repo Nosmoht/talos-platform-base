@@ -535,6 +535,19 @@ run "cilium_seed_render_carries_observability_markers" {
   # UPGRADING.md), and this assert is what keeps the claim true across chart bumps:
   # if a future chart DOES add a checksum annotation, this goes red and the docs
   # need updating rather than silently misleading an operator.
+  # Existence anchor for the universal assert below. That one is an alltrue() over
+  # an implication, which an EMPTY match set satisfies — a chart rename or a
+  # mis-split would make it assert nothing while staying green. Every other assert
+  # in this run is anytrue() and therefore self-anchoring; this one is not.
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "DaemonSet" &&
+        try(yamldecode(doc).metadata.name, "") == "cilium"
+      )
+    ])
+    error_message = "anchor for the no-roll assert: the render must contain a DaemonSet named `cilium` — without this the universal assert below is satisfied by an empty match set and proves nothing"
+  }
   assert {
     condition = alltrue([
       for doc in split("---", data.helm_template.cilium[0].manifest) : (
@@ -546,6 +559,54 @@ run "cilium_seed_render_carries_observability_markers" {
       )
     ])
     error_message = "no-roll claim: the cilium DaemonSet pod template must carry no checksum annotation — if the chart gained one, cilium_hubble_open_metrics now DOES roll the agents and both variables.tf and UPGRADING.md must stop telling operators to restart manually"
+  }
+}
+
+# The negative half of the two marker/spelling oracles above, and the chart-default
+# sentinel for both. Same inputs as that run EXCEPT the two metric-set inputs, which
+# stay at their defaults.
+#
+# Without this run the `agent_metric_overrides` marker (presence of the cilium-config
+# `metrics` key) and the OpenMetrics spelling oracle (`enable-hubble-open-metrics ==
+# "true"`) are only ever observed in their ON state, so neither would notice a chart
+# that started emitting a bare `metrics` key with the scrape endpoint on, or one that
+# flipped the OpenMetrics default to true — the marker would read `true` for every
+# consumer and discriminate nothing, the exact failure already documented for
+# `operator_metrics`.
+#
+# Measured at the pinned chart 1.20.0: with prometheus.enabled=true and no delta
+# list, the rendered cilium-config carries NO `metrics` key; with Hubble on and
+# OpenMetrics unset, `enable-hubble-open-metrics` is "false".
+run "cilium_seed_render_metric_inputs_default_off" {
+  command = plan
+  variables {
+    deploy_cilium         = true
+    cilium_agent_metrics  = true
+    cilium_hubble_enabled = true
+    cilium_hubble_metrics = ["dns"]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "ConfigMap" &&
+        try(yamldecode(doc).metadata.name, "") == "cilium-config" &&
+        !contains(keys(try(yamldecode(doc).data, {})), "metrics")
+      )
+    ])
+    error_message = "marker discrimination: with cilium_agent_metrics on and NO delta list, the rendered cilium-config must carry no `metrics` key — otherwise cilium_seed_observability_markers.agent_metric_overrides reads true for every agent-metrics consumer and discriminates nothing"
+  }
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "ConfigMap" &&
+        try(yamldecode(doc).metadata.name, "") == "cilium-config" &&
+        try(yamldecode(doc).data["enable-hubble-open-metrics"], "") == "false"
+      )
+    ])
+    error_message = "chart-default sentinel: with Hubble on and cilium_hubble_open_metrics off, the rendered enable-hubble-open-metrics must be \"false\" — if the chart default flips, the ON-state spelling oracle turns green-forever and stops discriminating"
   }
 }
 

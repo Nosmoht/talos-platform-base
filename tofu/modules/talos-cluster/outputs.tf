@@ -368,8 +368,13 @@ output "cilium_seed_observability_markers" {
     key (gated by the same `{{- if .Values.prometheus.enabled }}` block, so it is
     present only when the delta list actually reached the render).
     `hubble_open_metrics` <- the "enable-hubble-open-metrics" VALUE, not its
-    presence: the chart emits that key unconditionally once Hubble is on, so a
-    presence check would not discriminate the toggle. {} when deploy_cilium = false
+    presence. Measured: the key sits under the same
+    `{{- if or .Values.hubble.metrics.enabled … }}` gate as `hubble-metrics-server`,
+    so it is absent entirely when the metrics list is empty and present as "false"
+    when the list is non-empty and the flag is off — a presence check would
+    therefore report the metrics list, not the flag. The try() default reads an
+    absent key as off, which is correct in both directions.
+    {} when deploy_cilium = false
     or the name-filtered ConfigMap list is empty (try()-wrapped, mirroring the
     cert_approver_env precedent). Secret-free (booleans + one raw string value only).
 
@@ -381,7 +386,15 @@ output "cilium_seed_observability_markers" {
   EOT
   value = try(
     [
-      for doc in split("---", try(terraform_data.cilium_render[0].output, "")) : {
+      # Split on the DOCUMENT boundary ("\n---\n"), not the bare literal. Several
+      # consumer-controlled strings reach this render — cilium_values_override
+      # above all, which is free-form YAML the module cannot introspect — and a
+      # "---" occurring mid-scalar (PEM material carries it too) would split a
+      # document in half. Both halves then fail yamldecode, the comprehension
+      # yields nothing, and the outer try() reports {} — "nothing enabled" rather
+      # than an error. An audit output that goes silent on malformed input is
+      # exactly the wrong failure direction.
+      for doc in split("\n---\n", try(terraform_data.cilium_render[0].output, "")) : {
         agent_metrics          = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
         agent_metric_overrides = contains(keys(yamldecode(doc).data), "metrics")
         operator_metrics       = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")

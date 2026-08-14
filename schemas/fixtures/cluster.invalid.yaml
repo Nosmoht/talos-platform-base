@@ -16,6 +16,8 @@
 #      NON-forbidden value (rule B matches the key, not the literal AGENTS.md
 #      §Hard Constraints value; this file is outside hard-constraints-check.yml's
 #      kubernetes/**+tofu/** glob regardless).
+#   7. substrate.cilium.agent_metric_overrides[0] — an embedded newline (rule M).
+#   8. substrate.cilium.hubble_metrics[1] — a document separator (rule H).
 # Relax any rule in schemas/cluster.schema.json and the negative CI step turns
 # red. Not a runnable cluster — RFC5737 documentation IPs; no node references
 # the four new images (check-jsonschema has no cross-reference check).
@@ -64,3 +66,12 @@ nodes:
     role: controlplane
     image: standard
     hardware_capabilities: []
+substrate:
+  cilium:
+    # INVALID: rule M — an embedded newline in a metric-override entry. The chart
+    # renders these raw and unquoted into cilium-config, so the second line
+    # becomes a standalone ConfigMap key in the create-only machine config.
+    agent_metric_overrides: ["+ok\n  injected-key: pwned"]
+    # INVALID: rule H — a document separator in a Hubble metric entry. Same raw
+    # render, plus outputs.tf splits the rendered manifest on that boundary.
+    hubble_metrics: ["dns", "drop---evil"]

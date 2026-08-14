@@ -235,14 +235,21 @@ locals {
 
 check "cilium_agent_metric_overrides_effective" {
   assert {
-    condition     = length(var.cilium_agent_metric_overrides) == 0 || var.cilium_agent_metrics
-    error_message = "cilium_agent_metric_overrides is set but cilium_agent_metrics is false: the chart emits the whole `prometheus` values block only when the agent scrape endpoint is on, so the delta list is dropped from both the bootstrap seed and the emitted self-management Application. Set cilium_agent_metrics = true, or drop the list."
+    condition     = length(var.cilium_agent_metric_overrides) == 0 || (var.deploy_cilium && var.cilium_agent_metrics)
+    error_message = "cilium_agent_metric_overrides is set but cannot take effect: it needs deploy_cilium = true (no seed and no emitted Application otherwise) AND cilium_agent_metrics = true (the chart emits the whole `prometheus` values block only when the agent scrape endpoint is on). The delta list is dropped from both engines as configured."
   }
 }
 
 check "cilium_hubble_open_metrics_effective" {
+  # MEASURED against the pinned chart, and not the obvious condition: the
+  # `enable-hubble-open-metrics` key is NOT emitted merely because Hubble is on.
+  # It sits under the same `{{- if or .Values.hubble.metrics.enabled … }}` gate as
+  # `hubble-metrics-server`, so with an EMPTY metrics list the chart renders
+  # neither — the flag is inert in exactly the half-on state ADR-0022 §k blesses.
+  # Gating this check on hubble.enabled alone would report an inert input as
+  # effective, which is the one thing a warning tier must not do.
   assert {
-    condition     = !var.cilium_hubble_open_metrics || var.cilium_hubble_enabled
-    error_message = "cilium_hubble_open_metrics is true but cilium_hubble_enabled is false: the chart emits the whole `hubble` values block only when Hubble is on, so enableOpenMetrics is dropped from both engines. Disregard if you enable Hubble through cilium_values_override — the module cannot introspect that string."
+    condition     = !var.cilium_hubble_open_metrics || (var.deploy_cilium && var.cilium_hubble_enabled && length(var.cilium_hubble_metrics) > 0)
+    error_message = "cilium_hubble_open_metrics is true but cannot take effect: it needs deploy_cilium = true, cilium_hubble_enabled = true, AND a non-empty cilium_hubble_metrics — the chart gates the OpenMetrics key on the metrics list being non-empty, so it changes the exposition format of an endpoint that exports nothing. Disregard the Hubble half of this if you enable Hubble through cilium_values_override; the module cannot introspect that string."
   }
 }
