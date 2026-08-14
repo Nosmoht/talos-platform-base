@@ -44,6 +44,54 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed — BREAKING
 
+- **`argocd`: the substrate ships no identity.** `configs.rbac.policy.csv` and
+  `configs.rbac.scopes` are removed from
+  `kubernetes/substrate/argocd/values.yaml`, and `configs.cm.url: ""` is added
+  to both render paths. The base carried a hardcoded `role:admin` binding for a
+  single named principal — an organisation-specific grant on a cluster-agnostic
+  floor — and a `url` derived from the chart's placeholder hostname, which fails
+  at the identity provider rather than in the cluster.
+
+  Reading the diff: the chart's `argocd-rbac-cm` template emits both RBAC keys
+  unconditionally, so the render now carries `policy.csv: ""` and the
+  chart-default `scopes: '[groups]'`. Removed here means empty-but-present
+  there. `policy.default: ''` stays.
+
+  **BREAKING — migration:** a consumer relying on the shipped binding loses
+  access at the next sync unless their overlay supplies **both** `policy.csv`
+  **and** the `scopes` value their subjects are written against, in the same
+  commit as the pin bump. Carrying only `policy.csv` is the lockout path — the
+  claim silently reverts to `groups`. Full procedure and recovery:
+  [`UPGRADING.md`](UPGRADING.md). The wiring contract for any external OIDC
+  provider is
+  [`knowledge/reference/argocd-sso-contract.md`](knowledge/reference/argocd-sso-contract.md),
+  with a worked overlay in `kubernetes/examples/argocd-consumer-sso/`.
+
+- **`talos-cluster`: the Day-0 ArgoCD `kubectl apply` delivers CRDs and nothing
+  else.** It previously applied the argo-cd chart's **full default render** —
+  twelve kinds, bundled Dex included — with
+  `kubectl apply --server-side --force-conflicts`, re-firing on every
+  `kubernetes_version` change. That contradicted substrate invariants I1/I2 at
+  runtime while CI reported green, overwrote the seed's own `server.insecure`
+  and `kustomize.buildOptions` with chart defaults, and reset `argocd-rbac-cm`
+  — which, with the identity removal above, is where a consumer's entire access
+  policy now lives.
+
+  The render is now projected to `CustomResourceDefinition` documents before
+  being frozen, applied under a dedicated `--field-manager` and **without**
+  `--force-conflicts`, and `kubernetes_version` leaves `triggers_replace` (the
+  CRD payload is byte-identical across Kubernetes versions — measured). ArgoCD
+  owns those CRDs from its first steady-state sync; the module seeds and steps
+  back. Not retroactive: an existing cluster keeps the `kubectl` field-manager
+  entries the old apply recorded. See
+  [ADR-0025](knowledge/decisions/0025-argocd-crd-apply-scope.md).
+
+- **`argocd`: `kustomization.yaml` now ships in the OCI artifact.** The
+  component's rendered manifests were consumable from a vendored tag; the file
+  that makes them a buildable unit was not.
+  `scripts/check-substrate-consumability.sh` now requires it for every
+  renderable component. Additive for consumers — no action required.
+
 - **`talos-cluster`: `nodes` is a MAP keyed by node name, not a list.** The
   per-node `hostname` field is removed — the key *is* the hostname, so a node is
   declared exactly once and a duplicate node name is no longer expressible

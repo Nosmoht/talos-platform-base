@@ -45,7 +45,121 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
-## Unreleased (next MINOR) — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (MINOR — manual action for argocd-overlay consumers)
+## Unreleased (next MAJOR) — the substrate ships no ArgoCD identity (MAJOR — action required for EVERY consumer using the shipped RBAC binding)
+
+**Type:** MAJOR. The base stops shipping an access policy and a base URL for
+ArgoCD, and the Day-0 `kubectl apply` stops converging the application. Read
+§1 before bumping the pin: the migration and the pin bump must land in the
+**same commit**, or the cluster loses its access policy at the next sync.
+
+Decisions: [ADR-0025](knowledge/decisions/0025-argocd-crd-apply-scope.md).
+Contract: [`knowledge/reference/argocd-sso-contract.md`](knowledge/reference/argocd-sso-contract.md).
+
+### 1. Carry BOTH `policy.csv` and `scopes` into your overlay — REQUIRED
+
+`kubernetes/substrate/argocd/values.yaml` no longer sets
+`configs.rbac.policy.csv` or `configs.rbac.scopes`. Previous releases shipped:
+
+```yaml
+configs:
+  rbac:
+    policy.csv: |
+      g, <a single hardcoded principal>, role:admin
+    scopes: '[preferred_username]'
+```
+
+Both are now yours. In your overlay over the component:
+
+```yaml
+# argocd-rbac-cm.yaml — strategic merge, so base-shipped keys survive
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.csv: |
+    g, <your-subject>, role:admin
+  scopes: '[preferred_username]'
+```
+
+**Carrying only `policy.csv` is the lockout path.** Without `scopes`, the chart
+default `'[groups]'` applies and your policy is matched against a claim it was
+never written for: every subject stops matching, `policy.default: ''` grants
+nothing, and only the local `admin` account still works. Changing your subjects
+over to group IDs and `'[groups]'` is a sound follow-up — do it as a **separate,
+verified change**, not inside this migration.
+
+**Verify before merging**, with an SSO principal, not with `admin`:
+
+```bash
+argocd account can-i update applications '*/*'    # expect: yes
+```
+
+A successful **login** is not evidence: an unmatched principal authenticates
+fine and can do nothing.
+
+### 2. Supply `configs.cm.url`
+
+Both render paths now set `configs.cm.url: ""`, so the rendered `argocd-cm`
+carries no `url` key at all (previously: the chart's placeholder hostname,
+derived from `global.domain`). ArgoCD derives the OIDC redirect URI from it, so
+SSO does not work until you set your own:
+
+```yaml
+# argocd-cm.yaml
+data:
+  url: https://argocd.<your-domain>
+```
+
+If you were already patching `url` in your overlay, nothing changes for you —
+your patch now supplies a key instead of overriding a placeholder.
+
+`argocd-notifications-cm`'s `argocdUrl` keeps the placeholder. That is a
+structurally forced residual (Helm's `default` treats `""` as unset), it feeds
+notification links only, and it never reaches the SSO redirect.
+
+### 3. Day-0 apply: expect a one-time plan diff, then quieter plans
+
+`terraform_data.argocd_crds_render` gains a projection discriminator in
+`triggers_replace`, so the **first** `tofu plan` after the bump replaces it once
+and re-applies the CRDs — now CRD-only, under
+`--field-manager=talos-platform-base-day0`, without `--force-conflicts`. That is
+expected and is what re-captures the stale twelve-kind payload.
+
+`kubernetes_version` leaves the trigger set, so a routine Kubernetes upgrade no
+longer re-fires the apply.
+
+**Not retroactive.** Your cluster keeps the `kubectl` field-manager entries the
+old force-apply recorded on `argocd-cm` / `argocd-rbac-cm`. Nothing further
+re-takes them; ArgoCD applies client-side by default and keeps writing the
+values it owns, so the stale entry is inert bookkeeping. Reasoned from apply
+semantics, not observed — this repository has no cluster. If you run the argocd
+component with server-side apply, confirm it on your own cluster; you can drop
+the entry from `metadata.managedFields` if you want it gone.
+
+If a future `argocd_chart_version` bump now surfaces a CRD **conflict**, that is
+the intended signal — your steady-state CRDs have moved past the seed's pin.
+Resolve it deliberately rather than forcing.
+
+### Recovery — if you lose access
+
+1. **Fix it in git.** Correct the overlay and let self-heal reconcile. This is
+   the supported path.
+2. **Break glass**, if you cannot wait: `kubectl -n argocd patch cm argocd-rbac-cm`
+   with a working policy. This is a deliberate exception to the "never
+   `kubectl apply` ArgoCD-managed resources" constraint, and ArgoCD reverts it on
+   the next sync — use it to regain access, then fix git.
+3. **Re-enabling `admin`** takes more than `admin.enabled: "true"`: a cleared
+   password must be restored as a bcrypt hash in `argocd-secret`.
+
+The substrate runs `argocd-server` with `server.insecure: true`, so a break-glass
+admin credential crosses the gateway→pod hop in cleartext. Rotate it promptly and
+keep the admin-enabled window short.
+
+---
+
+## Unreleased (ships in the next MAJOR) — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (additive — manual action for argocd-overlay consumers)
 
 **Type:** MINOR (additive for consumers). Decision: ADR-0024
 (`knowledge/decisions/0024-argocd-substrate-relocation.md`, issue #156,
@@ -107,7 +221,7 @@ change this steady-state publication path.
 
 ---
 
-## Unreleased (next MINOR) — Cilium chart `1.19.4` → `1.20.0` (MINOR — action required for EVERY consumer)
+## Unreleased (ships in the next MAJOR) — Cilium chart `1.19.4` → `1.20.0` (additive by interface — action required for EVERY consumer)
 
 **Type:** MINOR by interface (no input renamed, no input removed, no schema
 change) — but **not** low-effort to adopt, and the SemVer label is the wrong

@@ -147,8 +147,23 @@ render "$tmp/bootstrap.yaml" "$BOOTSTRAP_VALUES"
 check_path "steady-state"   "$tmp/steady.yaml"
 check_path "bootstrap-seed" "$tmp/bootstrap.yaml"
 
-# I3 — no placeholder Argo CD base URL. PATH-SCOPED, not shared: it holds for the
-# bootstrap seed today and extends to the steady-state render with #219. The chart
+# require_cm <label> <render> <configmap-name>
+# Presence anchor for the name-scoped invariants below: a name-scoped NEGATIVE
+# assertion passes vacuously if the chart renames or drops the ConfigMap it
+# selects on. I1/I2 avoid this by scanning every document; I3/I4 cannot (they
+# assert on generic key names — see below), so they need the anchor instead.
+# Exit 2, not 3 — an absent ConfigMap is a render-shape problem, not a violated
+# invariant, and the two must not be conflated in the exit code.
+require_cm() {
+  local label="$1" render="$2" cm="$3" anchor
+  anchor="$(yq e "select(.kind == \"ConfigMap\" and .metadata.name == \"${cm}\") | .metadata.name" "$render" 2>/dev/null | grep -c "^${cm}\$" || true)"
+  if [ "$anchor" -ne 1 ]; then
+    echo "::error::[${label}] anchor: expected exactly one ${cm} ConfigMap in the render, found ${anchor} — the name-scoped invariant on it would pass vacuously; the chart render shape changed." >&2
+    exit 2
+  fi
+}
+
+# I3 — no placeholder Argo CD base URL. SHARED across both paths. The chart
 # derives configs.cm.url from global.domain, whose default is a placeholder
 # hostname; ArgoCD documents `url` as required for SSO and derives the OIDC
 # redirect URI from it, so a placeholder does not fail loudly — it fails at the
@@ -161,12 +176,130 @@ check_path "bootstrap-seed" "$tmp/bootstrap.yaml"
 # accepted residual — the chart renders it via `default (printf ...)`, and Helm's
 # `default` treats "" as unset, so it cannot be cleared without disabling the
 # whole notifications workload. See the component README §Substrate invariants.
-assert_invariant "bootstrap-seed" "$tmp/bootstrap.yaml" \
-  'select(.kind == "ConfigMap" and .metadata.name == "argocd-cm") | (.data // {}) | keys | .[] | select(. == "url")' \
-  'I3 violated: argocd-cm carries a `url` key (expected configs.cm.url: "" — the consumer owns this value)'
+check_no_url() {
+  local label="$1" render="$2"
+  require_cm "$label" "$render" argocd-cm
+  assert_invariant "$label" "$render" \
+    'select(.kind == "ConfigMap" and .metadata.name == "argocd-cm") | (.data // {}) | keys | .[] | select(. == "url")' \
+    'I3 violated: argocd-cm carries a `url` key (expected configs.cm.url: "" — the consumer owns this value)'
+}
+
+check_no_url "steady-state"   "$tmp/steady.yaml"
+check_no_url "bootstrap-seed" "$tmp/bootstrap.yaml"
+
+# I4 — the substrate ships NO identity: argocd-rbac-cm carries no NON-EMPTY
+# policy.csv. STEADY-STATE ONLY by construction, not by omission — the seed
+# renders from the module values, which have never carried an RBAC policy, and
+# the asymmetry that motivates I4 is steady-state-specific: the published
+# component is what a consumer's overlay merges onto, so a principal shipped
+# here becomes a standing grant in every consuming cluster.
+#
+# The assertion is on EMPTINESS, not absence: the chart's argocd-rbac-cm template
+# emits policy.csv unconditionally, so `""` is the shipped state and a `has(key)`
+# check would false-positive forever. Whitespace-only counts as empty — a policy
+# of blank lines grants nothing, and rejecting it would gate formatting, not
+# access.
+check_no_shipped_identity() {
+  local label="$1" render="$2"
+  require_cm "$label" "$render" argocd-rbac-cm
+  assert_invariant "$label" "$render" \
+    'select(.kind == "ConfigMap" and .metadata.name == "argocd-rbac-cm") | (.data."policy.csv" // "") | select(test("\\S"))' \
+    'I4 violated: argocd-rbac-cm ships a non-empty policy.csv (the substrate ships no identity — the consumer owns their access policy; see knowledge/reference/argocd-sso-contract.md)'
+}
+
+check_no_shipped_identity "steady-state" "$tmp/steady.yaml"
+
+# --- E: the worked consumer-SSO overlay actually wires what the contract claims.
+#
+# I1-I4 assert what the base does NOT ship. That is only half the contract: the
+# other half is that a consumer CAN supply the missing identity, through the
+# documented mechanism, without losing the keys the base does ship. Documentation
+# alone cannot hold that — a chart bump that renamed a ConfigMap, or a patch that
+# silently stopped matching, would leave the prose confidently wrong.
+#
+# CONTROL RUN FIRST. Every assertion below is a comparison against the UNPATCHED
+# build, not a bare property of the patched one. A one-sided check ("the merged
+# argocd-cm has a url") passes identically whether the patch worked or the base
+# started shipping a url again — the control is what makes it evidence.
+#
+# Built from the COMMITTED _rendered/ manifests via kustomize, i.e. the same
+# artifact a consumer consumes, not the fresh helm render the invariants above
+# use. That is deliberate: this asserts the consumer-facing mechanism.
+EXAMPLE_DIR="${ROOT}/kubernetes/examples/argocd-consumer-sso"
+if [ -d "$EXAMPLE_DIR" ]; then
+  for t in kustomize kubeconform; do
+    command -v "$t" >/dev/null 2>&1 || { echo "::error::required tool not found on PATH: $t (needed for the consumer-SSO overlay check)" >&2; exit 1; }
+  done
+
+  echo "==> building the consumer-SSO overlay and its unpatched control"
+  kustomize build "$ARGOCD_DIR"   > "$tmp/ctl.yaml" 2>"$tmp/kz.err" || {
+    echo "::error::kustomize build failed for ${ARGOCD_DIR#"${ROOT}/"} (the control build)" >&2
+    sed 's/^/    /' "$tmp/kz.err" >&2; exit 2; }
+  kustomize build "$EXAMPLE_DIR" > "$tmp/sso.yaml" 2>"$tmp/kz.err" || {
+    echo "::error::kustomize build failed for ${EXAMPLE_DIR#"${ROOT}/"} — the documented consumer overlay no longer builds against the component it patches (knowledge/reference/argocd-sso-contract.md)" >&2
+    sed 's/^/    /' "$tmp/kz.err" >&2; exit 2; }
+
+  # cm_data <render> <configmap-name> <yq-suffix>
+  cm_data() {
+    yq e "select(.kind == \"ConfigMap\" and .metadata.name == \"$2\") | .data $3" "$1" 2>/dev/null || true
+  }
+
+  # E0 — the control genuinely lacks what the patch is claimed to add. Without
+  # this, E1/E3 would pass even if the base regressed to shipping both values.
+  if [ "$(cm_data "$tmp/ctl.yaml" argocd-cm '| has("url")')" != "false" ] ||
+     [ -n "$(cm_data "$tmp/ctl.yaml" argocd-rbac-cm '."policy.csv"' | tr -d '[:space:]')" ]; then
+    echo "::error::[consumer-sso] E0 control: the UNPATCHED component already carries a url and/or a policy.csv, so E1/E3 below would prove nothing about the overlay. Fix the component, not this check." >&2
+    exit 3
+  fi
+
+  # E1 — the overlay supplies the base URL.
+  if [ -z "$(cm_data "$tmp/sso.yaml" argocd-cm '.url // ""' | tr -d '[:space:]')" ]; then
+    echo "::error::[consumer-sso] E1: the overlay does not produce a non-empty argocd-cm url — the documented SSO wiring no longer applies." >&2
+    violations=1
+  fi
+
+  # E2 — and an oidc.config that PARSES and carries the two fields without which
+  # the connector cannot be constructed. A syntactically broken block would
+  # otherwise satisfy a mere presence check.
+  oidc="$(cm_data "$tmp/sso.yaml" argocd-cm '."oidc.config" // ""')"
+  if ! printf '%s\n' "$oidc" | yq e '.issuer // "" | select(. != "")' - >/dev/null 2>&1 ||
+     [ -z "$(printf '%s\n' "$oidc" | yq e '.issuer // ""' - 2>/dev/null | tr -d '[:space:]')" ] ||
+     [ -z "$(printf '%s\n' "$oidc" | yq e '.clientID // ""' - 2>/dev/null | tr -d '[:space:]')" ]; then
+    echo "::error::[consumer-sso] E2: argocd-cm oidc.config does not parse as YAML carrying both issuer and clientID." >&2
+    violations=1
+  fi
+
+  # E3 — and the RBAC policy the consumer owns.
+  if [ -z "$(cm_data "$tmp/sso.yaml" argocd-rbac-cm '."policy.csv" // ""' | tr -d '[:space:]')" ]; then
+    echo "::error::[consumer-sso] E3: the overlay does not produce a non-empty argocd-rbac-cm policy.csv." >&2
+    violations=1
+  fi
+
+  # E4 — strategic merge, not replacement. A JSON6902 patch or a `$patch: replace`
+  # silently drops every base-shipped key (kustomize.buildOptions,
+  # resource.exclusions, the compare options) while E1-E3 still pass. This is the
+  # failure the contract warns about, so it gets a mechanical check.
+  for cm in argocd-cm argocd-rbac-cm; do
+    missing="$(comm -23 \
+      <(cm_data "$tmp/ctl.yaml" "$cm" '| keys | .[]' | sort -u) \
+      <(cm_data "$tmp/sso.yaml" "$cm" '| keys | .[]' | sort -u))"
+    if [ -n "$missing" ]; then
+      echo "::error::[consumer-sso] E4: patching ${cm} DROPPED base-shipped .data keys — the patch replaces the map instead of merging into it:" >&2
+      printf '%s\n' "$missing" | sed 's/^/    /' >&2
+      violations=1
+    fi
+  done
+
+  # E5 — and the result is still valid Kubernetes.
+  if ! kubeconform -strict -ignore-missing-schemas "$tmp/sso.yaml" >"$tmp/kc.out" 2>&1; then
+    echo "::error::[consumer-sso] E5: the patched build fails kubeconform -strict" >&2
+    sed 's/^/    /' "$tmp/kc.out" >&2
+    violations=1
+  fi
+fi
 
 if [ "$violations" -ne 0 ]; then
   echo "::error::ArgoCD substrate invariants FAILED (see above). Declared in kubernetes/substrate/argocd/README.md §Substrate invariants." >&2
   exit 3
 fi
-echo "OK: ArgoCD substrate invariants hold (bundled Dex disabled + no server.dex.server* cmd-params in both paths; no placeholder argocd-cm url in the bootstrap seed)."
+echo "OK: ArgoCD substrate invariants hold (bundled Dex disabled + no server.dex.server* cmd-params + no placeholder argocd-cm url in both paths; no shipped RBAC identity in the steady-state render; the worked consumer-SSO overlay merges url/oidc.config/policy.csv in without dropping a base-shipped key)."
