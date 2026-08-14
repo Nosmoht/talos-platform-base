@@ -890,30 +890,161 @@ data "helm_template" "argocd_crds" {
   }
 }
 
-# Freeze the ArgoCD CRD render — same decoupling as the seed renders, BUT this path is
-# NOT create-only: the null_resource below is a deliberate Day-2 convergence that
-# kubectl-applies the CRDs and SHOULD re-run on an intended chart/version bump. So unlike
-# the seed freezes, this one carries triggers_replace.
+# CRD-ONLY projection of the render (#218), applied BEFORE the freeze below so
+# what gets frozen, hashed and applied are the same bytes — and so the projection
+# stays plan-visible (a terraform_data output is unknown until apply, which would
+# make it untestable and would defer the precondition to apply time).
 #
-# INVARIANT: triggers_replace MUST mirror EVERY render-affecting input of
-# data.helm_template.argocd_crds, or an intended bump silently won't re-apply (the
-# ignore_changes swallows the render delta). Today that data source reads only
-# argocd_chart_version, argocd_namespace, kubernetes_version (no values block — unlike
-# the argocd *seed*, which also layers argocd_values_override). Keep this list in sync
-# if an input is ever added. check-render-determinism.sh asserts triggers_replace is
-# PRESENT, not COMPLETE; this comment is the completeness binding. Result: re-capture +
-# re-apply on an intended bump; no re-apply / local_file churn from pure render drift
-# at identical inputs (#123).
+# Why project at all: the data source above renders with NO values block, so its
+# non-CRD half is pure chart defaults — bundled Dex on, server.dex.server*
+# cmd-params, argocd-cm/argocd-rbac-cm at upstream values. Applying that half
+# converged the seeded app onto the WRONG values, and did so authoritatively: the
+# apply used to pass --force-conflicts, taking field-manager ownership of
+# argocd-cm and argocd-rbac-cm away from argocd-controller on every re-fire
+# (triggers_replace includes kubernetes_version, so a routine k8s bump suffices).
+# That competed with ArgoCD self-management — this platform's convergence
+# mechanism for the ArgoCD app itself (adr-0024) — and reset any consumer RBAC
+# patch. So the module delivers CRDs and nothing else; the app converges through
+# the steady-state component the root Application reconciles.
+# Decision: knowledge/decisions/0025-argocd-crd-apply-scope.md.
+#
+# The kind filter uses `try(..., "")`, so a document yamldecode cannot read drops
+# out silently rather than failing the plan. That is the right behaviour for a
+# non-CRD document, and the WRONG behaviour for a CRD that was cut in half: a
+# `\n---\n` sequence occurring inside a CRD's embedded openAPIV3Schema splits it,
+# the HEAD fragment still decodes with kind + metadata.name and is kept, and the
+# tail is discarded — a truncated schema, server-side-applied over a live one.
+# `argocd_crd_undecodable` below makes that visible; see its precondition.
+locals {
+  # THE single live read of the render. Everything downstream derives from this
+  # local, which is what keeps check-render-determinism.sh's one-read property
+  # true while still allowing more than one derived view.
+  argocd_crd_source_docs = var.deploy_argocd ? split("\n---\n", data.helm_template.argocd_crds[0].manifest) : []
+
+  argocd_crd_docs = [
+    for doc in local.argocd_crd_source_docs :
+    doc if try(yamldecode(doc).kind, "") == "CustomResourceDefinition"
+  ]
+  argocd_crd_manifest = join("\n---\n", local.argocd_crd_docs)
+
+  # Non-blank source documents that do not parse at all. This is the reachable
+  # detector the "<unparseable>" fallback below is NOT: the fallback is dead by
+  # construction, because every document that survives the kind filter has
+  # already decoded, and split(sep, join(sep, xs)) == xs whenever no element of
+  # xs contains sep — which is guaranteed here, since xs came from splitting on
+  # that same separator. The fallbacks stay as belt-and-braces; this local is
+  # what actually fires when the chart's render shape breaks the split.
+  argocd_crd_undecodable = [
+    for doc in local.argocd_crd_source_docs :
+    substr(trimspace(doc), 0, 80) if trimspace(doc) != "" && try(yamldecode(doc), null) == null
+  ]
+
+  # Test/oracle surface, exposed through outputs so
+  # tests/argocd-crd-scope.tftest.hcl can bind the property at plan time — the
+  # frozen terraform_data output is unknown until apply.
+  #
+  # Deliberately re-split and re-decode `argocd_crd_manifest`, NOT the
+  # argocd_crd_docs list it was joined from. The manifest is what gets frozen,
+  # hashed and applied; deriving the oracle from the sibling list would let the
+  # two diverge silently — swap the join for something else and the assertion
+  # would still describe the discarded list.
+  argocd_crd_payload_docs = split("\n---\n", local.argocd_crd_manifest)
+  argocd_crd_kinds = local.argocd_crd_manifest == "" ? [] : distinct([
+    for doc in local.argocd_crd_payload_docs : try(yamldecode(doc).kind, "<unparseable>")
+  ])
+  argocd_crd_names = local.argocd_crd_manifest == "" ? [] : sort([
+    for doc in local.argocd_crd_payload_docs : try(yamldecode(doc).metadata.name, "<unparseable>")
+  ])
+  # The CRD set the chart must deliver. Used both by the plan-time precondition
+  # and by the test oracle, so the guard and its error message assert the same
+  # thing — a count check would pass on three wrong CRDs.
+  argocd_expected_crds = [
+    "applications.argoproj.io",
+    "applicationsets.argoproj.io",
+    "appprojects.argoproj.io",
+  ]
+}
+
+# Freeze the ArgoCD CRD render — same decoupling as the seed renders, BUT this path is
+# NOT create-only: the null_resource below re-applies on an intended chart bump. So
+# unlike the seed freezes, this one carries triggers_replace.
+#
+# INVARIANT: triggers_replace MUST mirror every input that affects THE PAYLOAD, or an
+# intended bump silently won't re-apply (the ignore_changes swallows the render delta).
+# check-render-determinism.sh asserts triggers_replace is PRESENT, not COMPLETE; this
+# comment plus the test named below are the completeness binding.
+#
+# kubernetes_version is deliberately NOT in the list, even though the data source
+# passes it as kube_version. Keeping it there made a routine k8s upgrade re-fire a
+# kubectl apply against CRDs argocd-controller owns by then (the steady-state
+# component ships the same three CRDs and syncs them with ServerSideApply=true) —
+# a conflict looking for an occasion, with no payload change to justify it. Since
+# the apply no longer forces, such a conflict now FAILS the apply, so removing a
+# groundless re-fire is worth more than it was before.
+#
+# Why the payload does not depend on it, stated as the mechanism actually is:
+# this chart does NOT use Helm's un-templated `crds/` directory. Its three CRDs
+# live in `templates/crds/` and ARE rendered as templates (verified against the
+# pinned 9.4.5 tarball). What makes them version-independent is narrower and
+# checkable: every Go-template directive in those three files interpolates
+# `.Values.crds.{install,keep,annotations,additionalLabels}` and nothing else —
+# no `.Capabilities`, no `.Release`. (The many `KubeVersion` strings in the files
+# are prose inside the CRDs' own schema descriptions, not template references.)
+# The measurement agrees: byte-identical render under --kube-version 1.31.0 and
+# 1.35.0.
+#
+# What binds it going forward is the STRUCTURAL half only:
+# tests/argocd-crd-scope.tftest.hcl asserts the payload is the same three CRDs
+# and the single kind CustomResourceDefinition at a kubernetes_version far from
+# the suite default. The BYTE-level claim is deliberately UNGATED — OpenTofu has
+# no cross-run output reference, so two renders cannot be digest-compared inside
+# one test suite. REVISIT TRIGGER: because these files are templates, a future
+# chart CAN reach `.Capabilities.KubeVersion` in them; re-check the directive
+# list above at every argocd_chart_version bump. adr-0025 §Consequences carries
+# the same residual. Do not upgrade this comment's claim without the test that
+# would justify it.
 resource "terraform_data" "argocd_crds_render" {
   count = var.deploy_argocd ? 1 : 0
-  input = data.helm_template.argocd_crds[0].manifest
+  input = local.argocd_crd_manifest
   triggers_replace = [
     var.argocd_chart_version,
     var.argocd_namespace,
-    var.kubernetes_version,
+    # Bump when the PROJECTION changes shape, so an existing cluster re-captures a
+    # freeze that still holds a pre-#218 full-chart render exactly once. Without it
+    # ignore_changes keeps the stale twelve-kind payload until an unrelated input moves.
+    "crd-projection-v1",
   ]
   lifecycle {
     ignore_changes = [input]
+    precondition {
+      # Assert the CRDs BY NAME, not by count: three documents of the wrong kind
+      # of CRD would satisfy a count check and kubectl-apply an ArgoCD-breaking
+      # set. Names come from the same plan-known projection as the kinds.
+      condition     = alltrue([for n in local.argocd_expected_crds : contains(local.argocd_crd_names, n)])
+      error_message = "argocd CRD projection is missing ${jsonencode(setsubtract(local.argocd_expected_crds, local.argocd_crd_names))} — produced ${jsonencode(local.argocd_crd_names)}; the chart render shape changed, check the split/yamldecode filter in main.tf."
+    }
+    precondition {
+      # COMPLETENESS above, EXCLUSIVITY here — and the pair is the point. The name
+      # check is a SUBSET test: delete the kind filter from the projection and the
+      # payload becomes the full twelve-kind chart render, which still CONTAINS all
+      # three CRD names and would sail through. That is precisely the defect #218
+      # exists to remove, so it gets its own condition instead of relying on a test
+      # only the network-gated, advisory `task tofu:test` reaches. Every consumer
+      # plan is now a gate for it.
+      condition     = alltrue([for k in local.argocd_crd_kinds : k == "CustomResourceDefinition"])
+      error_message = "argocd CRD projection carries non-CRD documents ${jsonencode(setsubtract(local.argocd_crd_kinds, ["CustomResourceDefinition"]))} — the Day-0 apply must deliver CustomResourceDefinitions and nothing else (knowledge/decisions/0025-argocd-crd-apply-scope.md); check the kind filter in main.tf."
+    }
+    precondition {
+      # The kind filter drops what it cannot parse. Harmless for a stray
+      # document; NOT harmless for a CRD cut in half by a "\n---\n" inside its
+      # openAPIV3Schema, where the head fragment still decodes and is kept while
+      # the tail vanishes — a truncated schema applied server-side over a live
+      # one, which strips every field the served schema no longer knows. Nothing
+      # downstream can see that, because by then the bad document IS the CRD. So
+      # it is caught here, on the source split, before the filter runs.
+      condition     = length(local.argocd_crd_undecodable) == 0
+      error_message = "argocd CRD render contains ${length(local.argocd_crd_undecodable)} document(s) that do not parse as YAML, starting with ${jsonencode(local.argocd_crd_undecodable)} — the kind filter would drop them silently. If a CRD's embedded schema now contains a line matching the document separator, the surviving half is a TRUNCATED CRD; do not apply it."
+    }
   }
 }
 
@@ -929,7 +1060,7 @@ resource "local_sensitive_file" "kubeconfig" {
 resource "local_file" "argocd_crds" {
   count    = var.deploy_argocd ? 1 : 0
   content  = terraform_data.argocd_crds_render[0].output
-  filename = "${path.module}/.tmp/${var.cluster_name}-argocd.yaml"
+  filename = "${path.module}/.tmp/${var.cluster_name}-argocd-crds.yaml"
 }
 
 resource "null_resource" "argocd_crds" {
@@ -938,6 +1069,9 @@ resource "null_resource" "argocd_crds" {
 
   # Re-run on an intended chart/version/namespace bump (the frozen render's
   # triggers_replace inputs), NOT on non-deterministic helm render drift (#123).
+  # Hashed over the FROZEN value, which since #218 is the CRD projection — so the
+  # trigger mirrors exactly what kubectl applies, and chart churn confined to the
+  # discarded non-CRD half cannot move it.
   triggers = {
     manifest_sha = sha256(terraform_data.argocd_crds_render[0].output)
   }
@@ -945,9 +1079,27 @@ resource "null_resource" "argocd_crds" {
   provisioner "local-exec" {
     interpreter = ["/bin/sh", "-c"]
     environment = { KUBECONFIG = local_sensitive_file.kubeconfig[0].filename }
-    # Full ArgoCD render (app + CRDs) applied server-side: ensures the CRDs land
-    # and converges the app the inlineManifest seeded at boot. Idempotent.
-    command = "kubectl apply --server-side --force-conflicts -f ${local_file.argocd_crds[0].filename}"
+    # CRDs only, server-side, under a dedicated field manager and WITHOUT
+    # --force-conflicts.
+    #
+    # --field-manager: kubectl otherwise records the generic "kubectl", which is
+    # also what an operator's ad-hoc apply uses, so managedFields could not tell
+    # the module's writes from a human's. Upstream made kubectl's own subcommands
+    # use distinct manager names for exactly this reason, and ArgoCD's SSA design
+    # explicitly refuses to inherit the kubectl default for its controller.
+    #
+    # No force: upstream recommends controllers force conflicts on objects THEY
+    # OWN AND MANAGE — and after Day-0 this module owns nothing here. The
+    # steady-state component ships the same three CRDs and ArgoCD syncs them with
+    # ServerSideApply=true (and forces, by its own design), so argocd-controller
+    # is the owner from the first sync on. Forcing from here would strip its
+    # ownership entries and roll a GitOps-managed CRD schema back to the older
+    # seed pin — silent data loss. This is a seed-then-hand-off path: the first
+    # apply lands CRDs that do not exist yet and cannot conflict; a later apply
+    # only happens on a deliberate argocd_chart_version bump, where a conflict is
+    # a genuine "the steady state has moved past this pin" signal to resolve, not
+    # to steamroll. #218 / adr-0025.
+    command = "kubectl apply --server-side --field-manager=talos-platform-base-day0 -f ${local_file.argocd_crds[0].filename}"
   }
 }
 

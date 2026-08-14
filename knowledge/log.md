@@ -2,6 +2,76 @@
 
 ## 2026-08-14
 
+Second pass, after a five-lens independent review. Corrections to load-bearing
+claims are listed first because they change what the record asserts, not just
+how it reads:
+
+- `decisions/0025-argocd-crd-apply-scope.md`: three corrections. (1) The
+  mechanism behind removing `kubernetes_version` from `triggers_replace` was
+  wrong — this chart has no un-templated `crds/` directory; its CRDs live in
+  `templates/crds/` and ARE rendered as templates. The conclusion survives on a
+  narrower, verified basis: every directive in those three files interpolates
+  `.Values.crds.*` only. Recorded with a revisit trigger, since a future chart
+  version can reach `.Capabilities` there. (2) "A plan-time precondition requires
+  at least three surviving documents" described the count-based form the spec
+  explicitly rejects; the guard is by-name, and two further preconditions
+  (exclusivity, parseability) were added. (3) The residual-field-manager
+  reasoning had its default inverted: it argued from "ArgoCD applies client-side
+  by default", but the shipped root Application sets `ServerSideApply=true`, so
+  server-side is the default path for anyone using it.
+- `reference/argocd-sso-contract.md`: the remote-base fetch is no longer
+  described as using "the Application's own credentials" — an unverified claim
+  about credential handling. It is stated as what it is for a public base: an
+  anonymous, unverified fetch that bypasses the repo's cosign/SLSA/SBOM posture,
+  with a commit SHA recommended over a mutable tag and the verified vendored
+  path named as the stronger alternative. The Secret trust boundary gains its
+  read side (`server.secretkey` makes `get secrets` in the namespace
+  superuser-equivalent); the `server.insecure` caveat is re-scoped from the
+  break-glass credential to every SSO session token on the same hop; the
+  cut-over gains an explicit SSO-session step and the retirement of
+  `argocd-initial-admin-secret`; the PKCE recipe points at the version-specific
+  Argo CD switch instead of implying registration alone suffices.
+
+- `reference/argocd-sso-contract.md`: new. The consumer-facing half of the
+  identity removal — what the base ships versus what the consumer owns, the
+  Kustomize remote-base mechanism (ArgoCD resolves `$ref` only in
+  `helm.valueFiles`, so a Multi-Source `$base/...` kustomization cannot work),
+  the external-Secret trust boundary, the PKCE caveats, the flat Casbin subject
+  namespace, and a cut-over whose predicate is authorization rather than login.
+- `architecture/substrate.md`: §What ships in the OCI artifact corrected. Its
+  entry list had drifted — it claimed 15 entries and omitted the three argocd
+  ones the allowlist has carried for some time, while §What stays git-only
+  listed the whole component as repo-only. Both are now accurate, and the fourth
+  argocd entry (`kustomization.yaml`) is recorded with the reason it ships: the
+  rendered manifests alone are not a buildable unit.
+- `workflows/first-consumer-cluster.md`: the Day-2 narration now names the
+  remote-base mechanism and points at the SSO contract for the identity step.
+  `timestamp` bumped.
+- `decisions/0025-argocd-crd-apply-scope.md`: new. The module's post-health-gate
+  `kubectl apply` is projected down to CustomResourceDefinition documents and
+  loses `--force-conflicts`. Records what the full-render apply actually did —
+  twelve kinds, bundled Dex included, force-taking field-manager ownership of
+  `argocd-cm` and `argocd-rbac-cm` on every re-fire — why passing the seed values
+  in was rejected as the fix, and the residuals (existing clusters are not
+  repaired retroactively; verification is render- and plan-level because no
+  cluster is available to this repo).
+- `decisions/0024-argocd-substrate-relocation.md`: dated correction appended to
+  the second decision driver. Its "argocd-controller is the sole field-manager
+  owner" claim was never true — the force-apply co-owned those keys all along.
+  The conclusion it supported is unaffected. `timestamp` left at the decision
+  date per the bundle's decision-concept rule.
+- `architecture/day-zero-bootstrap.md`: §The direct-apply exception now states
+  the apply's real former scope and its new CRD-only one; the invariant list
+  gains I3 (shared across both render paths) and I4 (steady-state only), and
+  corrects I1's SSO wording from a Helm-values path to a patch on the
+  `argocd-cm` ConfigMap. `timestamp` bumped — `main.tf` and
+  `check-argocd-substrate-invariants.sh`, both declared sources, changed.
+- `reference/manifest-pipeline.md`: §ArgoCD substrate invariants now carries
+  I1-I4 with I3 shared across both paths, the presence-anchor rationale for the
+  name-scoped ones, and the consumer-overlay E-checks with their control build.
+  `timestamp` bumped — its declared source `check-argocd-substrate-invariants.sh`
+  changed.
+
 - `decisions/0022-cilium-observability-and-argocd-self-management.md`: dated
   addendum recording the two further typed metric-set inputs
   (`cilium_agent_metric_overrides`, `cilium_hubble_open_metrics`). Nothing is

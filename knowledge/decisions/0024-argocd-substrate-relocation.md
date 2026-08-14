@@ -46,6 +46,15 @@ render against a stale hand-pulled `vendor/base/`.
   `argocd-cm.oidc.config`, `argocd-rbac-cm.*` and
   `argocd-notifications-cm.context`, byte-matching the committed render —
   folding it into the create-only seed would strand consumer patches.
+
+  > [2026-08-14 correction, recorded by adr-0025] The "sole field-manager owner"
+  > half of this driver was never true. The module's post-health-gate
+  > `kubectl apply --server-side --force-conflicts` applied a full chart-default
+  > render, which made `kubectl` a co-owner of exactly those keys and re-took
+  > them on every re-fire. adr-0025 scopes that apply to CRDs only and drops the
+  > force flag. The conclusion drawn here — do not fold the steady-state layer
+  > into the create-only seed — is unaffected and stands; only the stated
+  > evidence was wrong.
 - The component must be consumable from the published artifact, or the
   consumer-facing docs and downstream overlays stay structurally broken.
 - Consumer-side cost must stay minimal (a path edit, not a re-architecture).

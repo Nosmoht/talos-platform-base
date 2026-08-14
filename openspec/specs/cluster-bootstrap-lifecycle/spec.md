@@ -17,7 +17,9 @@ configuration apply to maintenance-mode nodes, single-node etcd bootstrap,
 kubeconfig/talosconfig retrieval, and the blocking health gate.
 
 `main.tf` also hosts the ArgoCD, Cilium and cert-approver render/seed
-regions (including the post-health ArgoCD CRD server-side apply) plus the
+regions (including the post-health ArgoCD CRD server-side apply and the
+CRD-only projection bounding it — both owned descriptively by the
+`argocd-module-seed` spec) plus the
 Image-Factory and machine-config regions; the latter two are owned
 descriptively by the `node-image-composition` and
 `machine-config-generation` specs. The Cilium value-computation locals

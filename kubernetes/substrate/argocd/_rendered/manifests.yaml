@@ -778,7 +778,6 @@ data:
   statusbadge.enabled: "false"
   timeout.hard.reconciliation: 0s
   timeout.reconciliation: 180s
-  url: https://argocd.example.com
 kind: ConfigMap
 metadata:
   labels:
@@ -858,11 +857,10 @@ metadata:
 ---
 apiVersion: v1
 data:
-  policy.csv: |
-    g, nosmoht, role:admin
+  policy.csv: ""
   policy.default: ""
   policy.matchMode: glob
-  scopes: '[preferred_username]'
+  scopes: '[groups]'
 kind: ConfigMap
 metadata:
   labels:
@@ -1622,7 +1620,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cm: ca97be952ce0a41e811d3963c63e55c8af66c4f999fdac1b91dc227f862720fa
+        checksum/cm: c995c00fca6055fe7e031e7df080d5de224858a42b66f6b25ea0fc222ac4d64e
         checksum/cmd-params: b1932f83f9390d8c495af6745b32e8aa92e1ff2a6f07dc7fbbed614017f2eb6c
       labels:
         app.kubernetes.io/component: repo-server
@@ -2069,7 +2067,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cm: ca97be952ce0a41e811d3963c63e55c8af66c4f999fdac1b91dc227f862720fa
+        checksum/cm: c995c00fca6055fe7e031e7df080d5de224858a42b66f6b25ea0fc222ac4d64e
         checksum/cmd-params: b1932f83f9390d8c495af6745b32e8aa92e1ff2a6f07dc7fbbed614017f2eb6c
       labels:
         app.kubernetes.io/component: server
@@ -2531,7 +2529,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cm: ca97be952ce0a41e811d3963c63e55c8af66c4f999fdac1b91dc227f862720fa
+        checksum/cm: c995c00fca6055fe7e031e7df080d5de224858a42b66f6b25ea0fc222ac4d64e
         checksum/cmd-params: b1932f83f9390d8c495af6745b32e8aa92e1ff2a6f07dc7fbbed614017f2eb6c
       labels:
         app.kubernetes.io/component: application-controller

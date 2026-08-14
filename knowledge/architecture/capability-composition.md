@@ -3,7 +3,7 @@ type: architecture
 title: Capability Composition
 description: How per-node hardware capabilities compose Layer-C atoms, the base-owned provisioning-profile catalog, deduplicated schematics, and node labels in the talos-cluster module.
 tags: [layer-c, hardware-capabilities, talos, opentofu]
-timestamp: 2026-07-15
+timestamp: 2026-08-14
 sources:
   - tofu/modules/talos-cluster/composition.tf
   - tofu/modules/talos-cluster/profiles.tf
