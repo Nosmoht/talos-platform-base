@@ -1,0 +1,130 @@
+---
+type: decision
+title: "ADR: The Day-0 ArgoCD kubectl apply delivers CRDs and nothing else"
+description: "The module's post-health-gate kubectl apply is projected down to CustomResourceDefinition documents and loses --force-conflicts, ending a Day-2 convergence that pushed chart defaults over ArgoCD's own state and force-took field-manager ownership of argocd-cm and argocd-rbac-cm."
+status: accepted
+id: base:argocd-crd-apply-scope
+timestamp: 2026-08-14
+deciders:
+  - maintainer
+consulted: []
+informed: []
+supersedes: []
+superseded_by: []
+related:
+  - /decisions/0024-argocd-substrate-relocation.md
+  - /decisions/0006-opentofu-cluster-lifecycle.md
+tags: [adr, argocd, talos-cluster, day-zero, field-manager]
+---
+
+# ADR: The Day-0 ArgoCD kubectl apply delivers CRDs and nothing else
+
+## Context and Problem Statement
+
+The three ArgoCD CRDs are ~1.8 MB and blow the Talos inlineManifest size budget,
+so the seed ships the application without them and the module applies them
+separately with `kubectl` after the cluster health gate.
+
+The data source behind that apply renders the argo-cd chart with **no values
+block** — only `crds.install = true`. Everything it produces beyond the CRDs is
+therefore pure chart defaults. Until this decision the module applied that whole
+render with `kubectl apply --server-side --force-conflicts`, and its own comment
+described the non-CRD half as intentional: it would "converge the app the
+inlineManifest seeded at boot".
+
+It converged it onto the wrong values, and did so authoritatively. Measured
+against the pinned chart, the render carries twelve kinds — `ServiceAccount`,
+`ConfigMap`, `ClusterRole`, `ClusterRoleBinding`, `Role`, `RoleBinding`,
+`Service`, `Deployment`, `StatefulSet`, `Job`, `Secret` alongside the CRDs — so
+the apply:
+
+- delivered a bundled `argocd-dex-server` and `server.dex.server*` cmd-params on
+  every provisioned cluster, contradicting substrate invariants I1 and I2 at
+  runtime while CI reported green (the invariants gate reads the two values
+  files, which this path does not use);
+- overwrote the seed's own `server.insecure` and `kustomize.buildOptions` with
+  chart defaults;
+- reset `argocd-rbac-cm` to chart defaults.
+
+The trigger set (`argocd_chart_version`, `argocd_namespace`,
+`kubernetes_version`) means this is not a one-time Day-0 event: a routine
+Kubernetes upgrade re-fires it. `--force-conflicts` made the apply take
+field-manager ownership rather than error on conflict, so it won each time.
+
+The last consequence is the load-bearing one. The base is about to stop shipping
+an RBAC binding, which makes `argocd-rbac-cm` the home of every consumer's access
+policy. Leaving a routine `tofu apply` able to reset it would convert a cosmetic
+defect into an outage primitive.
+
+## Decision Drivers
+
+- ArgoCD self-management is this platform's convergence mechanism for the ArgoCD
+  application itself (adr-0024). A second, force-applying convergence path
+  competes with it rather than complementing it.
+- A gate that reports green on a property the running cluster does not have is
+  worse than no gate.
+- The consumer's own overlay must be able to own `argocd-cm` and
+  `argocd-rbac-cm` without a scheduled `tofu apply` taking them back.
+- The CRDs genuinely do need an out-of-band apply — that part of the design is
+  sound and stays.
+
+## Considered Options
+
+1. **Pass the shipped seed values into the data source.** Fixes the *values* the
+   apply converges onto, but keeps the ownership conflict: `argocd-rbac-cm` would
+   still be force-reset to the seed's (chart-default) RBAC on every re-fire.
+2. **Drop `--force-conflicts` only.** The apply would then error on conflict
+   instead of winning, turning a silent overwrite into a failed `tofu apply` —
+   trading data loss for a broken pipeline, and still applying chart-default
+   workloads on a cluster with no prior owner.
+3. **Project the render down to CRDs and drop `--force-conflicts`.**
+
+## Decision Outcome
+
+Chosen option: **3**.
+
+The module projects the frozen render to documents whose `kind` is
+`CustomResourceDefinition`, and applies that with `kubectl apply --server-side`
+without `--force-conflicts`. Nothing else co-owns those three CRDs, so a conflict
+there is a real signal rather than something to steamroll.
+
+The projection sits **before** the freeze, so the frozen bytes, the trigger hash
+and the applied file are the same thing, and so the property stays visible at
+plan time — a `terraform_data` output is unknown until apply, which would defer
+both the guard and any test to apply time. A plan-time precondition requires at
+least three surviving documents, so a projection that stops matching the render
+shape fails the plan instead of quietly applying a truncated CRD set. The
+`argocd_day0_apply_kinds` output exposes the surviving kinds as the binding point
+for `tests/argocd-crd-scope.tftest.hcl`.
+
+`scripts/check-render-determinism.sh` gained a second accepted capture shape for
+this: the live render may be referenced once inside a `locals` block whose value
+the freeze captures. The #123 property is unchanged — one live read, every
+apply-path consumer through the freeze.
+
+### Consequences
+
+- Positive: the seeded app is no longer overwritten with chart defaults; consumer
+  ownership of `argocd-cm` / `argocd-rbac-cm` survives a `tofu apply`; substrate
+  invariants I1 and I2 stop being runtime-false; less state is frozen.
+- Negative: the module no longer repairs a drifted ArgoCD installation at all.
+  That was never reliable — it repaired *towards chart defaults* — but the
+  fallback is now explicitly ArgoCD self-management plus, in the worst case, a
+  re-bootstrap.
+- **Existing clusters are not retroactively repaired.** `kubectl` remains a
+  recorded field-manager on the ConfigMaps it already touched; this change only
+  stops future applies from re-taking them. Clearing that ownership is a
+  consumer-side operation.
+- Verification is render-level and plan-level. No cluster is available to this
+  repository, so "the apply now lands only CRDs" is proven by the projection test
+  and the plan-time precondition, not by an observed apply.
+
+## Addendum to adr-0024
+
+adr-0024 records as a decision driver that "on a live cluster `argocd-controller`
+is the sole field-manager owner of `argocd-cm.url`, `argocd-cm.oidc.config`,
+`argocd-rbac-cm.*` … byte-matching the committed render". That was never true:
+the `--force-conflicts` apply described above has been a co-owner of exactly
+those keys since the module gained it. The conclusion adr-0024 drew from the
+driver — do not fold the steady-state layer into the create-only seed — is
+unaffected and stands; only its stated evidence was wrong.

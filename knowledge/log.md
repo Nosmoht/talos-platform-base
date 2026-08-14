@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-08-14
+
+- `decisions/0025-argocd-crd-apply-scope.md`: new. The module's post-health-gate
+  `kubectl apply` is projected down to CustomResourceDefinition documents and
+  loses `--force-conflicts`. Records what the full-render apply actually did —
+  twelve kinds, bundled Dex included, force-taking field-manager ownership of
+  `argocd-cm` and `argocd-rbac-cm` on every re-fire — why passing the seed values
+  in was rejected as the fix, and the residuals (existing clusters are not
+  repaired retroactively; verification is render- and plan-level because no
+  cluster is available to this repo).
+- `decisions/0024-argocd-substrate-relocation.md`: dated correction appended to
+  the second decision driver. Its "argocd-controller is the sole field-manager
+  owner" claim was never true — the force-apply co-owned those keys all along.
+  The conclusion it supported is unaffected. `timestamp` left at the decision
+  date per the bundle's decision-concept rule.
+- `architecture/day-zero-bootstrap.md`: §The direct-apply exception now states
+  the apply's real former scope and its new CRD-only one; the invariant list
+  gains I3 and corrects I1's SSO wording from a Helm-values path to a patch on
+  the `argocd-cm` ConfigMap. `timestamp` bumped — `main.tf` and
+  `check-argocd-substrate-invariants.sh`, both declared sources, changed.
+- `reference/manifest-pipeline.md`: §ArgoCD substrate invariants gains I3 and
+  distinguishes the shared invariants from the path-scoped one. `timestamp`
+  bumped — its declared source `check-argocd-substrate-invariants.sh` changed.
+
 ## 2026-08-12
 
 - `workflows/spec-driven-development.md`: §Validation's staleness-gate

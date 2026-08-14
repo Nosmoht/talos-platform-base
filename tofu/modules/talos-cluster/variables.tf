@@ -500,9 +500,15 @@ variable "argocd_values_override" {
   description = <<-EOT
     Optional consumer Helm values, MERGED on top of the shipped
     helm/argocd-values.yaml (helm merges value files; later wins) — not a
-    wholesale replacement. Empty = just the shipped values (slim, ksops). The
-    steady state (cert-manager cert, RBAC, OIDC) arrives via ArgoCD
-    self-management.
+    wholesale replacement. Empty = just the shipped values (slim, ksops).
+
+    SEED-ONLY. This configures the create-only bootstrap inlineManifest; the
+    steady-state component (kubernetes/substrate/argocd) is what ArgoCD
+    self-manages afterwards, and it does not read this variable. Anything set
+    here that the steady-state render also declares is overwritten on the first
+    sync — so SSO and RBAC do NOT belong here. Those are a consumer contract,
+    patched onto the argocd-cm / argocd-rbac-cm ConfigMaps in the consumer's own
+    kustomize overlay.
   EOT
   type        = string
   default     = ""

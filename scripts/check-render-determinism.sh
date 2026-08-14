@@ -12,9 +12,15 @@
 # This guard fails if that decoupling regresses. It does NOT use a hardcoded render
 # allow-list: it derives every `data "helm_template" "<r>"` from the file and, for
 # each, asserts:
-#   1. the live render is referenced exactly once — as the `input =` capture of its
-#      terraform_data.<r>_render freeze (a contents=/content=/sha256() consumer
-#      re-introduces the #121 drift);
+#   1. the live render is referenced exactly once — either directly as the `input =`
+#      capture of its terraform_data.<r>_render freeze, or once inside a top-level
+#      locals{} block whose value that freeze then captures (`input = local.*`).
+#      The second shape admits a pure transform between read and freeze (#218
+#      projects the ArgoCD render down to its CRD documents, so the frozen bytes are
+#      exactly what kubectl applies) without weakening the property: still ONE live
+#      read, and every apply-path consumer still goes through the freeze. A
+#      contents=/content=/sha256() consumer, or any second reference, re-introduces
+#      the #121 drift and still fails;
 #   2. that freeze resource exists AND its OWN block carries ignore_changes=[input]
 #      (per-resource, so a broken freeze cannot be masked by a decoy elsewhere);
 #   3. CRD renders (name matches *crds*, a Day-2 kubectl re-apply path) additionally
@@ -47,6 +53,16 @@ block_of() {
   ' "$MAIN"
 }
 
+# Does the single live-render reference sit inside a top-level `locals {` block?
+# Same column-0 block model as block_of. Prints "yes" / "no".
+ref_inside_locals() {
+  awk -v pat="$1" '
+    /^[a-z]/ && /\{[[:space:]]*$/ { inloc = ($0 ~ /^locals[[:space:]]*\{/) }
+    /^}/                          { inloc = 0 }
+    index($0, pat) > 0            { print (inloc ? "yes" : "no"); exit }
+  ' "$MAIN"
+}
+
 fail=0
 
 # Derive every helm render present in the module — not a hardcoded list, so a future
@@ -61,16 +77,30 @@ count=0
 for r in $renders; do
   count=$((count + 1))
 
-  # (1) live render referenced exactly once, as the input= capture of its freeze.
+  # (1) live render referenced exactly once. Two accepted capture shapes:
+  #     (a) DIRECT   — `input = data.helm_template.<r>[0].manifest` on the freeze;
+  #     (b) PROJECTED — the single reference sits in a top-level locals{} block and
+  #         the freeze captures a local (`input = local.<name>`). This admits a pure,
+  #         deterministic transform between read and freeze — #218 projects the
+  #         ArgoCD render down to its CRD documents there, so the frozen bytes are
+  #         exactly what kubectl applies. The #123 property is unchanged either way:
+  #         ONE live read, and every apply-path consumer goes through the freeze.
+  #     Anything else (a second reference, a contents=/sha256() consumer) still fails.
   total=$(grep -cE "data\.helm_template\.${r}\[0\]\.manifest" "$MAIN" || true)
   capture=$(grep -cE "^[[:space:]]*input[[:space:]]+= data\.helm_template\.${r}\[0\]\.manifest" "$MAIN" || true)
-  if [ "$total" -ne 1 ] || [ "$capture" -ne 1 ]; then
-    echo "::error::check-render-determinism: data.helm_template.${r} must be referenced exactly once, as the input= capture of terraform_data.${r}_render (found total=${total}, capture=${capture}). A direct consumer (contents=/content=/sha256()) or an unmatched reference shape re-introduces the #123 machineConfig re-push — route it through terraform_data.${r}_render[0].output." >&2
+  blk=$(block_of "${r}_render")
+  projected=0
+  if [ "$capture" -eq 0 ] && [ "$total" -eq 1 ] && [ -n "$blk" ] &&
+    [ "$(ref_inside_locals "data.helm_template.${r}[0].manifest")" = "yes" ] &&
+    printf '%s\n' "$blk" | grep -qE '^[[:space:]]*input[[:space:]]+= local\.'; then
+    projected=1
+  fi
+  if [ "$total" -ne 1 ] || { [ "$capture" -ne 1 ] && [ "$projected" -ne 1 ]; }; then
+    echo "::error::check-render-determinism: data.helm_template.${r} must be referenced exactly once — either as the input= capture of terraform_data.${r}_render, or once inside a locals{} block whose value that freeze captures via input = local.* (found total=${total}, capture=${capture}, projected=${projected}). A direct consumer (contents=/content=/sha256()) or an unmatched reference shape re-introduces the #123 machineConfig re-push — route it through terraform_data.${r}_render[0].output." >&2
     fail=1
   fi
 
   # (2) freeze exists AND its OWN block carries ignore_changes=[input].
-  blk=$(block_of "${r}_render")
   if [ -z "$blk" ]; then
     echo "::error::check-render-determinism: freeze resource terraform_data.${r}_render is missing in ${MAIN} (#123)." >&2
     fail=1

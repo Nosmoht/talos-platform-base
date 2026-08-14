@@ -3,7 +3,7 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-timestamp: 2026-08-12
+timestamp: 2026-08-14
 sources:
   - tofu/modules/talos-cluster/main.tf
   - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
@@ -185,7 +185,20 @@ commit to git and let ArgoCD reconcile. The one documented exception is
 one-time bootstrap content under `kubernetes/bootstrap/` (exactly what
 `task bootstrap:argocd` applies). The module's server-side CRD apply is
 tofu-executed, not an operator workflow, and stays inside that spirit: it
-converges only what the seed cannot carry.
+delivers only what the seed cannot carry.
+
+That scope is now literal. The apply used to cover the chart's **full**
+default render — the data source behind it carries no values block — and used
+`--force-conflicts`, so on every re-fire (its trigger set includes
+`kubernetes_version`, i.e. a routine Kubernetes upgrade) it pushed
+chart-default workloads and ConfigMaps over ArgoCD's own state and took
+field-manager ownership of `argocd-cm` and `argocd-rbac-cm`. Since
+[adr-0025](../decisions/0025-argocd-crd-apply-scope.md) the render is projected
+down to `CustomResourceDefinition` documents before the freeze and applied
+without the force flag: the module delivers CRDs, and convergence of the app
+itself is ArgoCD self-management's job. Existing clusters are not repaired
+retroactively — `kubectl` stays a recorded field manager on what it already
+touched; the change stops future applies from re-taking it.
 
 ## Handoff to steady state
 
@@ -204,11 +217,19 @@ and CI):
 
 - **I1** — neither render produces a bundled-Dex resource (no document
   labelled `app.kubernetes.io/component: dex-server`, none named
-  `argocd-dex-server`): SSO is wired via an external OIDC provider, and an
-  idle Dex would also bloat the inlineManifest seed.
+  `argocd-dex-server`): SSO is wired against an external OIDC provider by
+  patching the `oidc.config` key of the `argocd-cm` ConfigMap in the consumer's
+  own overlay, and an idle Dex would also bloat the inlineManifest seed.
 - **I2** — no rendered ConfigMap carries a `.data` key prefixed
   `server.dex.server` (scanning every ConfigMap is rename-proof; the
   legitimate `configMapKeyRef` *consumers* of those keys are not violations).
+- **I3** (bootstrap seed only, for now) — the seed's `argocd-cm` carries no
+  `url` key. ArgoCD documents `url` as required for SSO and derives the OIDC
+  redirect URI from it, so the chart's placeholder hostname fails at the IdP
+  rather than in the cluster; an absent key is the visible state, and the
+  consumer supplies the real value. `argocd-notifications-cm`'s `argocdUrl` is
+  an accepted residual — Helm's `default` treats `""` as unset, so it cannot be
+  cleared without disabling the whole notifications workload.
 
 Both paths render from the same chart tarball, pinned and sha256-verified
 against `kubernetes/substrate/argocd/chart.lock.yaml`. Consumer

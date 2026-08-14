@@ -223,6 +223,24 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`talos-cluster`: the Day-0 ArgoCD apply no longer pushes chart defaults over
+  ArgoCD's own state.** `data.helm_template.argocd_crds` renders the chart with
+  no values block, and the module applied that entire render with
+  `kubectl apply --server-side --force-conflicts` — twelve kinds, not just the
+  CRDs. Every provisioned cluster therefore received a bundled `argocd-dex-server`
+  and `server.dex.server*` cmd-params (contradicting substrate invariants I1/I2
+  at runtime while CI stayed green), had the seed's `server.insecure` and
+  `kustomize.buildOptions` overwritten, and had `argocd-rbac-cm` reset to chart
+  defaults. Because the trigger set includes `kubernetes_version`, a routine
+  Kubernetes upgrade re-fired all of it. The render is now projected down to
+  `CustomResourceDefinition` documents before the freeze and applied without
+  `--force-conflicts`. **Existing clusters are not repaired retroactively** —
+  `kubectl` stays a recorded field manager on what it already touched; this stops
+  future applies from re-taking it. New: output `argocd_day0_apply_kinds`,
+  invariant **I3** (the seed's `argocd-cm` carries no placeholder `url`), and
+  `tests/argocd-crd-scope.tftest.hcl`. See
+  [ADR-0025](knowledge/decisions/0025-argocd-crd-apply-scope.md).
+
 - **Spec-staleness gate: syncing a branch with `main` no longer voids the
   `Spec-Impact: none` escape.** The gate granted the escape only when EVERY
   commit git lists for the violating file carried the trailer — and a base-sync

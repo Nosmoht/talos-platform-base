@@ -147,8 +147,26 @@ render "$tmp/bootstrap.yaml" "$BOOTSTRAP_VALUES"
 check_path "steady-state"   "$tmp/steady.yaml"
 check_path "bootstrap-seed" "$tmp/bootstrap.yaml"
 
+# I3 — no placeholder Argo CD base URL. PATH-SCOPED, not shared: it holds for the
+# bootstrap seed today and extends to the steady-state render with #219. The chart
+# derives configs.cm.url from global.domain, whose default is a placeholder
+# hostname; ArgoCD documents `url` as required for SSO and derives the OIDC
+# redirect URI from it, so a placeholder does not fail loudly — it fails at the
+# IdP, at a human's first login. Absent is the visible state; the consumer
+# supplies the real value in their overlay.
+#
+# Scanning by ConfigMap name is deliberate here (unlike I2's rename-proof sweep):
+# `url` is a generic key that other ConfigMaps legitimately carry, so a blanket
+# key scan would false-positive. argocd-notifications-cm's `argocdUrl` is a KNOWN,
+# accepted residual — the chart renders it via `default (printf ...)`, and Helm's
+# `default` treats "" as unset, so it cannot be cleared without disabling the
+# whole notifications workload. See the component README §Substrate invariants.
+assert_invariant "bootstrap-seed" "$tmp/bootstrap.yaml" \
+  'select(.kind == "ConfigMap" and .metadata.name == "argocd-cm") | (.data // {}) | keys | .[] | select(. == "url")' \
+  'I3 violated: argocd-cm carries a `url` key (expected configs.cm.url: "" — the consumer owns this value)'
+
 if [ "$violations" -ne 0 ]; then
   echo "::error::ArgoCD substrate invariants FAILED (see above). Declared in kubernetes/substrate/argocd/README.md §Substrate invariants." >&2
   exit 3
 fi
-echo "OK: ArgoCD substrate invariants hold across both render paths (bundled Dex disabled; no server.dex.server* cmd-params)."
+echo "OK: ArgoCD substrate invariants hold (bundled Dex disabled + no server.dex.server* cmd-params in both paths; no placeholder argocd-cm url in the bootstrap seed)."

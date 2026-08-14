@@ -29,7 +29,7 @@ Out of scope (caller / elsewhere):
 
 - Hardware provisioning + PXE boot (DHCP `next-server`, iPXE).
 - Cluster identity (node IPs, endpoint, NTP, install disk, registry mirrors) → caller via variables/patches.
-- Day-2 platform components (cert-manager, …), **Cilium steady-state** (Hubble export, L2/BGP announcements — Cilium inlineManifests are create-only seeds), and **ArgoCD steady-state** (RBAC, OIDC, TLS cert, app-of-apps) → ArgoCD GitOps self-management. The module only seeds the *bootstrap* Cilium + ArgoCD installs.
+- Day-2 platform components (cert-manager, …), **Cilium steady-state** (Hubble export, L2/BGP announcements — Cilium inlineManifests are create-only seeds), and **ArgoCD steady-state** (TLS cert, app-of-apps) → ArgoCD GitOps self-management. **ArgoCD SSO and RBAC** → the consumer's own kustomize overlay over the steady-state component, not this module and not the steady-state render. The module only seeds the *bootstrap* Cilium + ArgoCD installs.
 - **Adopting an already-running cluster** — see the warning below.
 
 Precondition: every node in `var.nodes` is reachable on the Talos API port,
@@ -275,6 +275,7 @@ read. Full semantics live in each output's `description` in
 | Name | Sensitive | Description |
 |---|---|---|
 | `argocd_namespace_labels` | no | PSA floor + recommended labels the argocd namespace seed bakes |
+| `argocd_day0_apply_kinds` | no | distinct kinds in the manifest the module kubectl-applies after the health gate — CRD-only since #218, so anything but `["CustomResourceDefinition"]` means chart-default resources leaked past the projection |
 | `cert_approver_namespace_labels` | no | PSA-restricted floor + labels of the cert-approver namespace seed |
 | `cert_approver_seeded` | no | red-green binding: cert-approver seed wired into the controlplane patch list |
 | `kubelet_serving_cert_rotation` | no | per-role booleans: rotation patch present in each role's patch list |
@@ -326,11 +327,17 @@ chicken-and-egg anti-pattern is avoided): the chart is rendered **locally** with
 
 Talos applies inlineManifests once at bootstrap and never reconciles them again,
 so the seed is intentionally **minimal** (`helm/argocd-values.yaml`): server
-`ClusterIP` + `insecure`, the ksops initContainer. The steady-state (TLS cert
-via a `ClusterIssuer` that doesn't exist yet at bootstrap, RBAC, OIDC, the
-app-of-apps) is owned by **ArgoCD self-management** in the consumer repo.
+`ClusterIP` + `insecure`, the ksops initContainer. Everything after bootstrap is
+owned elsewhere, and by two different owners: the base configuration (TLS cert
+via a `ClusterIssuer` that doesn't exist yet at bootstrap, the app-of-apps) is
+owned by **ArgoCD self-management** over the steady-state component, while
+**SSO and RBAC are a consumer contract** — patched onto the `argocd-cm` /
+`argocd-rbac-cm` ConfigMaps in the consumer's own kustomize overlay, not
+supplied by this module at all.
 `argocd_values_override` is **merged** on top of the shipped values (not a
-wholesale replace). `argocd_chart_version` is a **seed-only** knob — bumping it
+wholesale replace) and is **seed-only** — the steady-state render does not read
+it, so anything it sets that the steady state also declares is overwritten on
+the first sync. `argocd_chart_version` is likewise a **seed-only** knob — bumping it
 after bootstrap only re-renders the machine config, it does not upgrade a
 running ArgoCD (that is the self-management's job).
 
