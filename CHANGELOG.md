@@ -15,6 +15,24 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   off. Default-off emits no machine-config change. See
   [ADR-0023](knowledge/decisions/0023-node-identity-map-key.md).
 
+- **`talos-cluster`: two further typed Cilium observability inputs (default off).**
+  `cilium_agent_metric_overrides` (the chart's `prometheus.metrics` `+metric` /
+  `-metric` delta list against its default metric set) and
+  `cilium_hubble_open_metrics` (`hubble.metrics.enableOpenMetrics`). Both flow
+  through the same computed-values map the seed and the emitted self-management
+  Application already share, so they are reachable without
+  `cilium_values_override` — which the override-drop guard makes mutually
+  exclusive with `cilium_self_management`. Each warns (plan-time `check`, not a
+  rejection) when its prerequisite toggle is off, because a consumer may enable
+  that prerequisite through `cilium_values_override`, which the module cannot
+  introspect. `cilium_agent_metric_overrides` entries are format-validated: the
+  chart renders them raw into `cilium-config`, which is baked into the
+  controlplane machine config. **`cilium_hubble_open_metrics` changes only the
+  ConfigMap and does not roll the agents** — see UPGRADING for the required
+  rollout restart. Grafana dashboards stay deliberately untyped (apps-catalog
+  territory — the base cannot know the consumer's Grafana sidecar label or
+  namespace). See
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 - **`talos-cluster`: first-class Cilium observability inputs (default off).**
   `cilium_agent_metrics`, `cilium_operator_metrics` (Cilium agent/operator
   Prometheus metrics), `cilium_hubble_enabled` + `cilium_hubble_metrics`
@@ -160,6 +178,28 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
 ### Changed
+
+- **`talos-cluster`: `cilium_native_routing_cidr` is now format-validated.**
+  It must be empty (derive from `pod_cidr`, unchanged) or a well-formed CIDR.
+  The chart renders the value raw and unquoted into `cilium-config`, which the
+  module bakes into the create-only controlplane machine config, so a value
+  carrying a newline wrote arbitrary ConfigMap keys — the same corruption class
+  the two Cilium metric lists already guard against, on the third input
+  reaching the same document. The guard is a semantic CIDR predicate rather
+  than a lexical rule, so it also rejects an address with no prefix length. A
+  consumer passing a malformed value now fails at plan time (and at
+  `cluster.yaml` lint time, via the schema mirror) instead of shipping it into
+  the machine config.
+
+- **New CI fence `task tofu:check:shim-key-parity`.** The worked example's
+  shim reads `cluster.yaml` through `try()`, which is total: a substrate key
+  the shim never reads — or reads misspelled — silently resolves to the module
+  default while schema lint, `tofu validate`, `tofu plan` and the whole test
+  suite stay green, so the consumer's declared value never reaches the module.
+  The check asserts every key of every closed `substrate` object in
+  `schemas/cluster.schema.json` is read by the shim. Carried by `task tofu:ci`;
+  `.github/workflows/tofu-validate.yml` now also triggers on
+  `schemas/cluster.schema.json` so a schema-only widening still runs it.
 
 - **`kubernetes/bootstrap/cilium/values.yaml` is now gated against the pinned
   chart's schema.** Nothing in CI ever rendered this file, so a value the chart had

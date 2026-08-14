@@ -72,6 +72,47 @@ how it reads:
   `timestamp` bumped — its declared source `check-argocd-substrate-invariants.sh`
   changed.
 
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: dated
+  addendum recording the two further typed metric-set inputs
+  (`cilium_agent_metric_overrides`, `cilium_hubble_open_metrics`). Nothing is
+  superseded — both are layered into both engines, so §(d) holds, and the floor∩computed
+  collision count in §(f) is still one. What the addendum adds is a second
+  collision LEVEL for §(f)'s invariant (intra-computed, where a shallow
+  `merge()` term replaces a sibling with no floor to preserve), the `check`
+  versus `validation` guard tier and why the override escape hatch forces it,
+  the measured raw-render injection vector behind the format validation, the
+  measured no-DaemonSet-roll behaviour of the OpenMetrics flag, and the declined
+  Grafana-dashboard scope with its 60 268 → 587 208 byte figure. `timestamp`
+  left at 2026-07-22 — it records the decision date, and no decision changed.
+  Residual stated in the addendum: chart-key spelling for both Helm paths is
+  bound only by the network-dependent, CI-advisory composition suite.
+  Revised after adversarial review, all three corrections measured against the
+  pinned chart rather than reasoned: the OpenMetrics key turned out to sit under
+  the same gate as `hubble-metrics-server`, so it is inert with an empty metrics
+  list and the effectiveness check had been written on the wrong precondition;
+  `cilium_hubble_metrics` carried the identical raw-render injection vector the
+  addendum documents for the new input, so the guard obligation is recorded as
+  binding the input CLASS rather than one member; and "reaches both engines" is
+  now qualified as a data-flow statement, since the frozen seed means neither
+  input reaches an already-bootstrapped cluster without self-management, a fresh
+  bootstrap, or a deliberate `-replace`.
+- `reference/cluster-yaml.md`: re-verified against the widened
+  `schemas/cluster.schema.json` and the example shim in its `sources`; the prose
+  claims (no `schema_version`, unvalidated patch content, the secret-exclusion
+  rules) all still hold, so only `timestamp` moved to 2026-08-14. The enumerated
+  `substrate.cilium` key set lives in `openspec/specs/cluster-yaml-sot/` and was
+  updated there, not here.
+- `reference/cluster-yaml.md`: new §How CI binds the schema to the shim, and
+  `scripts/check-shim-key-parity.sh` added to `sources`. The file already
+  documented how CI binds the schema to a `cluster.yaml`; what it did not
+  document is that lint proves conformance and not arrival — the shim's `try()`
+  reads are total, so an unmapped or misspelled substrate key resolves to the
+  module default with nothing anywhere reporting it. The violation count in the
+  lint-gate section was also stale at six; the fixture now carries ten.
+- `reference/tasks.md`: `tofu:check:shim-key-parity` added to the inventory and
+  to the `tofu:ci` aggregate line; `timestamp` bumped, since `Taskfile.yml` — a
+  listed source — changed.
+
 ## 2026-08-12
 
 - `workflows/spec-driven-development.md`: §Validation's staleness-gate

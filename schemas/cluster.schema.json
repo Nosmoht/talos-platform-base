@@ -208,8 +208,20 @@
               "type": "integer"
             },
             "native_routing_cidr": {
-              "description": "ipv4NativeRoutingCIDR for routing_mode: native. Empty = derive from the first pod_cidr entry.",
-              "type": "string"
+              "description": "ipv4NativeRoutingCIDR for routing_mode: native. Empty = derive from the first pod_cidr entry. The chart renders this raw into cilium-config, which is baked into the machine config, so the value is format-validated on both paths.",
+              "type": "string",
+              "allOf": [
+                {
+                  "$comment": "Lexical mirror of variables.tf var.cilium_native_routing_cidr, whose guard is the semantic predicate can(cidrhost(...)) — not expressible in JSON Schema. This admits the CIDR SHAPE only; the module keeps the precise verdict. Empty stays legal (derive from pod_cidr).",
+                  "pattern": "^$|^[0-9A-Fa-f.:]+/[0-9]{1,3}$"
+                },
+                {
+                  "$comment": "Engine divergence, closed explicitly — same reason as agent_metric_overrides below: Python re matches $ before a trailing newline, RE2 does not.",
+                  "not": {
+                    "pattern": "[\\n\\r]|---"
+                  }
+                }
+              ]
             },
             "encryption": {
               "description": "Transparent pod-traffic encryption: { type: none|wireguard|ipsec }. ipsec requires cilium_ipsec_key via tfvar/env. Inner long tail stays loosely typed.",
@@ -232,11 +244,38 @@
               "type": "boolean"
             },
             "hubble_metrics": {
-              "description": "Hubble metrics to export (hubble.metrics.enabled), e.g. [\"dns\",\"drop\",\"tcp\"]. Default []. Scrape wiring (ServiceMonitors/PodMonitors) stays consumer-side.",
+              "description": "Hubble metrics to export (hubble.metrics.enabled), e.g. [\"dns\",\"drop\",\"tcp\"] or the context form \"flow:sourceContext=pod\". Default []. Scrape wiring (ServiceMonitors/PodMonitors) stays consumer-side.",
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "$comment": "Mirrors variables.tf var.cilium_hubble_metrics. An EXCLUSION rule, not an allowlist: the legitimate context syntax uses ':', ';', '=' and ',' freely. Newline and '---' are the two measured corruption vectors — the chart renders these entries raw into cilium-config, which is baked into the machine config.",
+                "not": {
+                  "pattern": "[\\n\\r]|---"
+                }
               }
+            },
+            "agent_metric_overrides": {
+              "description": "Agent metric DELTA list (prometheus.metrics): \"+name\" adds a metric to the chart's default set, \"-name\" removes one. Not a replacement of that set, and unrelated to values_override. The chart renders these raw into cilium-config, which is baked into the machine config. Default []. On an ALREADY-BOOTSTRAPPED cluster this reaches the cluster only via substrate.cilium.self_management (the seed render is frozen after first capture) or at the next fresh bootstrap. Warns when it cannot take effect.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "allOf": [
+                  {
+                    "$comment": "Mirrors variables.tf var.cilium_agent_metric_overrides so the declarative path rejects a corrupting entry at lint time too, not only at plan time.",
+                    "pattern": "^[+-][a-zA-Z_][a-zA-Z0-9_]*$"
+                  },
+                  {
+                    "$comment": "Engine divergence, closed explicitly: check-jsonschema evaluates `pattern` with Python re, where $ also matches before a trailing newline; OpenTofu's regex() is RE2, where it does not. Without this the two engines disagree on \"+ok\\n\".",
+                    "not": {
+                      "pattern": "[\\n\\r]|---"
+                    }
+                  }
+                ]
+              }
+            },
+            "hubble_open_metrics": {
+              "description": "Export the Hubble metrics endpoint in OpenMetrics format (hubble.metrics.enableOpenMetrics). Changes only the cilium-config ConfigMap — no DaemonSet roll — so a running cluster keeps the old exposition format until `kubectl -n kube-system rollout restart ds/cilium`. Default off. Requires a NON-EMPTY hubble_metrics: the chart gates the OpenMetrics key on the metrics list, so it is inert on an endpoint that exports nothing. Same seed-freeze caveat as agent_metric_overrides. Warns when it cannot take effect.",
+              "type": "boolean"
             },
             "self_management": {
               "description": "Opt-in: emit a Cilium ArgoCD Application (module output only, never applied by the module) as the Day-2 delivery path. HARD-REJECTED at plan time when values_override is non-empty (the emitted Application does not inherit it — see ADR-0022). Requires enabled=true and the ArgoCD substrate enabled. Default off.",

@@ -91,6 +91,8 @@ module "complete" {
   cilium_operator_metrics        = try(local.cilium.operator_metrics, false)
   cilium_hubble_enabled          = try(local.cilium.hubble_enabled, false)
   cilium_hubble_metrics          = try(local.cilium.hubble_metrics, [])
+  cilium_agent_metric_overrides  = try(local.cilium.agent_metric_overrides, [])
+  cilium_hubble_open_metrics     = try(local.cilium.hubble_open_metrics, false)
   cilium_self_management         = try(local.cilium.self_management, false)
   cilium_self_management_project = try(local.cilium.self_management_project, "default")
 

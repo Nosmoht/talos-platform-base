@@ -202,6 +202,15 @@ tasks:
     desc: "CI fence: the Talos boundary arguments stay bound to their intended node projections (nodes.tf), and the per-node apply keeps iterating local.nodes_checked"
     cmd: scripts/check-node-projection-wiring.sh
 
+  tofu:check:shim-key-parity:
+    # Full rationale in scripts/check-shim-key-parity.sh. The worked example's
+    # shim reads cluster.yaml through try(), which is total: a mistyped key
+    # yields the default instead of an error, so the declared value never
+    # reaches the module while lint, validate, plan and the whole test suite
+    # stay green. This is the only check that binds the two sides.
+    desc: "CI fence: every key of a CLOSED substrate object in schemas/cluster.schema.json is actually read by the worked example's cluster.yaml shim"
+    cmd: scripts/check-shim-key-parity.sh
+
   tofu:test:
     desc: "tofu test — node-capability composition regression suite (dedup/determinism + hard-error guards). NETWORK: resolves the live Image Factory, so it is NOT part of tofu:ci (which stays offline). Superset of tofu:test:offline."
     cmd: |
@@ -228,7 +237,7 @@ tasks:
         -filter=tests/kubeconfig-endpoint-marker.tftest.hcl
 
   tofu:ci:
-    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + test:offline — mirrors CI, stays offline"
+    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + test:offline — mirrors CI, stays offline"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
@@ -239,6 +248,7 @@ tasks:
       - task: tofu:check:readme-parity
       - task: tofu:check:kubeconfig-endpoint-regen
       - task: tofu:check:node-projection-wiring
+      - task: tofu:check:shim-key-parity
       - task: tofu:test:offline
 
   # ===========================================================================
