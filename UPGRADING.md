@@ -83,21 +83,37 @@ data:
   scopes: '[preferred_username]'
 ```
 
-**Carrying only `policy.csv` is the lockout path.** Without `scopes`, the chart
-default `'[groups]'` applies and your policy is matched against a claim it was
-never written for: every subject stops matching, `policy.default: ''` grants
-nothing, and only the local `admin` account still works. Changing your subjects
-over to group IDs and `'[groups]'` is a sound follow-up — do it as a **separate,
-verified change**, not inside this migration.
+**Carrying only `policy.csv` fails in one of two directions, and the second is
+the dangerous one.** Without `scopes`, the chart default `'[groups]'` applies and
+your policy is matched against a claim it was never written for.
 
-**Verify before merging**, with an SSO principal, not with `admin`:
+*Lockout* is the usual outcome: every subject stops matching, `policy.default: ''`
+grants nothing, and only the local `admin` account still works.
+
+*Accidental grant* is the other, because Casbin subjects share one flat,
+unprefixed namespace — a username and a group value are indistinguishable. If
+your policy binds `g, <username>, role:admin` and your IdP emits a group whose
+value happens to equal that username, the binding now matches **everyone in that
+group**. Per-user groups are a common pattern in several IdPs, so this is not
+exotic. Note that `argocd account can-i` below cannot detect it: it confirms the
+intended principal *has* access, never that an unintended one does not.
+
+Changing your subjects over to immutable group IDs and `'[groups]'` is a sound
+follow-up — do it as a **separate, verified change**, not inside this migration.
+
+**Verify before merging**, in an SSO session, not as `admin` — `can-i` answers
+for whatever session your CLI currently holds, so an admin session returns `yes`
+and proves nothing:
 
 ```bash
+argocd logout <argocd-host>
+argocd login <argocd-host> --sso
+argocd account get-user-info                      # confirm WHICH principal
 argocd account can-i update applications '*/*'    # expect: yes
 ```
 
-A successful **login** is not evidence: an unmatched principal authenticates
-fine and can do nothing.
+A successful **login** is not evidence either: an unmatched principal
+authenticates fine and can do nothing.
 
 ### 2. Supply `configs.cm.url`
 
@@ -132,36 +148,115 @@ longer re-fires the apply.
 
 **Not retroactive.** Your cluster keeps the `kubectl` field-manager entries the
 old force-apply recorded on `argocd-cm` / `argocd-rbac-cm`. Nothing further
-re-takes them; ArgoCD applies client-side by default and keeps writing the
-values it owns, so the stale entry is inert bookkeeping. Reasoned from apply
-semantics, not observed — this repository has no cluster. If you run the argocd
-component with server-side apply, confirm it on your own cluster; you can drop
-the entry from `metadata.managedFields` if you want it gone.
+re-takes them. If you bootstrapped with the shipped root Application — which sets
+`ServerSideApply=true` — `argocd-controller` applies server-side, negotiates
+ownership with that stale manager and takes the contested fields, so the entry
+decays into bookkeeping. You can drop it from `metadata.managedFields` if you
+want it gone. If you deliberately sync the argocd component client-side, confirm
+the hand-over on your own cluster. Reasoned from apply semantics, not observed —
+this repository has no cluster.
 
-If a future `argocd_chart_version` bump now surfaces a CRD **conflict**, that is
-the intended signal — your steady-state CRDs have moved past the seed's pin.
-Resolve it deliberately rather than forcing.
+**If the CRD apply hits a conflict.** Without `--force-conflicts` the `kubectl`
+step exits non-zero, the provisioner fails, and the whole `tofu apply` fails —
+including applies whose real purpose was unrelated, because the resource sits in
+the same graph behind the health gate. Triage, read-only first:
+
+```bash
+# What the apply would do, without doing it
+kubectl apply --server-side --dry-run=server \
+  --field-manager=talos-platform-base-day0 -f <the module's .tmp/*-argocd-crds.yaml>
+
+# Who owns the contested CRDs
+kubectl get crd applications.argoproj.io \
+  -o jsonpath='{range .metadata.managedFields[*]}{.manager}{"\n"}{end}'
+```
+
+If `argocd-controller` is an owner and your steady-state component is at or ahead
+of `argocd_chart_version`, the Day-0 apply is redundant — ArgoCD already delivers
+those CRDs. Unblock the pipeline by dropping the seed apply from state:
+
+```bash
+tofu state rm 'module.<name>.null_resource.argocd_crds[0]'
+```
+
+Do **not** re-add `--force-conflicts`: that rolls a GitOps-managed CRD schema
+back to the seed's pin, which is the failure this release removes. If instead the
+seed is ahead, bump the steady-state `chart.lock.yaml` to match and let ArgoCD
+converge; CI now asserts the two pins agree.
+
+### Back-out
+
+**Reverting the pin is not safe on its own.** The previous base tag restores
+`kubernetes_version` in `triggers_replace` *and* `--force-conflicts` over the
+unprojected render — so the first apply after the revert re-captures the
+twelve-kind payload and force-resets `argocd-cm` and `argocd-rbac-cm` to chart
+defaults. Before this release that wiped a base placeholder; after it, it wipes
+**your access policy**.
+
+The revert is therefore paired, never partial:
+
+1. Confirm your `argocd-cm` / `argocd-rbac-cm` overlay is committed and
+   reconciling — after the revert it is the only thing restoring those values.
+2. Remove the seed apply from state first, so the reverted module cannot re-fire
+   it: `tofu state rm 'module.<name>.null_resource.argocd_crds[0]' 'module.<name>.terraform_data.argocd_crds_render[0]'`.
+3. Then revert the pin.
+
+If you only need to undo the substrate-values half, revert
+`kubernetes/substrate/argocd/values.yaml` in your own overlay and keep the module
+pin forward — that combination is safe and is the smaller move.
 
 ### Recovery — if you lose access
 
 1. **Fix it in git.** Correct the overlay and let self-heal reconcile. This is
    the supported path.
-2. **Break glass**, if you cannot wait: `kubectl -n argocd patch cm argocd-rbac-cm`
-   with a working policy. This is a deliberate exception to the "never
-   `kubectl apply` ArgoCD-managed resources" constraint, and ArgoCD reverts it on
-   the next sync — use it to regain access, then fix git.
-3. **Re-enabling `admin`** takes more than `admin.enabled: "true"`: a cleared
-   password must be restored as a bcrypt hash in `argocd-secret`.
+2. **Break glass**, if you cannot wait. Suspend automation FIRST — the shipped
+   root Application runs `selfHeal: true`, so an unsuspended patch is reverted
+   before you can finish using it:
 
-The substrate runs `argocd-server` with `server.insecure: true`, so a break-glass
-admin credential crosses the gateway→pod hop in cleartext. Rotate it promptly and
-keep the admin-enabled window short.
+   ```bash
+   kubectl -n argocd patch app root --type merge \
+     -p '{"spec":{"syncPolicy":{"automated":null}}}'
+   kubectl -n argocd patch cm argocd-rbac-cm --type merge \
+     -p '{"data":{"policy.csv":"g, <subject>, role:admin\n","scopes":"[preferred_username]"}}'
+   ```
+
+   Then fix git, and **re-enable** automation — a suspended root Application is
+   its own outage in waiting:
+
+   ```bash
+   kubectl -n argocd patch app root --type merge \
+     -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
+   ```
+
+   (`root` is the shipped Application name; use yours if you renamed it.) This is
+   a deliberate exception to the "never `kubectl apply` ArgoCD-managed resources"
+   constraint.
+3. **Re-enabling `admin`** takes two objects, not one: `admin.enabled: "true"` in
+   `argocd-cm`, *and* a bcrypt password in `argocd-secret` — `admin.enabled`
+   alone does not restore a cleared password. Consult the Argo CD
+   user-management docs for the exact field set your version expects (some
+   versions require a companion password-mtime field alongside the hash); patch
+   only those keys with a `stringData` merge so `server.secretkey` is untouched.
+   This is the documented exception to the contract's "do not patch
+   `argocd-secret`" rule, which is about *declaratively owning* the object, not
+   about break-glass.
+
+**One caveat that outlives the break-glass window.** The substrate runs
+`argocd-server` with `server.insecure: true`: it serves plaintext at the pod and
+you terminate TLS at your gateway. Everything on that gateway→pod hop is
+cleartext — the break-glass admin credential, but equally the OIDC authorization
+code and every SSO session token afterwards. Rotate the admin credential
+promptly and keep the admin window short, and treat the hop itself as a standing
+decision: terminate TLS as close to the pod as you can, enable Cilium transparent
+encryption, or set `server.insecure: false` with a pod-level certificate (the
+component's `values.yaml` documents that opt-out).
 
 ---
 
 ## Unreleased (ships in the next MAJOR) — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (additive — manual action for argocd-overlay consumers)
 
-**Type:** MINOR (additive for consumers). Decision: ADR-0024
+**Type:** additive for consumers, but it ships inside a MAJOR release — read
+the identity section above, which is the breaking part. Decision: ADR-0024
 (`knowledge/decisions/0024-argocd-substrate-relocation.md`, issue #156,
 Option 3). Two changes land together:
 
@@ -174,6 +269,12 @@ Option 3). Two changes land together:
    steady-state tree existed only in git and was unconsumable at every
    published tag (the gap #156 documents; tracked downstream as the
    consumer's render-reproducibility issue).
+
+   `kubernetes/substrate/argocd/kustomization.yaml` joins them in this same
+   release. Without it a vendoring consumer received the resources but not the
+   file that assembles them, so they had to reconstruct the resource list by
+   hand; `kustomize build vendor/base/kubernetes/substrate/argocd/` now works
+   directly. Purely additive — nothing that worked before stops working.
 
 This is NOT a breaking change for OCI consumers: the old path was never
 present in any published artifact, so no consumer overlay that rendered

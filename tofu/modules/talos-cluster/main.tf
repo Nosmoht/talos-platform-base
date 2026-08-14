@@ -908,15 +908,36 @@ data "helm_template" "argocd_crds" {
 # the steady-state component the root Application reconciles.
 # Decision: knowledge/decisions/0025-argocd-crd-apply-scope.md.
 #
-# `try(..., "")` lets a non-parsing document drop out instead of failing the
-# plan; the precondition on local_file below is what keeps that from degrading
-# into a silently truncated apply.
+# The kind filter uses `try(..., "")`, so a document yamldecode cannot read drops
+# out silently rather than failing the plan. That is the right behaviour for a
+# non-CRD document, and the WRONG behaviour for a CRD that was cut in half: a
+# `\n---\n` sequence occurring inside a CRD's embedded openAPIV3Schema splits it,
+# the HEAD fragment still decodes with kind + metadata.name and is kept, and the
+# tail is discarded — a truncated schema, server-side-applied over a live one.
+# `argocd_crd_undecodable` below makes that visible; see its precondition.
 locals {
-  argocd_crd_docs = var.deploy_argocd ? [
-    for doc in split("\n---\n", data.helm_template.argocd_crds[0].manifest) :
+  # THE single live read of the render. Everything downstream derives from this
+  # local, which is what keeps check-render-determinism.sh's one-read property
+  # true while still allowing more than one derived view.
+  argocd_crd_source_docs = var.deploy_argocd ? split("\n---\n", data.helm_template.argocd_crds[0].manifest) : []
+
+  argocd_crd_docs = [
+    for doc in local.argocd_crd_source_docs :
     doc if try(yamldecode(doc).kind, "") == "CustomResourceDefinition"
-  ] : []
+  ]
   argocd_crd_manifest = join("\n---\n", local.argocd_crd_docs)
+
+  # Non-blank source documents that do not parse at all. This is the reachable
+  # detector the "<unparseable>" fallback below is NOT: the fallback is dead by
+  # construction, because every document that survives the kind filter has
+  # already decoded, and split(sep, join(sep, xs)) == xs whenever no element of
+  # xs contains sep — which is guaranteed here, since xs came from splitting on
+  # that same separator. The fallbacks stay as belt-and-braces; this local is
+  # what actually fires when the chart's render shape breaks the split.
+  argocd_crd_undecodable = [
+    for doc in local.argocd_crd_source_docs :
+    substr(trimspace(doc), 0, 80) if trimspace(doc) != "" && try(yamldecode(doc), null) == null
+  ]
 
   # Test/oracle surface, exposed through outputs so
   # tests/argocd-crd-scope.tftest.hcl can bind the property at plan time — the
@@ -926,10 +947,7 @@ locals {
   # argocd_crd_docs list it was joined from. The manifest is what gets frozen,
   # hashed and applied; deriving the oracle from the sibling list would let the
   # two diverge silently — swap the join for something else and the assertion
-  # would still describe the discarded list. Re-parsing the payload also makes
-  # the "<unparseable>" fallback reachable: a document the join produced but
-  # yamldecode cannot read (a separator cutting inside a CRD's embedded schema,
-  # say) surfaces as a kind/name the tests assert against, instead of vanishing.
+  # would still describe the discarded list.
   argocd_crd_payload_docs = split("\n---\n", local.argocd_crd_manifest)
   argocd_crd_kinds = local.argocd_crd_manifest == "" ? [] : distinct([
     for doc in local.argocd_crd_payload_docs : try(yamldecode(doc).kind, "<unparseable>")
@@ -957,15 +975,34 @@ locals {
 # comment plus the test named below are the completeness binding.
 #
 # kubernetes_version is deliberately NOT in the list, even though the data source
-# passes it as kube_version. Helm copies `crds/` through verbatim — it never templates
-# those files — so the CRD projection is byte-identical across Kubernetes versions.
-# Keeping it here made a routine k8s upgrade re-fire a kubectl apply against CRDs that
-# argocd-controller owns by then (the steady-state component ships the same three CRDs
-# and syncs them with ServerSideApply=true), which is a conflict looking for an
-# occasion and no payload change to justify it. The independence is not an assumption:
-# tests/argocd-crd-scope.tftest.hcl asserts the payload digest is equal across two
-# widely-separated kubernetes_version values, so a chart that starts templating its
-# CRDs turns that test red instead of silently un-triggering the bump.
+# passes it as kube_version. Keeping it there made a routine k8s upgrade re-fire a
+# kubectl apply against CRDs argocd-controller owns by then (the steady-state
+# component ships the same three CRDs and syncs them with ServerSideApply=true) —
+# a conflict looking for an occasion, with no payload change to justify it. Since
+# the apply no longer forces, such a conflict now FAILS the apply, so removing a
+# groundless re-fire is worth more than it was before.
+#
+# Why the payload does not depend on it, stated as the mechanism actually is:
+# this chart does NOT use Helm's un-templated `crds/` directory. Its three CRDs
+# live in `templates/crds/` and ARE rendered as templates (verified against the
+# pinned 9.4.5 tarball). What makes them version-independent is narrower and
+# checkable: every Go-template directive in those three files interpolates
+# `.Values.crds.{install,keep,annotations,additionalLabels}` and nothing else —
+# no `.Capabilities`, no `.Release`. (The many `KubeVersion` strings in the files
+# are prose inside the CRDs' own schema descriptions, not template references.)
+# The measurement agrees: byte-identical render under --kube-version 1.31.0 and
+# 1.35.0.
+#
+# What binds it going forward is the STRUCTURAL half only:
+# tests/argocd-crd-scope.tftest.hcl asserts the payload is the same three CRDs
+# and the single kind CustomResourceDefinition at a kubernetes_version far from
+# the suite default. The BYTE-level claim is deliberately UNGATED — OpenTofu has
+# no cross-run output reference, so two renders cannot be digest-compared inside
+# one test suite. REVISIT TRIGGER: because these files are templates, a future
+# chart CAN reach `.Capabilities.KubeVersion` in them; re-check the directive
+# list above at every argocd_chart_version bump. adr-0025 §Consequences carries
+# the same residual. Do not upgrade this comment's claim without the test that
+# would justify it.
 resource "terraform_data" "argocd_crds_render" {
   count = var.deploy_argocd ? 1 : 0
   input = local.argocd_crd_manifest
@@ -985,6 +1022,28 @@ resource "terraform_data" "argocd_crds_render" {
       # set. Names come from the same plan-known projection as the kinds.
       condition     = alltrue([for n in local.argocd_expected_crds : contains(local.argocd_crd_names, n)])
       error_message = "argocd CRD projection is missing ${jsonencode(setsubtract(local.argocd_expected_crds, local.argocd_crd_names))} — produced ${jsonencode(local.argocd_crd_names)}; the chart render shape changed, check the split/yamldecode filter in main.tf."
+    }
+    precondition {
+      # COMPLETENESS above, EXCLUSIVITY here — and the pair is the point. The name
+      # check is a SUBSET test: delete the kind filter from the projection and the
+      # payload becomes the full twelve-kind chart render, which still CONTAINS all
+      # three CRD names and would sail through. That is precisely the defect #218
+      # exists to remove, so it gets its own condition instead of relying on a test
+      # only the network-gated, advisory `task tofu:test` reaches. Every consumer
+      # plan is now a gate for it.
+      condition     = alltrue([for k in local.argocd_crd_kinds : k == "CustomResourceDefinition"])
+      error_message = "argocd CRD projection carries non-CRD documents ${jsonencode(setsubtract(local.argocd_crd_kinds, ["CustomResourceDefinition"]))} — the Day-0 apply must deliver CustomResourceDefinitions and nothing else (knowledge/decisions/0025-argocd-crd-apply-scope.md); check the kind filter in main.tf."
+    }
+    precondition {
+      # The kind filter drops what it cannot parse. Harmless for a stray
+      # document; NOT harmless for a CRD cut in half by a "\n---\n" inside its
+      # openAPIV3Schema, where the head fragment still decodes and is kept while
+      # the tail vanishes — a truncated schema applied server-side over a live
+      # one, which strips every field the served schema no longer knows. Nothing
+      # downstream can see that, because by then the bad document IS the CRD. So
+      # it is caught here, on the source split, before the filter runs.
+      condition     = length(local.argocd_crd_undecodable) == 0
+      error_message = "argocd CRD render contains ${length(local.argocd_crd_undecodable)} document(s) that do not parse as YAML, starting with ${jsonencode(local.argocd_crd_undecodable)} — the kind filter would drop them silently. If a CRD's embedded schema now contains a line matching the document separator, the surviving half is a TRUNCATED CRD; do not apply it."
     }
   }
 }

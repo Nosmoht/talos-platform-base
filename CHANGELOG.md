@@ -90,7 +90,23 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   component's rendered manifests were consumable from a vendored tag; the file
   that makes them a buildable unit was not.
   `scripts/check-substrate-consumability.sh` now requires it for every
-  renderable component. Additive for consumers — no action required.
+  renderable component — and checks it against the resources the kustomization
+  actually names, rather than a hardcoded filename list, so a component whose
+  resource set changes cannot ship a kustomization pointing at a file the
+  artifact omits. Additive for consumers — no action required.
+
+### Added
+
+- **Substrate invariants I5 and P, and the consumer-overlay E-checks.** I5
+  asserts the steady-state `argocd-rbac-cm` ships no non-empty `policy.default`
+  — a key with a strictly wider blast radius than `policy.csv`, since it grants
+  its role to every authenticated principal with no subject at all, and the one
+  key of the pair that was previously ungated. P asserts the module's
+  `argocd_chart_version` default equals `chart.lock.yaml`'s version: formerly a
+  documented deferral, promoted to a gate because a pin divergence now fails
+  every consumer's next `tofu apply` rather than being force-resolved. The
+  E-checks build the worked consumer overlay against an unpatched control build,
+  so the documented SSO wiring cannot drift from what the component accepts.
 
 - **`talos-cluster`: `nodes` is a MAP keyed by node name, not a list.** The
   per-node `hostname` field is removed — the key *is* the hostname, so a node is

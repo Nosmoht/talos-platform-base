@@ -71,9 +71,15 @@ configs:
     # here means empty-but-present there, not missing.
     #
     # `policy.default: ''` pins a value identical to the chart default — an
-    # authenticated principal matching no rule gets no permission. The pin is
-    # documentation of intent, not enforcement: no gate asserts it, and a chart
-    # that changed its default would silently change the floor's posture.
+    # authenticated principal matching no rule gets no permission.
+    #
+    # This is the key with the WIDEST blast radius in the file: a policy binds
+    # the subjects it names, while a non-empty policy.default grants its role to
+    # every authenticated principal, in every consuming cluster, with no subject
+    # at all. So the real risk is an edit here, not a chart-default change (the
+    # value is pinned, which makes the chart's default irrelevant). Invariant I5
+    # asserts it stays empty — see README §Substrate invariants.
+    #
     # Until a consumer supplies a policy, the local `admin` account is the only
     # working access path; ArgoCD documents it as an unrestricted superuser.
     policy.default: ''

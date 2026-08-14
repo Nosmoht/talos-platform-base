@@ -118,10 +118,19 @@ chart bump that has fallen behind the steady state surfaces as a conflict
 for an operator to resolve rather than silently rolling the live CRD schema
 back to the seed pin.
 
-A plan-time precondition SHALL reject a projection that does not carry all
-three ArgoCD CRDs BY NAME, so a chart whose render shape stops matching the
-projection fails the plan rather than applying an incomplete CRD set. A
-count-based check would be satisfied by three wrong documents.
+Three plan-time preconditions SHALL guard the projection, because they assert
+different properties and each is satisfied by the others' failure modes:
+
+- **completeness** — the projection carries all three ArgoCD CRDs BY NAME. A
+  count-based check would be satisfied by three wrong documents.
+- **exclusivity** — every surviving document is a `CustomResourceDefinition`.
+  The by-name check is a containment test, so a projection that stopped
+  filtering would carry the chart's full default render and still satisfy it.
+- **parseability** — no non-blank document in the source render fails to parse.
+  The kind filter drops what it cannot decode, which silently truncates a CRD
+  that a document separator cut in half: the head fragment still decodes with a
+  valid kind and name and is kept, and applying it server-side replaces a live
+  schema with a truncated one.
 
 #### Scenario: CRD apply follows cluster health
 
@@ -141,6 +150,19 @@ count-based check would be satisfied by three wrong documents.
 - **WHEN** the projection does not yield all three ArgoCD CRDs by name
 - **THEN** the plan fails, naming the missing ones, rather than applying an
   incomplete CRD set
+
+#### Scenario: Non-CRD documents in the projection fail at plan time
+
+- **WHEN** the projection yields a document whose kind is not
+  `CustomResourceDefinition`
+- **THEN** the plan fails, naming the offending kinds — the by-name check alone
+  would pass, because it only tests containment
+
+#### Scenario: An unparseable source document fails at plan time
+
+- **WHEN** a non-blank document of the source render does not parse as YAML
+- **THEN** the plan fails rather than letting the kind filter discard it, since
+  a discarded fragment may be the tail of a CRD that was cut in half
 
 #### Scenario: Chart bump re-applies, drift and Kubernetes bumps do not
 

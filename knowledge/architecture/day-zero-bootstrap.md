@@ -226,13 +226,19 @@ and CI):
 - **I2** — no rendered ConfigMap carries a `.data` key prefixed
   `server.dex.server` (scanning every ConfigMap is rename-proof; the
   legitimate `configMapKeyRef` *consumers* of those keys are not violations).
-- **I3** (bootstrap seed only, for now) — the seed's `argocd-cm` carries no
+- **I3** (shared across both render paths) — the rendered `argocd-cm` carries no
   `url` key. ArgoCD documents `url` as required for SSO and derives the OIDC
   redirect URI from it, so the chart's placeholder hostname fails at the IdP
   rather than in the cluster; an absent key is the visible state, and the
   consumer supplies the real value. `argocd-notifications-cm`'s `argocdUrl` is
   an accepted residual — Helm's `default` treats `""` as unset, so it cannot be
   cleared without disabling the whole notifications workload.
+- **I4** (steady-state render only) — `argocd-rbac-cm` carries no non-empty
+  `policy.csv`: the substrate ships no identity, and the seed values have never
+  carried one. Steady-state-only because the published component is what a
+  consumer's overlay merges onto, so a principal shipped there would become a
+  standing grant in every consuming cluster
+  ([argocd-sso-contract](../reference/argocd-sso-contract.md)).
 
 Both paths render from the same chart tarball, pinned and sha256-verified
 against `kubernetes/substrate/argocd/chart.lock.yaml`. Consumer

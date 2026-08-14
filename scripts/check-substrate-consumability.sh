@@ -55,6 +55,27 @@ while IFS= read -r comp; do
     echo "FAIL: ${comp}: ships namespace.yaml but it is not in .ci-oci-tarball-include.txt" >&2
     fail=1
   fi
+  # Shipping the kustomization is not enough — it must be shipped WITH the files
+  # it names. Hardcoding the three filenames we happen to use today would leave
+  # the real requirement ("present alongside the resources it names") unchecked:
+  # _rendered/crds.yaml is in the allowlist by luck, not by gate, and
+  # render-component.sh deletes it whenever a chart ships no CRDs. So read the
+  # actual resources: list. Local paths only — a remote base is fetched, not
+  # packaged, and must not be demanded of the tarball.
+  if [ -f "kubernetes/substrate/${comp}/kustomization.yaml" ] && command -v yq >/dev/null 2>&1; then
+    while IFS= read -r res; do
+      [ -n "${res}" ] || continue
+      case "${res}" in
+        http://*|https://*|git@*|github.com/*|git::*|ssh://*|*://*) continue ;;
+      esac
+      if ! grep -qx "kubernetes/substrate/${comp}/${res}" .ci-oci-tarball-include.txt; then
+        echo "FAIL: ${comp}: kustomization.yaml names resource '${res}' but kubernetes/substrate/${comp}/${res} is not in .ci-oci-tarball-include.txt — the vendored kustomization would reference a file the artifact does not contain" >&2
+        fail=1
+      fi
+    done <<EOF
+$(yq e '.resources[] // ""' "kubernetes/substrate/${comp}/kustomization.yaml" 2>/dev/null)
+EOF
+  fi
 done < .ci-renderable-components.txt
 
 if [ "${fail}" -eq 0 ]; then

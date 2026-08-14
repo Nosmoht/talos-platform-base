@@ -2,6 +2,36 @@
 
 ## 2026-08-14
 
+Second pass, after a five-lens independent review. Corrections to load-bearing
+claims are listed first because they change what the record asserts, not just
+how it reads:
+
+- `decisions/0025-argocd-crd-apply-scope.md`: three corrections. (1) The
+  mechanism behind removing `kubernetes_version` from `triggers_replace` was
+  wrong — this chart has no un-templated `crds/` directory; its CRDs live in
+  `templates/crds/` and ARE rendered as templates. The conclusion survives on a
+  narrower, verified basis: every directive in those three files interpolates
+  `.Values.crds.*` only. Recorded with a revisit trigger, since a future chart
+  version can reach `.Capabilities` there. (2) "A plan-time precondition requires
+  at least three surviving documents" described the count-based form the spec
+  explicitly rejects; the guard is by-name, and two further preconditions
+  (exclusivity, parseability) were added. (3) The residual-field-manager
+  reasoning had its default inverted: it argued from "ArgoCD applies client-side
+  by default", but the shipped root Application sets `ServerSideApply=true`, so
+  server-side is the default path for anyone using it.
+- `reference/argocd-sso-contract.md`: the remote-base fetch is no longer
+  described as using "the Application's own credentials" — an unverified claim
+  about credential handling. It is stated as what it is for a public base: an
+  anonymous, unverified fetch that bypasses the repo's cosign/SLSA/SBOM posture,
+  with a commit SHA recommended over a mutable tag and the verified vendored
+  path named as the stronger alternative. The Secret trust boundary gains its
+  read side (`server.secretkey` makes `get secrets` in the namespace
+  superuser-equivalent); the `server.insecure` caveat is re-scoped from the
+  break-glass credential to every SSO session token on the same hop; the
+  cut-over gains an explicit SSO-session step and the retirement of
+  `argocd-initial-admin-secret`; the PKCE recipe points at the version-specific
+  Argo CD switch instead of implying registration alone suffices.
+
 - `reference/argocd-sso-contract.md`: new. The consumer-facing half of the
   identity removal — what the base ships versus what the consumer owns, the
   Kustomize remote-base mechanism (ArgoCD resolves `$ref` only in
@@ -32,8 +62,9 @@
   date per the bundle's decision-concept rule.
 - `architecture/day-zero-bootstrap.md`: §The direct-apply exception now states
   the apply's real former scope and its new CRD-only one; the invariant list
-  gains I3 and corrects I1's SSO wording from a Helm-values path to a patch on
-  the `argocd-cm` ConfigMap. `timestamp` bumped — `main.tf` and
+  gains I3 (shared across both render paths) and I4 (steady-state only), and
+  corrects I1's SSO wording from a Helm-values path to a patch on the
+  `argocd-cm` ConfigMap. `timestamp` bumped — `main.tf` and
   `check-argocd-substrate-invariants.sh`, both declared sources, changed.
 - `reference/manifest-pipeline.md`: §ArgoCD substrate invariants now carries
   I1-I4 with I3 shared across both paths, the presence-anchor rationale for the

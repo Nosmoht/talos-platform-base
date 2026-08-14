@@ -45,8 +45,16 @@ privileged, shared credential.
 ## The mechanism: a Kustomize remote base
 
 The consumer's Application is **single-source over their own repo**. The base
-enters as a Kustomize *remote base*: a git URL in `resources:`, which the
-repo-server fetches at build time using the Application's own credentials.
+enters as a Kustomize *remote base*: a git URL in `resources:`, which kustomize
+fetches over the network inside the repo-server every time it builds the
+manifests.
+
+Do not assume the Application's repository credentials apply to that fetch — the
+fetch is kustomize's own git invocation, and Argo CD documents limitations around
+credentials for remote bases. For this **public** base the practical statement is
+simpler and worth being blunt about: it is an anonymous, unauthenticated fetch
+with no signature, provenance or SBOM verification. See §Supply chain below
+before adopting it.
 
 ```yaml
 # consumer-repo: kubernetes/overlays/<cluster>/argocd/kustomization.yaml
@@ -68,11 +76,40 @@ open upstream enhancement request, not a configuration mistake. A consumer who
 tries `$base/...` from a `kustomization.yaml` gets a build error, so the
 remote-base form is the mechanism, not one option among two.
 
-**Pin the ref to a tag.** ArgoCD's own security guidance notes that a writable
-trusted repository can read out-of-tree files on the repo-server, and remote
-bases are fetched over the network at build time. A floating `ref=main` makes
-every base commit a live input to your cluster's reconciliation. Pin the tag you
-vendored, bump it deliberately.
+## Supply chain: what the remote base does and does not give you
+
+**Pin the ref, and prefer an immutable one.** A floating `ref=main` makes every
+base commit a live input to your cluster's reconciliation. A tag is better and is
+the readable form — but a git tag is *mutable*: anyone able to force-push a tag
+on the base repository silently redirects every consumer who "pinned" it. A full
+commit SHA in `?ref=` is immutable and is the stronger choice for the component
+that owns your cluster's GitOps engine, RBAC and CRDs.
+
+**This path bypasses the repository's own release verification.** Every tagged
+artifact of this base is cosign-signed (keyless OIDC) and carries SLSA build
+provenance and a CycloneDX SBOM — see
+[verify-release](../workflows/verify-release.md). None of that is involved in a
+remote-base fetch. If that assurance matters to you, the **verified path** is now
+available and is strictly stronger, because `kustomization.yaml` ships in the
+artifact as of this release:
+
+```bash
+cosign verify ... ghcr.io/<owner>/talos-platform-base:<tag>   # full recipe: verify-release
+oras pull ghcr.io/<owner>/talos-platform-base:<tag> --output /tmp/base-pull
+tar -xzf /tmp/base-pull/talos-platform-base-<tag>.tar.gz -C vendor/base
+```
+
+…then a local `resources: ../../vendor/base/kubernetes/substrate/argocd` instead
+of the git URL. Note `vendor/base/` is conventionally gitignored, so committing
+the vendored tree (or vendoring in CI) is part of adopting this path — the
+repo-server can only build what is in the repository it fetches.
+
+**Two further exposures of the fetch itself.** ArgoCD's security guidance notes
+that a writable trusted repository can read out-of-tree files on the repo-server.
+And this substrate ships `kustomize.buildOptions: "--enable-alpha-plugins
+--enable-exec"` to that same repo-server — the pod that also mounts the SOPS age
+key. Content fetched at build time is therefore worth treating as code, not data.
+Pinning to a commit SHA is what bounds it.
 
 ## Patching the two ConfigMaps
 
@@ -131,19 +168,41 @@ value indirection.
 into it at runtime; a declarative overlay that owns that object fights the server
 for it.
 
-**Trust boundary, stated plainly.** `app.kubernetes.io/part-of: argocd` is the
-only scoping control on this mechanism, and the shipped `argocd-secret` already
-carries it. Anyone who can create Secrets in the `argocd` namespace can therefore
-supply values that ArgoCD configuration references — that permission is
-equivalent to ArgoCD configuration authority. The base's own `root-bootstrap`
-AppProject is already narrow (its `namespaceResourceWhitelist` admits only
-`AppProject` and `Application`), so this warning is about **consumer-defined**
-projects and consumer-side RBAC, not about the shipped one.
+**Trust boundary, stated plainly — and it has two halves.**
+`app.kubernetes.io/part-of: argocd` is the only scoping control on this
+mechanism, and the shipped `argocd-secret` already carries it.
+
+*Write side:* anyone who can **create** Secrets in the `argocd` namespace can
+supply values that ArgoCD configuration references — equivalent to ArgoCD
+configuration authority. Note the name is not reserved: the indirection points at
+a fixed name (`argocd-oidc` in the example below), so a Secret created under that
+name before yours lands is the one ArgoCD reads. Create it as part of bringing the
+namespace up, not later.
+
+*Read side, and it is the stronger of the two:* `get` or `list` on Secrets in the
+`argocd` namespace yields both the OIDC client secret you are about to store
+there **and** `server.secretkey`, which `argocd-server` writes into
+`argocd-secret` at runtime and uses to sign sessions. That is full impersonation
+of any principal your `policy.csv` binds, with no write permission at all. Read
+access to this namespace is ArgoCD superuser access; size any Role accordingly.
+
+The base's own `root-bootstrap` AppProject is already narrow (its
+`namespaceResourceWhitelist` admits only `AppProject` and `Application`), so this
+warning is about **consumer-defined** projects and consumer-side RBAC, not about
+the shipped one.
 
 ## PKCE, if you would rather not hold a secret
 
 PKCE removes the client secret. It does not remove the need for care:
 
+- **Argo CD must be switched into the PKCE flow explicitly**, via its own
+  `oidc.config` key for that purpose, and that key's name and its interaction
+  with `clientSecret` are version-specific — take them from the Argo CD
+  user-management docs for the version you run, not from this page. Registering
+  a public client without flipping that switch leaves Argo CD attempting the
+  confidential flow: login simply breaks, and the tempting response is to leave
+  the shared `admin` account enabled while debugging, which is the exposure this
+  whole contract exists to shorten;
 - the IdP client is **public** — it holds no secret, so the redirect URI is the
   only thing binding the flow to your cluster;
 - register `<url>/pkce/verify` with **exact** matching. A wildcard redirect URI
@@ -196,11 +255,16 @@ and can do nothing. So "SSO login works" is not evidence that the policy works,
 and disabling `admin` on that evidence locks everyone out of a cluster whose
 GitOps engine still reconciles.
 
-The gate is an authorization check for a real SSO principal:
+The gate is an authorization check **in an SSO session**. `can-i` answers for
+whatever session the CLI currently holds, so running it while logged in as
+`admin` — which, until this moment, is the only account that works — returns
+`yes` and tells you nothing about your SSO principal:
 
 ```bash
-argocd account can-i update applications '*/*'
-# expect: yes
+argocd logout <argocd-host>
+argocd login <argocd-host> --sso
+argocd account get-user-info                      # confirm WHICH principal
+argocd account can-i update applications '*/*'    # expect: yes
 ```
 
 Only once that returns `yes`:
@@ -211,19 +275,36 @@ data:
   admin.enabled: "false"
 ```
 
-**Recovery.** Correct the overlay in git and let self-heal reconcile — that is
-the supported path. A `kubectl patch` on `argocd-cm` is a deliberate break-glass
-exception to the "never `kubectl apply` ArgoCD-managed resources" constraint, and
-ArgoCD will revert it on the next sync, so use it to regain access and then fix
-git. Re-enabling the local account additionally requires a bcrypt `admin.password`
-in `argocd-secret`: `admin.enabled: "true"` alone does not restore a password
-that was cleared.
+**Then retire the bootstrap credential.** Argo CD generates
+`argocd-initial-admin-secret` at first server start and it persists indefinitely,
+holding the bootstrap superuser password in plaintext — readable by anyone with
+`get secrets` in the namespace, which §Trust boundary above establishes is
+already superuser-equivalent. Rotating the password does not remove the Secret:
 
-**One caveat on the break-glass credential.** The substrate ships
-`server.insecure: true` — argocd-server serves plaintext at the pod and the
-consumer terminates TLS at their gateway. The admin credential therefore crosses
-the gateway→pod hop in cleartext. Rotate it promptly, and treat a long
-admin-enabled window as the risk it is.
+```bash
+kubectl -n argocd delete secret argocd-initial-admin-secret
+```
+
+**Recovery.** Correct the overlay in git and let self-heal reconcile — that is
+the supported path. If you must break glass, suspend the root Application's
+`syncPolicy.automated` first (it runs `selfHeal: true`, so an unsuspended patch
+is reverted before you can use it), patch, fix git, then re-enable automation.
+Re-enabling the local account takes two objects: `admin.enabled: "true"` in
+`argocd-cm` *and* a bcrypt password in `argocd-secret` — patched with a
+`stringData` merge so `server.secretkey` is untouched. That is the deliberate
+exception to "do not patch `argocd-secret`" above, which is about declaratively
+*owning* the object, not about break-glass. Consult the Argo CD user-management
+docs for the exact field set your version expects. Step-by-step commands:
+`UPGRADING.md` §Recovery.
+
+**A caveat that outlives the break-glass window.** The substrate ships
+`server.insecure: true` — argocd-server serves plaintext at the pod and you
+terminate TLS at your gateway. Everything on that hop is cleartext: the admin
+credential, but equally the OIDC authorization code and every SSO session token
+afterwards, which are the long-lived ones. So this is not a break-glass footnote
+that ends at cut-over. Terminate TLS as close to the pod as you can, enable
+Cilium transparent encryption, or set `server.insecure: false` with a pod-level
+certificate — the component's `values.yaml` documents that opt-out.
 
 ## Worked example
 
@@ -233,6 +314,12 @@ overlay of everything above. It is asserted in CI by
 control build without the patches, so the assertions prove the patches *do*
 something rather than passing vacuously. It uses a local `resources:` path so
 the gate runs offline — the remote-base form above is the one to copy.
+
+**Both this page and that example live in git only** — neither the `knowledge/`
+bundle nor `kubernetes/examples/` is in the OCI artifact. If your relationship
+with this base is `oras pull` into `vendor/base/`, read them at the tag on the
+repository's web view. `UPGRADING.md` inlines the minimum YAML the migration
+needs, so the migration itself does not depend on reaching either.
 
 ## See also
 

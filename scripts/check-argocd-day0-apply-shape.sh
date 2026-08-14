@@ -24,6 +24,19 @@
 #   A3  terraform_data.argocd_crds_render carries a precondition whose condition
 #       references the projection locals — so the CRD-set guard cannot be
 #       deleted silently.
+#   A4  that command names a DEDICATED --field-manager. adr-0025 makes this one
+#       of the three properties that make dropping --force-conflicts safe: without
+#       it kubectl records the generic manager `kubectl`, which is both an
+#       operator's ad-hoc apply and the stale owner the old force-apply already
+#       left on argocd-cm/argocd-rbac-cm. Deleting the flag is otherwise invisible.
+#   A5  the projection still FILTERS on kind == CustomResourceDefinition. The
+#       plan-time name precondition is a subset test, so deleting the filter
+#       yields the full twelve-kind render and still satisfies it — the exact
+#       defect this fence exists for, caught here statically.
+#   A6  triggers_replace does NOT name kubernetes_version. Re-adding it is a
+#       one-line regression that re-fires the apply on every routine Kubernetes
+#       bump against CRDs ArgoCD owns by then, which is now an apply FAILURE
+#       rather than a silent overwrite.
 #
 # Hermetic: pure static analysis, no providers/network.
 # Usage: scripts/check-argocd-day0-apply-shape.sh [path/to/main.tf]
@@ -80,13 +93,56 @@ if [ -z "$freeze_blk" ]; then
 elif ! printf '%s\n' "$freeze_blk" | grep -qE '^[[:space:]]*precondition[[:space:]]*\{'; then
   echo "::error::check-argocd-day0-apply-shape: A3 — terraform_data.argocd_crds_render carries no precondition. Without it a projection that stops matching the chart's render shape freezes and kubectl-applies a truncated CRD set instead of failing the plan." >&2
   fail=1
-elif ! printf '%s\n' "$freeze_blk" | grep -qE '^[[:space:]]*condition[[:space:]]*=.*local\.argocd_'; then
-  echo "::error::check-argocd-day0-apply-shape: A3 — the precondition on terraform_data.argocd_crds_render does not reference the projection locals (local.argocd_*), so it is not guarding the CRD set it claims to guard." >&2
+else
+  # Both halves, named individually. "At least one condition mentions
+  # local.argocd_*" is too weak once the freeze carries two preconditions:
+  # hollowing either one would still leave the other matching, and the guard
+  # that was deleted is the one that mattered. Completeness and exclusivity are
+  # different properties, so each gets its own assertion.
+  if ! printf '%s\n' "$freeze_blk" | grep -qE '^[[:space:]]*condition[[:space:]]*=.*local\.argocd_crd_names'; then
+    echo "::error::check-argocd-day0-apply-shape: A3 — terraform_data.argocd_crds_render has no precondition referencing local.argocd_crd_names, so nothing asserts the projection still carries all three ArgoCD CRDs BY NAME. Without it a projection that stops matching the chart's render shape freezes and kubectl-applies a truncated CRD set instead of failing the plan." >&2
+    fail=1
+  fi
+  if ! printf '%s\n' "$freeze_blk" | grep -qE '^[[:space:]]*condition[[:space:]]*=.*local\.argocd_crd_kinds'; then
+    echo "::error::check-argocd-day0-apply-shape: A3 — terraform_data.argocd_crds_render has no precondition referencing local.argocd_crd_kinds, so nothing asserts the payload is EXCLUSIVELY CustomResourceDefinitions at plan time. The by-name check is a containment test and passes on the full twelve-kind render." >&2
+    fail=1
+  fi
+fi
+
+# A4 — and it records its writes under a manager of its own.
+if ! printf '%s\n' "$apply_blk" | grep -E 'command[[:space:]]*=' | grep -qE -- '--field-manager=[^ "]+'; then
+  echo "::error::check-argocd-day0-apply-shape: A4 — the Day-0 apply names no --field-manager, so kubectl records the generic manager 'kubectl'. That is indistinguishable from an operator's ad-hoc apply AND from the stale owner the pre-#218 force-apply already left on argocd-cm/argocd-rbac-cm, which is exactly the distinction adr-0025 relies on when it drops --force-conflicts." >&2
+  fail=1
+elif printf '%s\n' "$apply_blk" | grep -E 'command[[:space:]]*=' | grep -qE -- '--field-manager=kubectl([^-a-zA-Z0-9]|$)'; then
+  echo "::error::check-argocd-day0-apply-shape: A4 — the Day-0 apply passes --field-manager=kubectl, which is the generic default it is supposed to replace. Use a dedicated manager name." >&2
   fail=1
 fi
 
+# A5 — the projection is EXCLUSIVE, not merely complete.
+# The freeze's name precondition is a subset test (`contains`), so a projection
+# that stopped filtering would still carry all three CRD names and pass it. The
+# filter itself is the property, so assert the filter.
+if ! grep -qE 'yamldecode\(doc\)\.kind, ""\) == "CustomResourceDefinition"' "$MAIN"; then
+  echo "::error::check-argocd-day0-apply-shape: A5 — the CRD projection no longer filters on kind == \"CustomResourceDefinition\". Without that filter the payload is the chart's full default render (twelve kinds, bundled Dex included) and the by-name precondition still passes, because it only tests containment. This is the #218 defect itself." >&2
+  fail=1
+fi
+
+# A6 — kubernetes_version stays OUT of the re-apply trigger set.
+if [ -n "$freeze_blk" ]; then
+  # `intrig`, not `int` — the latter is an awk built-in and is a syntax error as
+  # a variable name.
+  trig="$(printf '%s\n' "$freeze_blk" | awk '/^[[:space:]]*triggers_replace[[:space:]]*=/ {intrig=1} intrig {print} intrig && /^[[:space:]]*\]/ {intrig=0}')"
+  if [ -z "$trig" ]; then
+    echo "::error::check-argocd-day0-apply-shape: A6 — terraform_data.argocd_crds_render has no triggers_replace list to inspect; an intended chart bump would never re-apply." >&2
+    fail=1
+  elif printf '%s\n' "$trig" | grep -vE '^[[:space:]]*#' | grep -q 'kubernetes_version'; then
+    echo "::error::check-argocd-day0-apply-shape: A6 — triggers_replace names kubernetes_version. The CRD payload does not depend on it (Helm copies crds/ through verbatim), so this only makes a routine Kubernetes upgrade re-fire the apply against CRDs ArgoCD owns by then — which, without --force-conflicts, fails the whole tofu apply. See knowledge/decisions/0025-argocd-crd-apply-scope.md." >&2
+    fail=1
+  fi
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "check-argocd-day0-apply-shape: OK — Day-0 apply is server-side, carries no --force-conflicts, and the CRD-set precondition guards the frozen projection."
+  echo "check-argocd-day0-apply-shape: OK — Day-0 apply is server-side under a dedicated field manager, carries no --force-conflicts, applies an exclusively-CRD projection guarded at plan time, and does not re-fire on a Kubernetes bump."
   exit 0
 fi
 # 3, not 1: the header reserves 1 for "the fence could not run" (missing input).

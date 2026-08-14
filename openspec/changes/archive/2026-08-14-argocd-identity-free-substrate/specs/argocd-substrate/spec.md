@@ -8,11 +8,17 @@ access policy names principals of a specific organisation, which a
 cluster-agnostic substrate cannot know; the consumer owns both keys in their
 own overlay.
 
-The assertion is on EMPTINESS, not absence — the chart's `argocd-rbac-cm`
-template emits `policy.csv` unconditionally, so the shipped state is the empty
-string and a presence check would be satisfied forever. `policy.default: ''`
-remains set, pinning a value identical to the chart default: an authenticated
-principal matching no rule receives no permission.
+The rendered `argocd-rbac-cm` SHALL likewise carry no non-empty
+`policy.default`. That key has a strictly wider blast radius than `policy.csv` —
+a policy binds the subjects it names, while `policy.default` grants its role to
+every authenticated principal with no subject at all — so it is asserted
+separately rather than folded into the policy assertion. The shipped value stays
+`''`, identical to the chart default: an authenticated principal matching no rule
+receives no permission.
+
+Both assertions are on EMPTINESS, not absence — the chart's `argocd-rbac-cm`
+template emits the keys unconditionally, so the shipped state is the empty string
+and a presence check would be satisfied forever.
 
 Consequence, stated so the posture is not misread: until a consumer supplies a
 policy, the local `admin` account is the only working access path, and ArgoCD
@@ -23,6 +29,12 @@ documents it as an unrestricted superuser.
 - **WHEN** the steady-state render's `argocd-rbac-cm` is inspected
 - **THEN** its `policy.csv` is empty or whitespace-only, and no subject is bound
   to a role
+
+#### Scenario: Render grants no blanket role
+
+- **WHEN** the same ConfigMap's `policy.default` is inspected
+- **THEN** it is empty or whitespace-only, so no role is granted to every
+  authenticated principal
 
 ### Requirement: No placeholder base URL in the render
 
@@ -56,10 +68,11 @@ values the overlay is supposed to supply.
 #### Scenario: The documented overlay still wires the component
 
 - **WHEN** the worked overlay and the unpatched component are both built
-- **THEN** the control build carries neither a `url` nor a non-empty
-  `policy.csv`, while the patched build carries a non-empty `url`, an
-  `oidc.config` that parses as YAML with both `issuer` and `clientID`, and a
-  non-empty `policy.csv`
+- **THEN** the control build carries none of a `url`, a non-empty `oidc.config`
+  or a non-empty `policy.csv`, while the patched build carries a non-empty
+  `url`, an `oidc.config` that parses as YAML with both `issuer` and
+  `clientID`, and a non-empty `policy.csv`. The control covers every key the
+  patched side asserts: a key left out of it makes its own assertion one-sided
 
 #### Scenario: A replacing patch is rejected
 

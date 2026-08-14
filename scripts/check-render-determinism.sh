@@ -143,11 +143,32 @@ for r in $renders; do
       if printf '%s\n' "$outside" |
         grep -E '(content[s]?[[:space:]]*=|command[[:space:]]*=|sha256\()' |
         grep -qE "local\.${lname}([^a-zA-Z0-9_]|\$)"; then
-        echo "::error::check-render-determinism: local.${lname} — derived from the live data.helm_template.${r} render — reaches an apply-path sink (content/contents/command/sha256) outside the locals block. Every apply-path consumer must read terraform_data.${r}_render[0].output instead, or the non-byte-stable render is re-pushed on every plan (#121/#123)." >&2
+        echo "::error::check-render-determinism: local.${lname} — which may derive from the live data.helm_template.${r} render — reaches an apply-path sink (content/contents/command/sha256) outside the locals block. Every apply-path consumer must read terraform_data.${r}_render[0].output instead, or the non-byte-stable render is re-pushed on every plan (#121/#123)." >&2
         fail=1
       fi
     done <<EOF
 $(locals_names)
+EOF
+
+    # The sink scan above is ONE HOP: it matches a sink attribute on a line that
+    # literally names `local.<x>`. That leaves an indirect launder — freeze the
+    # projection in a SECOND terraform_data, then read its `.output` from a sink.
+    # No sink line mentions `local.`, so the scan never sees it, and the live
+    # render reaches kubectl unfrozen: the #121/#123 defect one resource away.
+    #
+    # `input =` is the sanctioned consumer, but only ON THE FREEZE. Assert that:
+    # any other block capturing the projection is itself a sink.
+    while IFS= read -r cap; do
+      [ -n "$cap" ] || continue
+      [ "$cap" = "${r}_render" ] && continue
+      echo "::error::check-render-determinism: resource terraform_data.${cap} captures a locals value derived from the live data.helm_template.${r} render via input =. That value may be captured only by terraform_data.${r}_render — a second freeze is an indirect apply-path sink: its .output reaches kubectl without ever passing the sanctioned freeze (#121/#123)." >&2
+      fail=1
+    done <<EOF
+$(awk '
+    /^resource "terraform_data" "/ { name = $0; sub(/^resource "terraform_data" "/, "", name); sub(/".*$/, "", name); inb = 1; next }
+    inb && /^[[:space:]]*input[[:space:]]+= local\./ { print name }
+    inb && /^}/ { inb = 0 }
+  ' "$MAIN")
 EOF
   fi
 

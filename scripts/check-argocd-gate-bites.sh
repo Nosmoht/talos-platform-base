@@ -89,9 +89,34 @@ mut_drop_freeze_precondition() {
 }
 
 # Keep the precondition, but point its condition at something that is not the
-# projection — the "guard in name only" regression.
+# projection — the "guard in name only" regression. Hits the FIRST condition in
+# the freeze, i.e. the by-name completeness guard; the exclusivity one survives,
+# which is what makes this a discriminating scenario rather than a blunt one.
 mut_hollow_freeze_condition() {
   perl -0pi -e 's/(resource "terraform_data" "argocd_crds_render".*?condition\s+= )[^\n]*/${1}var.deploy_argocd/s' "$1"
+}
+
+# Delete the plan-time exclusivity guard while leaving the by-name one intact.
+# Buffer each precondition block and drop only the one mentioning
+# argocd_crd_kinds — a regex cannot do this cleanly because the error_message
+# strings carry `${jsonencode(...)}` interpolation braces.
+mut_drop_exclusivity_precondition() {
+  awk '
+    index($0, "resource \"terraform_data\" \"argocd_crds_render\"") == 1 { inb = 1 }
+    inb && /^[[:space:]]*precondition[[:space:]]*\{/ {
+      inpre = 1; depth = 1; buf = $0 ORS; hit = 0; next
+    }
+    inpre {
+      buf = buf $0 ORS
+      if (index($0, "argocd_crd_kinds") > 0) { hit = 1 }
+      n = gsub(/\{/, "{"); depth += n
+      n = gsub(/\}/, "}"); depth -= n
+      if (depth <= 0) { inpre = 0; if (!hit) printf "%s", buf }
+      next
+    }
+    { print }
+    inb && /^\}/ { inb = 0 }
+  ' "$1" > "$1.next" && mv "$1.next" "$1"
 }
 
 # Break the #123 freeze on the CRD render.
@@ -113,6 +138,37 @@ mut_sink_content() {
 # The #218 bypass, shape 2: same, via the re-apply trigger hash.
 mut_sink_sha256() {
   printf '\nresource "null_resource" "bite_bypass" {\n  triggers = {\n    h = sha256(local.argocd_crd_manifest)\n  }\n}\n' >> "$1"
+}
+
+# The #218 bypass, shape 3 — INDIRECT: freeze the live projection in a second
+# terraform_data that is not the sanctioned freeze, then read ITS output from a
+# sink. No sink line mentions `local.`, so a one-hop scan does not see it. This
+# is the fence's real boundary; without a scenario it stays unmeasured.
+mut_sink_indirect_freeze() {
+  printf '\nresource "terraform_data" "bite_bypass_freeze" {\n  input = local.argocd_crd_manifest\n}\n\nresource "local_file" "bite_bypass_indirect" {\n  content  = terraform_data.bite_bypass_freeze.output\n  filename = "/tmp/bite-indirect"\n}\n' >> "$1"
+}
+
+# Remove the dedicated field manager, so kubectl records the generic `kubectl`.
+mut_drop_field_manager() {
+  perl -0pi -e 's/ --field-manager=[^ "]+//' "$1"
+}
+
+# Point the field manager back at the generic default it exists to replace.
+mut_generic_field_manager() {
+  perl -0pi -e 's/--field-manager=[^ "]+/--field-manager=kubectl/' "$1"
+}
+
+# Delete the kind filter from the projection. The payload becomes the full
+# twelve-kind chart render while the by-name precondition — a containment test —
+# still passes. This is the #218 defect itself, and until A5 existed every
+# blocking gate stayed green on it.
+mut_drop_kind_filter() {
+  perl -0pi -e 's/\n\s*doc if try\(yamldecode\(doc\)\.kind, ""\) == "CustomResourceDefinition"/\n    doc/' "$1"
+}
+
+# Put kubernetes_version back into the re-apply trigger set.
+mut_readd_kubernetes_version_trigger() {
+  perl -0pi -e 's/(resource "terraform_data" "argocd_crds_render".*?triggers_replace = \[\n)/${1}    var.kubernetes_version,\n/s' "$1"
 }
 
 # ---------------------------------------------------------------- scenarios --
@@ -161,18 +217,34 @@ scenario "$shape_gate" 3 "A2 —" mut_force_conflicts \
   "A2 bites when --force-conflicts comes back"
 scenario "$shape_gate" 3 "carries no precondition" mut_drop_freeze_precondition \
   "A3 bites when the FREEZE's precondition is deleted"
-scenario "$shape_gate" 3 "does not reference the projection locals" mut_hollow_freeze_condition \
-  "A3 bites when the precondition stops guarding the projection"
+scenario "$shape_gate" 3 "no precondition referencing local.argocd_crd_names" mut_hollow_freeze_condition \
+  "A3 bites when the by-name guard is hollowed out, even though the sibling precondition survives"
+scenario "$shape_gate" 3 "no precondition referencing local.argocd_crd_kinds" mut_drop_exclusivity_precondition \
+  "A3 bites when the plan-time exclusivity guard is deleted"
+scenario "$shape_gate" 3 "A4 — the Day-0 apply names no --field-manager" mut_drop_field_manager \
+  "A4 bites when the dedicated field manager is removed"
+scenario "$shape_gate" 3 "A4 — the Day-0 apply passes --field-manager=kubectl" mut_generic_field_manager \
+  "A4 bites when the field manager is the generic default"
+scenario "$shape_gate" 3 "A5 — the CRD projection no longer filters" mut_drop_kind_filter \
+  "A5 bites when the projection stops filtering on kind (the #218 defect itself)"
+scenario "$shape_gate" 3 "A6 — triggers_replace names kubernetes_version" mut_readd_kubernetes_version_trigger \
+  "A6 bites when a Kubernetes bump would re-fire the apply again"
 
 echo "== check-render-determinism =="
+# Patterns name the RESOURCE, not just the symptom. main.tf carries three
+# `ignore_changes = [input]` blocks, so a mutation that hit the wrong freeze
+# would still match a resource-agnostic pattern and report a false PASS — the
+# same mis-anchoring class this file was written to catch.
 scenario "$det_gate" 1 "reaches an apply-path sink" mut_sink_content \
   "the projection cannot be handed to a content= sink"
 scenario "$det_gate" 1 "reaches an apply-path sink" mut_sink_sha256 \
   "the projection cannot be handed to a sha256() trigger"
-scenario "$det_gate" 1 "lacks lifecycle { ignore_changes = [input] }" mut_drop_ignore_changes \
-  "a broken freeze is caught"
-scenario "$det_gate" 1 "must carry triggers_replace" mut_drop_triggers_replace \
-  "a deleted re-apply trigger is caught"
+scenario "$det_gate" 1 "may be captured only by terraform_data.argocd_crds_render" mut_sink_indirect_freeze \
+  "the projection cannot be laundered through a second, unsanctioned freeze"
+scenario "$det_gate" 1 "terraform_data.argocd_crds_render block lacks lifecycle" mut_drop_ignore_changes \
+  "a broken freeze is caught, on the right resource"
+scenario "$det_gate" 1 "terraform_data.argocd_crds_render (a Day-2 CRD kubectl-apply path) must carry triggers_replace" mut_drop_triggers_replace \
+  "a deleted re-apply trigger is caught, on the right resource"
 
 if [ "$rc" = 0 ]; then
   echo "argocd gate bite-check OK: both fences bite on every regression above and stay quiet on the real module"
