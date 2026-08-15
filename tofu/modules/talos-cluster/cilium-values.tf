@@ -3,10 +3,14 @@
 # local, main.tf's outputs.tf output). Moved out of main.tf verbatim (issue #188)
 # so BOTH consumers of the computed values (the frozen seed AND the emitted app)
 # read the SAME local.cilium_computed_values map — a single observability
-# data-flow, no double-application. Pure `var.*`-derived locals plus the two
+# data-flow, no double-application. Plan-time locals plus the two
 # `check` blocks at the foot of the file (no `data`/`terraform_data` blocks) so
 # this file stays symlinkable into the provider-less
-# tests/fixtures/colliding-catalog offline fixture.
+# tests/fixtures/colliding-catalog offline fixture. It additionally reads
+# local.nodes_checked from nodes.tf (node count -> operator replicas); that file is
+# symlinked into the same fixture and is likewise provider-free, so the offline
+# property is unchanged — but a new cross-file local read is a fixture obligation:
+# a fixture symlinking this file must symlink nodes.tf too.
 # See knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
 
 locals {
@@ -37,6 +41,74 @@ locals {
   cilium_prometheus_values = merge(
     { enabled = true },
     length(var.cilium_agent_metric_overrides) > 0 ? { metrics = var.cilium_agent_metric_overrides } : {},
+  )
+
+  # The effective operator replica count, or null for "leave it to the floor".
+  # An explicit cilium_operator_replicas pin wins — on BOTH delivery paths, which
+  # is why it is a typed input and not an override key: cilium_values_override
+  # reaches only the seed, and the module hard-rejects it alongside
+  # cilium_self_management. Unpinned, the node count decides.
+  #
+  # Why 2 is the derived value at >= 2 nodes: it is the CHART'S OWN default, from
+  # which the floor's 1 diverged without that ever being a multi-node decision.
+  # THE RATIONALE LIVES HERE AND NOWHERE ELSE — a previous version of it was
+  # copied into helm/cilium-values.yaml and a test comment, and survived the
+  # correction of every narrative file because copies do not get corrected.
+  #
+  # Measured against the pinned chart, at the strength it was measured:
+  #
+  #   * Rollout availability. The rolling-update strategy varies with the replica
+  #     count: maxUnavailable is 100% at one replica and 50% at two (maxSurge 25%
+  #     in both). Resolved, that is "0 pods guaranteed available during a rollout"
+  #     versus "1". It is NOT a claim that the incumbent always goes down first —
+  #     25% of 1 rounds UP to one surge pod, so at a single replica on a
+  #     multi-node cluster the controller MAY place the replacement first. The
+  #     guarantee is the difference, not the observed ordering.
+  #   * Recovery from a HARD node failure. The operator tolerates
+  #     node.kubernetes.io/not-ready with no tolerationSeconds (an explicit
+  #     toleration suppresses the 300s eviction Kubernetes adds only to pods that
+  #     set none), but it does NOT tolerate node.kubernetes.io/unreachable — so a
+  #     node that goes Ready=Unknown still evicts the pod on the standard 300s
+  #     timer, after which it must be rescheduled and cold-started. A second
+  #     replica is already running on another node (hostNetwork + the hostname
+  #     anti-affinity guarantee that).
+  #
+  # NOT measured, so not claimed: how fast that second replica takes the WORK
+  # over. The chart grants coordination.k8s.io/leases under a comment about HA
+  # leader election, but it grants it at ONE replica too and sets no
+  # leader-election flags — so whether the mode is replica-dependent, and what
+  # the lease timings are, is operator-binary behaviour this repo has not
+  # measured. Treat the recovery bullet as "a warm instance exists", not as a
+  # quantified failover time.
+  #
+  # What a second replica does NOT buy: a node merely marked NotReady
+  # (Ready=False) whose operator pod is alive and still reaching the API is not
+  # a failover event at all — that pod goes on holding its lease.
+  #
+  # Counted over local.nodes_checked, not var.nodes: same keys by construction, but
+  # the round trip runs the IP-distinctness guard first, so this cannot count a
+  # node set that nodes.tf would reject.
+  cilium_operator_replicas = var.cilium_operator_replicas != null ? var.cilium_operator_replicas : (
+    length(local.nodes_checked) >= 2 ? 2 : null
+  )
+
+  # `operator`: cilium_operator_metrics -> .prometheus.enabled, the resolved
+  # replica count -> .replicas. TWO contributors, so ONE hoisted sub-map — two
+  # `operator` merge() terms would not combine, the later would replace the
+  # earlier wholesale.
+  #
+  # A null replica count emits NO key, and the FLOOR keeps owning the value. That
+  # arm is load-bearing twice over: it is the single-node-correct boundary
+  # condition (the chart's operator podAntiAffinity is requiredDuringScheduling on
+  # kubernetes.io/hostname, so a second replica has no node to land on), and it is
+  # what keeps the floor the SOLE contributor of a key under `operator` on that
+  # shape — the binding for the explicit `operator` sub-merge in
+  # cilium_effective_values (mutant M2 in tests/input-validation.tftest.hcl).
+  # Emitting a replica count unconditionally would make that sub-merge an
+  # equivalent mutant and silently retire a live preservation assert.
+  cilium_operator_values = merge(
+    local.cilium_operator_replicas != null ? { replicas = local.cilium_operator_replicas } : {},
+    var.cilium_operator_metrics ? { prometheus = { enabled = true } } : {},
   )
 
   # `hubble.metrics`: cilium_hubble_metrics -> .enabled, cilium_hubble_open_metrics
@@ -88,7 +160,11 @@ locals {
     # (local.cilium_prometheus_values) — never as two merge() terms, which would
     # drop prometheus.enabled and leave the delta list inert.
     var.cilium_agent_metrics ? { prometheus = local.cilium_prometheus_values } : {},
-    var.cilium_operator_metrics ? { operator = { prometheus = { enabled = true } } } : {},
+    # operator: BOTH contributors fold through local.cilium_operator_values (see
+    # its comment). Conditional on the sub-map being non-empty so a single-node
+    # cluster with no operator metrics emits no `operator` key at all and the
+    # floor's replicas=1 stays the effective value.
+    length(local.cilium_operator_values) > 0 ? { operator = local.cilium_operator_values } : {},
     # Hubble: metrics-only scope (no Relay/UI — issue Non-goal), so the observer
     # gRPC API's server TLS is unnecessary and is forced OFF (tls.enabled=false).
     # CONFIRMED independent of the metrics scrape endpoint (`hubble-metrics`
@@ -128,8 +204,10 @@ locals {
   # deep-merge" design was declined — see ADR-0022 §Alternatives): today's
   # floor∩computed key set has exactly ONE lossy collision under a plain
   # top-level merge() — the `operator` parent (floor sets operator.replicas=1,
-  # cilium-values.yaml; the observability layer above adds operator.prometheus
-  # when cilium_operator_metrics). A plain merge(floor, computed) would let the
+  # cilium-values.yaml; local.cilium_operator_values above adds operator.prometheus
+  # when cilium_operator_metrics, and operator.replicas whenever a count resolves
+  # — a pin, or 2 at >= 2 nodes — where it legitimately supersedes the floor).
+  # A plain merge(floor, computed) would let the
   # computed `operator` map REPLACE the floor `operator` map wholesale, dropping
   # `operator.replicas`. So this merge does a top-level merge() PLUS an explicit
   # one-level re-merge of the `operator` sub-map. `hubble` also collides (floor
@@ -144,13 +222,24 @@ locals {
   #       (`operator`), so the shallow merge() + one explicit sub-merge below
   #       still reproduces Helm's recursive deep-merge. The metric-override and
   #       OpenMetrics inputs did NOT add to this level: `prometheus` is absent
-  #       from the floor, and `hubble` stays intentionally superseded.
+  #       from the floor, and `hubble` stays intentionally superseded. The
+  #       resolved `operator.replicas` did not retire this level either: it is
+  #       emitted only when a count actually resolves, so on an unpinned
+  #       single-node cluster the floor is still the SOLE contributor of a key
+  #       under `operator` and the sub-merge keeps biting. That is also why the
+  #       pin does not weaken the gate — the gate's arm is the shape where NO
+  #       count resolves, which no pin can enter (a pin resolves by
+  #       definition). Emitting it unconditionally would make the sub-merge an
+  #       equivalent mutant — M2 in tests/input-validation.tftest.hcl would go
+  #       green on the very mutation it exists to catch.
   #   (B) INTRA-COMPUTED, resolved at the top of this file. Two terms of the
   #       cilium_computed_values merge() sharing a top-level key collide the same
   #       lossy way, and that merge has no floor to preserve — the loss is
-  #       computed-vs-computed. Today: `prometheus` (enabled + metrics) and
-  #       `hubble.metrics` (enabled + enableOpenMetrics), each folded into ONE
-  #       term via local.cilium_prometheus_values / cilium_hubble_metrics_values.
+  #       computed-vs-computed. Today: `prometheus` (enabled + metrics),
+  #       `hubble.metrics` (enabled + enableOpenMetrics) and `operator`
+  #       (replicas + prometheus), each folded into ONE term via
+  #       local.cilium_prometheus_values / cilium_hubble_metrics_values /
+  #       cilium_operator_values.
   #
   # ANY future key added under a parent already written by another contributor —
   # at EITHER level — MUST add (i) an explicit sub-merge for that parent (here for
@@ -237,6 +326,24 @@ check "cilium_agent_metric_overrides_effective" {
   assert {
     condition     = length(var.cilium_agent_metric_overrides) == 0 || (var.deploy_cilium && var.cilium_agent_metrics)
     error_message = "cilium_agent_metric_overrides is set but cannot take effect: it needs deploy_cilium = true (no seed and no emitted Application otherwise) AND cilium_agent_metrics = true (the chart emits the whole `prometheus` values block only when the agent scrape endpoint is on). The delta list is dropped from both engines as configured."
+  }
+}
+
+check "cilium_operator_replicas_effective" {
+  # Both ways the pin can be inert, in ONE predicate — deliberately, unlike the
+  # one-block-per-predicate rule above, because they are not independently
+  # reachable legs: they describe the same outcome (the pin reaches no running
+  # operator) and a consumer hitting either needs the same paragraph. Splitting
+  # them would fire the seed-freeze leg on the fresh-bootstrap consumer, for whom
+  # the pin DOES take effect — a warning that cries wolf on the correct usage.
+  #
+  # The seed-freeze half cannot be a machine predicate at all: the module cannot
+  # know whether this plan is a first bootstrap or the hundredth apply against a
+  # live cluster. It rides in the message rather than the condition, which is why
+  # the condition covers only the deploy_cilium half.
+  assert {
+    condition     = var.cilium_operator_replicas == null || var.deploy_cilium
+    error_message = "cilium_operator_replicas is set but cannot take effect: it needs deploy_cilium = true — with Cilium off the module renders no seed and emits no self-management Application, so there is no operator Deployment for the count to reach. NOTE, separately and NOT detectable from a plan: on an ALREADY-BOOTSTRAPPED cluster with cilium_self_management = false the pin reaches only the frozen seed render, never the running Deployment — it applies at the next fresh bootstrap or after a deliberate -replace of terraform_data.cilium_render (UPGRADING, the operator-replicas section §3)."
   }
 }
 

@@ -276,7 +276,8 @@ jobs:
             printf '%s\n' "$out" >&2
             exit 1
           fi
-          # Bind all TEN fixture violations individually: relaxing the role
+          # Bind all TWELVE schema rules individually (eleven fixture entries —
+          # operator_replicas: 0.5 breaks two at once): relaxing the role
           # enum, the node-key pattern (issue #204 — a key Talos would ACCEPT and
           # silently rewrite), de-anchoring the version pattern, or relaxing any
           # of the four kernel-arg lexical rules (issue #169) must each turn this
@@ -291,14 +292,16 @@ jobs:
             "\$.images['bad-karg-debugfs'].extra_kernel_args[0]" \
             '$.substrate.cilium.agent_metric_overrides[0]' \
             '$.substrate.cilium.hubble_metrics[1]' \
-            '$.substrate.cilium.native_routing_cidr'; do
+            '$.substrate.cilium.native_routing_cidr' \
+            "\$.substrate.cilium.operator_replicas: 0.5 is not of type" \
+            "\$.substrate.cilium.operator_replicas: 0.5 is less than the minimum"; do
             if ! printf '%s\n' "$out" | grep -qF "$v"; then
               echo "FAIL: expected schema violation on $v was not reported — that rule no longer bites" >&2
               printf '%s\n' "$out" >&2
               exit 1
             fi
           done
-          echo "OK: malformed cluster.yaml fixture rejected with all ten expected violations (role enum + node-key pattern + anchored version pattern + four kernel-arg lexical rules + three Cilium raw-render corruption rules)"
+          echo "OK: malformed cluster.yaml fixture rejected with all twelve expected violations (role enum + node-key pattern + anchored version pattern + four kernel-arg lexical rules + three Cilium raw-render corruption rules + both operator_replicas numeric bounds)"
 
       - name: Verify TASK_VERSION matches .tool-versions
         # Inline by necessity — it guards the pin of the binary that runs the

@@ -44,6 +44,25 @@ output "cilium_computed_values" {
   value = local.cilium_computed_values
 }
 
+# Mirrors the real module's output of the same name (outputs.tf) so the three
+# resolution arms — pin, node-count, floor — are bindable OFFLINE. The real one
+# reads the same two locals, so asserting here binds the real provenance logic.
+output "cilium_operator_replicas_effective" {
+  # NOT `var.deploy_cilium ? {...} : {}`: HCL unifies the two arms of a
+  # conditional, and an empty map on one side collapses the object to
+  # map(string) — `count` would arrive as "2", not 2. A stable object with a
+  # fourth `source` literal keeps the shape and the types constant instead.
+  value = {
+    count = var.deploy_cilium ? (
+      local.cilium_operator_replicas != null ? local.cilium_operator_replicas : try(local.cilium_floor_values.operator.replicas, null)
+    ) : null
+    source = var.deploy_cilium ? (
+      var.cilium_operator_replicas != null ? "pin" :
+      local.cilium_operator_replicas != null ? "node-count" : "floor"
+    ) : "disabled"
+  }
+}
+
 # Fixture-only outputs exposing the node-identity projections from the symlinked
 # nodes.tf (provider-less, pure var.nodes-derived), so the ordering contract can
 # be asserted OFFLINE. The real module feeds these same locals straight into

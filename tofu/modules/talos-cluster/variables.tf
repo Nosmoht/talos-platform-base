@@ -817,6 +817,59 @@ variable "cilium_operator_metrics" {
   default     = false
 }
 
+variable "cilium_operator_replicas" {
+  description = <<-EOT
+    Cilium operator Deployment replica count (operator.replicas). Default null =
+    derive it from the node count: 2 at two or more nodes (the chart's own
+    default), and NOTHING at exactly one node, where the shipped floor's 1 stays
+    effective because the chart's operator podAntiAffinity is
+    requiredDuringScheduling on kubernetes.io/hostname and a second replica would
+    stay Pending forever.
+
+    Set a number to pin the count instead. It wins on BOTH delivery paths, which
+    is the reason this input exists: cilium_values_override reaches only the seed
+    render, and the module hard-rejects that override together with
+    cilium_self_management — so before this input a self-managing consumer could
+    not pin the count at all.
+
+    Pinning MORE replicas than there are declared nodes is REJECTED at plan time.
+    The operator's podAntiAffinity is requiredDuringScheduling on
+    kubernetes.io/hostname, so at most one pod places per node and the surplus is
+    Pending forever — and because the value is baked into a create-only
+    inlineManifest, the bootstrap that carries it cannot be corrected by a later
+    apply. `var.nodes` IS the cluster this module builds, so this is one of the
+    few non-convergent inputs the module can decide with certainty from its own
+    declared state, in the same class as the odd-controlplane rule. It also
+    bounds the value, which nothing else does.
+
+    SEED knob on the default path (create-only inlineManifests): a changed value
+    reaches an already-bootstrapped cluster only through cilium_self_management
+    or a deliberate `-replace` of the render.
+  EOT
+  type        = number
+  default     = null
+
+  validation {
+    # Ternary, not `||`: the null default must not reach floor(), and the
+    # conditional operator is the form that does not evaluate the untaken arm.
+    condition = var.cilium_operator_replicas == null ? true : (
+      var.cilium_operator_replicas >= 1 &&
+      floor(var.cilium_operator_replicas) == var.cilium_operator_replicas
+    )
+    error_message = "cilium_operator_replicas must be null (derive from the node count) or an integer >= 1."
+  }
+
+  # Its own block, per the guard-isolation rule: merged into the conjunction
+  # above, whichever leg a test did not exercise would go untested. Reads
+  # var.nodes rather than local.nodes_checked because a validation may not
+  # reference locals — the two carry identical keys by construction, and the
+  # IP-distinctness round trip that distinguishes them cannot change a COUNT.
+  validation {
+    condition     = var.cilium_operator_replicas == null || var.cilium_operator_replicas <= length(var.nodes)
+    error_message = "cilium_operator_replicas must not exceed the number of declared nodes: the chart's operator podAntiAffinity is requiredDuringScheduling on kubernetes.io/hostname, so at most one operator pod places per node and every surplus replica stays Pending indefinitely. Rejected rather than warned because the value is baked into a create-only inlineManifest — the bootstrap that carries it cannot be walked back by a later apply."
+  }
+}
+
 variable "cilium_hubble_enabled" {
   description = <<-EOT
     Enable Hubble (hubble.enabled) for flow/metrics observability. Default false

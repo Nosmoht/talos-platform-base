@@ -89,6 +89,7 @@ module "complete" {
   cilium_ipsec_key               = var.cilium_ipsec_key # secret — tfvar/env, never cluster.yaml
   cilium_agent_metrics           = try(local.cilium.agent_metrics, false)
   cilium_operator_metrics        = try(local.cilium.operator_metrics, false)
+  cilium_operator_replicas       = try(local.cilium.operator_replicas, null) # null = derive from the node count
   cilium_hubble_enabled          = try(local.cilium.hubble_enabled, false)
   cilium_hubble_metrics          = try(local.cilium.hubble_metrics, [])
   cilium_agent_metric_overrides  = try(local.cilium.agent_metric_overrides, [])
