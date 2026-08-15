@@ -15,7 +15,14 @@
   sub-merge's preservation mutant into an equivalent one. Discharges the
   two-engine-drift invariant §(f) had recorded as "not code today". Both mutants
   were run, not reasoned about; the chart's toleration set was read off a local
-  `helm template` of the pinned 1.20.0.
+  `helm template` of the pinned 1.20.0. Revised after review: the residual now
+  names three shapes instead of one — an arbitrary non-tolerated `NoSchedule`
+  taint on the second node and a declared-but-departed node are permanent, not
+  transient, and the observable consequence is a Degraded ArgoCD Application, not
+  an idle pod. Two further residuals were added: the self-management path has no
+  per-cluster opt-out (a divergence from the `cert_approver_replicas`
+  convention), and seed and emitted Application can now carry different values
+  for the same key — safe only because the seed is create-only.
 
 ## 2026-08-14
 
