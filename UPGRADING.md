@@ -253,6 +253,107 @@ component's `values.yaml` documents that opt-out).
 
 ---
 
+## Unreleased (ships in the next MAJOR) — Cilium operator replicas follow the node count (default change — affects every multi-node consumer without an override)
+
+**Type:** MINOR (default change, no interface change). No new input, output or
+schema key. A single-node cluster is unaffected. Every consumer who pins
+`operator.replicas` through `cilium_values_override` is unaffected — the override
+layer still wins.
+
+### 1. What changes, and why it is not a preference
+
+The shipped floor pinned `operator.replicas: 1`. That is the single-node boundary
+condition, not a cluster-wide default: the chart's operator `podAntiAffinity` is
+`requiredDuringScheduling` on `kubernetes.io/hostname`, so a second replica on a
+one-node cluster stays Pending. The module now emits `operator.replicas: 2` — the
+chart's own default — once the node set holds two or more nodes.
+
+The pinned `1` removed the chart's only mitigation for a failure mode it carries
+deliberately. The operator tolerates `node.kubernetes.io/not-ready` with **no**
+`tolerationSeconds`, and Kubernetes adds its automatic 300-second eviction
+toleration only when the pod does not set one explicitly. A NotReady node
+therefore keeps a single-replica operator bound to it indefinitely, with no
+failover — and `operator.removeNodeTaints` is on by default, so that same
+operator is what clears `node.cilium.io/agent-not-ready` from newly joined nodes.
+A stuck operator also stops new nodes from becoming schedulable.
+
+### 2. Budget one more pod on every multi-node cluster
+
+The visible effect is a second `cilium-operator` pod. It is `hostNetwork` and
+requests what the chart's defaults request.
+
+Note that the chart varies the operator's rolling-update strategy with the
+replica count. Measured against the pinned chart 1.20.0: `maxUnavailable` is
+`100%` at one replica and `50%` at two; `maxSurge` stays `25%` in both. At two
+replicas the rollout therefore takes a pod down before placing its replacement,
+rather than surging onto a third node — which matters here because the operator's
+`podAntiAffinity` is `requiredDuringScheduling` on `kubernetes.io/hostname` and a
+surge replica would have no node to land on at a two-node cluster.
+
+To keep one replica on the **seed** path, set it yourself:
+
+```yaml
+substrate:
+  cilium:
+    values_override: |
+      operator:
+        replicas: 1
+```
+
+**On the self-management path there is no per-cluster opt-out.** The emitted
+Application's `valuesObject` is floor ⊕ computed with no override term, and the
+module hard-rejects `self_management: true` while `values_override` is non-empty
+(the override-drop guard, v7.0.0 §4). A self-managing consumer who needs one
+replica has to take the value over in their own Cilium Application, or stay on
+the previous tag.
+
+### 3. On an existing cluster this does not arrive on its own
+
+Same seed-freeze mechanics as the metric inputs below. The rendered seed is
+frozen at first capture (`terraform_data.cilium_render` carries `ignore_changes`,
+and `inlineManifests` are create-only), so on an already-bootstrapped cluster
+with `self_management: false` the change alters the plan and nothing else. It
+arrives:
+
+- via the emitted self-management `Application` (`self_management: true`) on the
+  next ArgoCD reconcile;
+- at the next fresh bootstrap;
+- when a controlplane joins, or after a deliberate
+  `tofu apply -replace=terraform_data.cilium_render[0]` — with the seed/live skew
+  caveats in §1 of the Cilium 1.20 section.
+
+### 4. The predicate is node COUNT, not schedulable-node count
+
+The module does not model schedulability. The second replica will not place if
+your second node is cordoned (transient), **carries any `NoSchedule` taint
+outside the operator's five tolerated keys** — `control-plane`, `master`,
+`not-ready`, `uninitialized`, `agent-not-ready`; a dedicated storage, GPU or edge
+node is the ordinary case — or is still declared in `cluster.yaml` after being
+decommissioned. The last two are not transient: the operator's `podAntiAffinity`
+is `requiredDuringScheduling` on hostname, so the pod cannot fall back to
+co-location and stays Pending.
+
+Watch for the symptom, because it is louder than an idle pod: a Deployment held
+below its replica target trips `ProgressDeadlineExceeded`, and ArgoCD renders
+that as **Degraded** on the `cilium` Application. Your data plane is fine; your
+dashboard is not. If your node set contains long-lived unschedulable nodes, pin
+the value per §2 — and note §2's caveat that this is possible only on the seed
+path.
+
+### Validation steps after upgrade
+
+```bash
+# Expect 2 on a multi-node cluster, 1 on a single-node one.
+kubectl -n kube-system get deploy cilium-operator -o jsonpath='{.spec.replicas}{"\n"}'
+
+# Both replicas placed on DIFFERENT nodes (the anti-affinity working).
+kubectl -n kube-system get pods -l io.cilium/app=operator \
+  -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,STATUS:.status.phase
+```
+
+A `Pending` second operator pod on a cluster whose nodes are all cordoned or
+tainted beyond the operator's toleration set is §4, not a defect in the rollout.
+
 ## Unreleased (ships in the next MAJOR) — two further typed Cilium metric inputs (additive, default off)
 
 **Type:** MINOR (additive). `substrate.cilium.agent_metric_overrides` and

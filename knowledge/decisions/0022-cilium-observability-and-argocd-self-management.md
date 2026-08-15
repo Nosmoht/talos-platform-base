@@ -662,9 +662,50 @@ and eviction semantics were read off a local `helm template` of the pinned chart
 `not-ready`, `uninitialized`, plus the auto-added `agent-not-ready`; the agent
 and Envoy DaemonSets carry the blanket `operator: Exists`), not from memory.
 
-**Residual.** The threshold is node COUNT, not schedulable-node count. A
-two-node cluster whose second node is cordoned, or a node set where both nodes
-are control planes on a cluster without `allow_scheduling_on_controlplanes`,
-still gets `replicas: 2` — the operator tolerates the control-plane taint, so
-that specific case places fine, but the module does not model schedulability and
-should not be read as if it did.
+**Residual 1 — the threshold is node COUNT, not schedulable-node count, and the
+failure is not silent.** The module does not model schedulability. Three shapes
+where the second replica cannot place, in ascending severity:
+
+- Both nodes are control planes on a cluster without
+  `allow_scheduling_on_controlplanes`. Harmless — the operator tolerates the
+  control-plane taint, so it places.
+- The second node is cordoned. The pod is Pending until it is uncordoned;
+  transient by nature.
+- **The second node carries any `NoSchedule` taint outside the operator's five
+  tolerated keys** (`control-plane`, `master`, `not-ready`, `uninitialized`,
+  `agent-not-ready`) — a dedicated storage, GPU or edge node is the ordinary
+  case — **or the node is declared in `cluster.yaml` but no longer joined.**
+  Neither is transient. Because the anti-affinity is
+  `requiredDuringSchedulingIgnoredDuringExecution` on hostname, the second pod
+  cannot fall back to co-location and stays Pending indefinitely.
+
+The consequence of the permanent case is worth stating plainly, because it is
+larger than an idle pod: a Deployment held below its replica target trips
+`ProgressDeadlineExceeded`, which ArgoCD renders as **Degraded** on the `cilium`
+Application. The data plane is unaffected, but the consumer gets a permanently
+red substrate component — and in an app-of-apps chain a health gate that can
+stall downstream sync waves. A false-red that trains operators to ignore Cilium
+health is its own operability cost.
+
+**Residual 2 — no per-cluster opt-out on the self-management path.** On the seed
+path `cilium_values_override` still pins the value. On the emitted-Application
+path it does not exist as an option: the `valuesObject` is floor ⊕ computed with
+no override term (§Override-drop hazard above), and the module hard-rejects
+`cilium_self_management` while `cilium_values_override` is non-empty. A
+self-managing consumer who wants one replica has to take the value over in their
+own Cilium Application. This diverges from the convention `cert_approver_replicas`
+sets — replica count as a first-class typed input — and is recorded here as a
+known asymmetry rather than defended as a design.
+
+**Residual 3 — the two writers can now carry different values for the same key.**
+Before this change the frozen seed and the emitted Application agreed
+unconditionally on `operator.replicas` (both took the floor's 1). Now a cluster
+whose seed was frozen before this change, or one that grew from one node to two,
+has a seed asserting 1 and an Application asserting 2. That divergence is safe
+only because `cluster.inlineManifests` are create-only and the render is frozen
+(`terraform_data.cilium_render`, `ignore_changes`) — an assumption this repo
+states consistently and that this change promotes from incidental to
+load-bearing. It is also what decides whether a manual
+`kubectl -n kube-system scale deploy/cilium-operator --replicas=2` sticks on an
+existing non-self-managing cluster; that has not been measured on a live cluster
+and is therefore not published as remediation.

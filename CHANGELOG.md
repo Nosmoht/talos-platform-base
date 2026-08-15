@@ -81,12 +81,17 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   multi-node cluster.
 
   **Impact on adoption:** a multi-node cluster taking this tag gets a second
-  `cilium-operator` pod. Consumers who pin their own value through
-  `cilium_values_override` are unaffected — the override layer still wins. The
-  frozen seed is inert for an existing cluster (`terraform_data.cilium_render`
-  carries `ignore_changes`), so the change lands on a fresh bootstrap, a
-  `-replace`, or a controlplane join; on a self-managing consumer it lands on
-  the next ArgoCD reconcile. See
+  `cilium-operator` pod. The frozen seed is inert for an existing cluster
+  (`terraform_data.cilium_render` carries `ignore_changes`), so on the seed path
+  the change lands on a fresh bootstrap, a `-replace`, or a controlplane join;
+  on a self-managing consumer it lands on the next ArgoCD reconcile.
+
+  **Pinning your own value differs per delivery path.** On the seed path
+  `cilium_values_override` still wins, because the override is a layer of the
+  seed render. On the self-management path it is not an option at all: the
+  emitted Application's `valuesObject` does not inherit
+  `cilium_values_override` (ADR-0022 §Override-drop hazard), and the module
+  hard-rejects `cilium_self_management` while that override is non-empty. See
   [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
 ### Changed — BREAKING

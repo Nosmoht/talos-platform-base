@@ -65,7 +65,15 @@ securityContext:
       - SYS_ADMIN
       - SYS_RESOURCE
 
-# --- Operator: single-replica floor; HA is a consumer override ---
+# --- Operator: the SINGLE-NODE floor, not the cluster-wide default ---
+# 1 is the only value that converges on a one-node cluster: the chart's operator
+# podAntiAffinity is requiredDuringScheduling on kubernetes.io/hostname, so a
+# second replica has nowhere to land and stays Pending. It is NOT the multi-node
+# value — the module's computed layer emits replicas: 2 (the chart's own default)
+# at >= 2 nodes, restoring the failover the operator's unbounded
+# node.kubernetes.io/not-ready toleration would otherwise leave it without. See
+# cilium-values.tf's local.cilium_operator_values. A consumer override still wins
+# over both.
 operator:
   replicas: 1
 

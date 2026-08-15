@@ -423,6 +423,30 @@ layer. Two things about them are easy to get wrong:
   `kubectl -n kube-system rollout restart ds/cilium`, or the scrape format flips
   at the next unrelated restart instead.
 
+**Operator replicas follow the node count.** The same computed layer emits
+`operator.replicas: 2` — the chart's own default — once the node set holds two or
+more nodes; at exactly one node it emits nothing and the shipped floor's `1`
+stays effective. The floor value is a single-node boundary condition, not a
+cluster-wide preference: the chart's operator `podAntiAffinity` is
+`requiredDuringScheduling` on `kubernetes.io/hostname`, so a second replica on a
+one-node cluster stays Pending forever. On a multi-node cluster the pinned `1`
+was the more expensive default, because the chart tolerates
+`node.kubernetes.io/not-ready` on the operator with no `tolerationSeconds`, and
+an explicit toleration suppresses the 300-second eviction Kubernetes would
+otherwise add — a NotReady node keeps a lone operator bound to it with no
+failover, and that operator is what clears `node.cilium.io/agent-not-ready` from
+newly joined nodes. This is derived from the node COUNT, not from schedulability:
+a second node that is cordoned, or carries a `NoSchedule` taint outside the
+operator's five tolerated keys, still yields `2` and leaves the second pod
+Pending — which ArgoCD renders as a Degraded `cilium` Application.
+
+Pinning your own value differs per delivery path, and the difference is easy to
+miss: on the **seed** path `cilium_values_override` wins, because the override is
+a layer of the seed render. On the **self-management** path it is not available —
+the emitted Application's `valuesObject` does not inherit
+`cilium_values_override` (see the override-drop guard below), and the module
+hard-rejects the two together.
+
 Grafana dashboards are deliberately NOT typed here. Cilium's chart ships them as
 static ConfigMaps whose `namespace` and sidecar `label` decide whether anything
 ever reads them — values this cluster-agnostic base cannot know. They are

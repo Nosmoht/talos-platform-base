@@ -1034,6 +1034,36 @@ run "cilium_operator_replicas_and_metrics_coexist" {
   }
 }
 
+# The spec scenario names the EMITTED Application, not an intermediate local.
+# `cilium_effective_values` only becomes the Application's valuesObject through
+# cilium-values.tf's `helm = { valuesObject = local.cilium_effective_values }`;
+# asserting the local alone leaves that one wiring line with no oracle anywhere
+# in the suite, and this is the path that reaches a RUNNING cluster on the next
+# ArgoCD reconcile (the seed is frozen for an existing consumer). Red-green:
+# repoint valuesObject at local.cilium_floor_values or drop the `helm` block and
+# this run goes red while every other run in the file stays green.
+#
+# Spec: openspec/specs/cilium-cni-delivery §"Operator replicas follow the
+# cluster's node count" — "both the seed's computed values layer AND the emitted
+# self-management Application carry operator.replicas: 2".
+run "cilium_self_management_app_carries_the_node_count_replicas" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management = true
+    deploy_argocd          = true
+    deploy_cilium          = true
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.source.helm.valuesObject.operator.replicas == 2
+    error_message = "emitted Application: spec.source.helm.valuesObject.operator.replicas must be 2 at >= 2 nodes — asserting only local.cilium_effective_values leaves the effective-map-to-valuesObject wiring unbound, and that wiring is the whole delivery path for a self-managing consumer"
+  }
+}
+
 # AC #3 — the emitted self-management Application's shape. Red-green: drop
 # or mis-set any one field (chart version / destination.server / destination.
 # namespace / metadata.namespace / project / a recommended label / adding a
