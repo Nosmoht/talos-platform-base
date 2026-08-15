@@ -699,28 +699,39 @@ run "cilium_seed_config_surface_is_pinned" {
 # see the one defect class that matters most here: Helm merges values without
 # `--strict`, so a key the chart does not recognise — `operator.replica`, a count
 # nested one level wrong, a rename in a future chart — is dropped SILENTLY and
-# the rendered Deployment quietly keeps the chart's own default. Every offline
-# gate stays green while the delivered cluster gets a different number.
+# the rendered Deployment quietly keeps whatever the remaining layers produce.
 #
 # The repo already holds this line for the sibling knob: cert_approver_replicas
 # is asserted at the rendered Deployment (this file, "adr-0019" runs above), not
 # only at its input. This is the Cilium mirror of that binding.
 #
+# CI CAVEAT, stated because it changes what these runs are worth: this suite is
+# NETWORK-dependent (live Image Factory) and its CI job is ADVISORY by design —
+# `task tofu:ci` does not carry it. `scripts/check-cilium-operator-replicas-key.sh`
+# (task tofu:check:cilium-operator-replicas-key, inside tofu:ci) is the BLOCKING
+# layer for the key spelling, following the tofu:check:argocd-day0-apply-shape
+# precedent. These runs remain the only check of the actual rendered VALUE.
+#
 # Reads data.helm_template.cilium[0].manifest directly, for the reason spelled
 # out on the observability-marker run above: terraform_data.cilium_render's
 # `output` is "(known after apply)" for a resource being created, so under this
 # file's command = plan convention the frozen seed cannot be asserted — while the
-# data source it freezes resolves at plan time and is the same render.
+# data source it freezes resolves at plan time and is the same render. The split
+# is on "\n---\n", matching outputs.tf: a bare "---" also cuts a document whose
+# scalar happens to contain one, and a head fragment that decodes but carries no
+# `spec` would fail this assert with a message pointing at the replica count
+# rather than at the split.
 #
-# Red-green: change `replicas` in local.cilium_operator_values (cilium-values.tf)
-# to any key the chart does not define, or drop the term entirely, and the
-# two-node assert below fails at the chart default while every values-map
-# assertion in tests/input-validation.tftest.hcl stays green — which is exactly
-# the gap this run exists to close.
+# Red-green: misspell the key in local.cilium_operator_values (cilium-values.tf)
+# — Helm drops the unknown key, the FLOOR's operator.replicas: 1 becomes
+# effective, this assert renders 1 and goes red, while every values-map assertion
+# in tests/input-validation.tftest.hcl stays green. (Deleting the term outright
+# also turns those offline asserts red, so it is the rename — not the deletion —
+# that this run uniquely catches.) The floor key is what makes that
+# discrimination possible; helm/cilium-values.yaml says so at the key.
 #
 # Spec: openspec/specs/cilium-cni-delivery §"Operator replicas follow the
-# cluster's node count" and §"An explicit operator replica count overrides the
-# derivation on both paths".
+# cluster's node count".
 run "cilium_seed_render_carries_the_derived_operator_replicas" {
   command = plan
   variables {
@@ -732,35 +743,41 @@ run "cilium_seed_render_carries_the_derived_operator_replicas" {
   }
   assert {
     condition = try(one([
-      for doc in split("---", data.helm_template.cilium[0].manifest) : yamldecode(doc).spec.replicas
+      for doc in split("\n---\n", data.helm_template.cilium[0].manifest) : yamldecode(doc).spec.replicas
       if try(yamldecode(doc).kind, "") == "Deployment" && try(yamldecode(doc).metadata.name, "") == "cilium-operator"
     ]), null) == 2
     error_message = "render layer: the seed's cilium-operator Deployment must carry spec.replicas 2 at >= 2 nodes — a values key the chart does not recognise is dropped without error, so a values-map assertion alone cannot tell a delivered 2 from a silently defaulted one"
   }
 }
 
-# The pin's render-layer mirror, and the direction that proves the wiring is a
-# real pass-through rather than a coincidence: 1 against a two-node set is a
-# value NEITHER the chart default (2) NOR the derivation (2) would produce, so
-# only the pin reaching the render can satisfy it.
+# The pin's render-layer mirror. THREE nodes and a pin of 3, deliberately: 3 is
+# produced by no other layer — the floor is 1, the chart default is 2, the
+# node-count derivation is 2 — so only the pin arriving at the render satisfies
+# it. An earlier version of this run pinned 1 against two nodes and was
+# effectively vacuous: the floor also renders 1, so it stayed green under the
+# very key-rename mutant it was written for.
 #
-# Red-green: delete the pin arm of local.cilium_operator_replicas (M-O2) and this
-# renders 2.
+# Red-green: delete the pin arm of local.cilium_operator_replicas (M-O2), or
+# misspell the key — either renders 2 (derivation) or 1 (floor), both red.
+#
+# Spec: openspec/specs/cilium-cni-delivery §"An explicit operator replica count
+# overrides the derivation on both paths".
 run "cilium_seed_render_carries_the_pinned_operator_replicas" {
   command = plan
   variables {
     deploy_cilium            = true
-    cilium_operator_replicas = 1
+    cilium_operator_replicas = 3
     nodes = {
       cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
       w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+      w-2  = { ip = "192.0.2.22", role = "worker", image = "intel", hardware_capabilities = [] },
     }
   }
   assert {
     condition = try(one([
-      for doc in split("---", data.helm_template.cilium[0].manifest) : yamldecode(doc).spec.replicas
+      for doc in split("\n---\n", data.helm_template.cilium[0].manifest) : yamldecode(doc).spec.replicas
       if try(yamldecode(doc).kind, "") == "Deployment" && try(yamldecode(doc).metadata.name, "") == "cilium-operator"
-    ]), null) == 1
-    error_message = "render layer: a pinned cilium_operator_replicas = 1 must reach the seed's cilium-operator Deployment — 1 is neither the chart default nor the two-node derivation, so this value can only come from the pin actually arriving at the render"
+    ]), null) == 3
+    error_message = "render layer: a pinned cilium_operator_replicas = 3 must reach the seed's cilium-operator Deployment — 3 is produced by neither the floor (1), the chart default (2), nor the node-count derivation (2), so this value can only come from the pin actually arriving at the render"
   }
 }

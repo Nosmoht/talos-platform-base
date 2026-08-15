@@ -975,15 +975,18 @@ run "cilium_floor_preservation_under_observability" {
 # layered configuration" → scenario "Operator replicas follow the cluster's node
 # count". The floor's replicas=1 is the single-node boundary condition (the
 # chart's operator podAntiAffinity is requiredDuringScheduling on hostname, so a
-# second replica cannot be placed on a one-node cluster); at two or more nodes the
-# module restores the chart's own default of 2, which is the only mitigation for
-# the operator's unbounded node.kubernetes.io/not-ready toleration.
+# second replica cannot be placed on a one-node cluster); at two or more nodes
+# the module emits the chart's own default of 2. The RATIONALE for that value
+# lives in exactly one place — local.cilium_operator_replicas in cilium-values.tf
+# — and is deliberately not restated here: an earlier version of this comment
+# carried a failover claim that was later retracted, and it outlived the
+# correction because a copy has no reason to be revisited.
 #
-# Red-green: delete the `length(local.nodes_checked) >= 2 ? { replicas = 2 } : {}`
-# term from local.cilium_operator_values in cilium-values.tf and BOTH asserts here
-# go red (effective falls back to the floor's 1, computed loses the key), while
-# every single-node run in this file stays green. That asymmetry is the binding:
-# the pair is sensitive to the node-count leg specifically, not to the merge as a
+# Red-green: delete the `length(local.nodes_checked) >= 2 ? 2 : null` arm of
+# local.cilium_operator_replicas in cilium-values.tf and BOTH asserts here go red
+# (effective falls back to the floor's 1, computed loses the key), while every
+# single-node run in this file stays green. That asymmetry is the binding: the
+# pair is sensitive to the node-count leg specifically, not to the merge as a
 # whole.
 run "cilium_operator_replicas_follow_node_count" {
   command = plan
@@ -1103,43 +1106,60 @@ run "cilium_operator_replicas_pin_overrides_the_derivation" {
   }
 }
 
-# The upward direction, on the shape where the derivation emits NOTHING. This is
-# the arm that proves the pin is not merely a cap on the derived value: at one
-# node the derivation yields null, so a `2` here can only come from the pin. It
-# is also the arm showing the pin does not weaken mutant M2's binding — M2's arm
-# is "no count resolves", which a pin cannot enter by construction.
+# The arm where the derivation emits NOTHING — the file-level single-node
+# fixture. A pin of 1 is NOT indistinguishable from the floor here: the floor
+# never reaches the COMPUTED map (it is a separate merge layer), and the
+# single-node absence assert on the default-off run above proves the computed
+# map carries no `operator` key at all without a pin. So `computed.operator
+# .replicas == 1` can only come from the pin, and it needs no over-count.
 #
-# The over-count WARNING rides along, unavoidably: at one node every pin that is
-# distinguishable from the floor's 1 also exceeds the node count, so this
-# predicate cannot be exercised without firing that check. Binding it here rather
-# than in a duplicate run keeps the two facts on one shape instead of asserting
-# the same inputs twice. The check's leg isolation is unaffected — the
-# effectiveness block below still has a run where ONLY it can fire.
+# This also shows the pin does not weaken mutant M2's binding: M2's arm is "no
+# count resolves", which a pin cannot enter by construction.
 #
-# Red-green, two mutations, each hitting a different half:
-#   * delete the pin arm of local.cilium_operator_replicas (M-O2) => the assert
-#     goes red AND the expected failure disappears (the resolved count becomes
-#     null, so `placeable` passes vacuously);
-#   * delete check "cilium_operator_replicas_placeable" => "Missing expected
-#     failure" here while the assert stays green.
+# Red-green: delete the pin arm of local.cilium_operator_replicas (M-O2) => the
+# computed map loses the `operator` key, `.operator.replicas` fails to resolve,
+# and both asserts go red while the derivation runs stay green.
 run "cilium_operator_replicas_pin_applies_where_the_derivation_is_silent" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_operator_replicas = 1
+  }
+  assert {
+    condition     = output.cilium_computed_values.operator.replicas == 1
+    error_message = "pin: a pinned 1 must reach the computed layer on a single-node cluster, where the node-count derivation emits nothing at all — otherwise the pin is only ever a filter on the derived value"
+  }
+  assert {
+    condition     = output.cilium_operator_replicas_effective.source == "pin"
+    error_message = "provenance: with cilium_operator_replicas set, the effective-count output must attribute the value to `pin` — an operator debugging a Pending replica needs to tell a pin from a derivation, and this is the only surface that answers it"
+  }
+}
+
+# The over-count REJECTION, at the variable rather than the check: a pin above
+# the node count cannot converge, and the value is baked into a create-only
+# inlineManifest, so a later apply cannot walk it back.
+#
+# Its own run and its own leg — the value is 2 against the single-node fixture,
+# so only the node-count validation can fire (2 >= 1 and 2 is integral).
+#
+# Red-green: delete the second validation block on var.cilium_operator_replicas
+# => "Missing expected failure" here while every other replica run stays green.
+run "cilium_operator_replicas_above_the_node_count_is_rejected" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }
   variables {
     cilium_operator_replicas = 2
   }
-  assert {
-    condition     = output.cilium_computed_values.operator.replicas == 2
-    error_message = "pin: a pinned 2 must reach the computed layer on a single-node cluster, where the node-count derivation emits nothing — otherwise the pin is only ever a filter on the derived value"
-  }
-  expect_failures = [check.cilium_operator_replicas_placeable]
+  expect_failures = [var.cilium_operator_replicas]
 }
 
-# The deploy_cilium arm — the inert-input tier. Leg-isolated from the run above:
-# the count equals the node count, so ONLY the effectiveness block can fire.
+# The deploy_cilium arm — the inert-input WARNING tier, and the one place the
+# pin's two tiers are visibly different: an over-count is REJECTED (the run
+# above), an ineffective pin only warns. The pin is 1 against the single-node
+# fixture so the node-count validation cannot also fire and steal the leg.
 #
 # Red-green: delete check "cilium_operator_replicas_effective" => "Missing
-# expected failure" here while the over-count run above stays green.
+# expected failure" here while every other replica run stays green.
 run "cilium_operator_replicas_without_cilium_warns" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }
@@ -1171,6 +1191,74 @@ run "cilium_operator_replicas_fractional_is_rejected" {
     cilium_operator_replicas = 1.5
   }
   expect_failures = [var.cilium_operator_replicas]
+}
+
+# Level-B preservation for the PIN, not the derivation. The pair above
+# (`..._and_metrics_coexist`) exercises the derived count with metrics; nothing
+# exercised the PIN with metrics, and the pin is the new contributor to the
+# `operator` parent — exactly what the two-engine-drift invariant in
+# cilium-values.tf obliges a preservation assert for.
+#
+# Red-green (M-O3): give the pin its own `operator` merge term in
+# local.cilium_computed_values — `var.cilium_operator_replicas != null ?
+# { operator = { replicas = var.cilium_operator_replicas } } : {}` — instead of
+# folding it through local.cilium_operator_values. That is the natural "handle
+# the pin separately" refactor, and it is silent everywhere else: the shallow
+# merge replaces the whole `operator` map, so a pinned cluster with operator
+# metrics on loses operator.prometheus.enabled with no error, on BOTH delivery
+# paths. Exactly one of the two asserts below goes red depending on term order,
+# while every other run in the file stays green.
+run "cilium_operator_replicas_pin_and_metrics_coexist" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_operator_replicas = 3
+    cilium_operator_metrics  = true
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+      w-2  = { ip = "192.0.2.22", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  assert {
+    condition     = output.cilium_computed_values.operator.replicas == 3
+    error_message = "level-B (M-O3): the PINNED replicas contributor must survive alongside operator.prometheus — a separate `operator` merge term for the pin would drop whichever came first"
+  }
+  assert {
+    condition     = output.cilium_computed_values.operator.prometheus.enabled == true
+    error_message = "level-B (M-O3): the cilium_operator_metrics contributor must survive alongside a pinned operator.replicas — a separate `operator` merge term for the pin would drop whichever came first"
+  }
+}
+
+# The provenance output's other two arms. `pin` is bound by the single-node pin
+# run above; these bind `node-count` and `floor`, so all three literals the
+# output can emit are asserted somewhere and a collapsed conditional cannot pass.
+#
+# Red-green: invert either arm of the `source` conditional in the fixture's
+# cilium_operator_replicas_effective output (and the real module's — they are
+# copies) and exactly one of these two runs goes red.
+run "cilium_operator_replicas_provenance_is_node_count_when_derived" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  assert {
+    condition     = output.cilium_operator_replicas_effective == { count = 2, source = "node-count" }
+    error_message = "provenance: an unpinned two-node cluster must report count 2 from `node-count` — the whole object is asserted so a count without its source, or a source without its count, cannot pass"
+  }
+}
+
+run "cilium_operator_replicas_provenance_is_floor_when_silent" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  assert {
+    condition     = output.cilium_operator_replicas_effective == { count = 1, source = "floor" }
+    error_message = "provenance: an unpinned single-node cluster must report the floor's 1 from `floor` — this is also the only assert anywhere that reads the floor file's operator.replicas value, so deleting that key from helm/cilium-values.yaml turns it red instead of silently retiring two other gates"
+  }
 }
 
 # AC #3 — the emitted self-management Application's shape. Red-green: drop

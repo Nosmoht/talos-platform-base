@@ -186,15 +186,28 @@ while the rendered object silently keeps the chart's own default.
   `cilium_values_override` term and the module rejects that override
   alongside `cilium_self_management`
 
-#### Scenario: A replica count above the node count warns rather than rejecting
+#### Scenario: A replica count above the node count is rejected
 
-- **WHEN** the resolved operator replica count exceeds the number of
-  declared nodes
-- **THEN** the plan reports a warning and proceeds — the chart's operator
-  `podAntiAffinity` is `requiredDuringScheduling` on `kubernetes.io/hostname`,
-  so at most one operator pod places per node and the surplus stays Pending,
-  but the module models node count rather than schedulability and does not
-  refuse a configuration whose consequence is a Pending pod
+- **WHEN** `cilium_operator_replicas` exceeds the number of declared nodes
+- **THEN** the plan is rejected — the chart's operator `podAntiAffinity` is
+  `requiredDuringScheduling` on `kubernetes.io/hostname`, so at most one
+  operator pod places per node and every surplus replica stays Pending
+  indefinitely, and the value is baked into a create-only `inlineManifest`
+  that no later apply can walk back
+
+#### Scenario: A pin that cannot reach a running operator warns
+
+- **WHEN** `cilium_operator_replicas` is set with `deploy_cilium = false`
+- **THEN** the plan reports a warning and proceeds — the count is inert
+  rather than wrong, which is a lower tier than rejection
+
+#### Scenario: The resolved count reports which mechanism produced it
+
+- **WHEN** the module plans with Cilium delivered
+- **THEN** it reports the resolved operator replica count together with its
+  origin — the pin, the node-count derivation, or the floor — so an operator
+  debugging a Pending replica can tell a module derivation from a chart
+  default without reading module internals
 
 #### Scenario: Observability inputs surface in the seed render
 

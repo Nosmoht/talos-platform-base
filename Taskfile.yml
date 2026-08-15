@@ -202,6 +202,17 @@ tasks:
     desc: "CI fence: the Talos boundary arguments stay bound to their intended node projections (nodes.tf), and the per-node apply keeps iterating local.nodes_checked"
     cmd: scripts/check-node-projection-wiring.sh
 
+  tofu:check:cilium-operator-replicas-key:
+    # Full rationale in scripts/check-cilium-operator-replicas-key.sh. Helm
+    # merges values without --strict, so a renamed or mis-nested
+    # `operator.replicas` is discarded silently and the rendered Deployment keeps
+    # a different count with every offline test green. The runs that read the
+    # RENDERED Deployment live in the network-dependent composition suite, whose
+    # CI job is advisory, so this offline fence is the blocking layer — same
+    # shape as tofu:check:argocd-day0-apply-shape.
+    desc: "CI fence: the Cilium operator replica count keeps its chart key spelling on both sides (computed contributor + floor), and `operator` stays a single merge term"
+    cmd: scripts/check-cilium-operator-replicas-key.sh
+
   tofu:check:shim-key-parity:
     # Full rationale in scripts/check-shim-key-parity.sh. The worked example's
     # shim reads cluster.yaml through try(), which is total: a mistyped key
@@ -237,7 +248,7 @@ tasks:
         -filter=tests/kubeconfig-endpoint-marker.tftest.hcl
 
   tofu:ci:
-    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + test:offline — mirrors CI, stays offline"
+    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + test:offline — mirrors CI, stays offline"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
@@ -249,6 +260,7 @@ tasks:
       - task: tofu:check:kubeconfig-endpoint-regen
       - task: tofu:check:node-projection-wiring
       - task: tofu:check:shim-key-parity
+      - task: tofu:check:cilium-operator-replicas-key
       - task: tofu:test:offline
 
   # ===========================================================================

@@ -274,18 +274,25 @@ de-divergence: `2` is what the chart ships, and the floor's `1` differed from it
 on every cluster shape while being right on exactly one. Two consequences were
 measured against the pinned chart 1.20.0:
 
-- **Rollout.** The operator's rolling-update strategy varies with the replica
-  count: `maxUnavailable` is `100%` at one replica and `50%` at two (`maxSurge`
-  stays `25%`). At one replica every operator upgrade takes the only instance
-  down before its replacement is Ready. At two, one keeps serving — and because
-  the anti-affinity is per-hostname, the `50%` matters: a surge replica would
-  have no node to land on at a two-node cluster.
+- **Rollout availability.** The operator's rolling-update strategy varies with
+  the replica count: `maxUnavailable` is `100%` at one replica and `50%` at two
+  (`maxSurge` stays `25%`). Resolved, that is *zero* operator pods guaranteed
+  available during a rollout versus *one*. It is not a claim that the incumbent
+  always goes down first — `25%` of 1 rounds up to one surge pod, so at a single
+  replica the controller may place the replacement first if a node is free. The
+  guarantee is what changes.
 - **Hard node failure.** A node whose kubelet stops reporting goes
   `Ready=Unknown`, which is the `node.kubernetes.io/unreachable` taint. The
   operator does **not** tolerate it, so the standard 300-second eviction applies:
   a lone replica is gone for that timer plus a reschedule and a cold start. With
-  two replicas the standby — already running — takes over on lease expiry,
-  because the operator runs leader-elected above one replica.
+  two replicas a second instance is already running on another node.
+
+  How fast that second instance picks the work up is **not** something this
+  release measured. The chart grants `coordination.k8s.io/leases` under a comment
+  about HA leader election, but it grants it at one replica too and sets no
+  leader-election flags, so both the mode and the lease timings are
+  operator-binary behaviour. Read the bullet as meaning a warm instance
+  exists, not as a quantified failover time.
 
 **What this does not do.** It does not rescue a node that is merely `NotReady`
 (`Ready=False`) while its operator pod is alive and still reaching the API. The
@@ -297,8 +304,14 @@ is labelled unhealthy.
 
 ### 2. Budget one more pod on every multi-node cluster
 
-The visible effect is a second `cilium-operator` pod. It is `hostNetwork` and
-requests what the chart's defaults request.
+The visible effect is a second `cilium-operator` pod. It is `hostNetwork`, and
+it carries **no resource requests or limits at all** — the chart's
+`operator.resources` default is empty and neither the base floor nor the computed
+layer sets it, so the rendered container has no `resources` block. Both operator
+pods are therefore **BestEffort**, the QoS class the kubelet evicts first under
+node memory pressure. If that matters to you, set `operator.resources` yourself:
+through `values_override` on the seed path, or in your own Cilium Application
+under self-management.
 
 To keep one replica — or any other count — set it directly:
 
@@ -315,6 +328,11 @@ floor ⊕ computed with no override term, and the module hard-rejects
 `self_management: true` while `values_override` is non-empty (the override-drop
 guard, v7.0.0 §4). Before this input, a self-managing consumer had no per-cluster
 opt-out at all.
+
+Setting it **above** your declared node count is rejected at plan time, not
+warned about. The operator's anti-affinity is per-hostname, so the surplus can
+never place — and the value is baked into a create-only `inlineManifest`, so the
+bootstrap that carries it cannot be walked back by a later apply.
 
 ### 3. On an existing cluster this does not arrive on its own
 
@@ -336,6 +354,24 @@ that most needs the change — a cluster bootstrapped at one node and grown sinc
 is therefore also the shape the seed path cannot reach. Use
 `operator_replicas` plus self-management, or a `-replace`.
 
+**The same asymmetry runs the other way, and it is the sharper edge.** A cluster
+bootstrapped with two or more nodes baked `operator.replicas: 2` into its seed.
+If you later decommission a node and drop it from `cluster.yaml`, the plan
+resolves back to the floor's `1` — but nothing delivers that either, and because
+the seed is frozen, `tofu plan` reports **no drift at all**. The live Deployment
+stays at 2 with one pod Pending against the per-hostname anti-affinity. On the
+default path there is no ArgoCD `cilium` Application, so nothing reports Degraded
+and the only symptom is the Pending pod itself:
+
+```bash
+kubectl -n kube-system get pods -l io.cilium/app=operator
+```
+
+Walk it back by hand with `kubectl -n kube-system scale deploy/cilium-operator
+--replicas=1`. The live count then diverges permanently from the frozen seed;
+that is expected on this path, and a future re-bootstrap resolves it correctly
+from the smaller node set.
+
 ### 4. The predicate is node COUNT, not schedulable-node count
 
 The module does not model schedulability. The second replica will not place if
@@ -353,16 +389,39 @@ that as **Degraded** on the `cilium` Application. Your data plane is fine; your
 dashboard is not. If your node set contains long-lived unschedulable nodes, set
 `operator_replicas` to what will actually place.
 
-Setting it ABOVE your node count is not rejected — the module warns at plan time
-and proceeds, because it models node count rather than schedulability and you may
-know something about your node set that it does not.
+Setting it ABOVE your node count IS rejected at plan time — that is the one case
+the module can decide with certainty from its own declared state, and the
+consequence (a permanently Pending replica in a create-only seed) is not
+recoverable by a later apply. Cordons and taints are the cases it cannot see.
+
+**At exactly two nodes, expect a transient version of this during every Talos
+node upgrade.** With `replicas: 2` and a per-hostname anti-affinity a two-node
+cluster has zero spare placement, so draining one node leaves the operator at 1/2
+for the image pull plus reboot. The Deployment sets no `progressDeadlineSeconds`,
+so the Kubernetes default of 600 seconds applies: a drain longer than ten minutes
+trips `ProgressDeadlineExceeded`, and a self-managing consumer sees the `cilium`
+Application go Degraded. It self-clears on uncordon. If you would rather your
+`cilium` Application stayed quiet through upgrades, `operator_replicas: 1` is the
+supported way to say so.
 
 ### Validation steps after upgrade
 
+**Read §3 before running these.** What to expect depends entirely on your
+delivery path, and on an existing cluster with `self_management: false` the
+correct answer is *the value you already had* — the frozen seed does not deliver
+this change. Reading `1` there is not a failed upgrade, and it is **not** a
+reason to `-replace` the render on a live cluster.
+
 ```bash
-# Expect 2 on a multi-node cluster, 1 on a single-node one — or whatever
-# operator_replicas pins.
+# self_management: true, or a fresh bootstrap: expect 2 on a multi-node cluster,
+# 1 on a single-node one — or whatever operator_replicas pins.
+# self_management: false on an EXISTING cluster: expect no change at all (§3).
 kubectl -n kube-system get deploy cilium-operator -o jsonpath='{.spec.replicas}{"\n"}'
+
+# Where the module thinks the number came from — pin, node-count, or floor.
+# This describes THIS PLAN, not the running cluster; comparing the two is how
+# you see the seed-freeze skew §3 describes.
+tofu output cilium_operator_replicas_effective
 
 # Both replicas placed on DIFFERENT nodes (the anti-affinity working).
 kubectl -n kube-system get pods -l io.cilium/app=operator \

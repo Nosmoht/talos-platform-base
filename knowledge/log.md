@@ -5,33 +5,44 @@
 - `decisions/0022-cilium-observability-and-argocd-self-management.md`: addendum —
   the Cilium operator's replica count is derived from the node set (2 at two or
   more nodes, the floor's 1 at exactly one) and pinnable via the new
-  `cilium_operator_replicas` input. Rewritten after an adversarial review found
-  the first version's justification overstated: three links in its failure chain
-  were re-measured against the pinned chart and do not hold as written. The
-  operator tolerates `not-ready` but NOT `unreachable`, which is the taint a hard
-  node failure actually carries, so the 300-second eviction still applies there;
-  two replicas run leader-elected, so a live pod on a NotReady node keeps the
-  lease and the standby stays passive; and the operator is the `agent-not-ready`
-  taint SETTER as well as its remover (`setNodeTaints` defaults to
-  `removeNodeTaints`), so a wedged operator makes new nodes schedulable too early
-  rather than never — the opposite of what was published. The addendum keeps the
-  wrong version visible and states what survived: de-divergence from the chart's
-  own default, a rollout strategy that is `maxUnavailable: 100%` at one replica
-  and `50%` at two, and lower hard-failure recovery latency. The conditional
-  emission is unchanged and its reason restated — emitting always would leave the
-  floor contributing nothing under `operator`, turning the §(f) sub-merge's
-  preservation mutant into an equivalent one; a pin cannot erode that gate,
-  because the gate's arm is "no count resolves". Discharges the two-engine-drift
-  invariant §(f) recorded as "not code today", and the typed input discharges the
-  no-opt-out-under-self-management residual. Partly closes the §Residual on
-  unbound Helm key spellings: `operator.replicas` is now asserted at the rendered
-  Deployment in both directions, mirroring `cert_approver_replicas`. Every mutant
-  was run, not reasoned about; the chart facts were read off a local
-  `helm template` of the pinned 1.20.0. Two residuals stand: the seed path never
-  reaches an already-bootstrapped cluster (a control-plane join does not deliver
-  it either — an earlier draft said otherwise and was wrong), and seed and emitted
-  Application can carry different values for the same key, safe only because the
-  seed is create-only.
+  `cilium_operator_replicas` input. Rewritten TWICE after adversarial review, and
+  the second pass is the one worth recording: the first correction fixed the
+  narrative files but left the retracted failover claim verbatim in
+  `helm/cilium-values.yaml` and a test comment, so the repo contradicted itself
+  instead of being uniformly wrong. Treating a claim defect as a CLASS, not as
+  the documents it was reported in, is the transferable lesson; the rationale now
+  lives in exactly one place (`local.cilium_operator_replicas`) and both copies
+  point at it rather than restating it.
+  Three claims were retracted against measurement: the operator tolerates
+  `not-ready` but NOT `unreachable`, which is the taint a hard node failure
+  carries; two replicas are leader-elected rather than active-active; and the
+  operator is the `agent-not-ready` taint SETTER as well as its remover, so a
+  wedged operator makes new nodes schedulable too early rather than never. Two
+  more were narrowed in the second pass: the rollout claim is a change in
+  GUARANTEED availability (0 → 1 pod), not "the incumbent goes down first" — 25%
+  of one replica rounds up to a surge pod — and the failover-latency comparison
+  now stops at "a warm instance exists", because the leases RBAC is granted at
+  one replica too and the lease timings are unmeasured operator-binary behaviour.
+  What survives: de-divergence from the chart's own default, plus those two
+  narrowed consequences.
+  The over-count tier flipped from WARN to REJECT. Its warn rationale ("breaks
+  nothing") was contradicted twelve lines away in the same record, `var.nodes` IS
+  the cluster the module builds, and the value lands in a create-only seed no
+  later apply can walk back — which also bounds a previously unbounded input.
+  `scripts/check-cilium-operator-replicas-key.sh` is new and is the BLOCKING
+  layer for the Helm key spelling: the render assertions live in the composition
+  suite, whose CI job is advisory by design, so crediting them with closing the
+  key-spelling residual was wrong. The floor's `operator.replicas: 1` is now
+  documented as load-bearing three ways so it does not get "cleaned up" — with it
+  gone, a dropped computed key renders the chart's default of 2 and the >= 2-node
+  render assertion passes on the mutation it exists to catch.
+  New residuals recorded: the shrink direction has no delivery path and no drift
+  signal, both operator pods are BestEffort (the chart sets no
+  `operator.resources`), and a two-node cluster trips `ProgressDeadlineExceeded`
+  on every drain longer than the 600s default. Every mutant was run; the chart
+  facts were read off a local `helm template` of the pinned 1.20.0. The two
+  render assertions themselves were NOT executed — the Image Factory was
+  unreachable — and their predicate was verified out-of-band instead.
 
 ## 2026-08-14
 

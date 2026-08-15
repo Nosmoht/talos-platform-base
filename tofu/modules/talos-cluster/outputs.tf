@@ -434,3 +434,38 @@ output "cilium_seed_observability_markers" {
     {}
   )
 }
+
+output "cilium_operator_replicas_effective" {
+  description = <<-EOT
+    The operator replica count this plan resolves, and WHICH of the three
+    mechanisms produced it: `pin` (cilium_operator_replicas), `node-count` (the
+    >= 2-node derivation), or `floor` (helm/cilium-values.yaml, the unpinned
+    single-node case). With deploy_cilium = false the count is null and the
+    source is `disabled` — the object's shape and types never vary.
+
+    Exists because the number alone does not answer the question an operator
+    debugging a Pending second operator pod actually has. Seeing `replicas: 2`
+    in the cluster and no `operator_replicas` in their cluster.yaml, they cannot
+    tell a module derivation from a chart default or a stale hand-edit without
+    reading module internals. Same role `cert_approver_replicas` plays for the
+    approver, and it is also the tests' direct binding point for all three arms.
+
+    Plan-time and non-sensitive (an integer and one of three literals). Describes
+    what THIS plan resolves, which on an already-bootstrapped cluster with
+    cilium_self_management = false is not what the cluster is running — the seed
+    is frozen (see UPGRADING).
+  EOT
+  # NOT `var.deploy_cilium ? {...} : {}`: HCL unifies the two arms of a
+  # conditional, and an empty map on one side collapses the object to
+  # map(string) — `count` would arrive as "2", not 2. A stable object with a
+  # fourth `source` literal keeps the shape and the types constant instead.
+  value = {
+    count = var.deploy_cilium ? (
+      local.cilium_operator_replicas != null ? local.cilium_operator_replicas : try(local.cilium_floor_values.operator.replicas, null)
+    ) : null
+    source = var.deploy_cilium ? (
+      var.cilium_operator_replicas != null ? "pin" :
+      local.cilium_operator_replicas != null ? "node-count" : "floor"
+    ) : "disabled"
+  }
+}

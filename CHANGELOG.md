@@ -20,7 +20,9 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   frozen seed and the emitted self-management Application — where
   `cilium_values_override` reaches only the seed and is hard-rejected alongside
   `cilium_self_management`. `null` derives the count from the node set; see the
-  matching entry under Changed for the derivation and its rationale.
+  matching entry under Changed for the derivation and its rationale. Paired with
+  a new `cilium_operator_replicas_effective` output reporting the resolved count
+  and which of the three mechanisms produced it.
 
 - **`talos-cluster`: two further typed Cilium observability inputs (default off).**
   `cilium_agent_metric_overrides` (the chart's `prometheus.metrics` `+metric` /
@@ -79,22 +81,31 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The new `cilium_operator_replicas` input (`substrate.cilium.operator_replicas`)
   pins the count instead; it is the only knob that pins on **both** delivery
   paths, because `cilium_values_override` reaches the seed alone and is
-  hard-rejected alongside `cilium_self_management`. A count above the node count
-  warns at plan time and proceeds.
+  hard-rejected alongside `cilium_self_management`. A count above the declared
+  node count is **rejected** at plan time — the surplus can never place against
+  the per-hostname anti-affinity, and the value lands in a create-only seed that
+  no later apply can walk back. The new `cilium_operator_replicas_effective`
+  output reports the resolved count together with its origin (pin, node-count, or
+  floor).
 
   Why: `2` is the chart's own default, and the floor's `1` diverged from it on
   every cluster shape while being correct on exactly one. Two consequences were
-  measured against the pinned chart 1.20.0. The operator's rolling-update
-  strategy varies with the replica count — `maxUnavailable` is `100%` at one
-  replica and `50%` at two — so at one replica every operator upgrade takes the
-  only instance down before its replacement is Ready. And on a hard node failure
-  a lone replica waits out the 300-second `unreachable` eviction plus a
-  reschedule and a cold start, where a running standby takes over on lease expiry
-  (the operator runs leader-elected at two or more replicas).
+  measured against the pinned chart 1.20.0. The rolling-update strategy varies
+  with the replica count — `maxUnavailable` is `100%` at one replica and `50%` at
+  two — so a rollout guarantees zero available operator pods at one replica and
+  one at two. And on a hard node failure a lone replica waits out the 300-second
+  `unreachable` eviction plus a reschedule and a cold start, where a second
+  replica is already running elsewhere.
 
-  What it does **not** do: rescue a node that is merely `NotReady` while its
-  operator pod is alive and still reaching the API. That pod keeps renewing its
-  lease and stays the leader.
+  Two things this release does **not** claim. How fast that second instance takes
+  the work over was not measured — the chart grants the leader-election lease
+  RBAC at one replica too and sets no leader-election flags, so the mode and the
+  timings are operator-binary behaviour. And none of this rescues a node that is
+  merely `NotReady` while its operator pod is alive and reaching the API: that is
+  not a failover event at all.
+
+  Note the resource footprint: the chart sets no `operator.resources`, so both
+  pods are **BestEffort**. See UPGRADING if that matters on your nodes.
 
   **Impact on adoption:** a multi-node cluster taking this tag gets a second
   `cilium-operator` pod. On an already-bootstrapped cluster the seed path does

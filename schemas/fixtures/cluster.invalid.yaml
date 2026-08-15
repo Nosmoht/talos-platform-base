@@ -1,7 +1,8 @@
 # INTENTIONALLY INVALID cluster.yaml — negative fixture for lint-cluster-yaml.sh
 # (issue #136 Task 3; issue #169 added the four kernel-arg lexical-rule
-# violations). Valid in every respect EXCEPT eleven violations, each binding one
-# schema rule red-green (CI asserts ALL ELEVEN are named in the output):
+# violations). Valid in every respect EXCEPT eleven offending entries binding
+# TWELVE schema rules red-green — entry 10 breaks two rules at once, and CI
+# asserts all twelve are named in the output, one needle per rule:
 #   0. nodes key CP_2 — uppercase + underscore; a name Talos ACCEPTS and then
 #      silently rewrites, so the schema rejects what the platform would rewrite.
 #   1. node role: master — violates the node.role enum (controlplane | worker).
@@ -22,9 +23,11 @@
 #   8. substrate.cilium.hubble_metrics[1] — a document separator (rule H).
 #   9. substrate.cilium.native_routing_cidr — an embedded newline (rule C). The
 #      third input reaching the same raw-rendered cilium-config document.
-#  10. substrate.cilium.operator_replicas: 0 — below the `minimum: 1` bound,
-#      mirroring the module validation. A zero-replica operator renders a
-#      Deployment that never places a pod, and nothing else in the stack notices.
+#  10. substrate.cilium.operator_replicas: 0.5 — violates BOTH conjuncts of the
+#      schema mirror at once (`type: integer` and `minimum: 1`), so each is bound
+#      by its own CI needle. A single-conjunct value would leave the other free
+#      to be relaxed with the step still green, since the needles match the
+#      linter's distinct messages rather than the bare path.
 # Relax any rule in schemas/cluster.schema.json and the negative CI step turns
 # red. Not a runnable cluster — RFC5737 documentation IPs; no node references
 # the four new images (check-jsonschema has no cross-reference check).
@@ -86,6 +89,7 @@ substrate:
     # writes `ipv4-native-routing-cidr: {{ . }}` raw and unquoted, so the second
     # line becomes a standalone ConfigMap key in the create-only machine config.
     native_routing_cidr: "10.244.0.0/16\n  injected-native-key: pwned"
-    # INVALID: below `minimum: 1` — mirrors the module's own validation so the
-    # declarative path rejects it at lint time, not only at plan time.
-    operator_replicas: 0
+    # INVALID twice over: fractional (violates `type: integer`) AND below
+    # `minimum: 1`. Mirrors the module's own two validation conjuncts so the
+    # declarative path rejects both at lint time, not only at plan time.
+    operator_replicas: 0.5

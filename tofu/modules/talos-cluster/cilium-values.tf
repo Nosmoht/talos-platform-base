@@ -51,26 +51,39 @@ locals {
   #
   # Why 2 is the derived value at >= 2 nodes: it is the CHART'S OWN default, from
   # which the floor's 1 diverged without that ever being a multi-node decision.
-  # Two measurements against the pinned chart make the divergence cost real:
+  # THE RATIONALE LIVES HERE AND NOWHERE ELSE — a previous version of it was
+  # copied into helm/cilium-values.yaml and a test comment, and survived the
+  # correction of every narrative file because copies do not get corrected.
   #
-  #   * Rollout. The operator's rolling-update strategy varies with the replica
-  #     count — maxUnavailable is 100% at one replica and 50% at two (maxSurge
-  #     25% in both). At one replica every operator upgrade takes the only
-  #     instance down before its replacement is Ready.
+  # Measured against the pinned chart, at the strength it was measured:
+  #
+  #   * Rollout availability. The rolling-update strategy varies with the replica
+  #     count: maxUnavailable is 100% at one replica and 50% at two (maxSurge 25%
+  #     in both). Resolved, that is "0 pods guaranteed available during a rollout"
+  #     versus "1". It is NOT a claim that the incumbent always goes down first —
+  #     25% of 1 rounds UP to one surge pod, so at a single replica on a
+  #     multi-node cluster the controller MAY place the replacement first. The
+  #     guarantee is the difference, not the observed ordering.
   #   * Recovery from a HARD node failure. The operator tolerates
   #     node.kubernetes.io/not-ready with no tolerationSeconds (an explicit
   #     toleration suppresses the 300s eviction Kubernetes adds only to pods that
   #     set none), but it does NOT tolerate node.kubernetes.io/unreachable — so a
   #     node that goes Ready=Unknown still evicts the pod on the standard 300s
-  #     timer. A standby that is already running takes over on lease expiry
-  #     instead: the operator runs leader-elected in HA mode, which is what its
-  #     ClusterRole's coordination.k8s.io/leases grant is for.
+  #     timer, after which it must be rescheduled and cold-started. A second
+  #     replica is already running on another node (hostNetwork + the hostname
+  #     anti-affinity guarantee that).
   #
-  # What a second replica does NOT buy, stated because the tempting claim is
-  # wrong: a node merely marked NotReady (Ready=False) whose operator pod is
-  # alive and still reaching the API keeps that pod as the LEADER — it goes on
-  # renewing its lease and the standby stays passive. The win is on the incumbent
-  # STOPPING, not on the node being marked unhealthy.
+  # NOT measured, so not claimed: how fast that second replica takes the WORK
+  # over. The chart grants coordination.k8s.io/leases under a comment about HA
+  # leader election, but it grants it at ONE replica too and sets no
+  # leader-election flags — so whether the mode is replica-dependent, and what
+  # the lease timings are, is operator-binary behaviour this repo has not
+  # measured. Treat the recovery bullet as "a warm instance exists", not as a
+  # quantified failover time.
+  #
+  # What a second replica does NOT buy: a node merely marked NotReady
+  # (Ready=False) whose operator pod is alive and still reaching the API is not
+  # a failover event at all — that pod goes on holding its lease.
   #
   # Counted over local.nodes_checked, not var.nodes: same keys by construction, but
   # the round trip runs the IP-distinctness guard first, so this cannot count a
@@ -317,25 +330,20 @@ check "cilium_agent_metric_overrides_effective" {
 }
 
 check "cilium_operator_replicas_effective" {
+  # Both ways the pin can be inert, in ONE predicate — deliberately, unlike the
+  # one-block-per-predicate rule above, because they are not independently
+  # reachable legs: they describe the same outcome (the pin reaches no running
+  # operator) and a consumer hitting either needs the same paragraph. Splitting
+  # them would fire the seed-freeze leg on the fresh-bootstrap consumer, for whom
+  # the pin DOES take effect — a warning that cries wolf on the correct usage.
+  #
+  # The seed-freeze half cannot be a machine predicate at all: the module cannot
+  # know whether this plan is a first bootstrap or the hundredth apply against a
+  # live cluster. It rides in the message rather than the condition, which is why
+  # the condition covers only the deploy_cilium half.
   assert {
     condition     = var.cilium_operator_replicas == null || var.deploy_cilium
-    error_message = "cilium_operator_replicas is set but cannot take effect: it needs deploy_cilium = true — with Cilium off the module renders no seed and emits no self-management Application, so there is no operator Deployment for the count to reach."
-  }
-}
-
-check "cilium_operator_replicas_placeable" {
-  # Against the RESOLVED count, not the input, so the predicate stays true to its
-  # name if the derivation ever changes. Only a pin can violate it today: the
-  # derived value is 2 exactly when the node set holds at least 2.
-  #
-  # A warning, not a rejection, on the tier rule above — an over-count places
-  # fewer pods than asked but breaks nothing, and the module deliberately models
-  # node COUNT rather than schedulability. It is scoped to deploy_cilium so a
-  # Cilium-off cluster gets the one warning that actually applies (the check
-  # above), not two.
-  assert {
-    condition     = !var.deploy_cilium || local.cilium_operator_replicas == null || local.cilium_operator_replicas <= length(local.nodes_checked)
-    error_message = "cilium_operator_replicas exceeds the node count: the chart's operator podAntiAffinity is requiredDuringSchedulingIgnoredDuringExecution on kubernetes.io/hostname, so at most one operator pod can be placed per node and the surplus stays Pending indefinitely. A Deployment held below its replica target trips ProgressDeadlineExceeded, which ArgoCD renders as Degraded on the cilium Application."
+    error_message = "cilium_operator_replicas is set but cannot take effect: it needs deploy_cilium = true — with Cilium off the module renders no seed and emits no self-management Application, so there is no operator Deployment for the count to reach. NOTE, separately and NOT detectable from a plan: on an ALREADY-BOOTSTRAPPED cluster with cilium_self_management = false the pin reaches only the frozen seed render, never the running Deployment — it applies at the next fresh bootstrap or after a deliberate -replace of terraform_data.cilium_render (UPGRADING, the operator-replicas section §3)."
   }
 }
 
