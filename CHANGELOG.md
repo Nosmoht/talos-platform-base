@@ -60,6 +60,35 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hardening — see the module README). See
   [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
+### Changed
+
+- **`talos-cluster`: the Cilium operator's replica count now follows the node
+  count.** At two or more nodes the module emits `operator.replicas: 2` — the
+  Cilium chart's own default — into both the bootstrap seed and the emitted
+  self-management Application. At exactly one node nothing is emitted and the
+  shipped floor's `1` remains effective, because the chart's operator
+  `podAntiAffinity` is `requiredDuringScheduling` on `kubernetes.io/hostname`
+  and a second replica would stay Pending there forever.
+
+  Why this is a defect fix and not a preference: the chart tolerates
+  `node.kubernetes.io/not-ready` on the operator with no `tolerationSeconds`,
+  and Kubernetes adds its automatic 300-second eviction toleration only when
+  the pod does not set one explicitly. A NotReady node therefore keeps a
+  single-replica operator bound to it indefinitely, with no failover — and the
+  operator is what clears `node.cilium.io/agent-not-ready` from newly joined
+  nodes, so a stuck operator also stops new nodes from becoming schedulable.
+  The floor's `1` had removed the chart's only mitigation for this on every
+  multi-node cluster.
+
+  **Impact on adoption:** a multi-node cluster taking this tag gets a second
+  `cilium-operator` pod. Consumers who pin their own value through
+  `cilium_values_override` are unaffected — the override layer still wins. The
+  frozen seed is inert for an existing cluster (`terraform_data.cilium_render`
+  carries `ignore_changes`), so the change lands on a fresh bootstrap, a
+  `-replace`, or a controlplane join; on a self-managing consumer it lands on
+  the next ArgoCD reconcile. See
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
 ### Changed — BREAKING
 
 - **`argocd`: the substrate ships no identity.** `configs.rbac.policy.csv` and

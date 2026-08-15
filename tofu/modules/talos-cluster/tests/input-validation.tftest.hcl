@@ -263,6 +263,17 @@ run "cilium_all_off_default_carries_no_observability_keys" {
     condition     = output.cilium_effective_values.operator.replicas == 1
     error_message = "default-off: the floor's operator.replicas=1 must survive into cilium_effective_values when no observability input is set"
   }
+  # The single-node arm of the node-count-derived replicas leg. This fixture
+  # declares ONE node, so local.cilium_operator_values is empty and the computed
+  # layer must emit NO `operator` key at all — that absence is what leaves the
+  # floor as the sole contributor under `operator`, which in turn is what keeps
+  # mutant M2 (the dropped `operator` sub-merge, see the floor-preservation run
+  # below) detectable. Red-green: make the replicas leg unconditional in
+  # cilium-values.tf and this assert fails.
+  assert {
+    condition     = !contains(keys(output.cilium_computed_values), "operator")
+    error_message = "single-node: cilium_computed_values must carry NO operator key at one node with no operator metrics — an unconditional replicas leg would supersede the floor here and retire the operator sub-merge's only binding contributor"
+  }
 
   # --- Default pins for the SEED engine ---
   #
@@ -955,6 +966,71 @@ run "cilium_floor_preservation_under_observability" {
       "SETGID", "SETUID",
     ]
     error_message = "floor-preservation (M1): securityContext.capabilities.ciliumAgent from the floor must survive the top-level merge, verbatim and in order"
+  }
+}
+
+# Operator replicas follow the node count — the multi-node arm.
+#
+# Spec: openspec/specs/cilium-cni-delivery §"Cluster-agnostic floor values with
+# layered configuration" → scenario "Operator replicas follow the cluster's node
+# count". The floor's replicas=1 is the single-node boundary condition (the
+# chart's operator podAntiAffinity is requiredDuringScheduling on hostname, so a
+# second replica cannot be placed on a one-node cluster); at two or more nodes the
+# module restores the chart's own default of 2, which is the only mitigation for
+# the operator's unbounded node.kubernetes.io/not-ready toleration.
+#
+# Red-green: delete the `length(local.nodes_checked) >= 2 ? { replicas = 2 } : {}`
+# term from local.cilium_operator_values in cilium-values.tf and BOTH asserts here
+# go red (effective falls back to the floor's 1, computed loses the key), while
+# every single-node run in this file stays green. That asymmetry is the binding:
+# the pair is sensitive to the node-count leg specifically, not to the merge as a
+# whole.
+run "cilium_operator_replicas_follow_node_count" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  assert {
+    condition     = output.cilium_effective_values.operator.replicas == 2
+    error_message = "multi-node: cilium_effective_values.operator.replicas must be 2 at >= 2 nodes — the emitted self-management Application is the path that reaches a running cluster, so a floor-pinned 1 there leaves the operator without failover"
+  }
+  assert {
+    condition     = output.cilium_computed_values.operator.replicas == 2
+    error_message = "multi-node: cilium_computed_values.operator.replicas must be 2 at >= 2 nodes — the seed render reads the computed layer, so asserting only the effective map would leave the bootstrap engine unbound"
+  }
+}
+
+# Level-B preservation for the `operator` parent — the intra-computed mirror of
+# the M2 pair above, and the assert the file's own two-engine-drift invariant
+# demands for any parent that gains a second contributor (see cilium-values.tf,
+# "ANY future key added under a parent already written by another contributor").
+#
+# Red-green (M-O1): split local.cilium_operator_values back into two `operator`
+# merge() terms in local.cilium_computed_values => the later term replaces the
+# earlier wholesale, so exactly one of the two asserts below goes red depending on
+# term order, while the run above (replicas alone) stays green. That is what
+# distinguishes this pair from a plain "both keys present" check.
+run "cilium_operator_replicas_and_metrics_coexist" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_operator_metrics = true
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  assert {
+    condition     = output.cilium_computed_values.operator.replicas == 2
+    error_message = "level-B (M-O1): the node-count replicas contributor must survive alongside operator.prometheus — two separate `operator` merge() terms would drop whichever came first"
+  }
+  assert {
+    condition     = output.cilium_computed_values.operator.prometheus.enabled == true
+    error_message = "level-B (M-O1): the cilium_operator_metrics contributor must survive alongside operator.replicas — two separate `operator` merge() terms would drop whichever came first"
   }
 }
 

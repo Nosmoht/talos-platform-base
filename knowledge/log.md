@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-08-15
+
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: addendum —
+  the Cilium operator's replica count is now derived from the node set (2 at two
+  or more nodes, the floor's 1 at exactly one). Records why the floor's pinned 1
+  was a defect on multi-node clusters (the chart's explicit
+  `node.kubernetes.io/not-ready` toleration carries no `tolerationSeconds` and
+  therefore suppresses Kubernetes' automatic 300-second eviction, so a NotReady
+  node holds a single-replica operator with no failover — and that operator is
+  what clears `node.cilium.io/agent-not-ready` from newly joined nodes), and why
+  the emission is conditional rather than unconditional: emitting it always would
+  leave the floor contributing nothing under `operator`, turning the §(f)
+  sub-merge's preservation mutant into an equivalent one. Discharges the
+  two-engine-drift invariant §(f) had recorded as "not code today". Both mutants
+  were run, not reasoned about; the chart's toleration set was read off a local
+  `helm template` of the pinned 1.20.0.
+
 ## 2026-08-14
 
 Second pass, after a five-lens independent review. Corrections to load-bearing

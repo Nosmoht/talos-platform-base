@@ -4,7 +4,7 @@ title: "ADR: Cilium observability inputs + opt-in ArgoCD self-management deliver
 description: "Adds first-class default-off Cilium observability inputs (agent/operator Prometheus metrics, Hubble metrics-only) and an opt-in emitted-Application self-management delivery mode; closes the substrate.cilium schema and bumps the module's OpenTofu floor to >= 1.9."
 status: accepted
 id: base:cilium-observability-and-argocd-self-management
-timestamp: 2026-07-22
+timestamp: 2026-08-15
 deciders:
   - platform-maintainer
 related:
@@ -605,3 +605,66 @@ and the kernel-arg rules already established, and bound the same way through
 `tests/composition.tftest.hcl`, which is network-dependent and advisory in CI.
 Helm ignores an unknown value key silently, so an offline suite cannot tell a
 correct path from a typo — it only ever sees the module's own map.
+
+## Addendum 2026-08-15 — operator replicas derived from the node count
+
+§(f) above records the `operator` parent as the one lossy floor∩computed
+collision, with the floor contributing `operator.replicas` and the computed
+observability layer contributing `operator.prometheus`. That description now has
+a second computed contributor, and the reason it did not dissolve the collision
+is worth recording, because the obvious implementation would have.
+
+**What changed.** The computed layer emits `operator.replicas: 2` when the node
+set holds two or more nodes. The floor file is untouched: at exactly one node
+the computed layer emits no `operator.replicas` at all and the floor's `1`
+stays effective.
+
+**Why the floor's `1` was wrong to keep on multi-node clusters.** The chart
+tolerates `node.kubernetes.io/not-ready` on the operator Deployment with no
+`tolerationSeconds`. Kubernetes adds its automatic 300-second eviction
+toleration for that taint only when the pod does not set one explicitly, so the
+chart's explicit toleration suppresses it: a NotReady node holds a
+single-replica operator with no eviction and no failover. The chart's own
+default of 2, paired with its hostname `podAntiAffinity`, is the mitigation —
+and the floor had removed it everywhere. The blast radius is not confined to the
+operator: `operator.removeNodeTaints` is on by default, so the operator is what
+clears `node.cilium.io/agent-not-ready` from newly joined nodes. A pinned
+operator therefore also stops new nodes from becoming schedulable.
+
+**Why the emission is conditional, not unconditional.** An unconditional
+`operator.replicas` in the computed layer would be simpler and would still
+produce the right value on both shapes — the floor would just always lose. It
+was rejected because it would make the floor a non-contributor under `operator`,
+and the floor being the *sole* contributor of a key under that parent is exactly
+what the §(f) sub-merge's preservation assert measures. With the floor
+contributing nothing there, mutant M2 (drop the explicit `operator` sub-merge)
+becomes an equivalent mutant: the assert would pass on the mutation it exists to
+catch. The conditional emission keeps the single-node shape as the arm where the
+floor still contributes, so the gate keeps biting. This generalises, and the
+generalisation is now in the spec: a computed key that supersedes a floor key is
+emitted only on the shapes where it actually supersedes it.
+
+**Two-engine-drift invariant, discharged.** §(f) recorded the invariant as
+"recorded, not code today — no second collision exists to bind". This change
+creates the first intra-computed (level-B) collision under `operator` and
+discharges both obligations: the contributors fold through one hoisted sub-map
+(`local.cilium_operator_values`), and `tests/input-validation.tftest.hcl` gains
+the preservation pair (`cilium_operator_replicas_and_metrics_coexist`) alongside
+the node-count arm (`cilium_operator_replicas_follow_node_count`) and a
+single-node absence assert on the default-off run.
+
+**Verified, not reasoned.** Both mutants were run: deleting the node-count term
+fails the multi-node run's two asserts while every single-node run stays green;
+splitting the sub-map back into two `operator` merge terms fails exactly one leg
+of the preservation pair while the node-count run stays green. The toleration
+and eviction semantics were read off a local `helm template` of the pinned chart
+1.20.0 (`operator.tolerations` enumerates `control-plane`, `master`,
+`not-ready`, `uninitialized`, plus the auto-added `agent-not-ready`; the agent
+and Envoy DaemonSets carry the blanket `operator: Exists`), not from memory.
+
+**Residual.** The threshold is node COUNT, not schedulable-node count. A
+two-node cluster whose second node is cordoned, or a node set where both nodes
+are control planes on a cluster without `allow_scheduling_on_controlplanes`,
+still gets `replicas: 2` — the operator tolerates the control-plane taint, so
+that specific case places fine, but the module does not model schedulability and
+should not be read as if it did.

@@ -3,10 +3,14 @@
 # local, main.tf's outputs.tf output). Moved out of main.tf verbatim (issue #188)
 # so BOTH consumers of the computed values (the frozen seed AND the emitted app)
 # read the SAME local.cilium_computed_values map — a single observability
-# data-flow, no double-application. Pure `var.*`-derived locals plus the two
+# data-flow, no double-application. Plan-time locals plus the two
 # `check` blocks at the foot of the file (no `data`/`terraform_data` blocks) so
 # this file stays symlinkable into the provider-less
-# tests/fixtures/colliding-catalog offline fixture.
+# tests/fixtures/colliding-catalog offline fixture. It additionally reads
+# local.nodes_checked from nodes.tf (node count -> operator replicas); that file is
+# symlinked into the same fixture and is likewise provider-free, so the offline
+# property is unchanged — but a new cross-file local read is a fixture obligation:
+# a fixture symlinking this file must symlink nodes.tf too.
 # See knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
 
 locals {
@@ -37,6 +41,38 @@ locals {
   cilium_prometheus_values = merge(
     { enabled = true },
     length(var.cilium_agent_metric_overrides) > 0 ? { metrics = var.cilium_agent_metric_overrides } : {},
+  )
+
+  # `operator`: cilium_operator_metrics -> .prometheus.enabled, node count ->
+  # .replicas. TWO contributors, so ONE hoisted sub-map — two `operator` merge()
+  # terms would not combine, the later would replace the earlier wholesale.
+  #
+  # replicas: the floor pins 1 because that is the only value that CONVERGES on a
+  # single-node cluster — the chart's operator podAntiAffinity is
+  # requiredDuringScheduling on kubernetes.io/hostname, so a second replica has no
+  # node to land on and stays Pending forever. On a multi-node cluster that same
+  # floor is a downgrade from the chart default (2) AND removes the only mitigation
+  # for the operator's own toleration set: the chart tolerates
+  # node.kubernetes.io/not-ready with no tolerationSeconds, and an EXPLICIT
+  # toleration suppresses the automatic 300s eviction Kubernetes would otherwise
+  # add — so a NotReady node pins a single-replica operator there with no failover,
+  # and the operator is what clears node.cilium.io/agent-not-ready from newly
+  # joined nodes (operator.removeNodeTaints, on by default).
+  #
+  # Emitted ONLY at >= 2 nodes: at one node the key is absent and the FLOOR keeps
+  # owning the value. That is deliberate on two counts — the floor stays the
+  # single-node-correct boundary condition, and it remains the sole contributor of
+  # a floor-only key under `operator`, which is what binds the explicit `operator`
+  # sub-merge in cilium_effective_values (mutant M2 in
+  # tests/input-validation.tftest.hcl). Emitting it unconditionally would make that
+  # sub-merge an equivalent mutant and silently retire a live preservation assert.
+  #
+  # Counted over local.nodes_checked, not var.nodes: same keys by construction, but
+  # the round trip runs the IP-distinctness guard first, so this cannot count a
+  # node set that nodes.tf would reject.
+  cilium_operator_values = merge(
+    length(local.nodes_checked) >= 2 ? { replicas = 2 } : {},
+    var.cilium_operator_metrics ? { prometheus = { enabled = true } } : {},
   )
 
   # `hubble.metrics`: cilium_hubble_metrics -> .enabled, cilium_hubble_open_metrics
@@ -88,7 +124,11 @@ locals {
     # (local.cilium_prometheus_values) — never as two merge() terms, which would
     # drop prometheus.enabled and leave the delta list inert.
     var.cilium_agent_metrics ? { prometheus = local.cilium_prometheus_values } : {},
-    var.cilium_operator_metrics ? { operator = { prometheus = { enabled = true } } } : {},
+    # operator: BOTH contributors fold through local.cilium_operator_values (see
+    # its comment). Conditional on the sub-map being non-empty so a single-node
+    # cluster with no operator metrics emits no `operator` key at all and the
+    # floor's replicas=1 stays the effective value.
+    length(local.cilium_operator_values) > 0 ? { operator = local.cilium_operator_values } : {},
     # Hubble: metrics-only scope (no Relay/UI — issue Non-goal), so the observer
     # gRPC API's server TLS is unnecessary and is forced OFF (tls.enabled=false).
     # CONFIRMED independent of the metrics scrape endpoint (`hubble-metrics`
@@ -128,8 +168,9 @@ locals {
   # deep-merge" design was declined — see ADR-0022 §Alternatives): today's
   # floor∩computed key set has exactly ONE lossy collision under a plain
   # top-level merge() — the `operator` parent (floor sets operator.replicas=1,
-  # cilium-values.yaml; the observability layer above adds operator.prometheus
-  # when cilium_operator_metrics). A plain merge(floor, computed) would let the
+  # cilium-values.yaml; local.cilium_operator_values above adds operator.prometheus
+  # when cilium_operator_metrics, and operator.replicas=2 at >= 2 nodes, where it
+  # legitimately supersedes the floor). A plain merge(floor, computed) would let the
   # computed `operator` map REPLACE the floor `operator` map wholesale, dropping
   # `operator.replicas`. So this merge does a top-level merge() PLUS an explicit
   # one-level re-merge of the `operator` sub-map. `hubble` also collides (floor
@@ -144,13 +185,21 @@ locals {
   #       (`operator`), so the shallow merge() + one explicit sub-merge below
   #       still reproduces Helm's recursive deep-merge. The metric-override and
   #       OpenMetrics inputs did NOT add to this level: `prometheus` is absent
-  #       from the floor, and `hubble` stays intentionally superseded.
+  #       from the floor, and `hubble` stays intentionally superseded. The
+  #       node-count-derived `operator.replicas` did not retire this level either:
+  #       it is emitted only at >= 2 nodes, so at one node the floor is still the
+  #       SOLE contributor of a key under `operator` and the sub-merge keeps
+  #       biting. Emitting it unconditionally would make the sub-merge an
+  #       equivalent mutant — M2 in tests/input-validation.tftest.hcl would go
+  #       green on the very mutation it exists to catch.
   #   (B) INTRA-COMPUTED, resolved at the top of this file. Two terms of the
   #       cilium_computed_values merge() sharing a top-level key collide the same
   #       lossy way, and that merge has no floor to preserve — the loss is
-  #       computed-vs-computed. Today: `prometheus` (enabled + metrics) and
-  #       `hubble.metrics` (enabled + enableOpenMetrics), each folded into ONE
-  #       term via local.cilium_prometheus_values / cilium_hubble_metrics_values.
+  #       computed-vs-computed. Today: `prometheus` (enabled + metrics),
+  #       `hubble.metrics` (enabled + enableOpenMetrics) and `operator`
+  #       (replicas + prometheus), each folded into ONE term via
+  #       local.cilium_prometheus_values / cilium_hubble_metrics_values /
+  #       cilium_operator_values.
   #
   # ANY future key added under a parent already written by another contributor —
   # at EITHER level — MUST add (i) an explicit sub-merge for that parent (here for
