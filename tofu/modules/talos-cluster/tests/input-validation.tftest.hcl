@@ -1064,6 +1064,115 @@ run "cilium_self_management_app_carries_the_node_count_replicas" {
   }
 }
 
+# --- cilium_operator_replicas: the pin overriding the derivation ---------------
+#
+# The pin's whole reason to exist is the SELF-MANAGEMENT path: cilium_values_override
+# reaches only the seed and is hard-rejected alongside cilium_self_management, so
+# before this input the emitted Application had no per-cluster opt-out at all
+# (recorded as ADR-0022 Addendum residual 2, now discharged).
+#
+# The DOWNWARD direction is the one under test — pin 1 against a 2-node set. An
+# upward pin would agree with the derivation on this shape and prove nothing.
+#
+# Red-green (M-O2): delete the `var.cilium_operator_replicas != null ? ... :` arm
+# of local.cilium_operator_replicas in cilium-values.tf => the derivation wins,
+# both asserts below go red, and the derivation runs above stay green.
+#
+# Spec: openspec/specs/cilium-cni-delivery §"An explicit operator replica count
+# overrides the derivation on both paths".
+run "cilium_operator_replicas_pin_overrides_the_derivation" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_operator_replicas = 1
+    cilium_self_management   = true
+    deploy_argocd            = true
+    deploy_cilium            = true
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  assert {
+    condition     = output.cilium_computed_values.operator.replicas == 1
+    error_message = "pin: cilium_computed_values.operator.replicas must be the pinned 1 at 2 nodes — a pin that loses to the node-count derivation is not a pin, and the computed layer is what the seed render reads"
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.source.helm.valuesObject.operator.replicas == 1
+    error_message = "pin: the emitted Application's valuesObject.operator.replicas must be the pinned 1 — this path is the reason the input exists, because cilium_values_override is rejected alongside cilium_self_management and therefore cannot pin here"
+  }
+}
+
+# The upward direction, on the shape where the derivation emits NOTHING. This is
+# the arm that proves the pin is not merely a cap on the derived value: at one
+# node the derivation yields null, so a `2` here can only come from the pin. It
+# is also the arm showing the pin does not weaken mutant M2's binding — M2's arm
+# is "no count resolves", which a pin cannot enter by construction.
+#
+# The over-count WARNING rides along, unavoidably: at one node every pin that is
+# distinguishable from the floor's 1 also exceeds the node count, so this
+# predicate cannot be exercised without firing that check. Binding it here rather
+# than in a duplicate run keeps the two facts on one shape instead of asserting
+# the same inputs twice. The check's leg isolation is unaffected — the
+# effectiveness block below still has a run where ONLY it can fire.
+#
+# Red-green, two mutations, each hitting a different half:
+#   * delete the pin arm of local.cilium_operator_replicas (M-O2) => the assert
+#     goes red AND the expected failure disappears (the resolved count becomes
+#     null, so `placeable` passes vacuously);
+#   * delete check "cilium_operator_replicas_placeable" => "Missing expected
+#     failure" here while the assert stays green.
+run "cilium_operator_replicas_pin_applies_where_the_derivation_is_silent" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_operator_replicas = 2
+  }
+  assert {
+    condition     = output.cilium_computed_values.operator.replicas == 2
+    error_message = "pin: a pinned 2 must reach the computed layer on a single-node cluster, where the node-count derivation emits nothing — otherwise the pin is only ever a filter on the derived value"
+  }
+  expect_failures = [check.cilium_operator_replicas_placeable]
+}
+
+# The deploy_cilium arm — the inert-input tier. Leg-isolated from the run above:
+# the count equals the node count, so ONLY the effectiveness block can fire.
+#
+# Red-green: delete check "cilium_operator_replicas_effective" => "Missing
+# expected failure" here while the over-count run above stays green.
+run "cilium_operator_replicas_without_cilium_warns" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    deploy_cilium            = false
+    cilium_operator_replicas = 1
+  }
+  expect_failures = [check.cilium_operator_replicas_effective]
+}
+
+# The validation's two rejected shapes, one run each — a merged run would leave
+# whichever conjunct it did not exercise untested.
+#
+# Red-green: drop the `>= 1` conjunct => the zero run reports "Missing expected
+# failure"; drop the floor() conjunct => the fractional run does.
+run "cilium_operator_replicas_zero_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_operator_replicas = 0
+  }
+  expect_failures = [var.cilium_operator_replicas]
+}
+
+run "cilium_operator_replicas_fractional_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_operator_replicas = 1.5
+  }
+  expect_failures = [var.cilium_operator_replicas]
+}
+
 # AC #3 — the emitted self-management Application's shape. Red-green: drop
 # or mis-set any one field (chart version / destination.server / destination.
 # namespace / metadata.namespace / project / a recommended label / adding a

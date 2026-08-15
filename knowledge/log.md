@@ -3,26 +3,35 @@
 ## 2026-08-15
 
 - `decisions/0022-cilium-observability-and-argocd-self-management.md`: addendum —
-  the Cilium operator's replica count is now derived from the node set (2 at two
-  or more nodes, the floor's 1 at exactly one). Records why the floor's pinned 1
-  was a defect on multi-node clusters (the chart's explicit
-  `node.kubernetes.io/not-ready` toleration carries no `tolerationSeconds` and
-  therefore suppresses Kubernetes' automatic 300-second eviction, so a NotReady
-  node holds a single-replica operator with no failover — and that operator is
-  what clears `node.cilium.io/agent-not-ready` from newly joined nodes), and why
-  the emission is conditional rather than unconditional: emitting it always would
-  leave the floor contributing nothing under `operator`, turning the §(f)
-  sub-merge's preservation mutant into an equivalent one. Discharges the
-  two-engine-drift invariant §(f) had recorded as "not code today". Both mutants
-  were run, not reasoned about; the chart's toleration set was read off a local
-  `helm template` of the pinned 1.20.0. Revised after review: the residual now
-  names three shapes instead of one — an arbitrary non-tolerated `NoSchedule`
-  taint on the second node and a declared-but-departed node are permanent, not
-  transient, and the observable consequence is a Degraded ArgoCD Application, not
-  an idle pod. Two further residuals were added: the self-management path has no
-  per-cluster opt-out (a divergence from the `cert_approver_replicas`
-  convention), and seed and emitted Application can now carry different values
-  for the same key — safe only because the seed is create-only.
+  the Cilium operator's replica count is derived from the node set (2 at two or
+  more nodes, the floor's 1 at exactly one) and pinnable via the new
+  `cilium_operator_replicas` input. Rewritten after an adversarial review found
+  the first version's justification overstated: three links in its failure chain
+  were re-measured against the pinned chart and do not hold as written. The
+  operator tolerates `not-ready` but NOT `unreachable`, which is the taint a hard
+  node failure actually carries, so the 300-second eviction still applies there;
+  two replicas run leader-elected, so a live pod on a NotReady node keeps the
+  lease and the standby stays passive; and the operator is the `agent-not-ready`
+  taint SETTER as well as its remover (`setNodeTaints` defaults to
+  `removeNodeTaints`), so a wedged operator makes new nodes schedulable too early
+  rather than never — the opposite of what was published. The addendum keeps the
+  wrong version visible and states what survived: de-divergence from the chart's
+  own default, a rollout strategy that is `maxUnavailable: 100%` at one replica
+  and `50%` at two, and lower hard-failure recovery latency. The conditional
+  emission is unchanged and its reason restated — emitting always would leave the
+  floor contributing nothing under `operator`, turning the §(f) sub-merge's
+  preservation mutant into an equivalent one; a pin cannot erode that gate,
+  because the gate's arm is "no count resolves". Discharges the two-engine-drift
+  invariant §(f) recorded as "not code today", and the typed input discharges the
+  no-opt-out-under-self-management residual. Partly closes the §Residual on
+  unbound Helm key spellings: `operator.replicas` is now asserted at the rendered
+  Deployment in both directions, mirroring `cert_approver_replicas`. Every mutant
+  was run, not reasoned about; the chart facts were read off a local
+  `helm template` of the pinned 1.20.0. Two residuals stand: the seed path never
+  reaches an already-bootstrapped cluster (a control-plane join does not deliver
+  it either — an earlier draft said otherwise and was wrong), and seed and emitted
+  Application can carry different values for the same key, safe only because the
+  seed is create-only.
 
 ## 2026-08-14
 

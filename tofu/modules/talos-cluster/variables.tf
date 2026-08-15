@@ -817,6 +817,44 @@ variable "cilium_operator_metrics" {
   default     = false
 }
 
+variable "cilium_operator_replicas" {
+  description = <<-EOT
+    Cilium operator Deployment replica count (operator.replicas). Default null =
+    derive it from the node count: 2 at two or more nodes (the chart's own
+    default), and NOTHING at exactly one node, where the shipped floor's 1 stays
+    effective because the chart's operator podAntiAffinity is
+    requiredDuringScheduling on kubernetes.io/hostname and a second replica would
+    stay Pending forever.
+
+    Set a number to pin the count instead. It wins on BOTH delivery paths, which
+    is the reason this input exists: cilium_values_override reaches only the seed
+    render, and the module hard-rejects that override together with
+    cilium_self_management — so before this input a self-managing consumer could
+    not pin the count at all.
+
+    Pinning more replicas than there are nodes only WARNS (a plan-time check, not
+    a rejection): the anti-affinity is per-hostname, so the surplus pods stay
+    Pending, but the module models node COUNT and not schedulability, and a
+    consumer may know something about their node set that the module does not.
+
+    SEED knob on the default path (create-only inlineManifests): a changed value
+    reaches an already-bootstrapped cluster only through cilium_self_management
+    or a deliberate `-replace` of the render.
+  EOT
+  type        = number
+  default     = null
+
+  validation {
+    # Ternary, not `||`: the null default must not reach floor(), and the
+    # conditional operator is the form that does not evaluate the untaken arm.
+    condition = var.cilium_operator_replicas == null ? true : (
+      var.cilium_operator_replicas >= 1 &&
+      floor(var.cilium_operator_replicas) == var.cilium_operator_replicas
+    )
+    error_message = "cilium_operator_replicas must be null (derive from the node count) or an integer >= 1."
+  }
+}
+
 variable "cilium_hubble_enabled" {
   description = <<-EOT
     Enable Hubble (hubble.enabled) for flow/metrics observability. Default false

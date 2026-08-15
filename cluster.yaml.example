@@ -131,6 +131,12 @@ substrate:
     values_override: "" # long tail: Hubble, L2/BGP, bpf, VLAN bypass (Helm values, merged on the floor)
     agent_metrics: false # Cilium agent Prometheus metrics (prometheus.enabled)
     operator_metrics: false # Cilium operator Prometheus metrics (operator.prometheus.enabled)
+    # operator_replicas: OMITTED ON PURPOSE — omitting it derives the count from
+    # your node set: 2 at two or more nodes (the chart's own default), and the
+    # shipped floor's 1 at exactly one, where the operator's per-hostname
+    # anti-affinity would leave a second replica Pending. Set it ONLY to pin the
+    # count deliberately — it is the only knob that pins on BOTH delivery paths
+    # (values_override reaches the seed alone and is rejected with self_management).
     hubble_enabled: false # Hubble flow/metrics observability (forces hubble.tls.enabled=false — metrics-only scope)
     hubble_metrics: [] # e.g. ["dns", "drop", "tcp"] — scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side
     agent_metric_overrides: [] # e.g. ["+cilium_bpf_map_pressure"] — +add/-remove against the chart's DEFAULT metric set; needs agent_metrics

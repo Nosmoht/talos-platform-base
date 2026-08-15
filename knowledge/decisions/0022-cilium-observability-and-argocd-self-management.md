@@ -606,106 +606,171 @@ and the kernel-arg rules already established, and bound the same way through
 Helm ignores an unknown value key silently, so an offline suite cannot tell a
 correct path from a typo — it only ever sees the module's own map.
 
-## Addendum 2026-08-15 — operator replicas derived from the node count
+## Addendum 2026-08-15 — the operator replica count: derived, and pinnable
 
 §(f) above records the `operator` parent as the one lossy floor∩computed
 collision, with the floor contributing `operator.replicas` and the computed
-observability layer contributing `operator.prometheus`. That description now has
-a second computed contributor, and the reason it did not dissolve the collision
-is worth recording, because the obvious implementation would have.
+observability layer contributing `operator.prometheus`. That parent now carries a
+second computed contributor — a replica count that is either pinned by its own
+typed input or derived from the node set.
 
-**What changed.** The computed layer emits `operator.replicas: 2` when the node
-set holds two or more nodes. The floor file is untouched: at exactly one node
-the computed layer emits no `operator.replicas` at all and the floor's `1`
-stays effective.
+**What changed.** The computed layer emits `operator.replicas` whenever a count
+resolves: the value of `cilium_operator_replicas` when it is set, otherwise `2`
+at two or more nodes. With the input unset at exactly one node no count resolves,
+nothing is emitted, and the floor's `1` stays effective. The floor file is
+untouched.
 
-**Why the floor's `1` was wrong to keep on multi-node clusters.** The chart
-tolerates `node.kubernetes.io/not-ready` on the operator Deployment with no
-`tolerationSeconds`. Kubernetes adds its automatic 300-second eviction
-toleration for that taint only when the pod does not set one explicitly, so the
-chart's explicit toleration suppresses it: a NotReady node holds a
-single-replica operator with no eviction and no failover. The chart's own
-default of 2, paired with its hostname `podAntiAffinity`, is the mitigation —
-and the floor had removed it everywhere. The blast radius is not confined to the
-operator: `operator.removeNodeTaints` is on by default, so the operator is what
-clears `node.cilium.io/agent-not-ready` from newly joined nodes. A pinned
-operator therefore also stops new nodes from becoming schedulable.
+**Why the floor's 1 was the wrong multi-node default — and the narrower claim
+that survived review.** The first version of this addendum argued the floor
+removed the chart's only mitigation for a failure mode it carries deliberately:
+the operator tolerates `node.kubernetes.io/not-ready` with no
+`tolerationSeconds`, so a NotReady node was said to hold a single-replica
+operator with no eviction and no failover, and — since `removeNodeTaints` is on
+by default — to stop new nodes from becoming schedulable. Re-measured against
+the pinned chart, three links in that chain do not hold as written. They are
+recorded here rather than deleted, because the corrected version is what the
+decision now rests on:
 
-**Why the emission is conditional, not unconditional.** An unconditional
-`operator.replicas` in the computed layer would be simpler and would still
-produce the right value on both shapes — the floor would just always lose. It
-was rejected because it would make the floor a non-contributor under `operator`,
-and the floor being the *sole* contributor of a key under that parent is exactly
-what the §(f) sub-merge's preservation assert measures. With the floor
-contributing nothing there, mutant M2 (drop the explicit `operator` sub-merge)
-becomes an equivalent mutant: the assert would pass on the mutation it exists to
-catch. The conditional emission keeps the single-node shape as the arm where the
-floor still contributes, so the gate keeps biting. This generalises, and the
-generalisation is now in the spec: a computed key that supersedes a floor key is
-emitted only on the shapes where it actually supersedes it.
+- **`not-ready` is not the taint a dead node carries.** A node whose kubelet
+  stops reporting goes `Ready=Unknown`, which is
+  `node.kubernetes.io/unreachable:NoExecute` — and the operator's toleration set
+  (`control-plane`, `master`, `not-ready`, `uninitialized`, plus the auto-added
+  `agent-not-ready`) does **not** include it. The automatic 300-second eviction
+  therefore still applies on the dominant hard-failure shape. The delta is
+  failover *latency*, not failover *existence*.
+- **Two replicas are leader-elected, not active-active.** The operator's
+  ClusterRole carries `coordination.k8s.io/leases` with the chart's own comment
+  that HA mode "requires the use of ResourceLock for Leader Election between
+  multiple running instances". A node marked `NotReady` whose operator pod is
+  alive and still reaching the API keeps that pod as the leader; the standby
+  stays passive. The second replica helps when the incumbent stops renewing its
+  lease — not because a node was marked unhealthy.
+- **The operator is the taint SETTER as well as its remover.**
+  `remove-cilium-node-taints` renders from `.Values.operator.removeNodeTaints`
+  (default `true`) and `set-cilium-node-taints` from
+  `.Values.operator.setNodeTaints`, whose documented default is "same as
+  removeNodeTaints" — so both are on. A wedged operator therefore never *applies*
+  `node.cilium.io/agent-not-ready` either: new nodes become schedulable
+  immediately and unsafely, which is the opposite failure from the one first
+  published, not a worse version of it.
+
+What survives measurement is narrower and still decides the question:
+
+- `2` is the **chart's own default**. The floor's `1` diverged from it on every
+  cluster shape, while being correct on exactly one — the shape where the
+  operator's hostname `podAntiAffinity` leaves a second replica Pending. De-
+  divergence needs no failure story of its own.
+- **Rollout.** The operator's rolling-update strategy varies with the replica
+  count: `maxUnavailable` is `100%` at one replica and `50%` at two, `maxSurge`
+  `25%` in both. At one replica every operator upgrade takes the only instance
+  down before its replacement is Ready.
+- **Hard-failure recovery latency.** On the `unreachable` path a lone replica
+  waits out the 300-second eviction, a reschedule, and a cold start; a standby
+  that is already running takes over on lease expiry.
+
+**Why the emission stays conditional.** An unconditional `operator.replicas` in
+the computed layer would be simpler and would still produce the right value on
+both shapes — the floor would just always lose. It was rejected because it makes
+the floor a non-contributor under `operator`, and the floor being the *sole*
+contributor of a key under that parent is exactly what the §(f) sub-merge's
+preservation assert measures. With the floor contributing nothing there, mutant
+M2 (drop the explicit `operator` sub-merge) becomes an equivalent mutant: the
+assert passes on the mutation it exists to catch. The unpinned single-node shape
+keeps the floor contributing, so the gate keeps biting — and a pin cannot erode
+it, because the gate's arm is "no count resolves", which a pin enters by
+definition never. This generalises, and the generalisation is in the spec: a
+computed key that supersedes a floor key is emitted only on the shapes where it
+actually supersedes it.
+
+**Why the count is a typed input and not an override key.** The derivation reads
+node COUNT, not schedulability, and the module cannot close that gap: a second
+node carrying any `NoSchedule` taint outside the operator's tolerated keys — a
+dedicated storage, GPU or edge node is the ordinary case — leaves the second
+replica Pending, and a Deployment held below its replica target trips
+`ProgressDeadlineExceeded`, which ArgoCD renders as **Degraded** on the `cilium`
+Application. The data plane is unaffected; the consumer gets a permanently red
+substrate component, and in an app-of-apps chain a health gate that can stall
+downstream sync waves.
+
+`cilium_values_override` cannot be that escape hatch, because it reaches only the
+seed: the emitted Application's `valuesObject` carries no override term, and the
+module hard-rejects the override alongside `cilium_self_management`
+(§Override-drop hazard). A self-managing consumer therefore had **no** per-cluster
+opt-out at all — recorded in the first version of this addendum as a known
+asymmetry against the convention `cert_approver_replicas` sets. A typed input
+closes it on both paths at once, and is what discharges that residual.
+
+The over-count case **warns** rather than rejecting, on the tier rule §(m)
+already established for this file's `check` blocks: an input that merely places
+fewer pods than asked breaks nothing, and the module declines to refuse a
+configuration whose consequence is a Pending pod. Two blocks, never merged —
+`expect_failures` matches the checkable object, so a merged predicate would leave
+one leg untested.
+
+**Schema parity, inherited.** `substrate.cilium.operator_replicas` is additive to
+an object whose five parity decisions §l already fixed: the object stays CLOSED,
+duplicate keys remain file corruption, the migration signal remains the OCI tag,
+`cluster.yaml` remains trusted operator-authored config needing no untrusted-data
+sentinel, and the field is mutable-in-place with no confidentiality requirement.
+Like the metric inputs before it, it carries a constraint mirroring the module's
+own validation (`minimum: 1`), so the declarative path rejects a zero at lint
+time rather than only at plan time, bound through
+`schemas/fixtures/cluster.invalid.yaml`. What it does NOT mirror is the
+integrality half — a fixture carries one value per key, so the `type: integer`
+leg is bound at the module validation only.
 
 **Two-engine-drift invariant, discharged.** §(f) recorded the invariant as
 "recorded, not code today — no second collision exists to bind". This change
 creates the first intra-computed (level-B) collision under `operator` and
 discharges both obligations: the contributors fold through one hoisted sub-map
-(`local.cilium_operator_values`), and `tests/input-validation.tftest.hcl` gains
+(`local.cilium_operator_values`), and `tests/input-validation.tftest.hcl` carries
 the preservation pair (`cilium_operator_replicas_and_metrics_coexist`) alongside
-the node-count arm (`cilium_operator_replicas_follow_node_count`) and a
-single-node absence assert on the default-off run.
+the derivation and pin arms and a single-node absence assert on the default-off
+run.
 
-**Verified, not reasoned.** Both mutants were run: deleting the node-count term
-fails the multi-node run's two asserts while every single-node run stays green;
-splitting the sub-map back into two `operator` merge terms fails exactly one leg
-of the preservation pair while the node-count run stays green. The toleration
-and eviction semantics were read off a local `helm template` of the pinned chart
-1.20.0 (`operator.tolerations` enumerates `control-plane`, `master`,
-`not-ready`, `uninitialized`, plus the auto-added `agent-not-ready`; the agent
-and Envoy DaemonSets carry the blanket `operator: Exists`), not from memory.
+**The §Residual above, partly closed.** That residual reads: the chart-key
+spelling of a Helm path is bound only by the network-dependent
+`tests/composition.tftest.hcl`, because Helm ignores an unknown value key
+silently and an offline suite only ever sees the module's own map. For
+`operator.replicas` that binding now exists — the composition suite asserts the
+count at the rendered `cilium-operator` Deployment in both directions (derived
+and pinned), mirroring what `cert_approver_replicas` already had. The residual's
+*shape* is unchanged (the render-layer gate remains network-dependent); its
+coverage of this particular key is not.
 
-**Residual 1 — the threshold is node COUNT, not schedulable-node count, and the
-failure is not silent.** The module does not model schedulability. Three shapes
-where the second replica cannot place, in ascending severity:
+**Verified, not reasoned.** The mutants were run: deleting the pin arm of
+`local.cilium_operator_replicas` fails both pin runs while the derivation runs
+stay green; deleting either `check` block fails exactly its own leg; dropping the
+`floor()` conjunct of the validation fails the fractional run while the zero run
+stays green; splitting the sub-map back into two `operator` merge terms fails
+exactly one leg of the preservation pair. The chart facts — the toleration set,
+the absence of `unreachable`, the leases grant and its HA comment, the
+`setNodeTaints` default, the replica-dependent rollout strategy, and the
+values-to-`spec.replicas` path in all three shapes — were read off a local
+`helm template` of the pinned chart 1.20.0, not from memory. What was **not**
+measured: the leader-election lease timings (the operator's own binary defaults;
+the chart exposes lease knobs for `l2announcements` only, which are a different
+subsystem), and any of this against a live cluster.
 
-- Both nodes are control planes on a cluster without
-  `allow_scheduling_on_controlplanes`. Harmless — the operator tolerates the
-  control-plane taint, so it places.
-- The second node is cordoned. The pod is Pending until it is uncordoned;
-  transient by nature.
-- **The second node carries any `NoSchedule` taint outside the operator's five
-  tolerated keys** (`control-plane`, `master`, `not-ready`, `uninitialized`,
-  `agent-not-ready`) — a dedicated storage, GPU or edge node is the ordinary
-  case — **or the node is declared in `cluster.yaml` but no longer joined.**
-  Neither is transient. Because the anti-affinity is
-  `requiredDuringSchedulingIgnoredDuringExecution` on hostname, the second pod
-  cannot fall back to co-location and stays Pending indefinitely.
+**Residual — an already-bootstrapped cluster does not receive this on the seed
+path, and that is the shape that most needs it.** `terraform_data.cilium_render`
+carries `ignore_changes = [input]` with no `triggers_replace`, and
+`cluster.inlineManifests` are create-only: a cluster bootstrapped at one node and
+grown to N never sees the new count from the seed. It arrives at a fresh
+bootstrap, via a deliberate `-replace` of the render, or — for a self-managing
+consumer — on the next ArgoCD reconcile. A control-plane join does **not** deliver
+it; an earlier draft of this addendum said otherwise and was wrong. The typed
+input does not change that reachability, but it does give the two reachable paths
+a single knob instead of one knob each.
 
-The consequence of the permanent case is worth stating plainly, because it is
-larger than an idle pod: a Deployment held below its replica target trips
-`ProgressDeadlineExceeded`, which ArgoCD renders as **Degraded** on the `cilium`
-Application. The data plane is unaffected, but the consumer gets a permanently
-red substrate component — and in an app-of-apps chain a health gate that can
-stall downstream sync waves. A false-red that trains operators to ignore Cilium
-health is its own operability cost.
-
-**Residual 2 — no per-cluster opt-out on the self-management path.** On the seed
-path `cilium_values_override` still pins the value. On the emitted-Application
-path it does not exist as an option: the `valuesObject` is floor ⊕ computed with
-no override term (§Override-drop hazard above), and the module hard-rejects
-`cilium_self_management` while `cilium_values_override` is non-empty. A
-self-managing consumer who wants one replica has to take the value over in their
-own Cilium Application. This diverges from the convention `cert_approver_replicas`
-sets — replica count as a first-class typed input — and is recorded here as a
-known asymmetry rather than defended as a design.
-
-**Residual 3 — the two writers can now carry different values for the same key.**
-Before this change the frozen seed and the emitted Application agreed
+**Residual — the two writers can carry different values for the same key.**
+Before the derivation the frozen seed and the emitted Application agreed
 unconditionally on `operator.replicas` (both took the floor's 1). Now a cluster
 whose seed was frozen before this change, or one that grew from one node to two,
 has a seed asserting 1 and an Application asserting 2. That divergence is safe
-only because `cluster.inlineManifests` are create-only and the render is frozen
-(`terraform_data.cilium_render`, `ignore_changes`) — an assumption this repo
-states consistently and that this change promotes from incidental to
-load-bearing. It is also what decides whether a manual
+only because `inlineManifests` are create-only and the render is frozen — an
+assumption this repo states consistently and that this change promotes from
+incidental to load-bearing. It is also what decides whether a manual
 `kubectl -n kube-system scale deploy/cilium-operator --replicas=2` sticks on an
 existing non-self-managing cluster; that has not been measured on a live cluster
 and is therefore not published as remediation.

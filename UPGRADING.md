@@ -253,59 +253,68 @@ component's `values.yaml` documents that opt-out).
 
 ---
 
-## Unreleased (ships in the next MAJOR) — Cilium operator replicas follow the node count (default change — affects every multi-node consumer without an override)
+## Unreleased (ships in the next MAJOR) — Cilium operator replicas follow the node count, and become pinnable (default change — affects every multi-node consumer without an override)
 
-**Type:** MINOR (default change, no interface change). No new input, output or
-schema key. A single-node cluster is unaffected. Every consumer who pins
-`operator.replicas` through `cilium_values_override` is unaffected — the override
-layer still wins.
+**Type:** MINOR. A new optional input (`substrate.cilium.operator_replicas`) plus
+a default change for consumers who do not set it. A single-node cluster is
+unaffected. Every consumer who already pins `operator.replicas` through
+`values_override` is unaffected on the seed path — that layer still wins.
 
-### 1. What changes, and why it is not a preference
+### 1. What changes
 
 The shipped floor pinned `operator.replicas: 1`. That is the single-node boundary
 condition, not a cluster-wide default: the chart's operator `podAntiAffinity` is
 `requiredDuringScheduling` on `kubernetes.io/hostname`, so a second replica on a
 one-node cluster stays Pending. The module now emits `operator.replicas: 2` — the
-chart's own default — once the node set holds two or more nodes.
+chart's own default — once the node set holds two or more nodes, and
+`substrate.cilium.operator_replicas` pins the count outright when you set it.
 
-The pinned `1` removed the chart's only mitigation for a failure mode it carries
-deliberately. The operator tolerates `node.kubernetes.io/not-ready` with **no**
-`tolerationSeconds`, and Kubernetes adds its automatic 300-second eviction
-toleration only when the pod does not set one explicitly. A NotReady node
-therefore keeps a single-replica operator bound to it indefinitely, with no
-failover — and `operator.removeNodeTaints` is on by default, so that same
-operator is what clears `node.cilium.io/agent-not-ready` from newly joined nodes.
-A stuck operator also stops new nodes from becoming schedulable.
+**Why `2`, stated at the strength it was measured.** The primary reason is
+de-divergence: `2` is what the chart ships, and the floor's `1` differed from it
+on every cluster shape while being right on exactly one. Two consequences were
+measured against the pinned chart 1.20.0:
+
+- **Rollout.** The operator's rolling-update strategy varies with the replica
+  count: `maxUnavailable` is `100%` at one replica and `50%` at two (`maxSurge`
+  stays `25%`). At one replica every operator upgrade takes the only instance
+  down before its replacement is Ready. At two, one keeps serving — and because
+  the anti-affinity is per-hostname, the `50%` matters: a surge replica would
+  have no node to land on at a two-node cluster.
+- **Hard node failure.** A node whose kubelet stops reporting goes
+  `Ready=Unknown`, which is the `node.kubernetes.io/unreachable` taint. The
+  operator does **not** tolerate it, so the standard 300-second eviction applies:
+  a lone replica is gone for that timer plus a reschedule and a cold start. With
+  two replicas the standby — already running — takes over on lease expiry,
+  because the operator runs leader-elected above one replica.
+
+**What this does not do.** It does not rescue a node that is merely `NotReady`
+(`Ready=False`) while its operator pod is alive and still reaching the API. The
+operator *does* tolerate `node.kubernetes.io/not-ready` with no
+`tolerationSeconds` — which suppresses the eviction Kubernetes would otherwise
+add — but a pod that keeps renewing its lease stays the leader, and the standby
+stays passive. The second replica helps when the incumbent stops, not when a node
+is labelled unhealthy.
 
 ### 2. Budget one more pod on every multi-node cluster
 
 The visible effect is a second `cilium-operator` pod. It is `hostNetwork` and
 requests what the chart's defaults request.
 
-Note that the chart varies the operator's rolling-update strategy with the
-replica count. Measured against the pinned chart 1.20.0: `maxUnavailable` is
-`100%` at one replica and `50%` at two; `maxSurge` stays `25%` in both. At two
-replicas the rollout therefore takes a pod down before placing its replacement,
-rather than surging onto a third node — which matters here because the operator's
-`podAntiAffinity` is `requiredDuringScheduling` on `kubernetes.io/hostname` and a
-surge replica would have no node to land on at a two-node cluster.
-
-To keep one replica on the **seed** path, set it yourself:
+To keep one replica — or any other count — set it directly:
 
 ```yaml
 substrate:
   cilium:
-    values_override: |
-      operator:
-        replicas: 1
+    operator_replicas: 1
 ```
 
-**On the self-management path there is no per-cluster opt-out.** The emitted
-Application's `valuesObject` is floor ⊕ computed with no override term, and the
-module hard-rejects `self_management: true` while `values_override` is non-empty
-(the override-drop guard, v7.0.0 §4). A self-managing consumer who needs one
-replica has to take the value over in their own Cilium Application, or stay on
-the previous tag.
+This is the knob to reach for, and it is new. It pins the count on **both**
+delivery paths. `values_override` still works on the seed path, but it is not an
+option under self-management: the emitted Application's `valuesObject` is
+floor ⊕ computed with no override term, and the module hard-rejects
+`self_management: true` while `values_override` is non-empty (the override-drop
+guard, v7.0.0 §4). Before this input, a self-managing consumer had no per-cluster
+opt-out at all.
 
 ### 3. On an existing cluster this does not arrive on its own
 
@@ -318,9 +327,14 @@ arrives:
 - via the emitted self-management `Application` (`self_management: true`) on the
   next ArgoCD reconcile;
 - at the next fresh bootstrap;
-- when a controlplane joins, or after a deliberate
-  `tofu apply -replace=terraform_data.cilium_render[0]` — with the seed/live skew
-  caveats in §1 of the Cilium 1.20 section.
+- after a deliberate `tofu apply -replace=terraform_data.cilium_render[0]` — with
+  the seed/live skew caveats in §1 of the Cilium 1.20 section.
+
+A **control-plane join does not deliver it**: `inlineManifests` are applied at
+node creation and overwrite nothing that already exists in the cluster. The shape
+that most needs the change — a cluster bootstrapped at one node and grown since —
+is therefore also the shape the seed path cannot reach. Use
+`operator_replicas` plus self-management, or a `-replace`.
 
 ### 4. The predicate is node COUNT, not schedulable-node count
 
@@ -336,14 +350,18 @@ co-location and stays Pending.
 Watch for the symptom, because it is louder than an idle pod: a Deployment held
 below its replica target trips `ProgressDeadlineExceeded`, and ArgoCD renders
 that as **Degraded** on the `cilium` Application. Your data plane is fine; your
-dashboard is not. If your node set contains long-lived unschedulable nodes, pin
-the value per §2 — and note §2's caveat that this is possible only on the seed
-path.
+dashboard is not. If your node set contains long-lived unschedulable nodes, set
+`operator_replicas` to what will actually place.
+
+Setting it ABOVE your node count is not rejected — the module warns at plan time
+and proceeds, because it models node count rather than schedulability and you may
+know something about your node set that it does not.
 
 ### Validation steps after upgrade
 
 ```bash
-# Expect 2 on a multi-node cluster, 1 on a single-node one.
+# Expect 2 on a multi-node cluster, 1 on a single-node one — or whatever
+# operator_replicas pins.
 kubectl -n kube-system get deploy cilium-operator -o jsonpath='{.spec.replicas}{"\n"}'
 
 # Both replicas placed on DIFFERENT nodes (the anti-affinity working).

@@ -217,6 +217,7 @@ provider "talos" {}
 | `cilium_gateway_api_crds_url` | string | `""` (no boot seed) | **OPT-IN** bootstrap seeding of the Gateway API CRDs via `cluster.extraManifests`. Empty = CRDs are a Day-1 GitOps concern (air-gap-safe). Set to the GW-API **v1.6.1 standard** bundle URL (or an internal mirror) for a connected cluster — Cilium 1.20 requires v1.6.1 at a minimum, and TLSRoute is in the standard channel as of v1.6.1. Use the **experimental** bundle only if you carry pre-existing `v1alpha2` TLSRoute objects. ⚠️ a failed fetch crashloops Talos' ExtraManifestController and blocks clean bootstrap. |
 | `cilium_agent_metrics` | bool | `false` | enable Cilium **agent** Prometheus metrics (`prometheus.enabled`). Default off. |
 | `cilium_operator_metrics` | bool | `false` | enable Cilium **operator** Prometheus metrics (`operator.prometheus.enabled`). Default off. Note: the upstream chart's OWN default for this value is already `true`, so the rendered `cilium-config` ConfigMap's `operator-prometheus-serve-addr` key is present regardless of this toggle — it does not discriminate at the render layer (a pre-existing chart-default fact, not introduced by this input). |
+| `cilium_operator_replicas` | number | `null` | Cilium operator Deployment replica count (`operator.replicas`). `null` derives it from the node count — `2` at two or more nodes (the chart's own default), nothing at exactly one node, where the shipped floor's `1` stays effective. Set a number to pin it; this is the **only** knob that pins on both delivery paths, because `cilium_values_override` reaches the seed alone and is hard-rejected alongside `cilium_self_management`. **Warns** (does not reject) when the count exceeds the node count — the operator's `podAntiAffinity` is per-hostname, so the surplus stays Pending. **SEED knob** on the default path. |
 | `cilium_hubble_enabled` | bool | `false` | enable Hubble flow/metrics observability. **Forces `hubble.tls.enabled=false`** (metrics-only scope — no Relay/UI; the Hubble metrics endpoint is independent of observer-API TLS since Cilium 1.16). Default off. |
 | `cilium_hubble_metrics` | list(string) | `[]` | Hubble metrics to export (`hubble.metrics.enabled`), e.g. `["dns", "drop", "tcp"]`. Scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side. An empty list with `cilium_hubble_enabled=true` is a valid **half-on** state (server on, no metrics exported). Entries must carry no newline and no `---`; the guard is an exclusion rule rather than an allowlist because Hubble's context syntax (`flow:sourceContext=pod;destinationContext=pod`) uses punctuation freely. |
 | `cilium_agent_metric_overrides` | list(string) | `[]` | agent metric **delta** list (`prometheus.metrics`): `+name` adds a metric to the chart's default set, `-name` removes one — NOT a replacement of that set, and unrelated to `cilium_values_override` despite the name. Entries must match `^[+-][a-zA-Z_][a-zA-Z0-9_]*$`; the chart renders them raw into `cilium-config`, which is baked into the machine config. **Warns** (plan-time `check`, not a rejection) when `cilium_agent_metrics` is off. |
@@ -423,28 +424,38 @@ layer. Two things about them are easy to get wrong:
   `kubectl -n kube-system rollout restart ds/cilium`, or the scrape format flips
   at the next unrelated restart instead.
 
-**Operator replicas follow the node count.** The same computed layer emits
-`operator.replicas: 2` — the chart's own default — once the node set holds two or
-more nodes; at exactly one node it emits nothing and the shipped floor's `1`
-stays effective. The floor value is a single-node boundary condition, not a
-cluster-wide preference: the chart's operator `podAntiAffinity` is
-`requiredDuringScheduling` on `kubernetes.io/hostname`, so a second replica on a
-one-node cluster stays Pending forever. On a multi-node cluster the pinned `1`
-was the more expensive default, because the chart tolerates
-`node.kubernetes.io/not-ready` on the operator with no `tolerationSeconds`, and
-an explicit toleration suppresses the 300-second eviction Kubernetes would
-otherwise add — a NotReady node keeps a lone operator bound to it with no
-failover, and that operator is what clears `node.cilium.io/agent-not-ready` from
-newly joined nodes. This is derived from the node COUNT, not from schedulability:
-a second node that is cordoned, or carries a `NoSchedule` taint outside the
-operator's five tolerated keys, still yields `2` and leaves the second pod
-Pending — which ArgoCD renders as a Degraded `cilium` Application.
+**Operator replicas: derived from the node count, pinnable with
+`cilium_operator_replicas`.** The same computed layer emits `operator.replicas: 2`
+— the chart's own default — once the node set holds two or more nodes; at exactly
+one node it emits nothing and the shipped floor's `1` stays effective. The floor
+value is a single-node boundary condition, not a cluster-wide preference: the
+chart's operator `podAntiAffinity` is `requiredDuringScheduling` on
+`kubernetes.io/hostname`, so a second replica on a one-node cluster stays Pending
+forever.
 
-Pinning your own value differs per delivery path, and the difference is easy to
-miss: on the **seed** path `cilium_values_override` wins, because the override is
-a layer of the seed render. On the **self-management** path it is not available —
-the emitted Application's `valuesObject` does not inherit
-`cilium_values_override` (see the override-drop guard below), and the module
+The case for `2` on every other shape is de-divergence from the chart plus two
+measured consequences. The operator's rolling-update strategy varies with the
+replica count — `maxUnavailable` is `100%` at one replica and `50%` at two — so
+at one replica every operator upgrade takes the only instance down. And on a hard
+node failure (`Ready=Unknown`, i.e. the `node.kubernetes.io/unreachable` taint,
+which the operator does **not** tolerate) a lone replica waits out the 300-second
+eviction plus a reschedule and a cold start, where an already-running standby
+takes over on lease expiry. It does **not** help when a node is merely `NotReady`
+and its operator pod is alive: the operator tolerates
+`node.kubernetes.io/not-ready` with no `tolerationSeconds`, and a pod that keeps
+renewing its lease stays the leader while the standby stays passive.
+
+The derivation reads node COUNT, not schedulability: a second node that is
+cordoned, or carries a `NoSchedule` taint outside the operator's five tolerated
+keys, still yields `2` and leaves the second pod Pending — which ArgoCD renders
+as a Degraded `cilium` Application. `cilium_operator_replicas` is the escape
+hatch, and unlike an override it pins on **both** delivery paths. A count above
+the node count warns at plan time rather than being rejected.
+
+`cilium_values_override` still pins on the **seed** path, and the difference is
+easy to miss: on the **self-management** path it is not available — the emitted
+Application's `valuesObject` does not inherit `cilium_values_override` (see the
+override-drop guard below), and the module
 hard-rejects the two together.
 
 Grafana dashboards are deliberately NOT typed here. Cilium's chart ships them as

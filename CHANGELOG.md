@@ -15,6 +15,13 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   off. Default-off emits no machine-config change. See
   [ADR-0023](knowledge/decisions/0023-node-identity-map-key.md).
 
+- **`talos-cluster`: `cilium_operator_replicas` input (number, default `null`).**
+  Pins the Cilium operator's replica count on **both** delivery paths — the
+  frozen seed and the emitted self-management Application — where
+  `cilium_values_override` reaches only the seed and is hard-rejected alongside
+  `cilium_self_management`. `null` derives the count from the node set; see the
+  matching entry under Changed for the derivation and its rationale.
+
 - **`talos-cluster`: two further typed Cilium observability inputs (default off).**
   `cilium_agent_metric_overrides` (the chart's `prometheus.metrics` `+metric` /
   `-metric` delta list against its default metric set) and
@@ -63,35 +70,38 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **`talos-cluster`: the Cilium operator's replica count now follows the node
-  count.** At two or more nodes the module emits `operator.replicas: 2` — the
-  Cilium chart's own default — into both the bootstrap seed and the emitted
-  self-management Application. At exactly one node nothing is emitted and the
-  shipped floor's `1` remains effective, because the chart's operator
-  `podAntiAffinity` is `requiredDuringScheduling` on `kubernetes.io/hostname`
-  and a second replica would stay Pending there forever.
+  count, and is pinnable.** At two or more nodes the module emits
+  `operator.replicas: 2` — the Cilium chart's own default — into both the
+  bootstrap seed and the emitted self-management Application. At exactly one node
+  nothing is emitted and the shipped floor's `1` remains effective, because the
+  chart's operator `podAntiAffinity` is `requiredDuringScheduling` on
+  `kubernetes.io/hostname` and a second replica would stay Pending there forever.
+  The new `cilium_operator_replicas` input (`substrate.cilium.operator_replicas`)
+  pins the count instead; it is the only knob that pins on **both** delivery
+  paths, because `cilium_values_override` reaches the seed alone and is
+  hard-rejected alongside `cilium_self_management`. A count above the node count
+  warns at plan time and proceeds.
 
-  Why this is a defect fix and not a preference: the chart tolerates
-  `node.kubernetes.io/not-ready` on the operator with no `tolerationSeconds`,
-  and Kubernetes adds its automatic 300-second eviction toleration only when
-  the pod does not set one explicitly. A NotReady node therefore keeps a
-  single-replica operator bound to it indefinitely, with no failover — and the
-  operator is what clears `node.cilium.io/agent-not-ready` from newly joined
-  nodes, so a stuck operator also stops new nodes from becoming schedulable.
-  The floor's `1` had removed the chart's only mitigation for this on every
-  multi-node cluster.
+  Why: `2` is the chart's own default, and the floor's `1` diverged from it on
+  every cluster shape while being correct on exactly one. Two consequences were
+  measured against the pinned chart 1.20.0. The operator's rolling-update
+  strategy varies with the replica count — `maxUnavailable` is `100%` at one
+  replica and `50%` at two — so at one replica every operator upgrade takes the
+  only instance down before its replacement is Ready. And on a hard node failure
+  a lone replica waits out the 300-second `unreachable` eviction plus a
+  reschedule and a cold start, where a running standby takes over on lease expiry
+  (the operator runs leader-elected at two or more replicas).
+
+  What it does **not** do: rescue a node that is merely `NotReady` while its
+  operator pod is alive and still reaching the API. That pod keeps renewing its
+  lease and stays the leader.
 
   **Impact on adoption:** a multi-node cluster taking this tag gets a second
-  `cilium-operator` pod. The frozen seed is inert for an existing cluster
-  (`terraform_data.cilium_render` carries `ignore_changes`), so on the seed path
-  the change lands on a fresh bootstrap, a `-replace`, or a controlplane join;
-  on a self-managing consumer it lands on the next ArgoCD reconcile.
-
-  **Pinning your own value differs per delivery path.** On the seed path
-  `cilium_values_override` still wins, because the override is a layer of the
-  seed render. On the self-management path it is not an option at all: the
-  emitted Application's `valuesObject` does not inherit
-  `cilium_values_override` (ADR-0022 §Override-drop hazard), and the module
-  hard-rejects `cilium_self_management` while that override is non-empty. See
+  `cilium-operator` pod. On an already-bootstrapped cluster the seed path does
+  **not** deliver it — `terraform_data.cilium_render` carries `ignore_changes`
+  and `inlineManifests` are create-only, so it takes a fresh bootstrap or a
+  deliberate `-replace`; a control-plane join does not deliver it either. A
+  self-managing consumer gets it on the next ArgoCD reconcile. See
   [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
 ### Changed — BREAKING

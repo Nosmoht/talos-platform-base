@@ -239,6 +239,11 @@
               "description": "Enable Cilium operator Prometheus metrics (operator.prometheus.enabled). Default off.",
               "type": "boolean"
             },
+            "operator_replicas": {
+              "description": "Cilium operator Deployment replica count (operator.replicas). Omit to derive it from the node count: 2 at two or more nodes (the chart's own default), and nothing at exactly one node, where the shipped floor's 1 stays effective. Set it to pin the count on BOTH delivery paths — values_override reaches only the seed and is mutually exclusive with self_management. Pinning more replicas than there are nodes only warns: the operator's anti-affinity is per-hostname, so the surplus stays Pending.",
+              "type": "integer",
+              "minimum": 1
+            },
             "hubble_enabled": {
               "description": "Enable Hubble for flow/metrics observability. Forces hubble.tls.enabled=false (observer-API server TLS off, metrics-only scope — the Hubble metrics endpoint is independent of observer TLS since Cilium 1.16). Default off.",
               "type": "boolean"
