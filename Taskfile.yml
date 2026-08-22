@@ -66,8 +66,8 @@ vars:
   # knowledge:rules-apply and knowledge:rules-check — a divergence between the
   # two would make the fence prescribe a regeneration that drops content.
   # NOT [rules].enabled in openknowledge.toml: whether a no-argument
-  # `rules apply` falls back to it is undocumented (the CLI help contradicts
-  # itself), and a wrong guess renders the custom rule away.
+  # `prompt rules apply` falls back to it is undocumented (the CLI help
+  # contradicts itself), and a wrong guess renders the custom rule away.
   OK_RULES: docs,decisions,schemas,talos-base-bundle
   # Both rules targets render with whatever openknowledge is on PATH. Pinning
   # the version here matters more than for validate: a mismatched binary
@@ -563,7 +563,7 @@ tasks:
       {{.OK_GUARD}}
       # --yes: without it the CLI prompts and, when declined, still exits 0 —
       # the target would report success while having written nothing.
-      openknowledge rules apply {{.OK_RULES}} \
+      openknowledge prompt rules apply {{.OK_RULES}} \
         --path knowledge --file AGENTS.md --target generic --yes
       grep -q '<!-- openknowledge:rules:start -->' AGENTS.md || {
         echo "FAIL: no managed block in AGENTS.md after apply"; exit 1; }
@@ -581,8 +581,15 @@ tasks:
 
       # Keep stderr: when the render fails (unknown rule, unreadable rule
       # document, bad config) it is the only statement of the actual cause.
+      #
+      # The render runs inside a pipeline, so its status is awk's and `set -e`
+      # never sees a failure — the CLI exits 2 on a renamed subcommand
+      # (measured against 0.12.0: the pre-0.12 `rules apply` form prints
+      # "unknown command: rules" and exits 2) and this target would still
+      # pass. The emptiness assertion below is the only thing that catches
+      # it; do not "simplify" it away.
       err="$(mktemp)"
-      gen="$(openknowledge rules apply {{.OK_RULES}} \
+      gen="$(openknowledge prompt rules apply {{.OK_RULES}} \
         --path knowledge --file AGENTS.md --target generic --dry-run 2>"$err" | extract_block)"
       cur="$(extract_block < AGENTS.md)"
 
