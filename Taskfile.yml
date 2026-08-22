@@ -543,11 +543,9 @@ tasks:
     desc: Validate the knowledge/ OKF bundle (openknowledge + offline link check)
     cmd: |
       set -e
-      # Guarded on the pin like the two rules targets: the binary's behaviour,
-      # not just its output, is version-dependent — 0.12.0 reads a different
-      # config filename and validates against a different spec default than
-      # 0.5.0 did, so an unpinned binary here is a differently-configured gate
-      # reporting green. OK_GUARD subsumes the presence check.
+      # Pinned like the rules targets: the config filename and the default
+      # spec version are both version-dependent, so an unpinned binary is a
+      # differently-configured gate reporting green. Subsumes `command -v`.
       {{.OK_GUARD}}
       command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
       openknowledge validate knowledge/
@@ -586,13 +584,9 @@ tasks:
 
       # Keep stderr: when the render fails (unknown rule, unreadable rule
       # document, bad config) it is the only statement of the actual cause.
-      #
-      # The render runs inside a pipeline, so its status is awk's and `set -e`
-      # never sees a failure — the CLI exits 2 on a renamed subcommand
-      # (measured against 0.12.0: the pre-0.12 `rules apply` form prints
-      # "unknown command: rules" and exits 2) and this target would still
-      # pass. The emptiness assertion below is the only thing that catches
-      # it; do not "simplify" it away.
+      # The render sits in a pipeline, so `set -e` sees awk's status, not the
+      # CLI's — a renamed subcommand exits 2 and this target still passes.
+      # The emptiness assertion below is the only thing that catches that.
       err="$(mktemp)"
       gen="$(openknowledge prompt rules apply {{.OK_RULES}} \
         --path knowledge --file AGENTS.md --target generic --dry-run 2>"$err" | extract_block)"
