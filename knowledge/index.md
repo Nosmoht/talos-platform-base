@@ -20,7 +20,9 @@ path under `knowledge/`.
 those — `openknowledge` renders them into the `AGENTS.md` Open Knowledge
 Maintenance block. The criterion for admitting a file here is that the
 bundle's tooling consumes it and no release consumer parses it;
-`openknowledge.toml` has always met the same test. This is a narrow carve-out
+`.openknowledge.toml` has always met the same test — and 0.12.0 makes the
+placement mandatory rather than tidy: the CLI reads the file only from inside
+the bundle directory, and only under that dotfile name. This is a narrow carve-out
 for tooling config, not a general licence to move contracts into the bundle.
 
 ## Architecture
@@ -89,5 +91,5 @@ document wins:
   Nothing does this mechanically yet — it is a reading discipline.
 - `description` is reused verbatim as the link description in this index, so
   it is written as one self-contained sentence.
-- The link rule has teeth: `openknowledge.toml` raises `link-target` to error,
+- The link rule has teeth: `.openknowledge.toml` raises `link-target` to error,
   so a link escaping the bundle fails validation rather than rotting quietly.

@@ -65,7 +65,7 @@ vars:
   # Rule set rendered into AGENTS.md's managed block. Single source for both
   # knowledge:rules-apply and knowledge:rules-check — a divergence between the
   # two would make the fence prescribe a regeneration that drops content.
-  # NOT [rules].enabled in openknowledge.toml: whether a no-argument
+  # NOT [rules].enabled in .openknowledge.toml: whether a no-argument
   # `prompt rules apply` falls back to it is undocumented (the CLI help
   # contradicts itself), and a wrong guess renders the custom rule away.
   OK_RULES: docs,decisions,schemas,talos-base-bundle

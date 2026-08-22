@@ -1,16 +1,32 @@
 # openknowledge CLI configuration for the knowledge/ OKF bundle.
 #
+# The filename is a dotfile, and it sits inside the bundle directory. Both
+# halves are load-bearing — measured against v0.12.0 (2026-08-23) on a
+# throwaway bundle containing one broken relative link:
+#
+#   <bundle>/openknowledge.toml   -> exit 0, policy {}          (not read)
+#   <parent>/.openknowledge.toml  -> exit 0, policy {}          (not read)
+#   <bundle>/.openknowledge.toml  -> exit 1, policy.configPath set
+#
+# Discovery is bundle-relative, not cwd-relative: the same three outcomes
+# hold when validate is called from an unrelated directory with an absolute
+# target. A config the CLI does not read fails silently — every raise below
+# degrades back to the spec default and nothing turns red. To check that
+# this file is actually in effect:
+#
+#   openknowledge validate --format json knowledge/ | jq .policy
+#
 # link-target is raised from the spec default (warn) to error so that
 # `openknowledge validate` is a BINDING intra-bundle link gate: a broken
 # relative link or a link escaping the bundle root fails validation
 # (exit 1). Consequence for authors: files outside knowledge/ are cited
 # as inline code spans, never markdown-linked.
-# Verified empirically against openknowledge v0.5.0 (2026-07-11).
+# Re-verified against v0.12.0 (2026-08-23).
 #
 # rule-catalog is raised for the same reason: a custom rule document that
 # loses its rule_id, summary, or instruction bullets would otherwise only
 # warn — while silently rendering a hollow contract into AGENTS.md.
-# Verified against v0.5.0 (2026-07-15): removing rule_id fails validation.
+# Re-verified against v0.12.0 (2026-08-23): removing rule_id fails validation.
 #
 # No [rules] section: knowledge/rules/ is the CLI's built-in default location
 # for custom rule documents. Verified against v0.5.0 (2026-07-15) — rendering

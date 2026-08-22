@@ -33,7 +33,7 @@ Two authoring constraints for this file, both learned from the renderer:
 - Set `timestamp` to the date of the last substantive verification, not the last typo fix, and keep `sources` pointing at the repo-relative paths the concept was derived from.
 - Re-verify a concept when any of its `sources` changed after its `timestamp`. A green validation run proves link and schema health, never freshness.
 - Omit `sources` on `decision` concepts: an ADR records a decision rather than deriving from source files. Their field contract, including `status`, `id`, `deciders`, and `supersedes`, lives in `knowledge/decisions/index.md`.
-- Link relatively inside the bundle, and cite anything outside it as an inline code span rather than a markdown link: `openknowledge.toml` raises `link-target` to error, so an escaping link fails validation.
+- Link relatively inside the bundle, and cite anything outside it as an inline code span rather than a markdown link: `.openknowledge.toml` raises `link-target` to error, so an escaping link fails validation.
 - Validate with `task knowledge:validate`, which runs `openknowledge validate` plus the offline link gate. Run `task knowledge:rules-check` as well after touching `knowledge/rules/`.
 - Record bundle changes in `knowledge/log.md`, one bullet per changed concept under today's date. User-facing changes belong in the root `CHANGELOG.md`. The two files have separate audiences and do not mirror each other.
 - Regenerate the `AGENTS.md` managed block with `task knowledge:rules-apply` after changing this file. Hand-editing the block fails `task knowledge:rules-check`.
