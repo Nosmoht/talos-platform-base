@@ -3,7 +3,7 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-timestamp: 2026-08-14
+timestamp: 2026-08-23
 sources:
   - Taskfile.yml
   - Makefile
@@ -120,7 +120,7 @@ Details of the render → apply path (`bootstrap:render-root`, `bootstrap:check-
 | Task | Purpose |
 | --- | --- |
 | `knowledge:validate` | Validate the `knowledge/` OKF bundle: `openknowledge validate` (with the binding `link-target = "error"` and `rule-catalog = "error"` rules from `knowledge/.openknowledge.toml`) plus an offline intra-repo link-resolution pass (`lychee --offline`) over the bundle, root Markdown files, `contracts/`, and the two `tofu/modules/talos-cluster` READMEs. Invoked directly by `docs-lint.yml`. |
-| `knowledge:rules-apply` | Regenerate the Open Knowledge Maintenance block in `AGENTS.md` from `knowledge/rules/` via `openknowledge rules apply`. The block is a managed region between `openknowledge:rules` markers; run this after changing a rule document rather than hand-editing `AGENTS.md`. |
+| `knowledge:rules-apply` | Regenerate the Open Knowledge Maintenance block in `AGENTS.md` from `knowledge/rules/` via `openknowledge prompt rules apply`. The block is a managed region between `openknowledge:rules` markers; run this after changing a rule document rather than hand-editing `AGENTS.md`. |
 | `knowledge:rules-check` | Fail if the `AGENTS.md` managed block drifted from what `knowledge/rules/` currently renders — hand-edited, stale, or missing a configured rule. Asserts every rule in `OK_RULES` reached the block, so a rule that silently fails to render is caught rather than passing as a smaller-but-consistent block. Invoked by `docs-lint.yml`. |
 | `knowledge:new` | Scaffold a new concept file with the bundle's frontmatter convention (usage: `task knowledge:new FILE=reference/foo.md TYPE=reference`). |
 | `knowledge:install-cli` | Download the pinned, checksum-verified `openknowledge` + `lychee` release binaries for the host platform into `~/.local/bin`. |
