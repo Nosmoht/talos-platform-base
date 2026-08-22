@@ -41,13 +41,15 @@ vars:
   MCP_GITHUB_VERSION: 0.33.0
   MCP_K8S_VERSION: 0.0.60
   MCP_TALOS_VERSION: 1.1.0
-  # knowledge:* tool pins — KEEP IN SYNC with .tool-versions and the
-  # docs-lint.yml env block. Checksums from the projects' released
-  # checksum files (verified 2026-07-11).
-  OPENKNOWLEDGE_VERSION: 0.5.0
-  OPENKNOWLEDGE_SHA256_DARWIN_ARM64: 8316f6206943e42973f6645b9deebba46299038f223cc1b1fe42d5cb2fac2150
-  OPENKNOWLEDGE_SHA256_DARWIN_AMD64: 29801d38436903b043812d04e0a5e364f167c54ab54760cc6cc87a933292f834
-  OPENKNOWLEDGE_SHA256_LINUX_AMD64: 0f58de81e52f064fbf52aac5289e0b1b6dc0e58de2f47c4e043263e9e927cb27
+  # knowledge:* tool pins — KEEP IN SYNC with .tool-versions. NOT with the
+  # docs-lint.yml env block: that pins only `task`, and these two reach CI
+  # through `task knowledge:install-cli`. Checksums from the projects'
+  # released checksum files (openknowledge verified 2026-08-23, lychee
+  # 2026-07-11).
+  OPENKNOWLEDGE_VERSION: 0.12.0
+  OPENKNOWLEDGE_SHA256_DARWIN_ARM64: 24e5fe37f87dae647121b98dc708997206906558413b7620617f0a8690da0e1d
+  OPENKNOWLEDGE_SHA256_DARWIN_AMD64: 8f20fe1c09c7ac69124f020f219f1d9b61c92aaac6bb156704b8886a38bed2aa
+  OPENKNOWLEDGE_SHA256_LINUX_AMD64: 614e317499eb29f8367edbba78b4c81a1a7c895c3203c5b9ef861a9b1875f108
   LYCHEE_VERSION: 0.24.2
   LYCHEE_SHA256_DARWIN_ARM64: c9d3740ea2d891854d37116c9fba840f37b6e7c89d330e7db84ac333631c4977
   LYCHEE_SHA256_DARWIN_AMD64: 887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978
