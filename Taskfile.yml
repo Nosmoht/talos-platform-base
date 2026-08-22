@@ -543,7 +543,12 @@ tasks:
     desc: Validate the knowledge/ OKF bundle (openknowledge + offline link check)
     cmd: |
       set -e
-      command -v openknowledge >/dev/null 2>&1 || { echo "ERROR: 'openknowledge' not installed — run 'task knowledge:install-cli'"; exit 1; }
+      # Guarded on the pin like the two rules targets: the binary's behaviour,
+      # not just its output, is version-dependent — 0.12.0 reads a different
+      # config filename and validates against a different spec default than
+      # 0.5.0 did, so an unpinned binary here is a differently-configured gate
+      # reporting green. OK_GUARD subsumes the presence check.
+      {{.OK_GUARD}}
       command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
       openknowledge validate knowledge/
       # Offline link-resolution gate: intra-repo markdown links must resolve.
