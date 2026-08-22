@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-08-23
+
+- `.openknowledge.toml` (renamed from `openknowledge.toml`), `reference/tasks.md`,
+  `rules/talos-base-bundle.md`, `workflows/spec-driven-development.md`: the
+  pinned `openknowledge` CLI moved 0.5.0 -> 0.12.0, and the durable lesson is
+  not the version number. 0.10.0 made the bundle config a dotfile and stopped
+  loading the legacy name, so `knowledge/openknowledge.toml` had become inert:
+  `link-target = "error"` and `rule-catalog = "error"` silently degraded back
+  to warnings and the binding link gate this bundle relies on was advisory
+  while reporting green. The failure mode is silence — there is no warning for
+  a config the CLI did not find.
+  How to tell, and the check worth keeping in reach:
+  `openknowledge validate --format json knowledge/ | jq .policy` prints
+  `configPath` and the overrides when the file is read, and `{}` when it is
+  not. Measured against 0.12.0 that the file must be BOTH a dotfile AND inside
+  the bundle directory — a copy at the repository root is not discovered — and
+  that discovery is bundle-relative, so the answer does not change with the
+  working directory.
+  Two further 0.12.0 changes: `rules` moved under `prompt`, and the pre-0.12
+  form exits 2. In `knowledge:rules-check` that render runs inside a pipeline,
+  so `set -e` never sees the failure and only the empty-block assertion catches
+  it — the assertion now carries a comment saying so, because it reads as
+  redundant otherwise. `knowledge:validate` is now version-guarded like the two
+  rules targets; the missing guard is why a 0.12.0 binary could validate under
+  a 0.5.0 pin without anyone noticing.
+  `reference/tasks.md` had drifted (its rules-apply row named the old command).
+  The other two concepts were re-read against their sources and needed no edit.
+
 ## 2026-08-15
 
 - `decisions/0022-cilium-observability-and-argocd-self-management.md`: addendum —
