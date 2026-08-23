@@ -47,7 +47,7 @@ platform layer model (recorded in the platform architecture decision records).
 - `policies/`: conftest Rego policies for kustomize-rendered manifests.
 - `openspec/`: behavioral-requirements source of truth (OpenSpec) — one spec per substrate capability under `specs/`, change proposals under `changes/`. See §Spec-Driven Development.
 - `scripts/`: cluster-agnostic validation, render and helper scripts.
-- `knowledge/`: the OKF v0.1 knowledge bundle — architecture, reference, workflows, decision records (ADRs), glossary. Entry point: [`knowledge/index.md`](knowledge/index.md). Contracts a consumer parses live outside the bundle: `schemas/`, `contracts/`, `platform-hardware-features.yaml` (repo root); the bundle itself ships in no release artifact (`.ci-oci-tarball-include.txt`). `knowledge/rules/` is a narrow carve-out for contracts the bundle's own tooling reads: `openknowledge` renders them into this file's Open Knowledge Maintenance block.
+- `knowledge/`: the OKF v0.2 knowledge bundle — architecture, reference, workflows, decision records (ADRs), glossary. Entry point: [`knowledge/index.md`](knowledge/index.md). Contracts a consumer parses live outside the bundle: `schemas/`, `contracts/`, `platform-hardware-features.yaml` (repo root); the bundle itself ships in no release artifact (`.ci-oci-tarball-include.txt`). `knowledge/rules/` is a narrow carve-out for contracts the bundle's own tooling reads: `openknowledge` renders them into this file's Open Knowledge Maintenance block.
 
 ## Build, Test, and Development Commands
 

@@ -15,7 +15,7 @@ sources:
 
 # Bundle Conventions
 
-The conventions this bundle layers on top of OKF v0.1 and the built-in
+The conventions this bundle layers on top of OKF v0.2 and the built-in
 `openknowledge` maintenance rules. This document is the source of truth for
 them; `index.md` carries the rationale and points here.
 
