@@ -155,120 +155,122 @@ to prefix a bare run, and it renders ten lines above that instruction.
   the old name would silently do nothing. The record text above it is
   untouched, including the legacy filename in its parenthesis — that is the
   name the CLI used at the time.
-
 The same day, on the toolchain the entry above pins: the bundle moved from OKF
 v0.1 field style to v0.2. `openknowledge validate --spec 0.2` reported 143
-`okf-*` findings before and reports zero after, and the four rules in
-`.openknowledge.toml` now include `"okf-0.2-metadata"` and `okf-version` at
-error, so the contract is binding rather than advisory.
+`okf-*` findings before and reports zero after, and `.openknowledge.toml` now
+raises `"okf-0.2-metadata"` and `okf-version` to error, so the field contract is
+binding rather than advisory.
 
 The date migration is the part worth recording, because the obvious rule is
 wrong in both directions. v0.2 §13.1 retires `timestamp` in favour of
 `generated.at`, and §5.2 makes `verified` — who read the content against its
-`sources` — deliberately separate. But this bundle defines `timestamp` as "the
-date of the last substantive verification", and the record contains concepts
-bumped on a day their content provably did not change AND concepts bumped for a
-one-row edit that confirmed nothing. Mapping the key wholesale onto either
-field would have asserted something that did not happen.
+`sources` — deliberately separate. But this bundle defined `timestamp` as "the
+date of the last substantive verification", so the single field carried both
+claims at once, and mapping it wholesale onto either one would have asserted
+something that did not happen.
 
-So the derivation is per file, and mechanical where the record allows it. For
-the 18 non-decision concepts `generated.at` is the last commit that changed
-something OTHER than the `timestamp:` line — a timestamp-only commit is by this
-bundle's own definition a verification and not an edit, and git dates it
-exactly, which prose cannot. Four such commits exist. `knowledge/log.md`
-corroborates every row, and the two sources disagree nowhere.
+So the derivation is per file, one bullet each below. For the 18 non-decision
+concepts `generated.at` is the date of the last commit that changed something
+OTHER than the `timestamp:` line — a timestamp-only commit is, under the retired
+field's own definition, a verification and not an edit, and git dates it exactly
+where prose cannot. Four such commits exist. Every row is cross-read against
+this file; the one row where the two sources do not both speak is
+`architecture/capability-composition.md`, whose 2026-08-14 bump has no log
+bullet at all, so git is its only record. That is stated in its bullet rather
+than smoothed over.
 
-`verified` is written only where the record states the concept was read against
-its sources AND that reading is not older than the content it covers. The
-second half of that rule comes from a measurement, not from the spec: the CLI
-derives `trustTier: human-reviewed` from any `verified` entry and does NOT flag
-one predating `generated.at` as stale. A carried-over verification would
-therefore mark a concept human-reviewed for content nobody reviewed, in
-machine-readable form and with no gate reporting it. Four concepts lose a
-verification date they could have claimed on that basis; five keep one, so 5 of
-43 concepts are `human-reviewed` and 38 are `unverified`. That is the honest
-readout, not a gap to close by writing entries.
+`verified` took two attempts and the first was wrong in a way worth keeping.
+The rule shipped in review was "only where the record states a reading, AND that
+reading is not older than the content it covers", the second clause invented to
+prevent false freshness. It produced an inverted result. This file states under
+2026-08-12 that `architecture/day-zero-bootstrap.md` and
+`workflows/first-consumer-cluster.md` were re-verified at the Cilium `1.20.0`
+bump; both had a content change two days later, so the ordering clause discarded
+those readings and both concepts read `unverified` — while
+`capability-composition.md`, whose verification is an undocumented field touch,
+read `human-reviewed`. The two best-evidenced readings were suppressed and the
+weakest one kept.
+
+The clause is dropped. A reading that happened is a fact and stays: `verified`
+is a history, entries are appended and never removed, and the freshness signal
+is the comparison between the newest `verified[].at` and `generated.at` — which,
+measured, the CLI does not make (it reports `stale: false` in both orderings and
+derives `human-reviewed` from any entry). Four of the seven `verified` concepts
+are in exactly that state, honest but not current;
+`scripts/check-knowledge-frontmatter.sh` prints them on every run so the readout
+is visible instead of inviting someone to "fix" it by inventing entries. What
+survives from the first attempt is the honesty half: an entry is written only
+for a reading that happened, and authoring is never verifying — which is why
+`reference/tasks.md` and `rules/talos-base-bundle.md` carry none. Both are
+rewritten in this change, and their previous same-day `verified` claims were
+falsified by the commit clock: the recorded reading was at 01:50 and the
+rewrites at 19:17 and 19:19. Day precision hides that ordering, so a same-day
+self-certification cannot be told apart from a real one.
 
 The 24 ADRs get `decided:` and neither of the other two fields. Their old
-`timestamp` is the decision date — this file states that convention verbatim
-under 2026-07-22 — which is neither `generated.at` nor `verified[].at`; their
-content-change date is recorded nowhere reliable, and §4/§11 make `generated`
-optional, so it is omitted rather than invented. `decided` is producer-defined
-and draws no finding, measured with all four rules at error.
-
-Four dates deliberately do not survive, each a correction rather than a
-transcription. ADR-0001's own `history:` dates the decision to 2026-04-27 while
-its `timestamp` carried 2026-05-18, the third amendment. ADR-0022 is the only
-ADR whose `timestamp` drifted off its decision date: this file states under
-2026-07-22 that it was "left at 2026-07-22 — it records the decision date", and
-the 2026-08-15 addendum bumped it anyway, against that stated convention.
-`project/harness-plugin-contract.md` and `workflows/release-process.md` both had
-real content changes that never bumped the key, so their old values were stale
-and move forward.
+`timestamp` is the DECISION date — the convention is stated verbatim in this
+file under 2026-08-12 — which is neither `generated.at` nor `verified[].at`;
+their content-change date is recorded nowhere reliable, and §4/§11 make
+`generated` optional, so it is omitted rather than invented. `decided` is
+producer-defined and draws no finding from any of the four raised rules, which
+is also why `scripts/check-knowledge-frontmatter.sh` types it.
 
 Four measurements against 0.12.0 that shaped the result and would otherwise be
 re-derived at the next bump:
 
 - A date alone is REJECTED as `generated.at`, in both spellings — bare
   `2026-08-14` and quoted `"2026-08-14"` both fail with "should be an ISO 8601
-  datetime". So every date is padded to `T00:00:00Z`. The midnight is padding
-  for a record with day precision, not an observed time. Quoted over unquoted,
-  which both validate, so the value stays a YAML string rather than a timestamp
-  object for a third-party parser.
+  datetime". Every date is therefore padded to `T00:00:00Z`. The midnight is
+  padding for a record with day precision, not an observed time. Quoted over
+  unquoted, which both validate, so the value stays a YAML string rather than a
+  timestamp object for a third-party parser.
 - `link-target = "error"` does NOT reach `sources[].resource`. Probed with a
   path outside the bundle, a `../` escape and a nonexistent file: zero findings
   of any rule. This was the one unknown that could have invalidated the mapping
   design, since all 118 resources are repo-relative paths outside `knowledge/`.
-  The corollary is the residual: NOTHING validates a `resource` path, so a typo
-  is accepted silently and the bundle conventions now say to check a new one by
-  hand.
+  The corollary is that NOTHING in the CLI validates a `resource` path, which is
+  now asserted here instead.
 - The `.openknowledge.toml` key must be QUOTED. `okf-0.2-metadata = "error"`
   unquoted is parsed as a TOML dotted key; the CLI exits 2 with
   `unhandled kv part: string` and loses EVERY rule in the file, not just that
   one. A raise that silently takes the whole config with it is the same failure
-  class as the filename finding above, which is why it is in the config header
-  and in the bundle conventions rather than only here.
+  class as the filename finding above.
 - With `okf-0.2-metadata` present, `openknowledge validate --spec 0.1` exits 2.
   Deliberate coupling, recorded so a contributor debugging against 0.1 reads it
   as a config-scope error rather than a rule failure.
 
-- `.openknowledge.toml`: `"okf-0.2-metadata"` and `okf-version` raised to error,
-  each with what it buys and the version it was measured against.
-  `markdown-syntax` stays at warn — its 30 findings are unclosed inline code
-  spans in prose, unchanged in count and location by this migration, and are
-  separate work. `scripts/check-bundle-policy.sh` is given both new rules, so
-  the raise is asserted to be IN EFFECT rather than merely present in a file.
-  Three mutants: an unquoted key, a severity downgraded to warn, and the
-  `okf-version` line deleted — each red, and the conforming config green.
-- `index.md`: `okf_version` is "0.2", and the non-normative reasoning section
-  loses its `timestamp` bullet for the two-field explanation plus the
-  false-freshness finding above. The v0.1 label is corrected in the four root
-  files that carried it (`README.md`, `ARCHITECTURE.md`, `AGENTS.md`,
-  `CLAUDE.md`) — until now `okf_version` said one thing and five prose sites
-  said another.
-- `rules/talos-base-bundle.md`: nine bullets become fourteen — `generated` and
-  its REQUIRED actor `by`, the date spelling, the generated-versus-verified
-  split, the honesty rule for `verified`, the `sources` mapping form, `decided`,
-  and the `status` vocabulary. Three of the additions exist because they are
-  measured traps rather than restatements of the spec: the rejected date-only
-  value, the unvalidated `resource` path, and the unquoted TOML key.
-- `decisions/index.md`: new §Status vocabulary carrying the MADR-to-OKF mapping
-  table, the `decided` contract, and why a decision concept has no `generated`
-  or `verified`. Its group headings keep the MADR words, which group by decision
-  state — the browsing axis the bodies and `history:` lists agree with. Step 2
-  of §Authoring convention names `decided` and says the template omits it on
-  purpose.
-- `decisions/template.md`: the date field is retired entirely rather than
-  carrying a `YYYY-MM-DD` placeholder, which is a value a copy can ship with and
-  which a date-typing parser chokes on. The instruction moves into the body
-  comment.
-- 18 concepts gained `sources[].resource` mappings (118 entries) and
-  `generated`; 24 ADRs gained `decided`; 25 `status` keys moved to the OKF
-  vocabulary. `history:` is untouched — nine lines across five ADRs record what
-  a status WAS on a date, and 0011's `status: proposed` citation stays verbatim
-  because it sits inside a dated verification banner. `reference/cluster-yaml.md`
-  keeps the five comment lines inside its `sources:` block, which a YAML
-  round-trip would have eaten; that is why the rewriter is line-oriented.
+`scripts/check-knowledge-frontmatter.sh` is new, and it exists because six
+invariants the bundle conventions state normatively were enforced by prose
+alone. Each was measured GREEN before it landed: a `resource` path that does not
+resolve; `decided: banana`; a sourced concept with its `generated` block deleted
+(v0.2 makes the field optional, so the concept simply claims nothing); a
+re-introduced `timestamp:`; `okf_version` deleted outright from `index.md` — the
+`okf-version` rule compares a DECLARED version to the validated one and has
+nothing to compare when the declaration is absent, so the earlier claim that it
+"fires on a hand-edit of `knowledge/index.md`" was too generous; and a decision
+concept carrying `generated` + `sources`, which is exactly what
+`task knowledge:new TYPE=decision` used to scaffold. `TYPE` is now an enum
+without `decision`, and `scripts/check-knowledge-frontmatter.test.sh` binds all
+of it across 14 mutants.
+
+`scripts/check-bundle-policy.sh` gained two things. It now takes the caller's
+`--spec` so the policy it certifies is resolved under the same spec as the run
+it gates — they sat three lines apart resolving it differently, and the first
+CLI whose `latest` moves off the pin would have made this script report a config
+error for a spec move. And it asserts parity in the other direction: the config
+may not raise a rule the caller fails to demand, so a raise nothing asserts
+cannot quietly become a raise nothing keeps. The symmetric case — a rule dropped
+from the config AND from the caller's list — is NOT closed by this and cannot be
+at this altitude; naming the expected set a third time is the only fix and it
+was judged not worth a third copy.
+
+ADR-0011's status was the one call this migration did not make mechanically.
+`proposed` maps to `draft`, which reads as work-in-progress to any consumer,
+while `AGENTS.md` §Hard Constraints cites that ADR three times as binding and
+`hard-constraints-check` is a required context. The maintainer took the decision
+its own 2026-07-11 verification banner had deferred: the frontmatter is
+`status: stable`, recorded in a dated addendum in the ADR itself. The MADR word
+in its record stays `proposed`.
 
 One defect was found by running the scaffold rather than reading it, and fixed
 here because this change edits that line anyway: `task knowledge:new` wrote a
@@ -277,10 +279,63 @@ marker, so `printf -- '---\n...'` took the `--` AS its format string and
 discarded the rest. Latent since the target was written. Replaced with a
 heredoc, which is also legible in the Taskfile.
 
-Two calls are deliberately NOT made inside a mechanical migration and are
-raised for the maintainer instead: whether ADR-0010 and ADR-0011 still belong
-at `draft`. 0011 in particular records already-enforced invariants and says so
-in its own verification banner.
+This change reverts as a unit: `git revert -m 1 <merge>`. Reverting the severity
+raise alone restores the two-rule config while the bundle conventions and the
+rendered `AGENTS.md` block go on asserting a severity that is no longer in
+effect, and nothing detects that.
+
+The one-shot rewriter that performed the 161 frontmatter edits is not committed
+— it is a line-oriented, frontmatter-scoped script pasted into the pull request
+that carries this change, and it is line-oriented rather than a YAML round-trip
+because `reference/cluster-yaml.md` carries five comment lines inside its
+`sources:` block that a round-trip would have eaten. What is durable is the
+derivation, which is the bullet list below; the tool is not.
+
+- `architecture/capability-composition.md`: `generated.at 2026-07-15`, `verified 2026-08-14`. Git: the 2026-08-14 commit changed only the `timestamp:` line. The only row with no corroborating log bullet.
+- `architecture/day-zero-bootstrap.md`: `generated.at 2026-08-14`, `verified 2026-08-12`. Content change under 2026-08-14; the 2026-08-12 re-verification is kept although it predates it.
+- `architecture/substrate.md`: `generated.at 2026-08-14`, `verified 2026-07-17`. §What ships in the OCI artifact corrected under 2026-08-14; re-verified against the implemented branch under 2026-07-17.
+- `glossary.md`: `generated.at 2026-08-14`, `verified 2026-07-17`. The `helm_template` freeze wording changed on 2026-08-14; same 2026-07-17 re-verification bullet as `substrate.md`.
+- `project/harness-plugin-contract.md`: `generated.at 2026-07-13`, no `verified`. The "ships no `.claude/`" statements were rewritten under 2026-07-13 without bumping the key, so the old 2026-07-11 value was stale and moves forward.
+- `project/openssf-self-assessment.md`: `generated.at 2026-07-15`, no `verified`. Created 2026-07-15, no later entry.
+- `project/vision.md`: `generated.at 2026-07-11`, no `verified`. Created with the bundle, no later entry.
+- `reference/argocd-sso-contract.md`: `generated.at 2026-08-14`, no `verified`. New concept under 2026-08-14; nothing has read it back since.
+- `reference/cluster-yaml.md`: `generated.at 2026-08-14`, `verified 2026-08-14`. Both on the same day and both recorded: a new §How CI binds the schema to the shim, and "re-verified against the widened `schemas/cluster.schema.json`".
+- `reference/manifest-pipeline.md`: `generated.at 2026-08-14`, no `verified`. §ArgoCD substrate invariants updated under 2026-08-14.
+- `reference/tasks.md`: `generated.at 2026-08-23`, no `verified`. Rewritten again in this change — the `knowledge:validate` and `knowledge:new` rows — so the 2026-08-23 reading recorded earlier in this section no longer covers its content.
+- `rules/talos-base-bundle.md`: `generated.at 2026-08-23`, no `verified`. Nine bullets become fifteen here; authoring is never verifying, so the file does not certify its own edit.
+- `workflows/first-consumer-cluster.md`: `generated.at 2026-08-14`, `verified 2026-08-12`. Day-2 narration changed under 2026-08-14; the 2026-08-12 re-verification is kept although it predates it.
+- `workflows/issue-lifecycle.md`: `generated.at 2026-07-11`, no `verified`. Created with the bundle, no later entry.
+- `workflows/mcp-setup.md`: `generated.at 2026-07-11`, no `verified`. Created with the bundle, no later entry.
+- `workflows/release-process.md`: `generated.at 2026-07-29`, no `verified`. Content changed 2026-07-29 without bumping the key, so the old 2026-07-21 value was stale and moves forward.
+- `workflows/spec-driven-development.md`: `generated.at 2026-08-12`, `verified 2026-08-23`. Content change under 2026-08-12; "re-read against its sources ... needed no edit beyond the date" earlier in this section.
+- `workflows/verify-release.md`: `generated.at 2026-07-11`, no `verified`. Created with the bundle, no later entry.
+- `decisions/0001-multi-repo-platform-split.md`: `decided 2026-04-27`. Its own `history:` first entry; the old `timestamp` of 2026-05-18 was the third amendment.
+- `decisions/0002-namespace-ownership-rendered-manifests.md`: `decided 2026-05-18`. Its body: "2026-05-18 initial: Architecture C accepted".
+- `decisions/0003-three-layer-capability-architecture.md`: `decided 2026-05-23`. `history:` "2026-05-23 proposed + accepted".
+- `decisions/0004-substrate-only-base.md`: `decided 2026-05-27`. `history:` "2026-05-27 accepted"; the 2026-05-26 entry is the proposal, not the decision.
+- `decisions/0005-shared-render-artifact.md`: `decided 2026-05-29`. `history:` "2026-05-29 initial (accepted...)". Status also moves to `deprecated`.
+- `decisions/0006-opentofu-cluster-lifecycle.md`: `decided 2026-06-02`. No `history:` and no log statement; the old `timestamp` stands.
+- `decisions/0007-cluster-yaml-sot.md`: `decided 2026-06-06`. Old `timestamp`.
+- `decisions/0008-task-runner-consolidation.md`: `decided 2026-06-07`. `history:` "2026-06-07 initial (accepted...)". Status also moves to `deprecated`.
+- `decisions/0009-node-capability-composition.md`: `decided 2026-06-20`. Old `timestamp`.
+- `decisions/0010-composition-logic-placement.md`: `decided 2026-06-20`, status `draft`. Its §Decision Outcome line stays "**Deferred (proposed).**" — that is the MADR state it records, not a frontmatter citation. Only the header line at the top, which cites the frontmatter explicitly, follows the field.
+- `decisions/0011-substrate-hard-constraints.md`: `decided 2026-06-21`, status `stable`. The maintainer decision its 2026-07-11 verification banner deferred, taken here and recorded in a dated addendum; the banner's own `status: proposed` citation is untouched.
+- `decisions/0012-makefile-retirement.md`: `decided 2026-06-22`. Old `timestamp`.
+- `decisions/0013-kubelet-serving-cert-rotation.md`: `decided 2026-06-30`. Old `timestamp`. Its frontmatter comment stating the partial-supersession convention now says the status stays `stable`.
+- `decisions/0014-ship-ai-tool-artifacts.md`: `decided 2026-07-13`. Old `timestamp`.
+- `decisions/0015-openspec-adoption.md`: `decided 2026-07-13`. Old `timestamp`. Same partial-supersession comment change as 0013.
+- `decisions/0016-capability-profiles-predicate-only.md`: `decided 2026-07-15`. Old `timestamp`.
+- `decisions/0017-consumer-image-kernel-args.md`: `decided 2026-07-15`. Old `timestamp`.
+- `decisions/0019-postfinance-kubelet-csr-approver.md`: `decided 2026-07-17`. Old `timestamp`.
+- `decisions/0020-automated-release-no-approval-gate.md`: `decided 2026-07-21`. Old `timestamp`.
+- `decisions/0021-spec-vs-bundle-normativity.md`: `decided 2026-07-22`. Old `timestamp`.
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: `decided 2026-07-22`. This file states under 2026-08-14 that its `timestamp` was "left at 2026-07-22 — it records the decision date"; the 2026-08-15 addendum bumped it anyway, against that stated convention. The only ADR whose `timestamp` had drifted off its decision date.
+- `decisions/0023-node-identity-map-key.md`: `decided 2026-07-26`. Old `timestamp`.
+- `decisions/0024-argocd-substrate-relocation.md`: `decided 2026-07-29`. Old `timestamp`.
+- `decisions/0025-argocd-crd-apply-scope.md`: `decided 2026-08-14`. Old `timestamp`.
+- `decisions/template.md`: the `timestamp: YYYY-MM-DD` placeholder is retired with no replacement key — a placeholder is a value a copy can ship with, and a date-typing parser chokes on it. The instruction moves into the template's body comment. Status `draft`.
+- `decisions/index.md`: new §Status vocabulary with the MADR-to-OKF mapping, the `decided` contract, and why a decision concept carries no `generated` or `verified`. The group headings and the per-entry `(word)` suffixes keep the MADR words and are now stated to be the record rather than a duplicate of the field; 0011 moves to §Accepted. §Authoring convention names `decided`.
+- `index.md`: `okf_version: "0.2"`, and the non-normative reasoning section loses its `timestamp` bullet for the two-field explanation plus the two `verified` findings above. The v0.1 label is also corrected in `README.md`, `ARCHITECTURE.md`, `AGENTS.md` and `CLAUDE.md`, which had said v0.1 while `okf_version` said otherwise.
 
 ## 2026-08-15
 
