@@ -114,6 +114,13 @@ an inline code span, because the target no longer exists and
 `openknowledge.toml` raises `link-target` to error, so the file could not
 otherwise validate. The sentence is unchanged.)
 
+**Clarification (2026-08-23).** The filename in the parenthesis above is the
+one the CLI used at the time and is left standing as record. Since the
+openknowledge 0.12.0 pin the file is `knowledge/.openknowledge.toml`: the
+pre-0.10 name is not read at all, and a config the CLI does not find degrades
+every raise back to the spec default without any signal. Recreating a file
+under the old name would silently do nothing.
+
 1. *"The module README's variable/output tables are terraform-docs-generated
    (inject mode)"* — **false**. `tofu/modules/talos-cluster/README.md`
    carries no `BEGIN_TF_DOCS` markers; its Inputs and Outputs tables are

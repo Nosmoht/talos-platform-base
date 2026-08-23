@@ -1,20 +1,14 @@
 # openknowledge CLI configuration for the knowledge/ OKF bundle.
 #
-# The filename is a dotfile, and it sits inside the bundle directory. Both
-# halves are load-bearing — measured against v0.12.0 (2026-08-23) on a
-# throwaway bundle containing one broken relative link:
-#
-#   <bundle>/openknowledge.toml   -> exit 0, policy {}          (not read)
-#   <parent>/.openknowledge.toml  -> exit 0, policy {}          (not read)
-#   <bundle>/.openknowledge.toml  -> exit 1, policy.configPath set
-#
-# Discovery is bundle-relative, not cwd-relative: the same three outcomes
-# hold when validate is called from an unrelated directory with an absolute
-# target. A config the CLI does not read fails silently — every raise below
-# degrades back to the spec default and nothing turns red. To check that
-# this file is actually in effect:
-#
-#   openknowledge validate --format json knowledge/ | jq .policy
+# Must be a dotfile AND sit inside the bundle directory. Measured against
+# v0.12.0 (2026-08-23): the pre-0.10 filename here, and a dotfile one level
+# up, are both silently NOT read — exit 0 with an empty policy, every raise
+# below degraded back to the spec default, nothing red. Discovery is
+# bundle-relative, not cwd-relative. Not tested, so not claimed: whether a
+# user-level config or an explicit flag can also supply policy.
+# `task knowledge:validate` asserts the loaded policy before it validates, so
+# a future rename fails the gate instead of quietly disarming it. Measurement
+# and rationale: knowledge/log.md, 2026-08-23.
 #
 # link-target is raised from the spec default (warn) to error so that
 # `openknowledge validate` is a BINDING intra-bundle link gate: a broken

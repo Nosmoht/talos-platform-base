@@ -31,7 +31,7 @@ Two authoring constraints for this file, both learned from the renderer:
 
 - Use the closed `type` vocabulary: `architecture`, `reference`, `workflow`, `decision`, `glossary`, `project`, `Rule`. Add a new type by editing this list and `knowledge/index.md` in the same change. `Rule` is capitalized because the CLI requires that spelling, not as a naming pattern to copy.
 - Set `timestamp` to the date of the last substantive verification, not the last typo fix, and keep `sources` pointing at the repo-relative paths the concept was derived from.
-- Re-verify a concept when any of its `sources` changed after its `timestamp`. A green validation run proves link and schema health, never freshness.
+- Re-verify a concept when a change to one of its `sources` lands inside what the concept describes — not merely because a listed file was touched. A green validation run proves link and schema health, never freshness.
 - Omit `sources` on `decision` concepts: an ADR records a decision rather than deriving from source files. Their field contract, including `status`, `id`, `deciders`, and `supersedes`, lives in `knowledge/decisions/index.md`.
 - Link relatively inside the bundle, and cite anything outside it as an inline code span rather than a markdown link: `.openknowledge.toml` raises `link-target` to error, so an escaping link fails validation.
 - Validate with `task knowledge:validate`, which runs `openknowledge validate` plus the offline link gate. Run `task knowledge:rules-check` as well after touching `knowledge/rules/`.

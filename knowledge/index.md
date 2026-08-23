@@ -20,8 +20,8 @@ path under `knowledge/`.
 those — `openknowledge` renders them into the `AGENTS.md` Open Knowledge
 Maintenance block. The criterion for admitting a file here is that the
 bundle's tooling consumes it and no release consumer parses it;
-`.openknowledge.toml` has always met the same test, and since 0.12.0 the
-placement is mandatory rather than tidy: the CLI reads that file only from
+`.openknowledge.toml` has always met the same test, and as of the pinned
+0.12.0 the placement is mandatory rather than tidy: the CLI reads that file only from
 inside the bundle directory, and only under the dotfile name. This is a
 narrow carve-out for tooling config, not a general licence to move contracts
 into the bundle.

@@ -5,28 +5,45 @@
 - `.openknowledge.toml` (renamed from `openknowledge.toml`), `reference/tasks.md`,
   `rules/talos-base-bundle.md`, `workflows/spec-driven-development.md`: the
   pinned `openknowledge` CLI moved 0.5.0 -> 0.12.0, and the durable lesson is
-  not the version number. 0.10.0 made the bundle config a dotfile and stopped
-  loading the legacy name, so `knowledge/openknowledge.toml` had become inert:
-  `link-target = "error"` and `rule-catalog = "error"` silently degraded back
-  to warnings and the binding link gate this bundle relies on was advisory
-  while reporting green. The failure mode is silence — there is no warning for
-  a config the CLI did not find.
-  How to tell, and the check worth keeping in reach:
-  `openknowledge validate --format json knowledge/ | jq .policy` prints
-  `configPath` and the overrides when the file is read, and `{}` when it is
+  not the version number. The pinned 0.12.0 does not read the legacy
+  `openknowledge.toml` name, so that file had become inert: `link-target =
+  "error"` and `rule-catalog = "error"` degraded back to warnings with no
+  signal at all. Which release introduced that is NOT recorded here, because
+  it could not be sourced — upstream publishes no release notes for any
+  version in the range (checked 0.10.0 through 0.12.0, all empty). Only 0.12.0
+  was measured.
+  Scope of the damage, since the unqualified version of this sentence is
+  wrong: CI was never degraded. `docs-lint.yml` runs `task
+  knowledge:install-cli` in the same job before validating, which installs the
+  PINNED version, and 0.5.0 does read the legacy name (verified 2026-07-15,
+  further down this file). So the merge gate stayed binding throughout; what
+  degraded was the LOCAL run of anyone who had upgraded past the pin. That is
+  the more useful lesson, and it is the argument for the version guard: without
+  one, local verification silently stops matching CI.
+  How to tell whether the config is in effect:
+  `openknowledge validate --format json knowledge/` prints `policy.configPath`
+  and the overrides when the file is read, and an empty `policy` when it is
   not. Measured against 0.12.0 that the file must be BOTH a dotfile AND inside
   the bundle directory — a copy at the repository root is not discovered — and
   that discovery is bundle-relative, so the answer does not change with the
-  working directory.
-  Two further 0.12.0 changes: `rules` moved under `prompt`, and the pre-0.12
-  form exits 2. In `knowledge:rules-check` that render runs inside a pipeline,
-  so `set -e` never sees the failure and only the empty-block assertion catches
-  it — the assertion now carries a comment saying so, because it reads as
-  redundant otherwise. `knowledge:validate` is now version-guarded like the two
-  rules targets; the missing guard is why a 0.12.0 binary could validate under
-  a 0.5.0 pin without anyone noticing.
+  working directory. Not measured, so not claimed: whether a user-level config
+  or an explicit flag can also supply policy.
+  That check is no longer prose. `knowledge:validate` now asserts both
+  `configPath` and the two raises before it validates anything, the way
+  `scripts/check-staleness-gate-bite.sh` asserts its own fence bites — a
+  rename, move, or future discovery change turns the target red instead of
+  green. It greps the JSON rather than using `jq`, which is unpinned.
+  Two further changes the pinned 0.12.0 exhibits: `rules` now lives under
+  `prompt`, and the old form exits 2. In `knowledge:rules-check` that render
+  runs inside a pipeline, so `set -e` never sees the failure and only the
+  empty-block assertion catches it — the assertion now carries a comment
+  saying so, because it reads as redundant otherwise.
   `reference/tasks.md` had drifted (its rules-apply row named the old command).
   The other two concepts were re-read against their sources and needed no edit.
+  The re-verification set is scoped to concepts whose subject the change falls
+  within, not to every concept listing a touched file in `sources`; twelve
+  concepts list `Taskfile.yml`, and dating all of them would record reviews
+  that did not happen. The rule now states that criterion explicitly.
 
 ## 2026-08-15
 
