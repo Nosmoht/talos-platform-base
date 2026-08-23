@@ -71,7 +71,7 @@ that swap. And HCL is a *poor host* for this work:
 
 ## Decision Outcome
 
-**Deferred (draft).** No extraction in PR #135 — the findings there are fixed
+**Deferred (proposed).** No extraction in PR #135 — the findings there are fixed
 in place to keep that PR mergeable and reversible. This ADR makes the lock-in a
 *deliberate, recorded* choice rather than silent accretion.
 
