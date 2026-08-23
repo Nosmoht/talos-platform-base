@@ -669,7 +669,24 @@ tasks:
       target="knowledge/{{.FILE}}"
       [ -e "$target" ] && { echo "ERROR: $target already exists"; exit 1; }
       mkdir -p "$(dirname "$target")"
-      printf -- '---\ntype: {{.TYPE}}\ntitle: TODO\ndescription: TODO one sentence.\ntags: [TODO]\ntimestamp: %s\nsources:\n  - TODO\n---\n\n# TODO\n' "$(date +%Y-%m-%d)" > "$target"
+      # A heredoc, not printf: go-task's shell has no `--` end-of-options marker,
+      # so `printf -- '---\n...'` took the `--` AS the format and wrote a 2-byte
+      # file. `human:TODO` rather than a hardcoded id — whoever runs this is the
+      # author. go-task's delimiters are doubled braces, so the flow mapping's
+      # single braces pass through untouched.
+      cat > "$target" <<EOF
+      ---
+      type: {{.TYPE}}
+      title: TODO
+      description: TODO one sentence.
+      tags: [TODO]
+      generated: { by: human:TODO, at: "$(date -u +%Y-%m-%dT00:00:00Z)" }
+      sources:
+        - resource: TODO
+      ---
+
+      # TODO
+      EOF
       echo "Created $target — fill frontmatter, then run 'task knowledge:validate'."
 
   knowledge:install-cli:
