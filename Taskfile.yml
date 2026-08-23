@@ -55,7 +55,11 @@ vars:
   # released checksum files. openknowledge: all four verified 2026-08-23
   # against the v0.12.0 checksums.txt. lychee: the three original constants
   # 2026-07-11, LYCHEE_SHA256_LINUX_ARM64 2026-08-23 against that asset's
-  # published .sha256 sidecar.
+  # published .sha256 sidecar. The linux-arm64 arm is the one no maintainer or
+  # CI runner exercises, so it was run end to end in a linux/arm64 container
+  # (2026-08-23): both assets fetch, both checksums verify against the
+  # constants above, the openknowledge tarball is flat as the install line
+  # assumes, and lychee's nested binary is found by the same `find`.
   OPENKNOWLEDGE_VERSION: 0.12.0
   OPENKNOWLEDGE_SHA256_DARWIN_ARM64: 24e5fe37f87dae647121b98dc708997206906558413b7620617f0a8690da0e1d
   OPENKNOWLEDGE_SHA256_DARWIN_AMD64: 8f20fe1c09c7ac69124f020f219f1d9b61c92aaac6bb156704b8886a38bed2aa

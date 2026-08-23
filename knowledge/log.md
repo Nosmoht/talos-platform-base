@@ -53,8 +53,10 @@
   The other two concepts were re-read against their sources and needed no edit.
   Two decisions taken with the bump, both recorded so the next one does not
   re-derive them: `linux-arm64` joins the checksum set as a fourth platform
-  (both upstream projects publish the asset, and the openknowledge tarball
-  ships the binary flat like the others), and every `openknowledge` call site
+  (verified end to end in a linux/arm64 container, since it is the one arm
+  neither the maintainer nor CI exercises: both assets fetch, both checksums
+  verify, the openknowledge tarball is flat as the install line assumes, and
+  lychee's nested binary is found by the same `find`), and every `openknowledge` call site
   passes `--no-telemetry`. 0.12.0 sends anonymous usage telemetry by default
   and offers no env-var switch, only that flag — which is persistent, not
   per-invocation: it writes `enabled: false` into a telemetry config. Two
