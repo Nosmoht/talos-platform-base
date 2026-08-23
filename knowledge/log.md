@@ -156,6 +156,132 @@ to prefix a bare run, and it renders ten lines above that instruction.
   untouched, including the legacy filename in its parenthesis — that is the
   name the CLI used at the time.
 
+The same day, on the toolchain the entry above pins: the bundle moved from OKF
+v0.1 field style to v0.2. `openknowledge validate --spec 0.2` reported 143
+`okf-*` findings before and reports zero after, and the four rules in
+`.openknowledge.toml` now include `"okf-0.2-metadata"` and `okf-version` at
+error, so the contract is binding rather than advisory.
+
+The date migration is the part worth recording, because the obvious rule is
+wrong in both directions. v0.2 §13.1 retires `timestamp` in favour of
+`generated.at`, and §5.2 makes `verified` — who read the content against its
+`sources` — deliberately separate. But this bundle defines `timestamp` as "the
+date of the last substantive verification", and the record contains concepts
+bumped on a day their content provably did not change AND concepts bumped for a
+one-row edit that confirmed nothing. Mapping the key wholesale onto either
+field would have asserted something that did not happen.
+
+So the derivation is per file, and mechanical where the record allows it. For
+the 18 non-decision concepts `generated.at` is the last commit that changed
+something OTHER than the `timestamp:` line — a timestamp-only commit is by this
+bundle's own definition a verification and not an edit, and git dates it
+exactly, which prose cannot. Four such commits exist. `knowledge/log.md`
+corroborates every row, and the two sources disagree nowhere.
+
+`verified` is written only where the record states the concept was read against
+its sources AND that reading is not older than the content it covers. The
+second half of that rule comes from a measurement, not from the spec: the CLI
+derives `trustTier: human-reviewed` from any `verified` entry and does NOT flag
+one predating `generated.at` as stale. A carried-over verification would
+therefore mark a concept human-reviewed for content nobody reviewed, in
+machine-readable form and with no gate reporting it. Four concepts lose a
+verification date they could have claimed on that basis; five keep one, so 5 of
+43 concepts are `human-reviewed` and 38 are `unverified`. That is the honest
+readout, not a gap to close by writing entries.
+
+The 24 ADRs get `decided:` and neither of the other two fields. Their old
+`timestamp` is the decision date — this file states that convention verbatim
+under 2026-07-22 — which is neither `generated.at` nor `verified[].at`; their
+content-change date is recorded nowhere reliable, and §4/§11 make `generated`
+optional, so it is omitted rather than invented. `decided` is producer-defined
+and draws no finding, measured with all four rules at error.
+
+Four dates deliberately do not survive, each a correction rather than a
+transcription. ADR-0001's own `history:` dates the decision to 2026-04-27 while
+its `timestamp` carried 2026-05-18, the third amendment. ADR-0022 is the only
+ADR whose `timestamp` drifted off its decision date: this file states under
+2026-07-22 that it was "left at 2026-07-22 — it records the decision date", and
+the 2026-08-15 addendum bumped it anyway, against that stated convention.
+`project/harness-plugin-contract.md` and `workflows/release-process.md` both had
+real content changes that never bumped the key, so their old values were stale
+and move forward.
+
+Four measurements against 0.12.0 that shaped the result and would otherwise be
+re-derived at the next bump:
+
+- A date alone is REJECTED as `generated.at`, in both spellings — bare
+  `2026-08-14` and quoted `"2026-08-14"` both fail with "should be an ISO 8601
+  datetime". So every date is padded to `T00:00:00Z`. The midnight is padding
+  for a record with day precision, not an observed time. Quoted over unquoted,
+  which both validate, so the value stays a YAML string rather than a timestamp
+  object for a third-party parser.
+- `link-target = "error"` does NOT reach `sources[].resource`. Probed with a
+  path outside the bundle, a `../` escape and a nonexistent file: zero findings
+  of any rule. This was the one unknown that could have invalidated the mapping
+  design, since all 118 resources are repo-relative paths outside `knowledge/`.
+  The corollary is the residual: NOTHING validates a `resource` path, so a typo
+  is accepted silently and the bundle conventions now say to check a new one by
+  hand.
+- The `.openknowledge.toml` key must be QUOTED. `okf-0.2-metadata = "error"`
+  unquoted is parsed as a TOML dotted key; the CLI exits 2 with
+  `unhandled kv part: string` and loses EVERY rule in the file, not just that
+  one. A raise that silently takes the whole config with it is the same failure
+  class as the filename finding above, which is why it is in the config header
+  and in the bundle conventions rather than only here.
+- With `okf-0.2-metadata` present, `openknowledge validate --spec 0.1` exits 2.
+  Deliberate coupling, recorded so a contributor debugging against 0.1 reads it
+  as a config-scope error rather than a rule failure.
+
+- `.openknowledge.toml`: `"okf-0.2-metadata"` and `okf-version` raised to error,
+  each with what it buys and the version it was measured against.
+  `markdown-syntax` stays at warn — its 30 findings are unclosed inline code
+  spans in prose, unchanged in count and location by this migration, and are
+  separate work. `scripts/check-bundle-policy.sh` is given both new rules, so
+  the raise is asserted to be IN EFFECT rather than merely present in a file.
+  Three mutants: an unquoted key, a severity downgraded to warn, and the
+  `okf-version` line deleted — each red, and the conforming config green.
+- `index.md`: `okf_version` is "0.2", and the non-normative reasoning section
+  loses its `timestamp` bullet for the two-field explanation plus the
+  false-freshness finding above. The v0.1 label is corrected in the four root
+  files that carried it (`README.md`, `ARCHITECTURE.md`, `AGENTS.md`,
+  `CLAUDE.md`) — until now `okf_version` said one thing and five prose sites
+  said another.
+- `rules/talos-base-bundle.md`: nine bullets become fourteen — `generated` and
+  its REQUIRED actor `by`, the date spelling, the generated-versus-verified
+  split, the honesty rule for `verified`, the `sources` mapping form, `decided`,
+  and the `status` vocabulary. Three of the additions exist because they are
+  measured traps rather than restatements of the spec: the rejected date-only
+  value, the unvalidated `resource` path, and the unquoted TOML key.
+- `decisions/index.md`: new §Status vocabulary carrying the MADR-to-OKF mapping
+  table, the `decided` contract, and why a decision concept has no `generated`
+  or `verified`. Its group headings keep the MADR words, which group by decision
+  state — the browsing axis the bodies and `history:` lists agree with. Step 2
+  of §Authoring convention names `decided` and says the template omits it on
+  purpose.
+- `decisions/template.md`: the date field is retired entirely rather than
+  carrying a `YYYY-MM-DD` placeholder, which is a value a copy can ship with and
+  which a date-typing parser chokes on. The instruction moves into the body
+  comment.
+- 18 concepts gained `sources[].resource` mappings (118 entries) and
+  `generated`; 24 ADRs gained `decided`; 25 `status` keys moved to the OKF
+  vocabulary. `history:` is untouched — nine lines across five ADRs record what
+  a status WAS on a date, and 0011's `status: proposed` citation stays verbatim
+  because it sits inside a dated verification banner. `reference/cluster-yaml.md`
+  keeps the five comment lines inside its `sources:` block, which a YAML
+  round-trip would have eaten; that is why the rewriter is line-oriented.
+
+One defect was found by running the scaffold rather than reading it, and fixed
+here because this change edits that line anyway: `task knowledge:new` wrote a
+two-byte file containing `--`. go-task's shell has no `--` end-of-options
+marker, so `printf -- '---\n...'` took the `--` AS its format string and
+discarded the rest. Latent since the target was written. Replaced with a
+heredoc, which is also legible in the Taskfile.
+
+Two calls are deliberately NOT made inside a mechanical migration and are
+raised for the maintainer instead: whether ADR-0010 and ADR-0011 still belong
+at `draft`. 0011 in particular records already-enforced invariants and says so
+in its own verification banner.
+
 ## 2026-08-15
 
 - `decisions/0022-cilium-observability-and-argocd-self-management.md`: addendum —
