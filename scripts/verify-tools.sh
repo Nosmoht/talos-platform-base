@@ -13,6 +13,12 @@
 
 set -euo pipefail
 
+# Runnable directly, so the Taskfile env: block does not cover it -- and that
+# block loses to an inherited value anyway. Unconditional, not `:-off`: the CLI
+# reads anything it does not recognise as ENABLED, so deferring to an ambient
+# value fails open on a typo. Reason for the opt-out itself: Taskfile.yml env:.
+export OPENKNOWLEDGE_TELEMETRY=off
+
 ROOT="$(git rev-parse --show-toplevel)"
 TOOLS_FILE="${ROOT}/.tool-versions"
 
@@ -35,9 +41,7 @@ extract_version() {
     kubeconform) kubeconform -v 2>/dev/null | sed -E 's/^v//' ;;
     yq)          yq --version 2>/dev/null | awk '{print $NF}' | sed -E 's/^v//' ;;
     # Same pipeline as Taskfile.yml's OK_GUARD, literally: two checks of one
-    # value must not disagree on the format. No --no-telemetry here — the
-    # flag does not exist before 0.12.0 (measured: 0.5.0 answers "unknown
-    # command"), and this probe must read a DRIFTED binary's version.
+    # value must not disagree on the format.
     openknowledge) openknowledge version 2>/dev/null | head -n1 | tr -d '[:space:]' | sed -E 's/^v//' ;;
     lychee)      lychee --version 2>/dev/null | awk '{print $2}' | sed -E 's/^v//' ;;
     # openspec --version emits a bare version token (verified against 1.6.0);

@@ -26,13 +26,19 @@ env:
   # auto-disabled when CI=true, verified in its dist/telemetry/index.js).
   # Explicit opt-out keeps LOCAL task runs network-quiet too.
   OPENSPEC_TELEMETRY: "0"
-  # openknowledge telemetry is ON by default (0.12.0) and has no on/off env
-  # var — only `--no-telemetry`, which is PERSISTENT rather than
-  # per-invocation: it writes `enabled: false` into the user's telemetry
-  # config. Pinning the config PATH into the checkout is what keeps a repo task
-  # from rewriting the operator's global setting, and stops an ambient value
-  # from redirecting that write somewhere of its own choosing. .work/ is the
-  # gitignored harness scratchpad.
+  # openknowledge telemetry is ON by default (0.12.0). Not `--no-telemetry`:
+  # that flag is persistent (it writes `enabled: false` into the operator's
+  # config) and absent before 0.12.0, so it cannot cover the version probes.
+  # `off` is upstream's documented spelling, and the CLI reads anything it does
+  # not recognise as ENABLED. This block is only the default for targets that
+  # run the CLI: measured, go-task's `env:` LOSES to an inherited value, so an
+  # ambient `OPENKNOWLEDGE_TELEMETRY=on` defeats it. What actually binds is the
+  # unconditional export in `OK_GUARD` and in `knowledge:install-cli`.
+  OPENKNOWLEDGE_TELEMETRY: "off"
+  # Backstop, not the control: with the export in place nothing is written
+  # here. If the opt-out ever stops working, this bounds the write to the
+  # gitignored checkout instead of the operator's home, where
+  # scripts/check-knowledge-gate-bite.sh can see it.
   OPENKNOWLEDGE_TELEMETRY_CONFIG: '{{.ROOT_DIR}}/.work/openknowledge-telemetry.json'
 
 vars:
@@ -92,13 +98,14 @@ vars:
   # renders a different block, and the fence's own advice ("regenerate") would
   # then rewrite AGENTS.md with it.
   OK_GUARD: |
+    # Beats an ambient value, which the env: block does not. Reason there.
+    export OPENKNOWLEDGE_TELEMETRY=off
     command -v openknowledge >/dev/null 2>&1 || { echo "ERROR: 'openknowledge' not installed — run 'task knowledge:install-cli'"; exit 1; }
     # Byte-identical pipeline to the openknowledge arm of
     # scripts/verify-tools.sh: two checks of one value must not disagree on the
-    # format. Deliberately no --no-telemetry — the flag postdates 0.5.0, and a
-    # probe that must read a DRIFTED binary cannot depend on the pinned
-    # version's flags. The env block contains where that costs a telemetry
-    # write.
+    # format. An env var keeps the probe parseable where a flag would not — but
+    # a binary predating the var still sends one event here, and that is the
+    # cost of being able to read a DRIFTED version at all.
     have="$(openknowledge version 2>/dev/null | head -n1 | tr -d '[:space:]' | sed -E 's/^v//')"
     [ "$have" = "{{.OPENKNOWLEDGE_VERSION}}" ] || { echo "ERROR: openknowledge '$have' != pinned '{{.OPENKNOWLEDGE_VERSION}}' — run 'task knowledge:install-cli' (and check PATH order)"; exit 1; }
 
@@ -576,7 +583,7 @@ tasks:
       # for the staleness gate.
       scripts/check-knowledge-gate-bite.sh
       scripts/check-bundle-policy.sh knowledge link-target=error rule-catalog=error
-      openknowledge --no-telemetry validate knowledge/
+      openknowledge validate knowledge/
       # Offline link-resolution gate: intra-repo markdown links must resolve.
       # Scope: the bundle, root orientation files, contracts/. CHANGELOG.md is
       # a historical record and excluded by design. The two tofu READMEs ship
@@ -594,7 +601,7 @@ tasks:
       {{.OK_GUARD}}
       # --yes: without it the CLI prompts and, when declined, still exits 0 —
       # the target would report success while having written nothing.
-      openknowledge --no-telemetry prompt rules apply {{.OK_RULES}} \
+      openknowledge prompt rules apply {{.OK_RULES}} \
         --path knowledge --file AGENTS.md --target generic --yes
       grep -q '<!-- openknowledge:rules:start -->' AGENTS.md || {
         echo "FAIL: no managed block in AGENTS.md after apply"; exit 1; }
@@ -616,7 +623,7 @@ tasks:
       # CLI's — a renamed subcommand exits 2 and this target still passes.
       # The emptiness assertion below is the only thing that catches that.
       err="$(mktemp)"
-      gen="$(openknowledge --no-telemetry prompt rules apply {{.OK_RULES}} \
+      gen="$(openknowledge prompt rules apply {{.OK_RULES}} \
         --path knowledge --file AGENTS.md --target generic --dry-run 2>"$err" | extract_block)"
       cur="$(extract_block < AGENTS.md)"
 
@@ -669,6 +676,10 @@ tasks:
     desc: Install pinned openknowledge + lychee binaries into ~/.local/bin (checksum-verified)
     cmd: |
       set -e
+      # No OK_GUARD here (it installs the binary the guard checks), so the
+      # export it carries has to be repeated: the closing `version` echo is a
+      # fresh binary's FIRST run, the one that writes the telemetry config.
+      export OPENKNOWLEDGE_TELEMETRY=off
       os="{{OS}}"; arch="{{ARCH}}"
       case "$os-$arch" in
         darwin-arm64) ok_sha="{{.OPENKNOWLEDGE_SHA256_DARWIN_ARM64}}"; ly_sha="{{.LYCHEE_SHA256_DARWIN_ARM64}}"; ok_asset="openknowledge_darwin_arm64.tar.gz"; ly_asset="lychee-aarch64-apple-darwin.tar.gz" ;;

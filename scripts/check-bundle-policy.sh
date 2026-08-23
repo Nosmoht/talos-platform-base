@@ -16,6 +16,11 @@
 
 set -euo pipefail
 
+# Runnable directly, so the Taskfile env: block does not cover it, and that
+# block loses to an inherited value. Unconditional for the reason
+# scripts/verify-tools.sh states. Reason for the opt-out: Taskfile.yml env:.
+export OPENKNOWLEDGE_TELEMETRY=off
+
 bundle="${1:?usage: check-bundle-policy.sh <bundle-dir> <rule=severity>...}"
 shift
 [ -d "$bundle" ] || { echo "ERROR: $bundle is not a directory" >&2; exit 2; }
@@ -28,7 +33,7 @@ err="$(mktemp)"; raw="$(mktemp)"
 trap 'rm -f "$err" "$raw"' EXIT
 
 st=0
-openknowledge --no-telemetry validate --format json "$bundle" >"$raw" 2>"$err" || st=$?
+openknowledge validate --format json "$bundle" >"$raw" 2>"$err" || st=$?
 # Exit 1 means findings, which is a verdict about content and not our concern.
 # Anything higher means the run itself failed.
 if [ "$st" -gt 1 ]; then
