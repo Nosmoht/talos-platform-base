@@ -49,10 +49,12 @@ vars:
   MCP_GITHUB_VERSION: 0.33.0
   MCP_K8S_VERSION: 0.0.60
   MCP_TALOS_VERSION: 1.1.0
-  # knowledge:* tool pins — KEEP IN SYNC with .tool-versions. NOT with the
-  # docs-lint.yml env block: that pins only `task`, and these two reach CI
-  # through `task knowledge:install-cli`. Checksums from the projects'
-  # released checksum files. openknowledge: all four verified 2026-08-23
+  # knowledge:* tool pins. Which files must move together is stated once, in
+  # .tool-versions' update-workflow header — not restated here, because a
+  # second copy is a second thing to go stale. `task dev:verify-pins` asserts
+  # these vars against that file.
+  # Checksums from the projects' released checksum files. openknowledge: all
+  # four verified 2026-08-23
   # against the v0.12.0 checksums.txt. lychee: the three original constants
   # 2026-07-11, LYCHEE_SHA256_LINUX_ARM64 2026-08-23 against that asset's
   # published .sha256 sidecar. The linux-arm64 arm is the one no maintainer or
@@ -568,12 +570,10 @@ tasks:
       # `command -v`.
       {{.OK_GUARD}}
       command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
-      # A config the CLI cannot find yields exit 0 and an empty policy, so
-      # every raise degrades to the spec default and this gate reports green
-      # while checking nothing — that is how the pre-0.10 filename went
-      # unnoticed. The checker asserts the resolved path and the severities;
-      # the bite test proves the checker still discriminates, the same pairing
-      # spec:validate uses for the staleness gate.
+      # Why this gate needs a gate: scripts/check-bundle-policy.sh's header.
+      # The bite test runs first so the checker is known to discriminate
+      # before its verdict is trusted — the pairing spec:validate already uses
+      # for the staleness gate.
       scripts/check-knowledge-gate-bite.sh
       scripts/check-bundle-policy.sh knowledge link-target=error rule-catalog=error
       openknowledge --no-telemetry validate knowledge/

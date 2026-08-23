@@ -1,14 +1,13 @@
 # openknowledge CLI configuration for the knowledge/ OKF bundle.
 #
-# Must be a dotfile AND sit inside the bundle directory. Measured against
-# v0.12.0 (2026-08-23): the pre-0.10 filename here, and a dotfile one level
-# up, are both silently NOT read — exit 0 with an empty policy, every raise
-# below degraded back to the spec default, nothing red. Discovery is
-# bundle-relative, not cwd-relative. Not tested, so not claimed: whether a
-# user-level config or an explicit flag can also supply policy.
-# `task knowledge:validate` asserts the loaded policy before it validates, so
-# a future rename fails the gate instead of quietly disarming it. Measurement
-# and rationale: knowledge/log.md, 2026-08-23.
+# Must be a dotfile AND sit inside the bundle directory: measured against
+# v0.12.0 (2026-08-23) that the pre-0.10 filename here, and a dotfile one
+# level up, are both silently NOT read. Discovery is bundle-relative, not
+# cwd-relative. Not tested, so not claimed: whether a user-level config or an
+# explicit flag can also supply policy.
+# Why a config the CLI does not read is dangerous rather than merely
+# ineffective, and what asserts it: scripts/check-bundle-policy.sh's header.
+# The measurement itself: knowledge/log.md, 2026-08-23.
 #
 # link-target is raised from the spec default (warn) to error so that
 # `openknowledge validate` is a BINDING intra-bundle link gate: a broken

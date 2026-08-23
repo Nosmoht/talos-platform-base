@@ -20,8 +20,9 @@ bundle="${1:?usage: check-bundle-policy.sh <bundle-dir> <rule=severity>...}"
 shift
 [ -d "$bundle" ] || { echo "ERROR: $bundle is not a directory" >&2; exit 2; }
 
+# python3 rather than jq, for the reason dev:verify-pins states in Taskfile.yml.
 command -v python3 >/dev/null 2>&1 || {
-  echo "ERROR: python3 required (jq is not pinned in .tool-versions)" >&2; exit 2; }
+  echo "ERROR: python3 required by $0" >&2; exit 2; }
 
 err="$(mktemp)"; raw="$(mktemp)"
 trap 'rm -f "$err" "$raw"' EXIT
