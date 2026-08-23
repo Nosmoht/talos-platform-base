@@ -21,9 +21,20 @@ set -euo pipefail
 # scripts/verify-tools.sh states. Reason for the opt-out: Taskfile.yml env:.
 export OPENKNOWLEDGE_TELEMETRY=off
 
-bundle="${1:?usage: check-bundle-policy.sh <bundle-dir> <rule=severity>...}"
+bundle="${1:?usage: check-bundle-policy.sh <bundle-dir> [--spec <v>] <rule=severity>...}"
 shift
 [ -d "$bundle" ] || { echo "ERROR: $bundle is not a directory" >&2; exit 2; }
+
+# The caller's --spec is forwarded, so this gate certifies the policy under the
+# SAME spec resolution as the run it gates. Without it the two invocations sit
+# three lines apart resolving the spec differently, and the first CLI whose
+# `latest` moves off the pin makes this script report a config error for a spec
+# move -- exactly the misdiagnosis this file's header exists to prevent.
+spec=()
+if [ "${1:-}" = "--spec" ]; then
+  [ -n "${2:-}" ] || { echo "ERROR: --spec needs a value" >&2; exit 2; }
+  spec=(--spec "$2"); shift 2
+fi
 
 # python3 rather than jq, for the reason dev:verify-pins states in Taskfile.yml.
 command -v python3 >/dev/null 2>&1 || {
@@ -33,7 +44,7 @@ err="$(mktemp)"; raw="$(mktemp)"
 trap 'rm -f "$err" "$raw"' EXIT
 
 st=0
-openknowledge validate --format json "$bundle" >"$raw" 2>"$err" || st=$?
+openknowledge validate "${spec[@]}" --format json "$bundle" >"$raw" 2>"$err" || st=$?
 # Exit 1 means findings, which is a verdict about content and not our concern.
 # Anything higher means the run itself failed.
 if [ "$st" -gt 1 ]; then
@@ -70,5 +81,17 @@ missing = [w for w in wanted if overrides.get(w.split("=", 1)[0]) != w.split("="
 if missing:
     print(f"FAIL: raised rules not in effect: {', '.join(missing)}.")
     print(f"      Policy actually in effect: {overrides}")
+    sys.exit(1)
+
+# Parity, the other direction. Without it the caller's argument list is the only
+# thing naming the rule set, so dropping a rule from the config AND from that
+# list is a green run enforcing strictly less. The config is the artifact a
+# reader trusts; the caller must demand everything it raises.
+asked = {w.split("=", 1)[0] for w in wanted}
+unasked = sorted(r for r, sev in overrides.items() if sev == "error" and r not in asked)
+if unasked:
+    print(f"FAIL: the config raises rules the caller does not demand: {', '.join(unasked)}.")
+    print("      Add them to the argument list, or lower them in the config —")
+    print("      a raise nothing asserts is a raise nothing keeps.")
     sys.exit(1)
 PY

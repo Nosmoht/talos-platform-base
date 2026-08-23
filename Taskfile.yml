@@ -69,6 +69,10 @@ vars:
   # constants above, the openknowledge tarball is flat as the install line
   # assumes, and lychee's nested binary is found by the same `find`.
   OPENKNOWLEDGE_VERSION: 0.12.0
+  # The OKF spec knowledge:validate pins. Raising it is a deliberate migration,
+  # not a side effect of an openknowledge bump: knowledge/index.md declares the
+  # same literal and scripts/check-knowledge-frontmatter.sh asserts it is there.
+  OKF_SPEC: "0.2"
   OPENKNOWLEDGE_SHA256_DARWIN_ARM64: 24e5fe37f87dae647121b98dc708997206906558413b7620617f0a8690da0e1d
   OPENKNOWLEDGE_SHA256_DARWIN_AMD64: 8f20fe1c09c7ac69124f020f219f1d9b61c92aaac6bb156704b8886a38bed2aa
   OPENKNOWLEDGE_SHA256_LINUX_AMD64: 614e317499eb29f8367edbba78b4c81a1a7c895c3203c5b9ef861a9b1875f108
@@ -582,17 +586,22 @@ tasks:
       # before its verdict is trusted — the pairing spec:validate already uses
       # for the staleness gate.
       scripts/check-knowledge-gate-bite.sh
-      scripts/check-bundle-policy.sh knowledge link-target=error rule-catalog=error \
-        okf-0.2-metadata=error okf-version=error
-      # --spec pinned rather than left at the CLI default of `latest`: the gate's
-      # meaning becomes a property of this repo instead of whatever the installed
-      # binary resolves latest to. Stated cost: it also removes okf-version's only
-      # production trigger, since the declared and validated versions are now two
-      # bindings of the same literal — after this, that rule fires only if someone
-      # hand-edits knowledge/index.md. A future CLI whose latest moves to 0.3 then
-      # surfaces as a --spec value this repo has to raise on purpose, which is the
-      # intent.
-      openknowledge validate --spec 0.2 knowledge/
+      scripts/check-bundle-policy.sh knowledge --spec {{.OKF_SPEC}} \
+        link-target=error rule-catalog=error okf-0.2-metadata=error okf-version=error
+      # Same pairing one level down: the frontmatter gate covers what
+      # `openknowledge validate` provably does not (its header lists the six), and
+      # its own bite check runs first for the same reason as the one above.
+      scripts/check-knowledge-frontmatter.test.sh
+      scripts/check-knowledge-frontmatter.sh knowledge
+      # --spec pinned rather than left at the CLI default of `latest`, so the gate's
+      # meaning is a property of this repo. Why that does NOT make okf-version
+      # self-binding, and what does: knowledge/.openknowledge.toml's header.
+      openknowledge validate --spec {{.OKF_SPEC}} knowledge/ || {
+        echo "FAIL: the OKF v{{.OKF_SPEC}} field contract is BINDING here (okf-0.2-metadata = error)."
+        echo "      'sources' entries are '- resource: <path>'; dates are quoted ISO 8601"
+        echo "      datetimes; decision concepts carry 'decided', never 'generated'."
+        echo "      The contract: knowledge/rules/talos-base-bundle.md"
+        exit 1; }
       # Offline link-resolution gate: intra-repo markdown links must resolve.
       # Scope: the bundle, root orientation files, contracts/. CHANGELOG.md is
       # a historical record and excluded by design. The two tofu READMEs ship
@@ -672,7 +681,13 @@ tasks:
   knowledge:new:
     desc: "Scaffold a new knowledge concept (usage: task knowledge:new FILE=reference/foo.md TYPE=reference)"
     requires:
-      vars: [FILE, TYPE]
+      vars:
+        - name: FILE
+        # `decision` is deliberately absent: an ADR carries `decided` and neither
+        # `generated` nor `sources`, which is the opposite of what this scaffold
+        # emits. Copy knowledge/decisions/template.md instead.
+        - name: TYPE
+          enum: [architecture, reference, workflow, glossary, project]
     cmd: |
       set -e
       target="knowledge/{{.FILE}}"

@@ -29,32 +29,23 @@
 # default. [rules].paths is for ADDITIONAL directories.
 
 # okf-0.2-metadata is raised so the v0.2 field contract is BINDING rather than
-# advisory: a bare `sources` string, a `generated` without its REQUIRED `by`, a
-# date that is not a full ISO 8601 datetime, or a `status` outside
-# draft/stable/deprecated fails validation instead of scrolling past as a
-# warning. Measured against v0.12.0 (2026-08-23): 143 findings before the
-# migration, 0 after.
+# advisory. The key MUST be quoted: unquoted it is read as a TOML dotted key and
+# the CLI exits 2, dropping EVERY rule in this file rather than just that one.
+# With it present, `openknowledge validate --spec 0.1` exits 2 as a config-scope
+# error, which is what a contributor debugging against 0.1 will see.
 #
-# NOTE, and this is the one that costs a debugging session: the key MUST be
-# quoted. `okf-0.2-metadata = "error"` unquoted is parsed as a TOML dotted key
-# and the CLI exits 2 with `unhandled kv part: string`, losing EVERY rule in
-# this file rather than just that one.
+# okf-version compares the DECLARED version to the validated one. It is raised
+# for the mismatch case, but it cannot see an ABSENT declaration and
+# knowledge:validate pins --spec, so it is not what binds the two literals
+# together. scripts/check-knowledge-frontmatter.sh is: it asserts
+# knowledge/index.md declares "0.2".
 #
-# Spec coupling, deliberate: with this rule present,
-# `openknowledge validate --spec 0.1 knowledge/` exits 2
-# (`validation rule "okf-0.2-metadata" is not defined for OKF 0.1`). A
-# contributor debugging against 0.1 sees that, not a rule failure.
+# markdown-syntax stays at the spec default of warn: its findings are unclosed
+# inline code spans in prose, a defect class this bundle's field migration does
+# not touch, and raising it here would red a required check on them.
 #
-# okf-version is raised so a bundle declaring one OKF version while being
-# validated against another fails rather than warns. `knowledge:validate` pins
-# `--spec 0.2`, which leaves this rule with no production trigger beyond a
-# hand-edit of `knowledge/index.md`; it is kept as the assertion that the two
-# stay bound. Re-verified against v0.12.0 (2026-08-23).
-#
-# markdown-syntax stays at the spec default of warn. 30 findings today, all
-# unclosed inline code spans in prose, tracked as separate work — raising it
-# here would red a required check on a defect class this bundle's field
-# migration does not touch.
+# The migration measurements behind all of this — counts, probe tables, the
+# rejected alternatives — are in knowledge/log.md under 2026-08-23, not here.
 
 [validation.rules]
 link-target = "error"
