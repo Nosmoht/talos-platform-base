@@ -582,8 +582,17 @@ tasks:
       # before its verdict is trusted — the pairing spec:validate already uses
       # for the staleness gate.
       scripts/check-knowledge-gate-bite.sh
-      scripts/check-bundle-policy.sh knowledge link-target=error rule-catalog=error
-      openknowledge validate knowledge/
+      scripts/check-bundle-policy.sh knowledge link-target=error rule-catalog=error \
+        okf-0.2-metadata=error okf-version=error
+      # --spec pinned rather than left at the CLI default of `latest`: the gate's
+      # meaning becomes a property of this repo instead of whatever the installed
+      # binary resolves latest to. Stated cost: it also removes okf-version's only
+      # production trigger, since the declared and validated versions are now two
+      # bindings of the same literal — after this, that rule fires only if someone
+      # hand-edits knowledge/index.md. A future CLI whose latest moves to 0.3 then
+      # surfaces as a --spec value this repo has to raise on purpose, which is the
+      # intent.
+      openknowledge validate --spec 0.2 knowledge/
       # Offline link-resolution gate: intra-repo markdown links must resolve.
       # Scope: the bundle, root orientation files, contracts/. CHANGELOG.md is
       # a historical record and excluded by design. The two tofu READMEs ship
