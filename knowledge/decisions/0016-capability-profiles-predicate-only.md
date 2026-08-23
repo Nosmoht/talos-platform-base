@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: Capability profiles carry only their presence_predicate args — drop iommu=pt"
 description: "Removes iommu=pt from the iommu provisioning profile: it is host-DMA tuning, not part of the iommu-enabled contract, and a base-owned profile karg costs the consumer a freedom it never agreed to."
-status: accepted
+status: stable
 id: base:capability-profile-predicate-only
 decided: "2026-07-15T00:00:00Z"
 deciders:

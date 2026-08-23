@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: No wholesale Make→go-task migration — the Makefile dissolves with substrate-only"
 description: "Declined a wholesale Make→go-task migration because most Makefile targets were to exit with the substrate-only ablation; superseded by the Makefile-retirement ADR once Phase-3 landed."
-status: superseded
+status: deprecated
 id: base:task-runner-consolidation
 superseded_by:
   - /decisions/0012-makefile-retirement.md

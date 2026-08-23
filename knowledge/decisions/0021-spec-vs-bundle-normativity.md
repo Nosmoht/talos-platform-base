@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: OpenSpec specs are the sole normative artifact for schema and module-interface contracts"
 description: "openspec/specs/cluster-yaml-sot and openspec/specs/module-interface-contract are the sole normative artifacts for cluster.yaml schema shape and talos-cluster module variable/output contracts, per the owner's issue #177 decision, while the OKF reference concepts thin to narrative pointers and one hand-maintained duplication (the module README) remains, gated only at name level."
-status: accepted
+status: stable
 id: base:spec-vs-bundle-normativity
 decided: "2026-07-22T00:00:00Z"
 deciders:

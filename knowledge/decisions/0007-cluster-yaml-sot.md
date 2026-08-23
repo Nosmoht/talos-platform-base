@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: Module-delivered Cilium + `cluster.yaml` as the declarative cluster SoT"
 description: "Delivers Cilium as a module inlineManifest seed (disabling the Talos default CNI) and makes cluster.yaml the declarative cluster Source-of-Truth, with the consumer's OpenTofu root as a thin yamldecode shim."
-status: accepted
+status: stable
 id: base:cluster-yaml-sot
 decided: "2026-06-06T00:00:00Z"
 deciders:

@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: <Short, decision-shaped title>"
 description: "<One sentence stating the decision outcome factually.>"
-status: proposed
+status: draft
 id: base:<short-kebab-id>
 deciders:
   - <name or role>

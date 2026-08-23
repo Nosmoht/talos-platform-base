@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: Node Capability Composition (γ') — composable per-node features over monolithic classes"
 description: "Replaces monolithic node classes with composable per-node hardware capabilities — explicit base-owned provisioning profiles decoupled from detected features, with boot kernel args baked into Image Factory schematics."
-status: accepted
+status: stable
 id: base:node-capability-composition
 decided: "2026-06-20T00:00:00Z"
 deciders:

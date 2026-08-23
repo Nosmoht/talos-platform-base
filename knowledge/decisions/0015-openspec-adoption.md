@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: OpenSpec as the behavioral-requirements surface"
 description: "The base adopts OpenSpec with a directly-authored backfill of 14 substrate capability specs; openspec/specs/ is normative for behavioral requirements, scoped to consumer-facing platform behavior."
-status: accepted
+status: stable
 id: base:openspec-adoption
 decided: "2026-07-13T00:00:00Z"
 deciders:
@@ -13,7 +13,7 @@ supersedes: []
 # Partially superseded by 0021 (§Ownership model + §"SoT map vs
 # knowledge/reference/" scoped, not retracted) — recorded via the dated
 # in-body banner + 0021's `supersedes`, per the 0003/0004 partial-
-# supersession convention (status stays accepted; a populated
+# supersession convention (status stays stable; a populated
 # superseded_by is reserved for FULL supersession, cf. 0005/0008).
 superseded_by: []
 related:

@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: Namespace Ownership in the Rendered Manifests Pattern"
 description: "Makes the per-component ArgoCD Application the sole lifecycle owner of each platform namespace, so cascade-deletion from double-tracking is structurally impossible."
-status: accepted
+status: stable
 id: base:namespace-ownership-rendered-manifests
 decided: "2026-05-18T00:00:00Z"
 date-note: choreography amended 2026-05-18 after second incident

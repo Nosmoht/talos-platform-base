@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: The Day-0 ArgoCD kubectl apply delivers CRDs and nothing else"
 description: "The module's post-health-gate kubectl apply is projected down to CustomResourceDefinition documents and loses --force-conflicts, ending a Day-2 convergence that pushed chart defaults over ArgoCD's own state and force-took field-manager ownership of argocd-cm and argocd-rbac-cm."
-status: accepted
+status: stable
 id: base:argocd-crd-apply-scope
 decided: "2026-08-14T00:00:00Z"
 deciders:

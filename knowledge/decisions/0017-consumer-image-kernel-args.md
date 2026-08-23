@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: Consumer-supplied schematic extra_kernel_args, cross-source-scoped"
 description: "Adds an optional per-image extra_kernel_args input reaching the Image-Factory schematic's UKI-correct kernel-arg sink, and re-scopes the kernel-arg conflict guard to cross-source collisions only, closing a consumer footgun without a bottomless key allowlist."
-status: accepted
+status: stable
 id: base:consumer-image-kernel-args
 decided: "2026-07-15T00:00:00Z"
 deciders:

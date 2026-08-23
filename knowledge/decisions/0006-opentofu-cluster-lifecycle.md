@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: OpenTofu module is the sole Talos cluster-lifecycle path"
 description: "Replaces the make/5-axis pipeline entirely with the backend- and identity-agnostic OpenTofu module tofu/modules/talos-cluster as the sole Talos cluster-lifecycle path."
-status: accepted
+status: stable
 id: base:opentofu-cluster-lifecycle
 decided: "2026-06-02T00:00:00Z"
 deciders:

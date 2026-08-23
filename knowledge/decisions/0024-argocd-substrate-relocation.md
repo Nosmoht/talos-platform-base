@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: Steady-state ArgoCD lives at kubernetes/substrate/ and ships in the OCI artifact"
 description: "The steady-state ArgoCD render relocates from kubernetes/base/infrastructure/argocd/ to kubernetes/substrate/argocd/, the now-empty kubernetes/base/ tree is retired, and the component's consumable files (namespace + rendered manifests + CRDs) are added to the OCI tarball allowlist — closing the gap where the component existed in git but was unconsumable at every published tag."
-status: accepted
+status: stable
 id: base:argocd-substrate-relocation
 decided: "2026-07-29T00:00:00Z"
 deciders:

@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: Shared Render Artifact as the Cross-Frontend Source of Truth for Per-Node Talos Config"
 description: "Adopted a shared JSON render artifact as the single per-node Talos patch-composition source for both provisioning frontends; superseded when the OpenTofu cutover removed the make frontend."
-status: superseded
+status: deprecated
 id: base:shared-render-artifact
 superseded_by:
   - /decisions/0006-opentofu-cluster-lifecycle.md

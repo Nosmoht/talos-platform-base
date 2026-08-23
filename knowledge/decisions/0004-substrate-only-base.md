@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: Substrate-Only Base + Separate Apps Repository"
 description: "Reduces the base to substrate only (Talos + Cilium + ArgoCD + cert-approver glue); all other platform offerings move to the talos-platform-apps catalog or dissolve into apps-CI Conftest + consumer Kyverno."
-status: accepted
+status: stable
 id: base:substrate-only-base
 decided: "2026-05-27T00:00:00Z"
 history:

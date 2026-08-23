@@ -36,6 +36,30 @@ Frontmatter is canonical for status and dates.
 - [ADR: Shared Render Artifact as the Cross-Frontend Source of Truth for Per-Node Talos Config](0005-shared-render-artifact.md) - shared JSON render artifact for per-node Talos config composition; superseded by [0006-opentofu-cluster-lifecycle.md](0006-opentofu-cluster-lifecycle.md) (superseded)
 - [ADR: No wholesale Make→go-task migration — the Makefile dissolves with substrate-only](0008-task-runner-consolidation.md) - no wholesale Make→go-task migration; superseded by [0012-makefile-retirement.md](0012-makefile-retirement.md) (superseded)
 
+## Status vocabulary
+
+Frontmatter `status` uses the OKF v0.2 lifecycle values; the MADR words this
+bundle was authored with survive in ADR bodies and `history:` entries, which
+are records and are not rewritten. The MADR words are also what the group
+headings above still use, because they group by decision state — the useful
+browsing axis, and the one the bodies and `history:` lists agree with.
+
+| ADR record says | frontmatter `status` |
+|---|---|
+| accepted | `stable` |
+| proposed | `draft` |
+| superseded | `deprecated` |
+
+The decision's own date lives in `decided`. Decision concepts carry no
+`generated` and no `verified`: they derive from no `sources`, so there is
+nothing to have been read against, and their content-change date is not
+recorded anywhere reliable — the dated in-body banners carry that signal
+instead.
+
+A partial supersession leaves `status: stable` and an empty `superseded_by`,
+recorded by the dated in-body banner plus the superseding ADR's `supersedes`
+with a `§section` qualifier. `deprecated` is reserved for full supersession.
+
 ## Authoring convention
 
 1. Copy [template.md](template.md) to the next free `NNNN-<slug>.md` in this

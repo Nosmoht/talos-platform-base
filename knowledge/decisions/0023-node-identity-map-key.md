@@ -2,7 +2,7 @@
 type: decision
 title: "ADR: Node identity is the map key — one definition place, generated lists"
 description: "var.nodes becomes a map keyed by node name, every Talos-facing list becomes a name-ordered projection of it, and the identity gaps the list model hid (node-key canonicality, first-label collisions, FQDN registration, odd controlplane count) become plan-time validations."
-status: accepted
+status: stable
 id: base:node-identity-map-key
 decided: "2026-07-26T00:00:00Z"
 deciders:
