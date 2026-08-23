@@ -26,6 +26,11 @@ env:
   # auto-disabled when CI=true, verified in its dist/telemetry/index.js).
   # Explicit opt-out keeps LOCAL task runs network-quiet too.
   OPENSPEC_TELEMETRY: "0"
+  # openknowledge has no env-var equivalent (measured against 0.12.0: only
+  # OPENKNOWLEDGE_TELEMETRY_CONFIG, a config PATH). Its telemetry is on by
+  # default, so every knowledge:* call site passes `--no-telemetry`. Note the
+  # flag is persistent, not per-invocation: the first run writes
+  # `enabled: false` into the user's telemetry config and later runs are no-ops.
 
 vars:
   # Declarative cluster SoT consumed by bootstrap:* (override per invocation:
@@ -50,10 +55,12 @@ vars:
   OPENKNOWLEDGE_SHA256_DARWIN_ARM64: 24e5fe37f87dae647121b98dc708997206906558413b7620617f0a8690da0e1d
   OPENKNOWLEDGE_SHA256_DARWIN_AMD64: 8f20fe1c09c7ac69124f020f219f1d9b61c92aaac6bb156704b8886a38bed2aa
   OPENKNOWLEDGE_SHA256_LINUX_AMD64: 614e317499eb29f8367edbba78b4c81a1a7c895c3203c5b9ef861a9b1875f108
+  OPENKNOWLEDGE_SHA256_LINUX_ARM64: f004196c21de7fcb0855ee2718a386da6f947de68328b2ad3334fa5921031381
   LYCHEE_VERSION: 0.24.2
   LYCHEE_SHA256_DARWIN_ARM64: c9d3740ea2d891854d37116c9fba840f37b6e7c89d330e7db84ac333631c4977
   LYCHEE_SHA256_DARWIN_AMD64: 887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978
   LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+  LYCHEE_SHA256_LINUX_ARM64: 91a7bd65685da41b90ccb9bc867a3d649a7818042dae04ff405e55a25bddee4c
   # spec:*/docs:* tool pins (openspec, markdownlint-cli) live in
   # package.json + package-lock.json — installed via `npm ci
   # --ignore-scripts`. Scope of the control: the lockfile's integrity
@@ -78,7 +85,7 @@ vars:
     # Normalize the same way scripts/verify-tools.sh does — it strips a leading
     # "v" from this exact command, and two checks of one value must not
     # disagree on the format.
-    have="$(openknowledge version 2>/dev/null | head -n1 | tr -d '[:space:]' | sed -E 's/^v//')"
+    have="$(openknowledge --no-telemetry version 2>/dev/null | head -n1 | tr -d '[:space:]' | sed -E 's/^v//')"
     [ "$have" = "{{.OPENKNOWLEDGE_VERSION}}" ] || { echo "ERROR: openknowledge '$have' != pinned '{{.OPENKNOWLEDGE_VERSION}}' — run 'task knowledge:install-cli' (and check PATH order)"; exit 1; }
 
 tasks:
@@ -557,7 +564,7 @@ tasks:
       # in effect, so a config that is found but whose keys the CLI stopped
       # honouring also turns red. grep, not jq: jq is unpinned and its
       # availability is not guaranteed (see dev:verify-pins).
-      pol="$(openknowledge validate --format json knowledge/ 2>/dev/null | tr -d ' \n')"
+      pol="$(openknowledge --no-telemetry validate --format json knowledge/ 2>/dev/null | tr -d ' \n')"
       for want in '"configPath"' '"link-target":"error"' '"rule-catalog":"error"'; do
         case "$pol" in
           *"$want"*) ;;
@@ -566,7 +573,7 @@ tasks:
              echo "      See the file's own header for the discovery rules."; exit 1 ;;
         esac
       done
-      openknowledge validate knowledge/
+      openknowledge --no-telemetry validate knowledge/
       # Offline link-resolution gate: intra-repo markdown links must resolve.
       # Scope: the bundle, root orientation files, contracts/. CHANGELOG.md is
       # a historical record and excluded by design. The two tofu READMEs ship
@@ -584,7 +591,7 @@ tasks:
       {{.OK_GUARD}}
       # --yes: without it the CLI prompts and, when declined, still exits 0 —
       # the target would report success while having written nothing.
-      openknowledge prompt rules apply {{.OK_RULES}} \
+      openknowledge --no-telemetry prompt rules apply {{.OK_RULES}} \
         --path knowledge --file AGENTS.md --target generic --yes
       grep -q '<!-- openknowledge:rules:start -->' AGENTS.md || {
         echo "FAIL: no managed block in AGENTS.md after apply"; exit 1; }
@@ -606,7 +613,7 @@ tasks:
       # CLI's — a renamed subcommand exits 2 and this target still passes.
       # The emptiness assertion below is the only thing that catches that.
       err="$(mktemp)"
-      gen="$(openknowledge prompt rules apply {{.OK_RULES}} \
+      gen="$(openknowledge --no-telemetry prompt rules apply {{.OK_RULES}} \
         --path knowledge --file AGENTS.md --target generic --dry-run 2>"$err" | extract_block)"
       cur="$(extract_block < AGENTS.md)"
 
@@ -664,6 +671,7 @@ tasks:
         darwin-arm64) ok_sha="{{.OPENKNOWLEDGE_SHA256_DARWIN_ARM64}}"; ly_sha="{{.LYCHEE_SHA256_DARWIN_ARM64}}"; ok_asset="openknowledge_darwin_arm64.tar.gz"; ly_asset="lychee-aarch64-apple-darwin.tar.gz" ;;
         darwin-amd64) ok_sha="{{.OPENKNOWLEDGE_SHA256_DARWIN_AMD64}}"; ly_sha="{{.LYCHEE_SHA256_DARWIN_AMD64}}"; ok_asset="openknowledge_darwin_amd64.tar.gz"; ly_asset="lychee-x86_64-apple-darwin.tar.gz" ;;
         linux-amd64)  ok_sha="{{.OPENKNOWLEDGE_SHA256_LINUX_AMD64}}";  ly_sha="{{.LYCHEE_SHA256_LINUX_AMD64}}";  ok_asset="openknowledge_linux_amd64.tar.gz"; ly_asset="lychee-x86_64-unknown-linux-gnu.tar.gz" ;;
+        linux-arm64)  ok_sha="{{.OPENKNOWLEDGE_SHA256_LINUX_ARM64}}";  ly_sha="{{.LYCHEE_SHA256_LINUX_ARM64}}";  ok_asset="openknowledge_linux_arm64.tar.gz"; ly_asset="lychee-aarch64-unknown-linux-gnu.tar.gz" ;;
         *) echo "ERROR: unsupported platform $os-$arch — install openknowledge {{.OPENKNOWLEDGE_VERSION}} + lychee {{.LYCHEE_VERSION}} manually"; exit 1 ;;
       esac
       # sha256sum on Linux, shasum on macOS — match whichever is present so
@@ -687,7 +695,7 @@ tasks:
       # subsequent steps — persist it so later `task *:validate` steps
       # resolve the binaries. No-op outside GitHub Actions.
       [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      echo "Installed openknowledge $("$HOME/.local/bin/openknowledge" version) + lychee {{.LYCHEE_VERSION}} to ~/.local/bin"
+      echo "Installed openknowledge $("$HOME/.local/bin/openknowledge" --no-telemetry version) + lychee {{.LYCHEE_VERSION}} to ~/.local/bin"
       echo "Verify pins: task dev:verify-tools"
 
   # ===========================================================================

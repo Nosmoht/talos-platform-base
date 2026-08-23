@@ -40,6 +40,15 @@
   saying so, because it reads as redundant otherwise.
   `reference/tasks.md` had drifted (its rules-apply row named the old command).
   The other two concepts were re-read against their sources and needed no edit.
+  Two decisions taken with the bump, both recorded so the next one does not
+  re-derive them: `linux-arm64` joins the checksum set as a fourth platform
+  (both upstream projects publish the asset, and the openknowledge tarball
+  ships the binary flat like the others), and every `openknowledge` call site
+  passes `--no-telemetry`. 0.12.0 sends anonymous usage telemetry by default
+  and offers no env-var switch, only that flag — which is persistent, not
+  per-invocation: the first run writes `enabled: false` into the user's
+  telemetry config. This mirrors the `OPENSPEC_TELEMETRY` opt-out the Taskfile
+  already carries for the sibling CLI.
   The re-verification set is scoped to concepts whose subject the change falls
   within, not to every concept listing a touched file in `sources`; twelve
   concepts list `Taskfile.yml`, and dating all of them would record reviews
