@@ -13,6 +13,12 @@
 # passes every red case, so the conforming input is what separates a working
 # detector from a broken one.
 #
+# Scenario 7 checks a second silent failure with the same shape: the telemetry
+# opt-out. It is an env var, so a release that renames or stops honouring it
+# produces no error and no exit-code change -- egress simply resumes. The
+# scenario is two-sided, because a one-sided assertion passes on a probe that
+# could never have detected a write.
+#
 # Runs offline, mutates nothing outside its temp dir. Exit 0 = every scenario
 # behaved, 1 = the gate regressed, 2 = environment error.
 
@@ -23,6 +29,8 @@ gate="$repo_root/scripts/check-bundle-policy.sh"
 [ -x "$gate" ] || { echo "ERROR: $gate missing or not executable" >&2; exit 2; }
 command -v openknowledge >/dev/null 2>&1 || {
   echo "ERROR: openknowledge not installed -- run 'task knowledge:install-cli'" >&2; exit 2; }
+# Scenario 7 sets this per-run; this covers the rest. Reason: Taskfile.yml env:.
+export OPENKNOWLEDGE_TELEMETRY=off
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 fails=0
@@ -89,5 +97,28 @@ build "$tmp/case"
 printf '[validation.rules]\nlink-target = "error"\nrule-catalog = "error"\nbogus-rule = "error"\n' >"$tmp/case/kb/.openknowledge.toml"
 scenario "unparseable config is reported as itself" fail "openknowledge could not run"
 
-[ "$fails" -eq 0 ] || { echo "check-knowledge-gate-bite: the policy gate regressed"; exit 1; }
-echo "OK: the bundle-policy gate bites in all $((6)) scenarios."
+# 7. The telemetry opt-out is still honoured by THIS binary. Control first: with
+#    the variable unset the CLI must write its telemetry config, or the probe
+#    proves nothing. Then the assertion. Both runs are pointed at a temp path so
+#    neither touches the operator's real telemetry state.
+probe="$tmp/telemetry.json"
+rm -f "$probe"
+OPENKNOWLEDGE_TELEMETRY= OPENKNOWLEDGE_TELEMETRY_CONFIG="$probe" \
+  openknowledge version >/dev/null 2>&1 || true
+if [ ! -e "$probe" ]; then
+  echo "FAIL: telemetry control -- an unset opt-out wrote no config, so the probe cannot detect one"
+  fails=1
+else
+  rm -f "$probe"
+  OPENKNOWLEDGE_TELEMETRY=off OPENKNOWLEDGE_TELEMETRY_CONFIG="$probe" \
+    openknowledge version >/dev/null 2>&1 || true
+  if [ -e "$probe" ]; then
+    echo "FAIL: OPENKNOWLEDGE_TELEMETRY=off no longer suppresses telemetry -- this binary reads it as enabled"
+    fails=1
+  else
+    echo "PASS: the telemetry opt-out is honoured (control wrote a config, off did not)"
+  fi
+fi
+
+[ "$fails" -eq 0 ] || { echo "check-knowledge-gate-bite: a silent-failure detector regressed"; exit 1; }
+echo "OK: the policy gate and the telemetry opt-out bite in all $((7)) scenarios."
