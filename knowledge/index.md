@@ -73,7 +73,8 @@ OKF v0.2 requires only `type` in concept frontmatter, and §4 tells consumers
 not to reject producer-defined keys. The conventions this
 bundle adds on top are **normatively stated in
 [Bundle Conventions](rules/talos-base-bundle.md)** — the closed `type`
-vocabulary, the `title`/`description`/`tags`/`generated`/`sources` field set,
+vocabulary, the `title`/`description`/`tags`/`generated`/`verified`/`sources`
+field set,
 the staleness contract, the link rule, and the `log.md` maintenance rule. That
 file is the source of truth, and `openknowledge` renders it into `AGENTS.md`
 so an agent reading only that file still sees the contract.
@@ -92,9 +93,16 @@ document wins:
   re-confirmation and facts can be re-confirmed without an edit, so bumping
   one never implies the other.
 - A `verified` entry is a machine-readable claim, not a note: any `human:<id>`
-  entry makes the concept `human-reviewed` to an OKF consumer, and the CLI
-  does not flag one that predates `generated.at`. So an invented or carried-over
-  verification is false freshness that no gate reports.
+  entry makes the concept `human-reviewed` to an OKF consumer. So an invented
+  entry is a false claim in machine-readable form, and certifying your own edit
+  is the easiest way to make one without noticing.
+- `verified` is a history, and an entry is never suppressed because content
+  changed afterwards. A reading that happened stays true; deleting it would
+  discard a fact and leave the concept reading `unverified`, which is a
+  different false claim. The freshness signal is the comparison itself —
+  measured, the CLI does not flag a `verified` older than `generated.at`, so
+  four concepts here carry an honest verification that is no longer current and
+  a reader has to look at the two dates rather than at the tier.
 - `sources` is what makes staleness checkable at all: it names the paths a
   concept was derived from, so a reader can compare them against the dates.
   Nothing does this mechanically yet — it is a reading discipline; nothing
