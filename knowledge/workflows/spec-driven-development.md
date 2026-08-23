@@ -3,7 +3,7 @@ type: workflow
 title: "Spec-Driven Development (OpenSpec)"
 description: "How behavioral requirements are maintained in the OpenSpec surface — the change lifecycle, the scope demarcation against knowledge/, and the pinned-tool upgrade procedure."
 tags: [workflow, openspec, spec-driven-development]
-timestamp: 2026-08-12
+timestamp: 2026-08-23
 sources:
   - openspec/config.yaml
   - Taskfile.yml

@@ -1,0 +1,33 @@
+# openknowledge CLI configuration for the knowledge/ OKF bundle.
+#
+# Must be a dotfile AND sit inside the bundle directory: measured against
+# v0.12.0 (2026-08-23) that the pre-0.10 filename here, and a dotfile one
+# level up, are both silently NOT read. Discovery is bundle-relative, not
+# cwd-relative. Not tested, so not claimed: whether a user-level config or an
+# explicit flag can also supply policy.
+# Why a config the CLI does not read is dangerous rather than merely
+# ineffective, and what asserts it: scripts/check-bundle-policy.sh's header.
+# The measurement itself: knowledge/log.md, 2026-08-23.
+#
+# link-target is raised from the spec default (warn) to error so that
+# `openknowledge validate` is a BINDING intra-bundle link gate: a broken
+# relative link or a link escaping the bundle root fails validation
+# (exit 1). Consequence for authors: files outside knowledge/ are cited
+# as inline code spans, never markdown-linked.
+# Re-verified against v0.12.0 (2026-08-23).
+#
+# rule-catalog is raised for the same reason: a custom rule document that
+# loses its rule_id, summary, or instruction bullets would otherwise only
+# warn — while silently rendering a hollow contract into AGENTS.md.
+# Re-verified against v0.12.0 (2026-08-23): removing rule_id fails validation.
+#
+# No [rules] section: knowledge/rules/ is the CLI's built-in default location
+# for custom rule documents. Re-verified against v0.12.0 (2026-08-23), since
+# 0.12.0 is the release that moved `rules` under `prompt`: rendering into
+# AGENTS.md and the rule-catalog validation behave identically with and without
+# an explicit [rules].paths = ["rules"], so declaring it would only restate the
+# default. [rules].paths is for ADDITIONAL directories.
+
+[validation.rules]
+link-target = "error"
+rule-catalog = "error"

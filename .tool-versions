@@ -29,6 +29,17 @@
 # commit the regenerated AGENTS.md block, and read the block's diff: the
 # built-in rule text comes from that binary and lands verbatim in the file
 # agents treat as canonical. A bump is the only event that changes it.
+# A bump can also change how the block is PRODUCED, not only what it says --
+# 0.5.0 -> 0.12.0 moved `rules` under `prompt` and made the bundle config a
+# dotfile. So the intake covers behaviour, not only output: read what changed
+# between the two versions and record, in the bump commit, what it does to
+# network egress, to files written outside --file/--path, and to config
+# discovery. `task knowledge:validate` now fails closed on both silent
+# failures found so far -- the bundle config no longer being discovered, and
+# the telemetry opt-out no longer being honoured. Those assertions are the
+# backstop, not the review. The telemetry one earns its place because the
+# switch is an env var the CLI reads as ENABLED whenever it does not recognise
+# the value, so a rename lands on the permissive side without an error.
 helm 3.20.2
 kustomize 5.3.0
 oras 1.2.0
@@ -36,7 +47,7 @@ cosign 2.4.1
 conftest 0.53.0
 kubeconform 0.6.7
 yq 4.53.2
-openknowledge 0.5.0
+openknowledge 0.12.0
 lychee 0.24.2
 # npm-managed (no asdf plugin): pinned in package.json + package-lock.json
 # (integrity-hashed); install via `task spec:install-cli` / `task docs:install-cli`.

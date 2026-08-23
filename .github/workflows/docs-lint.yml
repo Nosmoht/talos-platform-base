@@ -95,7 +95,7 @@ jobs:
 
       - name: task knowledge:validate
         # Both gates live in the Taskfile target so the local chain and the CI
-        # chain are the same command. knowledge/openknowledge.toml raises
+        # chain are the same command. knowledge/.openknowledge.toml raises
         # link-target and rule-catalog to error, so a broken link or a
         # malformed rule document fails this step.
         run: task knowledge:validate

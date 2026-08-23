@@ -31,7 +31,7 @@
 # `task knowledge:rules-check` (Taskfile.yml), which fails unless the
 # regenerated AGENTS.md rides in the same diff.
 /knowledge/rules/                                @nosmoht
-/knowledge/openknowledge.toml                    @nosmoht
+/knowledge/.openknowledge.toml                   @nosmoht
 
 # OCI publish surface — supply-chain critical.
 /.github/workflows/oci-publish.yml               @nosmoht

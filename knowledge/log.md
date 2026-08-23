@@ -1,5 +1,161 @@
 # Changelog
 
+## 2026-08-23
+
+The pinned `openknowledge` CLI moved 0.5.0 -> 0.12.0, and the durable lesson is
+not the version number. The pinned 0.12.0 does not read the legacy
+`openknowledge.toml` name, so that file had become inert:
+`link-target = "error"` and `rule-catalog = "error"` degraded back to warnings
+with no signal at all. Which release introduced that is NOT recorded here,
+because it could not be sourced — upstream publishes no release notes for any version in the
+range (checked 0.10.0 through 0.12.0, all empty). Only 0.12.0 was measured.
+
+Scope of the damage, since the unqualified version of that sentence is wrong:
+the merge gate was in far better shape than a local run. `docs-lint.yml` runs
+`task knowledge:install-cli` in the same job before validating, which installs
+the PINNED version, and 0.5.0 does read the legacy name (verified 2026-07-15,
+further down this file). Checked every revision of that workflow: the
+install-before-validate ordering holds in all of them except one (2026-07-15,
+the commit that introduced the managed block), which ran `knowledge:validate`
+with no install step at all. So "CI was never degraded" is not a claim this
+file can make; what it can say is that the degradation lived in LOCAL runs of
+anyone who had upgraded past the pin, which is the argument for the version
+guard: without one, local verification silently stops matching CI.
+
+Three facts about 0.12.0 that changed the tooling rather than the bundle, kept
+here because the next bump will need them. `rules` now lives under `prompt`,
+and the old form exits 2 — inside `knowledge:rules-check` that render runs in a
+pipeline, so `set -e` never sees the failure and only the empty-block assertion
+catches it; the assertion now carries a comment saying so, because it reads as
+redundant otherwise. `linux-arm64` joins the checksum set as a fourth platform,
+verified end to end in a linux/arm64 container since it is the one arm neither
+the maintainer nor CI exercises: both assets fetch, both checksums verify, the
+openknowledge tarball is flat as the install line assumes, and lychee's nested
+binary is found by the same `find`. And telemetry, which is on by default, is
+opted out through `OPENKNOWLEDGE_TELEMETRY=off` in the Taskfile `env:` block —
+correcting this entry's first draft, which claimed 0.12.0 offers no env-var
+switch and only the `--no-telemetry` flag. The variable exists, is upstream's
+documented process-level override (`https://openknowledge.sh/wiki/features/telemetry.html`,
+which also names `DO_NOT_TRACK=1`), and is the better instrument: it is
+per-invocation, writes no telemetry config and does not touch an existing one,
+whereas the flag persists `enabled: false` into the operator's config and does
+not exist before 0.12.0 — so it could never have covered the two version
+probes, which must read a drifted binary — measured, 0.5.0 answers
+`unknown command: --no-telemetry` with EMPTY output, which is what makes it
+unusable there: `OK_GUARD` would then report `openknowledge '' != pinned`,
+blaming version drift for a rejected flag. Measured, and NOT documented
+upstream, which names only `off`: `0` and `false` work too, matching is
+case-insensitive, and an unrecognised value falls back to ENABLED. The spelling
+is therefore load-bearing, and `off` is the one to keep because it is the
+documented one.
+
+Where the opt-out is enforced took two attempts, and the first was wrong on a
+point worth recording: an `env:` entry in `Taskfile.yml` is a DEFAULT, not an
+override. Measured — `OPENKNOWLEDGE_TELEMETRY=on task knowledge:validate` sends
+telemetry, the ambient value wins. So the entry alone left every target
+defeatable from the environment, and because an unrecognised value means
+enabled, a typo did it too. What binds is an unconditional
+`export OPENKNOWLEDGE_TELEMETRY=off`: in `OK_GUARD`, which the three `knowledge:*`
+CLI targets already share; in `knowledge:install-cli`, which has no `OK_GUARD`
+because it installs the binary the guard checks, and whose closing `version`
+echo is a fresh binary's first run; and at the top of
+`scripts/verify-tools.sh`, `scripts/check-bundle-policy.sh` and
+`scripts/check-knowledge-gate-bite.sh`, all three runnable outside go-task.
+Unconditional rather than deferring to a caller: `${VAR:-off}` substitutes only
+when the variable is unset, so it passes `on` — and every typo — straight
+through to the fail-open default. An operator who wants telemetry runs the
+binary outside these targets. The `env:` entry stays as the default for any
+future target that runs the CLI without `OK_GUARD`, and
+`OPENKNOWLEDGE_TELEMETRY_CONFIG` stays pinned into the gitignored `.work/` as a
+backstop: with the export in place nothing is written there, and if the opt-out
+ever stops working the write is bounded to the checkout instead of the
+operator's home, where it is visible. This mirrors the `OPENSPEC_TELEMETRY`
+opt-out already sitting in that block for the sibling CLI.
+
+A control this quiet needs a detector, by the same argument as the config gate
+above. `scripts/check-knowledge-gate-bite.sh` gained a seventh, two-sided
+scenario: a control run with the variable empty must WRITE a telemetry config,
+and only then is the `off` run's silence evidence. Both halves were mutated and
+both report the right failure.
+
+The first version of that scenario went red on CI and green locally, which
+turned up the fact the whole opt-out should be read against: a truthy `CI`
+suppresses the write on its own (measured — `CI=true` and `CI=1` do, `CI=false`
+and `GITHUB_ACTIONS=true` alone do not). So the runner was never sending
+telemetry, the opt-out is a LOCAL-run control, and the scenario was measuring
+the runner rather than the variable — failing its control there and passing its
+assertion for the wrong reason. Both halves now drop `CI` from the environment,
+and removing that is one of the three mutants the scenario is bound against.
+Same shape as the config-filename finding at the top of this entry: the
+degradation lived locally, and the argument for a guard is that local
+verification stops matching CI without one.
+
+What an event carries, measured with
+`openknowledge telemetry show-payload` so the residual can be sized without
+re-deriving it: schema version, event name and id, timestamp, surface,
+installation id, app version, OS, arch, command name, outcome, and a duration
+bucket. No paths, no content, no repository or user identity. The remaining
+uncovered path is a bare `openknowledge` invocation, which the built-in rule
+text in the `AGENTS.md` managed block still tells agents to make; the bundle
+conventions gained a bullet saying to go through the `knowledge:*` targets and
+to prefix a bare run, and it renders ten lines above that instruction.
+
+- `.openknowledge.toml`, renamed from `openknowledge.toml`: the rename is the
+  fix, and the severity set is unchanged. Measured against 0.12.0 that the file
+  must be BOTH a dotfile AND inside the bundle directory — a copy at the
+  repository root is not discovered — and that discovery is bundle-relative, so
+  the answer does not change with the working directory. Not measured, so not
+  claimed: whether a user-level config or an explicit flag can also supply
+  policy. Telling whether the file is in effect is no longer prose:
+  `OPENKNOWLEDGE_TELEMETRY=off openknowledge validate --format json knowledge/`
+  prints `policy.configPath`
+  and the overrides when it is read and an empty `policy` when it is not, and
+  `scripts/check-bundle-policy.sh` now asserts that the RESOLVED path is this
+  bundle's own file and that each named rule sits at the named severity — the
+  path value, not merely the presence of a `configPath` key, so a config
+  supplied from anywhere else cannot satisfy it. It parses the JSON with
+  `python3` for the reason `dev:verify-pins` states: `jq` is not pinned. A run
+  that fails for any other reason reproduces the CLI's own stderr instead of
+  blaming discovery; an unknown rule name, for instance, is rejected at
+  config-parse time with exit 2 and no JSON at all (measured).
+  `scripts/check-knowledge-gate-bite.sh` proves that checker still
+  discriminates, across six scenarios including a conforming one, and both run
+  from `knowledge:validate` — the pairing `spec:validate` already uses for the
+  staleness gate. A detector for a silent failure is worth nothing without one.
+- `index.md`: the tooling-config carve-out now says the placement is mandatory
+  rather than merely tidy, since 0.12.0 reads the file only from inside the
+  bundle and only under the dotfile name, and the link-rule bullet names the
+  dotfile. The carve-out itself is unchanged — it is still narrow.
+- `reference/tasks.md`: re-read against its sources and it had drifted, which
+  is the whole argument for re-verifying rather than re-dating. Its rules-apply
+  row named the pre-0.12 command; its `knowledge:validate` row now describes
+  the two new gates and the version precondition; and its tool-pin bullets
+  stopped quoting the openknowledge and lychee VALUES, naming the Taskfile
+  variables instead. A copied version is a second place to go stale, and this
+  one had: it still read 0.5.0 in the change that bumps the pin. Those two are
+  safe to reduce to a pointer because `dev:verify-pins` asserts them against
+  `.tool-versions`. The three MCP values in the same list are asserted against
+  nothing, so a pointer would leave no record at all; they stay written out,
+  with a clause saying why they differ from their neighbours.
+- `rules/talos-base-bundle.md`: the re-verification criterion is narrowed to
+  "a change that lands inside what the concept describes", not "a listed source
+  file was touched". Twelve concepts list `Taskfile.yml` and this change edits
+  it; dating all twelve would record reviews that did not happen, which is the
+  false freshness the rule exists to prevent. The narrowing is a maintainer
+  decision on the record, not a side effect — the discarded alternative was to
+  keep the literal rule and re-verify all twelve. Its link-rule bullet also
+  names the dotfile, and it gained one: invoke the CLI through the
+  `knowledge:*` targets, never bare. This entry's first draft said the file
+  needed no edit, which was wrong on its own terms — the narrowing is that
+  edit.
+- `workflows/spec-driven-development.md`: re-read against its sources for the
+  same reason and needed no edit beyond the date.
+- `decisions/0015-openspec-adoption.md`: a dated clarification is appended
+  saying the file is now `knowledge/.openknowledge.toml` and that recreating
+  the old name would silently do nothing. The record text above it is
+  untouched, including the legacy filename in its parenthesis — that is the
+  name the CLI used at the time.
+
 ## 2026-08-15
 
 - `decisions/0022-cilium-observability-and-argocd-self-management.md`: addendum —
