@@ -6,7 +6,7 @@ status: superseded
 id: base:task-runner-consolidation
 superseded_by:
   - /decisions/0012-makefile-retirement.md
-timestamp: 2026-06-07
+decided: "2026-06-07T00:00:00Z"
 history:
   - 2026-06-07 initial (accepted; no wholesale Make→go-task migration — the Makefile dissolves with the substrate-only split)
   - 2026-06-22 superseded (Phase-3 ablation #140 landed; base:makefile-retirement folds the survivors into the Taskfile and retires the Makefile — correcting this ADR's per-target table, where render-*/validate-gitops in fact survive because argocd keeps a chart.lock.yaml, and retiring its gnumake-bridge §Validation predicate)

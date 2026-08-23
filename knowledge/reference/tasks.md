@@ -3,7 +3,9 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-timestamp: 2026-08-23
+generated: { by: human:nosmoht, at: "2026-08-23T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-23T00:00:00Z" }
 sources:
   - resource: Taskfile.yml
   - resource: Makefile

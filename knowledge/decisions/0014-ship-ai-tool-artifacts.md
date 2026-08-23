@@ -4,7 +4,7 @@ title: "ADR: Ship tool-generated AI artifacts in the base"
 description: "The base commits tool-generated, regenerable AI-tool artifacts (OpenSpec skill/command trees); hand-authored harness primitives remain external."
 status: accepted
 id: base:ship-ai-tool-artifacts
-timestamp: 2026-07-13
+decided: "2026-07-13T00:00:00Z"
 deciders:
   - repo owner
 consulted: []

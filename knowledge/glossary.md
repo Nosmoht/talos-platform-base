@@ -3,7 +3,7 @@ type: glossary
 title: Glossary
 description: Cross-domain vocabulary for the talos-platform-base substrate, its delivery pipeline, and its consumer contract.
 tags: [glossary, vocabulary, platform]
-timestamp: 2026-08-14
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
   - resource: AGENTS.md
   - resource: Taskfile.yml

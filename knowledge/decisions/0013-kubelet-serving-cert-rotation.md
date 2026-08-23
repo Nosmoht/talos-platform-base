@@ -4,7 +4,7 @@ title: "ADR: Kubelet serving-cert rotation as substrate default + cert-approver 
 description: "Enables kubelet serving-cert rotation by default on all nodes and delivers cert-approver as an unconditional, digest-pinned Talos controlplane inlineManifest seed."
 status: accepted
 id: base:kubelet-serving-cert-rotation
-timestamp: 2026-06-30
+decided: "2026-06-30T00:00:00Z"
 deciders:
   - platform-maintainer
 supersedes: []

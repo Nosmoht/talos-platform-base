@@ -3,7 +3,7 @@ type: project
 title: OpenSSF Best Practices Self-Assessment
 description: Self-assessment against the OpenSSF Best Practices Passing-level criteria, serving as the source of truth for the external enrolment answers.
 tags: [project, supply-chain]
-timestamp: 2026-07-15
+generated: { by: human:nosmoht, at: "2026-07-15T00:00:00Z" }
 migrated_from: docs/openssf-best-practices.md (deleted in the OKF migration; see git history)
 sources:
   - resource: .github/workflows/gitops-validate.yml

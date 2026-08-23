@@ -4,7 +4,7 @@ title: "ADR: Remove the manual release approval gate; replace its MAJOR backstop
 description: "Drops the environment:release manual-approval protection so a merge to main releases unattended, and replaces the gate's one mechanical function — catching a breaking base-surface change shipped without a MAJOR bump — with a blocking MAJOR-bump guard in the plan job."
 status: accepted
 id: base:automated-release-no-approval-gate
-timestamp: 2026-07-21
+decided: "2026-07-21T00:00:00Z"
 deciders:
   - platform-maintainer
 related:

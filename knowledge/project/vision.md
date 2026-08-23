@@ -3,7 +3,7 @@ type: project
 title: Vision
 description: Forward-looking design anchors the schema was built to accommodate — explicitly not roadmap, commitments, or shipped features.
 tags: [project, vision]
-timestamp: 2026-07-11
+generated: { by: human:nosmoht, at: "2026-07-11T00:00:00Z" }
 migrated_from: docs/vision.md (deleted in the OKF migration; see git history)
 sources:
   - resource: CHANGELOG.md

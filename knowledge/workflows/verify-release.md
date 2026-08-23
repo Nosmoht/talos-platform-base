@@ -3,7 +3,7 @@ type: workflow
 title: Verify a Base Release
 description: Fail-closed verification of a published talos-platform-base OCI artifact — signature, provenance, SBOM attestation, and checksums — before vendoring.
 tags: [supply-chain, cosign, verification]
-timestamp: 2026-07-11
+generated: { by: human:nosmoht, at: "2026-07-11T00:00:00Z" }
 sources:
   - resource: .github/workflows/oci-publish.yml
   - resource: .ci-oci-tarball-include.txt

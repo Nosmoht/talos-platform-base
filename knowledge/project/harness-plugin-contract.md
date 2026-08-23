@@ -3,7 +3,7 @@ type: project
 title: Harness Plugin Contract
 description: The contract this base expects a Claude Code harness plugin to satisfy, stated from the base's side.
 tags: [project, harness]
-timestamp: 2026-07-11
+generated: { by: human:nosmoht, at: "2026-07-13T00:00:00Z" }
 migrated_from: docs/harness-plugin-integration.md (deleted in the OKF migration; see git history)
 sources:
   - resource: CLAUDE.md

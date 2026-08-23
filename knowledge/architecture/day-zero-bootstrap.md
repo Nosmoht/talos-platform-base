@@ -3,7 +3,7 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-timestamp: 2026-08-14
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
   - resource: tofu/modules/talos-cluster/main.tf
   - resource: tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml

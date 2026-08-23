@@ -4,7 +4,6 @@ title: "ADR: <Short, decision-shaped title>"
 description: "<One sentence stating the decision outcome factually.>"
 status: proposed
 id: base:<short-kebab-id>
-timestamp: YYYY-MM-DD
 deciders:
   - <name or role>
 consulted: []
@@ -17,7 +16,14 @@ tags: [adr, template]
 
 <!-- Copy this file when authoring a new ADR. Rename to the next free
      `NNNN-<short-kebab-id>.md` and fill in every frontmatter field
-     above. Delete this comment block from the new file. -->
+     above. Delete this comment block from the new file.
+
+     Add a `decided:` key carrying the date the decision was made, as a
+     quoted ISO 8601 datetime — `decided: "2026-08-23T00:00:00Z"`. It is
+     absent here on purpose: a placeholder date is a date a copy can ship
+     with, and the validator does not type this producer-defined key.
+     `generated` and `verified` do NOT belong on a decision concept; see
+     `index.md` §Status vocabulary for why. -->
 
 # ADR: <Short, decision-shaped title>
 

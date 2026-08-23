@@ -4,7 +4,7 @@ title: "ADR: Where the per-node capability-composition logic should live (HCL vs
 description: "Defers extracting the per-node capability-composition logic from HCL into a portable pre-processing layer, recording a hybrid recommendation and concrete triggers for revisiting."
 status: proposed
 id: base:composition-logic-placement
-timestamp: 2026-06-20
+decided: "2026-06-20T00:00:00Z"
 deciders:
   - platform-maintainer
 related:

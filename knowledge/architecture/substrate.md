@@ -3,7 +3,7 @@ type: architecture
 title: Substrate Boundary
 description: What talos-platform-base is and ships — the three-pillar substrate, the base/apps/consumer layer model, the tracked repo layout, and the fail-closed OCI artifact allowlist.
 tags: [substrate, layer-model, oci-artifact, boundaries]
-timestamp: 2026-08-14
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
   - resource: .ci-oci-tarball-include.txt
   - resource: .ci-oci-tarball-expected.txt

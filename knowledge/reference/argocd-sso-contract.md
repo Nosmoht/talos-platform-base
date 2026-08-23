@@ -3,7 +3,7 @@ type: reference
 title: ArgoCD SSO Wiring Contract
 description: What a consumer cluster must supply to attach any external OIDC identity provider to the substrate's identity-free ArgoCD, and the mechanism that carries it across the base/consumer repo boundary.
 tags: [argocd, sso, oidc, rbac, consumer-contract]
-timestamp: 2026-08-14
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
   - resource: kubernetes/substrate/argocd/values.yaml
   - resource: kubernetes/substrate/argocd/_rendered/manifests.yaml

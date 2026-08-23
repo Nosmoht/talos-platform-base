@@ -6,7 +6,7 @@ status: superseded
 id: base:shared-render-artifact
 superseded_by:
   - /decisions/0006-opentofu-cluster-lifecycle.md
-timestamp: 2026-05-29
+decided: "2026-05-29T00:00:00Z"
 history:
   - 2026-05-29 initial (accepted; base-side renderer merged in PR #87)
   - 2026-06-02 superseded (OpenTofu cutover removed the make/argv-print frontend)

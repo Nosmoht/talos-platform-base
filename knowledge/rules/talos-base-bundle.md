@@ -5,7 +5,9 @@ title: Bundle Conventions
 description: Repo-specific OKF bundle conventions layered on top of the built-in maintenance rules, rendered into the AGENTS.md managed block.
 rule_summary: Repo-specific bundle conventions on top of the built-in maintenance rules.
 tags: [okf, maintenance, conventions]
-timestamp: 2026-08-23
+generated: { by: human:nosmoht, at: "2026-08-23T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-23T00:00:00Z" }
 sources:
   - resource: Taskfile.yml
   - resource: CONTRIBUTING.md

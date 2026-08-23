@@ -4,7 +4,7 @@ title: "ADR: Substrate Hard Constraints — boot-loop guards and deprecated-API 
 description: "Retroactively records three already-enforced substrate invariants — no SecureBoot installer, no debugfs=off kernel argument, EndpointSlices only — with their failure modes and enforcement points."
 status: proposed
 id: base:substrate-hard-constraints
-timestamp: 2026-06-21
+decided: "2026-06-21T00:00:00Z"
 deciders:
   - platform-maintainer
 supersedes: []

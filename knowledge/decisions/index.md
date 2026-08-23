@@ -41,7 +41,8 @@ Frontmatter is canonical for status and dates.
 1. Copy [template.md](template.md) to the next free `NNNN-<slug>.md` in this
    directory (numeric order, zero-padded to four digits).
 2. Fill every frontmatter field: `type`, `title`, `description`, `status`,
-   `timestamp`, `id`, `deciders`, `tags`.
+   `id`, `deciders`, `tags`, and add `decided:` — the template omits it so a
+   copy cannot ship a placeholder date.
 3. Frontmatter is canonical — do not duplicate Status/Date lines in the body.
 4. `supersedes:` / `superseded_by:` carry bundle-absolute paths
    (e.g. `/decisions/0006-opentofu-cluster-lifecycle.md`); append any

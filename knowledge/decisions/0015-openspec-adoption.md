@@ -4,7 +4,7 @@ title: "ADR: OpenSpec as the behavioral-requirements surface"
 description: "The base adopts OpenSpec with a directly-authored backfill of 14 substrate capability specs; openspec/specs/ is normative for behavioral requirements, scoped to consumer-facing platform behavior."
 status: accepted
 id: base:openspec-adoption
-timestamp: 2026-07-13
+decided: "2026-07-13T00:00:00Z"
 deciders:
   - repo owner
 consulted: []

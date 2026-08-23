@@ -4,7 +4,7 @@ title: "ADR: Retire the Makefile — go-task is the single runner"
 description: "Retires the Makefile in favor of go-task as the single runner, folding surviving targets into namespaced Taskfile tasks behind a one-release deprecation stub."
 status: accepted
 id: base:makefile-retirement
-timestamp: 2026-06-22
+decided: "2026-06-22T00:00:00Z"
 deciders:
   - platform-maintainer
 supersedes:

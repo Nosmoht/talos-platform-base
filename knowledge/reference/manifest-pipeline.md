@@ -3,7 +3,7 @@ type: reference
 title: Manifest Pipeline
 description: How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 tags: [rendered-manifests, validation, ci, conftest]
-timestamp: 2026-08-14
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
   - resource: scripts/render-component.sh
   - resource: scripts/verify-rendered.sh
