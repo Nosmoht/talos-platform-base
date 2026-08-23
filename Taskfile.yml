@@ -543,11 +543,29 @@ tasks:
     desc: Validate the knowledge/ OKF bundle (openknowledge + offline link check)
     cmd: |
       set -e
-      # Pinned like the rules targets: the config filename and the default
-      # spec version are both version-dependent, so an unpinned binary is a
-      # differently-configured gate reporting green. Subsumes `command -v`.
+      # Pinned like the rules targets: which config filename the CLI reads is
+      # version-dependent (0.12.0 ignores the pre-0.10 name), so an unpinned
+      # binary is a differently-configured gate reporting green. Subsumes
+      # `command -v`.
       {{.OK_GUARD}}
       command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
+      # Bite-check, in the spirit of scripts/check-staleness-gate-bite.sh: a
+      # config the CLI does not find yields exit 0 with an empty policy, so
+      # every raise silently degrades to the spec default and this gate reports
+      # green while checking nothing. That is exactly how the pre-0.12 filename
+      # went unnoticed. Assert the policy was loaded AND that both raises are
+      # in effect, so a config that is found but whose keys the CLI stopped
+      # honouring also turns red. grep, not jq: jq is unpinned and its
+      # availability is not guaranteed (see dev:verify-pins).
+      pol="$(openknowledge validate --format json knowledge/ 2>/dev/null | tr -d ' \n')"
+      for want in '"configPath"' '"link-target":"error"' '"rule-catalog":"error"'; do
+        case "$pol" in
+          *"$want"*) ;;
+          *) echo "FAIL: knowledge/.openknowledge.toml is not in effect ($want missing from .policy)."
+             echo "      Every raise has degraded to the spec default — this gate checks nothing."
+             echo "      See the file's own header for the discovery rules."; exit 1 ;;
+        esac
+      done
       openknowledge validate knowledge/
       # Offline link-resolution gate: intra-repo markdown links must resolve.
       # Scope: the bundle, root orientation files, contracts/. CHANGELOG.md is
