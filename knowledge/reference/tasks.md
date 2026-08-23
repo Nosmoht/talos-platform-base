@@ -27,11 +27,11 @@ Conventions declared in `Taskfile.yml`:
   `task bootstrap:argocd ENV=other.yaml`.
 - MCP server versions are pinned as Taskfile vars
   (`MCP_GITHUB_VERSION: 0.33.0`, `MCP_K8S_VERSION: 0.0.60`,
-  `MCP_TALOS_VERSION: 1.1.0`).
-- Knowledge-bundle tool pins (`OPENKNOWLEDGE_VERSION: 0.5.0`,
-  `LYCHEE_VERSION: 0.24.2`) plus their per-platform sha256 checksums are
-  Taskfile vars, kept in sync with `.tool-versions` by
-  `task dev:verify-pins`. The npm-distributed pins (`openspec`,
+  `MCP_TALOS_VERSION: 1.1.0`). Unlike the pins below these are asserted
+  against nothing, so the values are restated here.
+- Knowledge-bundle tool pins (`OPENKNOWLEDGE_VERSION`, `LYCHEE_VERSION`) plus
+  their per-platform sha256 checksums are Taskfile vars, kept in sync with
+  `.tool-versions` by `task dev:verify-pins`. The npm-distributed pins (`openspec`,
   `markdownlint-cli`) live in `package.json` + `package-lock.json`
   (integrity-hashed) instead of Taskfile vars.
 

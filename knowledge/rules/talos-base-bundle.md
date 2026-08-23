@@ -35,5 +35,6 @@ Two authoring constraints for this file, both learned from the renderer:
 - Omit `sources` on `decision` concepts: an ADR records a decision rather than deriving from source files. Their field contract, including `status`, `id`, `deciders`, and `supersedes`, lives in `knowledge/decisions/index.md`.
 - Link relatively inside the bundle, and cite anything outside it as an inline code span rather than a markdown link: `.openknowledge.toml` raises `link-target` to error, so an escaping link fails validation.
 - Validate with `task knowledge:validate`, which runs `openknowledge validate` plus the offline link gate. Run `task knowledge:rules-check` as well after touching `knowledge/rules/`.
+- Invoke `openknowledge` through the `knowledge:*` task targets, never bare: the version pin and the telemetry opt-out both live in `Taskfile.yml`, and a bare run skips both silently. Where a bare run is unavoidable, prefix it with `OPENKNOWLEDGE_TELEMETRY=off`.
 - Record bundle changes in `knowledge/log.md`, one bullet per changed concept under today's date. User-facing changes belong in the root `CHANGELOG.md`. The two files have separate audiences and do not mirror each other.
 - Regenerate the `AGENTS.md` managed block with `task knowledge:rules-apply` after changing this file. Hand-editing the block fails `task knowledge:rules-check`.
