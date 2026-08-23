@@ -74,9 +74,23 @@ opt-out already sitting in that block for the sibling CLI.
 
 A control this quiet needs a detector, by the same argument as the config gate
 above. `scripts/check-knowledge-gate-bite.sh` gained a seventh, two-sided
-scenario: a control run with the variable unset must WRITE a telemetry config,
+scenario: a control run with the variable empty must WRITE a telemetry config,
 and only then is the `off` run's silence evidence. Both halves were mutated and
-both report the right failure. What an event carries, measured with
+both report the right failure.
+
+The first version of that scenario went red on CI and green locally, which
+turned up the fact the whole opt-out should be read against: a truthy `CI`
+suppresses the write on its own (measured — `CI=true` and `CI=1` do, `CI=false`
+and `GITHUB_ACTIONS=true` alone do not). So the runner was never sending
+telemetry, the opt-out is a LOCAL-run control, and the scenario was measuring
+the runner rather than the variable — failing its control there and passing its
+assertion for the wrong reason. Both halves now drop `CI` from the environment,
+and removing that is one of the three mutants the scenario is bound against.
+Same shape as the config-filename finding at the top of this entry: the
+degradation lived locally, and the argument for a guard is that local
+verification stops matching CI without one.
+
+What an event carries, measured with
 `openknowledge telemetry show-payload` so the residual can be sized without
 re-deriving it: schema version, event name and id, timestamp, surface,
 installation id, app version, OS, arch, command name, outcome, and a duration

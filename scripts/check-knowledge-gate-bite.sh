@@ -98,27 +98,31 @@ printf '[validation.rules]\nlink-target = "error"\nrule-catalog = "error"\nbogus
 scenario "unparseable config is reported as itself" fail "openknowledge could not run"
 
 # 7. The telemetry opt-out is still honoured by THIS binary. Control first: with
-#    the variable unset the CLI must write its telemetry config, or the probe
+#    the variable empty the CLI must write its telemetry config, or the probe
 #    proves nothing. Then the assertion. Both runs are pointed at a temp path so
 #    neither touches the operator's real telemetry state.
+#
+#    Both halves drop CI from the environment. Measured: a truthy CI suppresses
+#    the write on its own, which would make the control fail on a runner and the
+#    assertion pass there for the wrong reason. This scenario is about the
+#    variable and must not measure the runner.
 probe="$tmp/telemetry.json"
-rm -f "$probe"
-OPENKNOWLEDGE_TELEMETRY= OPENKNOWLEDGE_TELEMETRY_CONFIG="$probe" \
-  openknowledge version >/dev/null 2>&1 || true
-if [ ! -e "$probe" ]; then
-  echo "FAIL: telemetry control -- an unset opt-out wrote no config, so the probe cannot detect one"
+telemetry_probe() {
+  rm -f "$probe"
+  env -u CI "OPENKNOWLEDGE_TELEMETRY=$1" "OPENKNOWLEDGE_TELEMETRY_CONFIG=$probe" \
+    openknowledge version >/dev/null 2>&1 || true
+  [ -e "$probe" ]
+}
+if ! telemetry_probe ''; then
+  echo "FAIL: telemetry control -- an empty opt-out wrote no config, so the probe cannot detect one"
+  fails=1
+elif telemetry_probe off; then
+  echo "FAIL: OPENKNOWLEDGE_TELEMETRY=off no longer suppresses telemetry -- this binary reads it as enabled"
   fails=1
 else
-  rm -f "$probe"
-  OPENKNOWLEDGE_TELEMETRY=off OPENKNOWLEDGE_TELEMETRY_CONFIG="$probe" \
-    openknowledge version >/dev/null 2>&1 || true
-  if [ -e "$probe" ]; then
-    echo "FAIL: OPENKNOWLEDGE_TELEMETRY=off no longer suppresses telemetry -- this binary reads it as enabled"
-    fails=1
-  else
-    echo "PASS: the telemetry opt-out is honoured (control wrote a config, off did not)"
-  fi
+  echo "PASS: the telemetry opt-out is honoured (control wrote a config, off did not)"
 fi
+rm -f "$probe"
 
 [ "$fails" -eq 0 ] || { echo "check-knowledge-gate-bite: a silent-failure detector regressed"; exit 1; }
 echo "OK: the policy gate and the telemetry opt-out bite in all $((7)) scenarios."
