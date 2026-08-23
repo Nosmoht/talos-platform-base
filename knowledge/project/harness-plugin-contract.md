@@ -6,9 +6,9 @@ tags: [project, harness]
 timestamp: 2026-07-11
 migrated_from: docs/harness-plugin-integration.md (deleted in the OKF migration; see git history)
 sources:
-  - CLAUDE.md
-  - AGENTS.md
-  - contracts/primitive-contract.md
+  - resource: CLAUDE.md
+  - resource: AGENTS.md
+  - resource: contracts/primitive-contract.md
 ---
 
 # Harness Plugin Contract

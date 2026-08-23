@@ -5,9 +5,9 @@ description: Complete go-task target inventory with per-task purpose, preconditi
 tags: [go-task, tooling, validation]
 timestamp: 2026-08-23
 sources:
-  - Taskfile.yml
-  - Makefile
-  - package.json
+  - resource: Taskfile.yml
+  - resource: Makefile
+  - resource: package.json
 ---
 
 # Task Runner Surface

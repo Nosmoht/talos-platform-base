@@ -5,10 +5,10 @@ description: Installing and verifying the three MCP servers, and the wrapper sec
 tags: [mcp, tooling, security]
 timestamp: 2026-07-11
 sources:
-  - Taskfile.yml
-  - scripts/mcp-github-wrapper.sh
-  - .mcp.json
-  - scripts/check-mcp-config-portable.sh
+  - resource: Taskfile.yml
+  - resource: scripts/mcp-github-wrapper.sh
+  - resource: .mcp.json
+  - resource: scripts/check-mcp-config-portable.sh
 ---
 
 # MCP Setup

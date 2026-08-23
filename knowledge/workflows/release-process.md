@@ -5,13 +5,13 @@ description: How a release moves from conventional commit through the automated 
 tags: [release, semantic-release, oci, supply-chain]
 timestamp: 2026-07-21
 sources:
-  - .github/workflows/release.yml
-  - .github/workflows/commitlint.yml
-  - .github/workflows/oci-publish.yml
-  - .releaserc.json
-  - package.json
-  - CHANGELOG.md
-  - CONTRIBUTING.md
+  - resource: .github/workflows/release.yml
+  - resource: .github/workflows/commitlint.yml
+  - resource: .github/workflows/oci-publish.yml
+  - resource: .releaserc.json
+  - resource: package.json
+  - resource: CHANGELOG.md
+  - resource: CONTRIBUTING.md
 ---
 
 # Release Process

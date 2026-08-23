@@ -5,10 +5,10 @@ description: The GitHub issue state machine — status labels, guarded transitio
 tags: [issues, workflow, labels, agents]
 timestamp: 2026-07-11
 sources:
-  - scripts/issue-state.sh
-  - AGENTS.md
-  - .github/ISSUE_TEMPLATE/spec.yml
-  - .github/ISSUE_TEMPLATE/bug.yml
+  - resource: scripts/issue-state.sh
+  - resource: AGENTS.md
+  - resource: .github/ISSUE_TEMPLATE/spec.yml
+  - resource: .github/ISSUE_TEMPLATE/bug.yml
 ---
 
 # Issue Lifecycle

@@ -5,10 +5,10 @@ description: "How behavioral requirements are maintained in the OpenSpec surface
 tags: [workflow, openspec, spec-driven-development]
 timestamp: 2026-08-23
 sources:
-  - openspec/config.yaml
-  - Taskfile.yml
-  - .github/workflows/docs-lint.yml
-  - scripts/check-spec-staleness.py
+  - resource: openspec/config.yaml
+  - resource: Taskfile.yml
+  - resource: .github/workflows/docs-lint.yml
+  - resource: scripts/check-spec-staleness.py
 ---
 
 # Spec-Driven Development (OpenSpec)

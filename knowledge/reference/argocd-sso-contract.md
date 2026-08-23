@@ -5,10 +5,10 @@ description: What a consumer cluster must supply to attach any external OIDC ide
 tags: [argocd, sso, oidc, rbac, consumer-contract]
 timestamp: 2026-08-14
 sources:
-  - kubernetes/substrate/argocd/values.yaml
-  - kubernetes/substrate/argocd/_rendered/manifests.yaml
-  - kubernetes/examples/argocd-consumer-sso/kustomization.yaml
-  - scripts/check-argocd-substrate-invariants.sh
+  - resource: kubernetes/substrate/argocd/values.yaml
+  - resource: kubernetes/substrate/argocd/_rendered/manifests.yaml
+  - resource: kubernetes/examples/argocd-consumer-sso/kustomization.yaml
+  - resource: scripts/check-argocd-substrate-invariants.sh
 ---
 
 # ArgoCD SSO Wiring Contract

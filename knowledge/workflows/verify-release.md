@@ -5,11 +5,11 @@ description: Fail-closed verification of a published talos-platform-base OCI art
 tags: [supply-chain, cosign, verification]
 timestamp: 2026-07-11
 sources:
-  - .github/workflows/oci-publish.yml
-  - .ci-oci-tarball-include.txt
-  - .ci-oci-tarball-expected.txt
-  - Taskfile.yml
-  - SECURITY.md
+  - resource: .github/workflows/oci-publish.yml
+  - resource: .ci-oci-tarball-include.txt
+  - resource: .ci-oci-tarball-expected.txt
+  - resource: Taskfile.yml
+  - resource: SECURITY.md
 ---
 
 # Verify a Base Release

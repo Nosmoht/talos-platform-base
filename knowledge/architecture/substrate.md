@@ -5,16 +5,16 @@ description: What talos-platform-base is and ships — the three-pillar substrat
 tags: [substrate, layer-model, oci-artifact, boundaries]
 timestamp: 2026-08-14
 sources:
-  - .ci-oci-tarball-include.txt
-  - .ci-oci-tarball-expected.txt
-  - .ci-renderable-components.txt
-  - Taskfile.yml
-  - .github/workflows/oci-publish.yml
-  - tofu/modules/talos-cluster/main.tf
-  - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
-  - kubernetes/substrate/argocd/kustomization.yaml
-  - kubernetes/substrate/argocd/values.yaml
-  - AGENTS.md
+  - resource: .ci-oci-tarball-include.txt
+  - resource: .ci-oci-tarball-expected.txt
+  - resource: .ci-renderable-components.txt
+  - resource: Taskfile.yml
+  - resource: .github/workflows/oci-publish.yml
+  - resource: tofu/modules/talos-cluster/main.tf
+  - resource: tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
+  - resource: kubernetes/substrate/argocd/kustomization.yaml
+  - resource: kubernetes/substrate/argocd/values.yaml
+  - resource: AGENTS.md
 ---
 
 # Substrate Boundary

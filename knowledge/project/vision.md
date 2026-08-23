@@ -6,9 +6,9 @@ tags: [project, vision]
 timestamp: 2026-07-11
 migrated_from: docs/vision.md (deleted in the OKF migration; see git history)
 sources:
-  - CHANGELOG.md
-  - MAINTAINERS.md
-  - .github/workflows/oci-publish.yml
+  - resource: CHANGELOG.md
+  - resource: MAINTAINERS.md
+  - resource: .github/workflows/oci-publish.yml
 ---
 
 # Vision
