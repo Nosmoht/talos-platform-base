@@ -13,13 +13,17 @@
   version in the range (checked 0.10.0 through 0.12.0, all empty). Only 0.12.0
   was measured.
   Scope of the damage, since the unqualified version of this sentence is
-  wrong: CI was never degraded. `docs-lint.yml` runs `task
-  knowledge:install-cli` in the same job before validating, which installs the
-  PINNED version, and 0.5.0 does read the legacy name (verified 2026-07-15,
-  further down this file). So the merge gate stayed binding throughout; what
-  degraded was the LOCAL run of anyone who had upgraded past the pin. That is
-  the more useful lesson, and it is the argument for the version guard: without
-  one, local verification silently stops matching CI.
+  wrong: the merge gate was in far better shape than a local run.
+  `docs-lint.yml` runs `task knowledge:install-cli` in the same job before
+  validating, which installs the PINNED version, and 0.5.0 does read the legacy
+  name (verified 2026-07-15, further down this file). Checked every revision of
+  that workflow: the install-before-validate ordering holds in all of them
+  except one (2026-07-15, the commit that introduced the managed block), which
+  ran `knowledge:validate` with no install step at all. So "CI was never
+  degraded" is not a claim this file can make; what it can say is that the
+  degradation lived in LOCAL runs of anyone who had upgraded past the pin,
+  which is the argument for the version guard: without one, local verification
+  silently stops matching CI.
   How to tell whether the config is in effect:
   `openknowledge validate --format json knowledge/` prints `policy.configPath`
   and the overrides when the file is read, and an empty `policy` when it is
@@ -28,11 +32,18 @@
   that discovery is bundle-relative, so the answer does not change with the
   working directory. Not measured, so not claimed: whether a user-level config
   or an explicit flag can also supply policy.
-  That check is no longer prose. `knowledge:validate` now asserts both
-  `configPath` and the two raises before it validates anything, the way
-  `scripts/check-staleness-gate-bite.sh` asserts its own fence bites — a
-  rename, move, or future discovery change turns the target red instead of
-  green. It greps the JSON rather than using `jq`, which is unpinned.
+  That check is no longer prose. `scripts/check-bundle-policy.sh` asserts that
+  the RESOLVED config path is this bundle's own file and that each named rule
+  is at the named severity — the path value, not merely the presence of a
+  `configPath` key, so a config supplied from anywhere else cannot satisfy it.
+  It parses the JSON with `python3` for the reason `dev:verify-pins` does: `jq`
+  is not pinned. A run that fails for any other reason reproduces the CLI's own
+  stderr instead of blaming discovery; an unknown rule name, for instance, is
+  rejected at config-parse time with exit 2 and no JSON at all (measured).
+  `scripts/check-knowledge-gate-bite.sh` proves that checker still
+  discriminates, across six scenarios including a conforming one, and both run
+  from `knowledge:validate` — the pairing `spec:validate` already uses for the
+  staleness gate. A detector for a silent failure is worth nothing without one.
   Two further changes the pinned 0.12.0 exhibits: `rules` now lives under
   `prompt`, and the old form exits 2. In `knowledge:rules-check` that render
   runs inside a pipeline, so `set -e` never sees the failure and only the
@@ -46,9 +57,16 @@
   ships the binary flat like the others), and every `openknowledge` call site
   passes `--no-telemetry`. 0.12.0 sends anonymous usage telemetry by default
   and offers no env-var switch, only that flag — which is persistent, not
-  per-invocation: the first run writes `enabled: false` into the user's
-  telemetry config. This mirrors the `OPENSPEC_TELEMETRY` opt-out the Taskfile
-  already carries for the sibling CLI.
+  per-invocation: it writes `enabled: false` into a telemetry config. Two
+  consequences, both handled: the write is pinned to a gitignored path inside
+  the checkout, so a repo task never rewrites the operator's global setting and
+  no ambient value can redirect it; and the two VERSION probes (`OK_GUARD` and
+  `scripts/verify-tools.sh`) deliberately omit the flag, because it does not
+  exist before 0.12.0 and those probes must read a drifted binary's version —
+  measured, 0.5.0 answers `unknown command: --no-telemetry` with empty output.
+  So "every call site" would be wrong: every call site that is guaranteed to be
+  the pinned version carries it. This mirrors the `OPENSPEC_TELEMETRY` opt-out
+  the Taskfile already carries for the sibling CLI.
   The re-verification set is scoped to concepts whose subject the change falls
   within, not to every concept listing a touched file in `sources`; twelve
   concepts list `Taskfile.yml`, and dating all of them would record reviews

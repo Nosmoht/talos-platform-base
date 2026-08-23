@@ -23,10 +23,11 @@
 # Re-verified against v0.12.0 (2026-08-23): removing rule_id fails validation.
 #
 # No [rules] section: knowledge/rules/ is the CLI's built-in default location
-# for custom rule documents. Verified against v0.5.0 (2026-07-15) — rendering
-# into AGENTS.md and the rule-catalog validation behave identically with and
-# without an explicit [rules].paths = ["rules"], so declaring it would only
-# restate the default. [rules].paths is for ADDITIONAL directories.
+# for custom rule documents. Re-verified against v0.12.0 (2026-08-23), since
+# 0.12.0 is the release that moved `rules` under `prompt`: rendering into
+# AGENTS.md and the rule-catalog validation behave identically with and without
+# an explicit [rules].paths = ["rules"], so declaring it would only restate the
+# default. [rules].paths is for ADDITIONAL directories.
 
 [validation.rules]
 link-target = "error"
