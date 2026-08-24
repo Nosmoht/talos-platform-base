@@ -1,23 +1,10 @@
 #!/usr/bin/env bash
 # Bite-check for the bundle-policy gate (scripts/check-bundle-policy.sh).
 #
-# The gate exists because a config the CLI cannot find produces exit 0 and an
-# empty policy -- silence, not an error. A detector for a silent failure is
-# itself worth nothing unless something proves it still discriminates, so each
-# scenario below builds a throwaway bundle, puts the config somewhere, and
-# asserts the VERDICT LINE rather than the exit code alone: exit 1 is emitted
-# for a real miss and for an uncaught Python traceback, and those must not read
-# alike.
-#
-# The green scenario is not decoration. A checker that fails on everything
-# passes every red case, so the conforming input is what separates a working
-# detector from a broken one.
-#
-# Scenario 7 checks a second silent failure with the same shape: the telemetry
-# opt-out. It is an env var, so a release that renames or stops honouring it
-# produces no error and no exit-code change -- egress simply resumes. The
-# scenario is two-sided, because a one-sided assertion passes on a probe that
-# could never have detected a write.
+# Each scenario builds a throwaway bundle and asserts the VERDICT LINE, not the
+# exit code alone: exit 1 is emitted for a real miss and for an uncaught Python
+# traceback, and those must not read alike. The conforming scenario is what
+# separates a working detector from one that fails on everything.
 #
 # Runs offline, mutates nothing outside its temp dir. Exit 0 = every scenario
 # behaved, 1 = the gate regressed, 2 = environment error.
@@ -91,8 +78,7 @@ printf '[validation.rules]\nlink-target = "error"\nrule-catalog = "warn"\n' >"$t
 scenario "a required raise lowered to warn" fail "rule-catalog=error"
 
 # 6. The CLI itself cannot run. Must be reported as its own cause, not
-#    misdiagnosed as a discovery problem -- an unknown rule name is rejected at
-#    config-parse time (measured against 0.12.0: exit 2, no JSON at all).
+#    misdiagnosed as a discovery problem.
 build "$tmp/case"
 printf '[validation.rules]\nlink-target = "error"\nrule-catalog = "error"\nbogus-rule = "error"\n' >"$tmp/case/kb/.openknowledge.toml"
 scenario "unparseable config is reported as itself" fail "openknowledge could not run"

@@ -3,33 +3,28 @@
 #
 # `openknowledge validate` exits 0 with an empty policy when it cannot find a
 # config, so every severity raise degrades back to the spec default and the
-# gate reports green while checking nothing. That is how the pre-0.10 config
-# filename went unnoticed here for seven minor releases. This script is the
-# mechanical detector; scripts/check-knowledge-gate-bite.sh proves it bites.
+# gate reports green while checking nothing. scripts/check-knowledge-gate-bite.sh
+# proves this detector bites.
 #
 # Usage: check-bundle-policy.sh <bundle-dir> <rule=severity>...
 # Exit 0 = the bundle's own config is loaded and every named rule is at the
 # named severity. Exit 1 = it is not, with the cause on stdout. Exit 2 =
-# openknowledge could not run; its own stderr is reproduced verbatim, because
-# it is the only statement of the actual cause (a TOML syntax error and an
-# unknown rule name both land here, and neither is a discovery problem).
+# openknowledge could not run; its own stderr is reproduced verbatim, since a
+# TOML syntax error and an unknown rule name both land here and neither is a
+# discovery problem.
 
 set -euo pipefail
 
-# Runnable directly, so the Taskfile env: block does not cover it, and that
-# block loses to an inherited value. Unconditional for the reason
-# scripts/verify-tools.sh states. Reason for the opt-out: Taskfile.yml env:.
+# Runnable outside go-task, and go-task's env: block loses to an inherited
+# value, so this has to be unconditional.
 export OPENKNOWLEDGE_TELEMETRY=off
 
 bundle="${1:?usage: check-bundle-policy.sh <bundle-dir> [--spec <v>] <rule=severity>...}"
 shift
 [ -d "$bundle" ] || { echo "ERROR: $bundle is not a directory" >&2; exit 2; }
 
-# The caller's --spec is forwarded, so this gate certifies the policy under the
-# SAME spec resolution as the run it gates. Without it the two invocations sit
-# three lines apart resolving the spec differently, and the first CLI whose
-# `latest` moves off the pin makes this script report a config error for a spec
-# move -- exactly the misdiagnosis this file's header exists to prevent.
+# Forwarded so this gate certifies the policy under the SAME spec resolution as
+# the run it gates.
 spec=()
 if [ "${1:-}" = "--spec" ]; then
   [ -n "${2:-}" ] || { echo "ERROR: --spec needs a value" >&2; exit 2; }
@@ -66,9 +61,8 @@ except (OSError, ValueError) as exc:
     print(f"FAIL: openknowledge --format json produced no parseable output ({exc}).")
     sys.exit(1)
 
-# The key is absent, not null, when discovery fails -- but compare the VALUE so
-# a null, an empty string, or a config resolved from somewhere else (a
-# user-level file) cannot satisfy the check. The message names what was found.
+# Compare the VALUE, not the key's presence: a config resolved from elsewhere
+# (a user-level file) must not satisfy the check.
 found = policy.get("configPath")
 if not found or os.path.realpath(found) != expected:
     print(f"FAIL: {expected} is not the config in effect (in effect: {found!r}).")
@@ -83,10 +77,8 @@ if missing:
     print(f"      Policy actually in effect: {overrides}")
     sys.exit(1)
 
-# Parity, the other direction. Without it the caller's argument list is the only
-# thing naming the rule set, so dropping a rule from the config AND from that
-# list is a green run enforcing strictly less. The config is the artifact a
-# reader trusts; the caller must demand everything it raises.
+# Parity, the other direction: the caller must demand everything the config
+# raises.
 asked = {w.split("=", 1)[0] for w in wanted}
 unasked = sorted(r for r, sev in overrides.items() if sev == "error" and r not in asked)
 if unasked:

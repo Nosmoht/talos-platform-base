@@ -1,51 +1,18 @@
-# openknowledge CLI configuration for the knowledge/ OKF bundle.
+# openknowledge configuration for the knowledge/ OKF bundle.
 #
-# Must be a dotfile AND sit inside the bundle directory: measured against
-# v0.12.0 (2026-08-23) that the pre-0.10 filename here, and a dotfile one
-# level up, are both silently NOT read. Discovery is bundle-relative, not
-# cwd-relative. Not tested, so not claimed: whether a user-level config or an
-# explicit flag can also supply policy.
-# Why a config the CLI does not read is dangerous rather than merely
-# ineffective, and what asserts it: scripts/check-bundle-policy.sh's header.
-# The measurement itself: knowledge/log.md, 2026-08-23.
+# Comment lines outweigh keys here, deliberately: each key is a policy choice
+# whose failure mode is silent, and there is no code for the reason to sit next
+# to. Why each raise was chosen is in git, not here.
 #
-# link-target is raised from the spec default (warn) to error so that
-# `openknowledge validate` is a BINDING intra-bundle link gate: a broken
-# relative link or a link escaping the bundle root fails validation
-# (exit 1). Consequence for authors: files outside knowledge/ are cited
-# as inline code spans, never markdown-linked.
-# Re-verified against v0.12.0 (2026-08-23).
+# Must be a dotfile AND sit inside the bundle: any other name or location is
+# read by nothing and every raise below degrades to a warning with no signal.
+# Quote any key containing a dot — unquoted, `okf-0.2-metadata` is a TOML
+# dotted key and the CLI exits 2, dropping every rule in this file.
 #
-# rule-catalog is raised for the same reason: a custom rule document that
-# loses its rule_id, summary, or instruction bullets would otherwise only
-# warn — while silently rendering a hollow contract into AGENTS.md.
-# Re-verified against v0.12.0 (2026-08-23): removing rule_id fails validation.
-#
-# No [rules] section: knowledge/rules/ is the CLI's built-in default location
-# for custom rule documents. Re-verified against v0.12.0 (2026-08-23), since
-# 0.12.0 is the release that moved `rules` under `prompt`: rendering into
-# AGENTS.md and the rule-catalog validation behave identically with and without
-# an explicit [rules].paths = ["rules"], so declaring it would only restate the
-# default. [rules].paths is for ADDITIONAL directories.
-
-# okf-0.2-metadata is raised so the v0.2 field contract is BINDING rather than
-# advisory. The key MUST be quoted: unquoted it is read as a TOML dotted key and
-# the CLI exits 2, dropping EVERY rule in this file rather than just that one.
-# With it present, `openknowledge validate --spec 0.1` exits 2 as a config-scope
-# error, which is what a contributor debugging against 0.1 will see.
-#
-# okf-version compares the DECLARED version to the validated one. It is raised
-# for the mismatch case, but it cannot see an ABSENT declaration and
-# knowledge:validate pins --spec, so it is not what binds the two literals
-# together. scripts/check-knowledge-frontmatter.sh is: it asserts
-# knowledge/index.md declares "0.2".
-#
-# markdown-syntax stays at the spec default of warn: its findings are unclosed
-# inline code spans in prose, a defect class this bundle's field migration does
-# not touch, and raising it here would red a required check on them.
-#
-# The migration measurements behind all of this — counts, probe tables, the
-# rejected alternatives — are in knowledge/log.md under 2026-08-23, not here.
+# okf-version cannot see an ABSENT okf_version, so it does not bind the
+# bundle's declared version to the pinned --spec; the frontmatter gate does.
+# markdown-syntax stays at warn on purpose. No [rules] section: knowledge/rules/
+# is the CLI's default rule path, so declaring it would restate the default.
 
 [validation.rules]
 link-target = "error"

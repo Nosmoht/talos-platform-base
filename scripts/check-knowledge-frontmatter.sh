@@ -1,28 +1,18 @@
 #!/usr/bin/env bash
 # Frontmatter gate for the knowledge/ OKF bundle.
 #
-# `openknowledge validate` checks the shape of the fields OKF defines. It does
-# NOT check the six things below, each measured against v0.12.0 on 2026-08-23:
+# Asserts the six things `openknowledge validate` does not, each of which the
+# bundle conventions (knowledge/rules/talos-base-bundle.md) state normatively
+# and none of which any rule enforces:
 #
-#   - `sources[].resource` is not resolved at all. A nonexistent path, a `../`
-#     escape and a path outside the bundle each draw zero findings, so the
-#     staleness contract's only link to reality is unbound.
-#   - `decided` is producer-defined, so `decided: banana` validates green — and
-#     it carries the date of 24 of the bundle's 43 concepts.
-#   - `generated` is optional in v0.2, so deleting the block from a sourced
-#     concept validates green and the concept silently claims nothing.
-#   - a re-introduced `timestamp:` is a producer-defined key like any other and
-#     validates green, leaving two competing dates in machine-readable form.
-#   - `okf-version` compares a DECLARED version to the validated one; with no
-#     declaration there is nothing to compare, so deleting `okf_version` from
-#     knowledge/index.md is green.
-#   - nothing distinguishes a decision concept from any other, so an ADR
-#     scaffolded with `generated` + `sources` validates green against a contract
-#     that forbids both.
-#
-# Each of those is asserted here instead. The bundle conventions
-# (knowledge/rules/talos-base-bundle.md) state them normatively; without this
-# script they would be prose only.
+#   - `sources[].resource` resolves, is repo-relative, and does not escape.
+#   - `decided`, `generated.at` and `verified[].at` are quoted ISO 8601
+#     datetimes and not in the future.
+#   - a concept listing `sources` carries `generated`.
+#   - no frontmatter carries the retired `timestamp` key.
+#   - knowledge/index.md declares `okf_version`.
+#   - a decision concept carries `decided` and neither `generated`,
+#     `verified` nor `sources`.
 #
 # Bite-checked by scripts/check-knowledge-frontmatter.test.sh.
 set -euo pipefail
