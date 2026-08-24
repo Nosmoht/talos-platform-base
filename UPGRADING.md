@@ -655,8 +655,9 @@ Pick one:
 Option 1 relies on `nullable = false`, which reached the chart-version inputs in
 `v9.0.0`, not in this one — before that tag a passed `null` stays `null` rather
 than falling back to the base pin, so Option 2 is the route from here. A fresh
-bootstrap from this tag's `cluster.yaml.example` already inherits 1.20.0 and
-needs neither edit.
+bootstrap from this tag's `cluster.yaml.example` needs neither edit: it pins
+`1.20.0` outright. That pin does not follow a later base bump — omitting the key
+to inherit becomes possible at `v9.0.0`.
 
 ### 1. Running clusters are NOT upgraded by this bump — but the frozen seed goes stale (affects anyone who adds or replaces a controlplane)
 
