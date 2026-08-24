@@ -642,20 +642,21 @@ and both win over the module default. So vendoring this tag alone keeps renderin
 
 Pick one:
 
-1. **Recommended — stop pinning, inherit the base.** Delete
-   `substrate.cilium.chart_version` from your `cluster.yaml` and change the shim
-   fallback to `try(local.cilium.chart_version, null)`. `null` now means "take
-   the base's pin", so this bump and every future one reach you by vendoring
-   alone. This is what the shipped examples do as of this release.
+1. **Stop pinning, inherit the base — needs a base at `v9.0.0` or newer.**
+   Delete `substrate.cilium.chart_version` from your `cluster.yaml` and change
+   the shim fallback to `try(local.cilium.chart_version, null)`, so this bump
+   and every future one reach you by vendoring alone. Read the `nullable` note
+   below before taking this route: at this tag the shipped example still carries
+   the literal `"1.20.0"` and switches to `null` only at `v9.0.0`.
 2. **Keep pinning deliberately.** Set `substrate.cilium.chart_version: "1.20.0"`
    in your `cluster.yaml` and bump the shim's literal too if it still reads
    `1.19.4`. You keep control and keep the maintenance.
 
 Option 1 relies on `nullable = false`, which reached the chart-version inputs in
 `v9.0.0`, not in this one — before that tag a passed `null` stays `null` rather
-than falling back to the base pin, so Option 1 needs a base at `v9.0.0` or newer
-and Option 2 is the route from here. A fresh bootstrap from the
-current `cluster.yaml.example` already inherits 1.20.0 and needs neither edit.
+than falling back to the base pin, so Option 2 is the route from here. A fresh
+bootstrap from this tag's `cluster.yaml.example` already inherits 1.20.0 and
+needs neither edit.
 
 ### 1. Running clusters are NOT upgraded by this bump — but the frozen seed goes stale (affects anyone who adds or replaces a controlplane)
 
