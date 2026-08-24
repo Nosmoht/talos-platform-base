@@ -9,7 +9,8 @@ For consumer-cluster repos vendoring `talos-platform-base` via OCI.
   bump and any MINOR that requires a manual action.
 - Read every section between the version you currently pin and the
   version you want to adopt, oldest tag first. Sections are not stored in
-  version order — locate them by the tag in the heading, not by position.
+  version order and one tag may own more than one of them — locate every
+  section carrying a tag in your range by its heading, not by position.
 - Always verify the new artifact (cosign + provenance) before vendoring
   — see [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
 
@@ -446,7 +447,7 @@ self-management `Application` are byte-identical to the previous tag.
 enough — your copy must map them, exactly as it already maps `agent_metrics`.
 Without the two lines below the value passes `check-jsonschema`, passes
 `tofu plan`, and silently never reaches the module. This is the same trap the
-`chart_version` note in the v8.0.0 section describes.
+`chart_version` note in the `v8.2.0` section describes.
 
 ```hcl
   cilium_agent_metric_overrides  = try(local.cilium.agent_metric_overrides, [])

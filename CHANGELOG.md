@@ -5,10 +5,10 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-> Also holds entries that shipped in `v7.0.0` through `v9.0.0`: those tags were
-> cut without a CHANGELOG section. `UPGRADING.md` headings already carry the
-> tag each migration shipped in, so the two files disagree until the backfill
-> tracked in #233 lands.
+> Every entry below shipped in `v7.0.0` through `v9.0.0`: those tags were cut
+> without a CHANGELOG section, and nothing here is awaiting release.
+> `UPGRADING.md` headings already carry the tag each migration shipped in, so
+> the two files disagree until the backfill tracked in #233 lands.
 
 ### Added
 
