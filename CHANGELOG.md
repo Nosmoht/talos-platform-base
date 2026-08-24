@@ -15,15 +15,6 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   off. Default-off emits no machine-config change. See
   [ADR-0023](knowledge/decisions/0023-node-identity-map-key.md).
 
-- **`talos-cluster`: `cilium_operator_replicas` input (number, default `null`).**
-  Pins the Cilium operator's replica count on **both** delivery paths — the
-  frozen seed and the emitted self-management Application — where
-  `cilium_values_override` reaches only the seed and is hard-rejected alongside
-  `cilium_self_management`. `null` derives the count from the node set; see the
-  matching entry under Changed for the derivation and its rationale. Paired with
-  a new `cilium_operator_replicas_effective` output reporting the resolved count
-  and which of the three mechanisms produced it.
-
 - **`talos-cluster`: two further typed Cilium observability inputs (default off).**
   `cilium_agent_metric_overrides` (the chart's `prometheus.metrics` `+metric` /
   `-metric` delta list against its default metric set) and
@@ -67,52 +58,6 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it on adoption. `cilium_self_management_project` selects the target
   `AppProject` (default `"default"`; a scoped project is recommended
   hardening — see the module README). See
-  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
-
-### Changed
-
-- **`talos-cluster`: the Cilium operator's replica count now follows the node
-  count, and is pinnable.** At two or more nodes the module emits
-  `operator.replicas: 2` — the Cilium chart's own default — into both the
-  bootstrap seed and the emitted self-management Application. At exactly one node
-  nothing is emitted and the shipped floor's `1` remains effective, because the
-  chart's operator `podAntiAffinity` is `requiredDuringScheduling` on
-  `kubernetes.io/hostname` and a second replica would stay Pending there forever.
-  The new `cilium_operator_replicas` input (`substrate.cilium.operator_replicas`)
-  pins the count instead; it is the only knob that pins on **both** delivery
-  paths, because `cilium_values_override` reaches the seed alone and is
-  hard-rejected alongside `cilium_self_management`. A count above the declared
-  node count is **rejected** at plan time — the surplus can never place against
-  the per-hostname anti-affinity, and the value lands in a create-only seed that
-  no later apply can walk back. The new `cilium_operator_replicas_effective`
-  output reports the resolved count together with its origin (pin, node-count, or
-  floor).
-
-  Why: `2` is the chart's own default, and the floor's `1` diverged from it on
-  every cluster shape while being correct on exactly one. Two consequences were
-  measured against the pinned chart 1.20.0. The rolling-update strategy varies
-  with the replica count — `maxUnavailable` is `100%` at one replica and `50%` at
-  two — so a rollout guarantees zero available operator pods at one replica and
-  one at two. And on a hard node failure a lone replica waits out the 300-second
-  `unreachable` eviction plus a reschedule and a cold start, where a second
-  replica is already running elsewhere.
-
-  Two things this release does **not** claim. How fast that second instance takes
-  the work over was not measured — the chart grants the leader-election lease
-  RBAC at one replica too and sets no leader-election flags, so the mode and the
-  timings are operator-binary behaviour. And none of this rescues a node that is
-  merely `NotReady` while its operator pod is alive and reaching the API: that is
-  not a failover event at all.
-
-  Note the resource footprint: the chart sets no `operator.resources`, so both
-  pods are **BestEffort**. See UPGRADING if that matters on your nodes.
-
-  **Impact on adoption:** a multi-node cluster taking this tag gets a second
-  `cilium-operator` pod. On an already-bootstrapped cluster the seed path does
-  **not** deliver it — `terraform_data.cilium_render` carries `ignore_changes`
-  and `inlineManifests` are create-only, so it takes a fresh bootstrap or a
-  deliberate `-replace`; a control-plane join does not deliver it either. A
-  self-managing consumer gets it on the next ArgoCD reconcile. See
   [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
 
 ### Changed — BREAKING
@@ -472,6 +417,72 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - A DNS-rename regeneration depends on Talos adding the new hostname to
     the apiserver serving-cert SANs in the same apply; the apiserver
     cert-SANs update alongside `var.cluster_endpoint` on a re-apply.
+
+## v9.1.0 — 2026-08-24
+
+### Added
+
+- **`talos-cluster`: `cilium_operator_replicas` input (number, default `null`).**
+  Pins the Cilium operator's replica count on **both** delivery paths — the
+  frozen seed and the emitted self-management Application — where
+  `cilium_values_override` reaches only the seed and is hard-rejected alongside
+  `cilium_self_management`. `null` derives the count from the node set; see the
+  matching entry under Changed for the derivation and its rationale. Paired with
+  a new `cilium_operator_replicas_effective` output reporting the resolved count
+  and which of the three mechanisms produced it.
+
+### Changed
+
+- **`talos-cluster`: the Cilium operator's replica count now follows the node
+  count, and is pinnable.** At two or more nodes the module emits
+  `operator.replicas: 2` — the Cilium chart's own default — into both the
+  bootstrap seed and the emitted self-management Application. At exactly one node
+  nothing is emitted and the shipped floor's `1` remains effective, because the
+  chart's operator `podAntiAffinity` is `requiredDuringScheduling` on
+  `kubernetes.io/hostname` and a second replica would stay Pending there forever.
+  The new `cilium_operator_replicas` input (`substrate.cilium.operator_replicas`)
+  pins the count instead; it is the only knob that pins on **both** delivery
+  paths, because `cilium_values_override` reaches the seed alone and is
+  hard-rejected alongside `cilium_self_management`. A count above the declared
+  node count is **rejected** at plan time — the surplus can never place against
+  the per-hostname anti-affinity, and the value lands in a create-only seed that
+  no later apply can walk back. The new `cilium_operator_replicas_effective`
+  output reports the resolved count together with its origin (pin, node-count, or
+  floor).
+
+  Why: `2` is the chart's own default, and the floor's `1` diverged from it on
+  every cluster shape while being correct on exactly one. Two consequences were
+  measured against the pinned chart 1.20.0. The rolling-update strategy varies
+  with the replica count — `maxUnavailable` is `100%` at one replica and `50%` at
+  two — so a rollout guarantees zero available operator pods at one replica and
+  one at two. And on a hard node failure a lone replica waits out the 300-second
+  `unreachable` eviction plus a reschedule and a cold start, where a second
+  replica is already running elsewhere.
+
+  Two things this release does **not** claim. How fast that second instance takes
+  the work over was not measured — the chart grants the leader-election lease
+  RBAC at one replica too and sets no leader-election flags, so the mode and the
+  timings are operator-binary behaviour. And none of this rescues a node that is
+  merely `NotReady` while its operator pod is alive and reaching the API: that is
+  not a failover event at all.
+
+  Note the resource footprint: the chart sets no `operator.resources`, so both
+  pods are **BestEffort**. See UPGRADING if that matters on your nodes.
+
+  **Impact on adoption:** a multi-node cluster taking this tag gets a second
+  `cilium-operator` pod. On an already-bootstrapped cluster the seed path does
+  **not** deliver it — `terraform_data.cilium_render` carries `ignore_changes`
+  and `inlineManifests` are create-only, so it takes a fresh bootstrap or a
+  deliberate `-replace`; a control-plane join does not deliver it either. A
+  self-managing consumer gets it on the next ArgoCD reconcile. See
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
+### Fixed
+
+- **`schemas/cluster.schema.json`: the `operator_replicas` description said the
+  bound only warns.** It is a plan-time rejection — `variables.tf` enforces it in
+  a `validation` block, and the module README and the behavioural spec both said
+  so already. The schema was the single outlier; no validation behaviour changed.
 
 ## v6.0.0 — 2026-07-20
 
