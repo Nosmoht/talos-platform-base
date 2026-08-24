@@ -240,7 +240,7 @@
               "type": "boolean"
             },
             "operator_replicas": {
-              "description": "Cilium operator Deployment replica count (operator.replicas). Omit to derive it from the node count: 2 at two or more nodes (the chart's own default), and nothing at exactly one node, where the shipped floor's 1 stays effective. Set it to pin the count on BOTH delivery paths — values_override reaches only the seed and is mutually exclusive with self_management. Pinning more replicas than there are nodes only warns: the operator's anti-affinity is per-hostname, so the surplus stays Pending.",
+              "description": "Cilium operator Deployment replica count (operator.replicas). Omit to derive it from the node count: 2 at two or more nodes (the chart's own default), and nothing at exactly one node, where the shipped floor's 1 stays effective. Set it to pin the count on BOTH delivery paths — values_override reaches only the seed and is mutually exclusive with self_management. Pinning more replicas than there are declared nodes is rejected at plan time: the operator's anti-affinity is per-hostname, so the surplus can never place, and the value is baked into a create-only seed that no later apply can walk back.",
               "type": "integer",
               "minimum": 1
             },
