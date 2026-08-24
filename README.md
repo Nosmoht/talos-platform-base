@@ -252,7 +252,7 @@ the base, not application developers or end-users.
 | [`AGENTS.md`](AGENTS.md) | Configure an agentic tool against the repo |
 | [`openspec/`](openspec/) | Read the behavioral requirements per substrate capability |
 
-Full knowledge-bundle index (OKF v0.1): [`knowledge/index.md`](knowledge/index.md).
+Full knowledge-bundle index (OKF v0.2): [`knowledge/index.md`](knowledge/index.md).
 Behavioral-spec workflow: [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
 
 ## Contributing

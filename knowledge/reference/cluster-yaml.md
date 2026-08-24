@@ -3,22 +3,24 @@ type: reference
 title: cluster.yaml — Declarative Cluster SoT
 description: The two consumers of the declarative cluster.yaml Source-of-Truth, its secret-handling rules, and how CI wires the schema lint gate red-green.
 tags: [cluster-yaml, sot, schema, bootstrap]
-timestamp: 2026-08-14
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
-  - cluster.yaml.example
+  - resource: cluster.yaml.example
   # Kept despite the schema-shape section moving to openspec/specs/cluster-yaml-sot/:
   # the surviving prose still derives from this file (the deliberate absence of a
   # schema_version, the unvalidated patch content), so it is still the trigger
   # the bundle's re-verify rule needs — drop it and nothing tells a future
   # reader those claims went stale.
-  - schemas/cluster.schema.json
-  - scripts/lint-cluster-yaml.sh
-  - scripts/check-shim-key-parity.sh
-  - schemas/fixtures/cluster.invalid.yaml
-  - Taskfile.yml
-  - tofu/modules/talos-cluster/examples/complete/main.tf
-  - tofu/modules/talos-cluster/examples/complete/variables.tf
-  - .github/workflows/gitops-validate.yml
+  - resource: schemas/cluster.schema.json
+  - resource: scripts/lint-cluster-yaml.sh
+  - resource: scripts/check-shim-key-parity.sh
+  - resource: schemas/fixtures/cluster.invalid.yaml
+  - resource: Taskfile.yml
+  - resource: tofu/modules/talos-cluster/examples/complete/main.tf
+  - resource: tofu/modules/talos-cluster/examples/complete/variables.tf
+  - resource: .github/workflows/gitops-validate.yml
 ---
 
 # cluster.yaml — Declarative Cluster SoT

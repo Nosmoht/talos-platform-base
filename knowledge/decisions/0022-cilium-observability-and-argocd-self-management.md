@@ -2,9 +2,9 @@
 type: decision
 title: "ADR: Cilium observability inputs + opt-in ArgoCD self-management delivery mode"
 description: "Adds first-class default-off Cilium observability inputs (agent/operator Prometheus metrics, Hubble metrics-only) and an opt-in emitted-Application self-management delivery mode; closes the substrate.cilium schema and bumps the module's OpenTofu floor to >= 1.9."
-status: accepted
+status: stable
 id: base:cilium-observability-and-argocd-self-management
-timestamp: 2026-08-15
+decided: "2026-07-22T00:00:00Z"
 deciders:
   - platform-maintainer
 related:

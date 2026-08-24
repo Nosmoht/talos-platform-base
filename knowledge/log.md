@@ -2,159 +2,56 @@
 
 ## 2026-08-23
 
-The pinned `openknowledge` CLI moved 0.5.0 -> 0.12.0, and the durable lesson is
-not the version number. The pinned 0.12.0 does not read the legacy
-`openknowledge.toml` name, so that file had become inert:
-`link-target = "error"` and `rule-catalog = "error"` degraded back to warnings
-with no signal at all. Which release introduced that is NOT recorded here,
-because it could not be sourced — upstream publishes no release notes for any version in the
-range (checked 0.10.0 through 0.12.0, all empty). Only 0.12.0 was measured.
+Two changes, one day: the pinned `openknowledge` CLI moved 0.5.0 -> 0.12.0, and
+the bundle moved from OKF v0.1 field style to v0.2. Why each thing was done is
+in the commit that did it; this list is what changed, per concept.
 
-Scope of the damage, since the unqualified version of that sentence is wrong:
-the merge gate was in far better shape than a local run. `docs-lint.yml` runs
-`task knowledge:install-cli` in the same job before validating, which installs
-the PINNED version, and 0.5.0 does read the legacy name (verified 2026-07-15,
-further down this file). Checked every revision of that workflow: the
-install-before-validate ordering holds in all of them except one (2026-07-15,
-the commit that introduced the managed block), which ran `knowledge:validate`
-with no install step at all. So "CI was never degraded" is not a claim this
-file can make; what it can say is that the degradation lived in LOCAL runs of
-anyone who had upgraded past the pin, which is the argument for the version
-guard: without one, local verification silently stops matching CI.
-
-Three facts about 0.12.0 that changed the tooling rather than the bundle, kept
-here because the next bump will need them. `rules` now lives under `prompt`,
-and the old form exits 2 — inside `knowledge:rules-check` that render runs in a
-pipeline, so `set -e` never sees the failure and only the empty-block assertion
-catches it; the assertion now carries a comment saying so, because it reads as
-redundant otherwise. `linux-arm64` joins the checksum set as a fourth platform,
-verified end to end in a linux/arm64 container since it is the one arm neither
-the maintainer nor CI exercises: both assets fetch, both checksums verify, the
-openknowledge tarball is flat as the install line assumes, and lychee's nested
-binary is found by the same `find`. And telemetry, which is on by default, is
-opted out through `OPENKNOWLEDGE_TELEMETRY=off` in the Taskfile `env:` block —
-correcting this entry's first draft, which claimed 0.12.0 offers no env-var
-switch and only the `--no-telemetry` flag. The variable exists, is upstream's
-documented process-level override (`https://openknowledge.sh/wiki/features/telemetry.html`,
-which also names `DO_NOT_TRACK=1`), and is the better instrument: it is
-per-invocation, writes no telemetry config and does not touch an existing one,
-whereas the flag persists `enabled: false` into the operator's config and does
-not exist before 0.12.0 — so it could never have covered the two version
-probes, which must read a drifted binary — measured, 0.5.0 answers
-`unknown command: --no-telemetry` with EMPTY output, which is what makes it
-unusable there: `OK_GUARD` would then report `openknowledge '' != pinned`,
-blaming version drift for a rejected flag. Measured, and NOT documented
-upstream, which names only `off`: `0` and `false` work too, matching is
-case-insensitive, and an unrecognised value falls back to ENABLED. The spelling
-is therefore load-bearing, and `off` is the one to keep because it is the
-documented one.
-
-Where the opt-out is enforced took two attempts, and the first was wrong on a
-point worth recording: an `env:` entry in `Taskfile.yml` is a DEFAULT, not an
-override. Measured — `OPENKNOWLEDGE_TELEMETRY=on task knowledge:validate` sends
-telemetry, the ambient value wins. So the entry alone left every target
-defeatable from the environment, and because an unrecognised value means
-enabled, a typo did it too. What binds is an unconditional
-`export OPENKNOWLEDGE_TELEMETRY=off`: in `OK_GUARD`, which the three `knowledge:*`
-CLI targets already share; in `knowledge:install-cli`, which has no `OK_GUARD`
-because it installs the binary the guard checks, and whose closing `version`
-echo is a fresh binary's first run; and at the top of
-`scripts/verify-tools.sh`, `scripts/check-bundle-policy.sh` and
-`scripts/check-knowledge-gate-bite.sh`, all three runnable outside go-task.
-Unconditional rather than deferring to a caller: `${VAR:-off}` substitutes only
-when the variable is unset, so it passes `on` — and every typo — straight
-through to the fail-open default. An operator who wants telemetry runs the
-binary outside these targets. The `env:` entry stays as the default for any
-future target that runs the CLI without `OK_GUARD`, and
-`OPENKNOWLEDGE_TELEMETRY_CONFIG` stays pinned into the gitignored `.work/` as a
-backstop: with the export in place nothing is written there, and if the opt-out
-ever stops working the write is bounded to the checkout instead of the
-operator's home, where it is visible. This mirrors the `OPENSPEC_TELEMETRY`
-opt-out already sitting in that block for the sibling CLI.
-
-A control this quiet needs a detector, by the same argument as the config gate
-above. `scripts/check-knowledge-gate-bite.sh` gained a seventh, two-sided
-scenario: a control run with the variable empty must WRITE a telemetry config,
-and only then is the `off` run's silence evidence. Both halves were mutated and
-both report the right failure.
-
-The first version of that scenario went red on CI and green locally, which
-turned up the fact the whole opt-out should be read against: a truthy `CI`
-suppresses the write on its own (measured — `CI=true` and `CI=1` do, `CI=false`
-and `GITHUB_ACTIONS=true` alone do not). So the runner was never sending
-telemetry, the opt-out is a LOCAL-run control, and the scenario was measuring
-the runner rather than the variable — failing its control there and passing its
-assertion for the wrong reason. Both halves now drop `CI` from the environment,
-and removing that is one of the three mutants the scenario is bound against.
-Same shape as the config-filename finding at the top of this entry: the
-degradation lived locally, and the argument for a guard is that local
-verification stops matching CI without one.
-
-What an event carries, measured with
-`openknowledge telemetry show-payload` so the residual can be sized without
-re-deriving it: schema version, event name and id, timestamp, surface,
-installation id, app version, OS, arch, command name, outcome, and a duration
-bucket. No paths, no content, no repository or user identity. The remaining
-uncovered path is a bare `openknowledge` invocation, which the built-in rule
-text in the `AGENTS.md` managed block still tells agents to make; the bundle
-conventions gained a bullet saying to go through the `knowledge:*` targets and
-to prefix a bare run, and it renders ten lines above that instruction.
-
-- `.openknowledge.toml`, renamed from `openknowledge.toml`: the rename is the
-  fix, and the severity set is unchanged. Measured against 0.12.0 that the file
-  must be BOTH a dotfile AND inside the bundle directory — a copy at the
-  repository root is not discovered — and that discovery is bundle-relative, so
-  the answer does not change with the working directory. Not measured, so not
-  claimed: whether a user-level config or an explicit flag can also supply
-  policy. Telling whether the file is in effect is no longer prose:
-  `OPENKNOWLEDGE_TELEMETRY=off openknowledge validate --format json knowledge/`
-  prints `policy.configPath`
-  and the overrides when it is read and an empty `policy` when it is not, and
-  `scripts/check-bundle-policy.sh` now asserts that the RESOLVED path is this
-  bundle's own file and that each named rule sits at the named severity — the
-  path value, not merely the presence of a `configPath` key, so a config
-  supplied from anywhere else cannot satisfy it. It parses the JSON with
-  `python3` for the reason `dev:verify-pins` states: `jq` is not pinned. A run
-  that fails for any other reason reproduces the CLI's own stderr instead of
-  blaming discovery; an unknown rule name, for instance, is rejected at
-  config-parse time with exit 2 and no JSON at all (measured).
-  `scripts/check-knowledge-gate-bite.sh` proves that checker still
-  discriminates, across six scenarios including a conforming one, and both run
-  from `knowledge:validate` — the pairing `spec:validate` already uses for the
-  staleness gate. A detector for a silent failure is worth nothing without one.
-- `index.md`: the tooling-config carve-out now says the placement is mandatory
-  rather than merely tidy, since 0.12.0 reads the file only from inside the
-  bundle and only under the dotfile name, and the link-rule bullet names the
-  dotfile. The carve-out itself is unchanged — it is still narrow.
-- `reference/tasks.md`: re-read against its sources and it had drifted, which
-  is the whole argument for re-verifying rather than re-dating. Its rules-apply
-  row named the pre-0.12 command; its `knowledge:validate` row now describes
-  the two new gates and the version precondition; and its tool-pin bullets
-  stopped quoting the openknowledge and lychee VALUES, naming the Taskfile
-  variables instead. A copied version is a second place to go stale, and this
-  one had: it still read 0.5.0 in the change that bumps the pin. Those two are
-  safe to reduce to a pointer because `dev:verify-pins` asserts them against
-  `.tool-versions`. The three MCP values in the same list are asserted against
-  nothing, so a pointer would leave no record at all; they stay written out,
-  with a clause saying why they differ from their neighbours.
-- `rules/talos-base-bundle.md`: the re-verification criterion is narrowed to
-  "a change that lands inside what the concept describes", not "a listed source
-  file was touched". Twelve concepts list `Taskfile.yml` and this change edits
-  it; dating all twelve would record reviews that did not happen, which is the
-  false freshness the rule exists to prevent. The narrowing is a maintainer
-  decision on the record, not a side effect — the discarded alternative was to
-  keep the literal rule and re-verify all twelve. Its link-rule bullet also
-  names the dotfile, and it gained one: invoke the CLI through the
-  `knowledge:*` targets, never bare. This entry's first draft said the file
-  needed no edit, which was wrong on its own terms — the narrowing is that
-  edit.
-- `workflows/spec-driven-development.md`: re-read against its sources for the
-  same reason and needed no edit beyond the date.
-- `decisions/0015-openspec-adoption.md`: a dated clarification is appended
-  saying the file is now `knowledge/.openknowledge.toml` and that recreating
-  the old name would silently do nothing. The record text above it is
-  untouched, including the legacy filename in its parenthesis — that is the
-  name the CLI used at the time.
+- `.openknowledge.toml`: renamed from `openknowledge.toml` — 0.12.0 reads the config only under the dotfile name and only from inside the bundle, so the old file was inert and both raises had degraded to warnings. `"okf-0.2-metadata"` and `okf-version` raised to error; `link-target` and `rule-catalog` unchanged; `markdown-syntax` stays at warn.
+- `architecture/capability-composition.md`: `generated.at 2026-07-15`, `verified 2026-08-14`. Git: the 2026-08-14 commit changed only the `timestamp:` line. The only row with no corroborating log bullet.
+- `architecture/day-zero-bootstrap.md`: `generated.at 2026-08-14`, `verified 2026-08-12`. Content change under 2026-08-14; the 2026-08-12 re-verification is kept although it predates it.
+- `architecture/substrate.md`: `generated.at 2026-08-14`, `verified 2026-07-17`. §What ships in the OCI artifact corrected under 2026-08-14; re-verified against the implemented branch under 2026-07-17.
+- `glossary.md`: `generated.at 2026-08-14`, `verified 2026-07-17`. The `helm_template` freeze wording changed on 2026-08-14; same 2026-07-17 re-verification bullet as `substrate.md`.
+- `project/harness-plugin-contract.md`: `generated.at 2026-07-13`, no `verified`. The "ships no `.claude/`" statements were rewritten under 2026-07-13 without bumping the key, so the old 2026-07-11 value was stale and moves forward.
+- `project/openssf-self-assessment.md`: `generated.at 2026-07-15`, no `verified`. Created 2026-07-15, no later entry.
+- `project/vision.md`: `generated.at 2026-07-11`, no `verified`. Created with the bundle, no later entry.
+- `reference/argocd-sso-contract.md`: `generated.at 2026-08-14`, no `verified`. New concept under 2026-08-14; nothing has read it back since.
+- `reference/cluster-yaml.md`: `generated.at 2026-08-14`, `verified 2026-08-14`. Both on the same day and both recorded: a new §How CI binds the schema to the shim, and "re-verified against the widened `schemas/cluster.schema.json`".
+- `reference/manifest-pipeline.md`: `generated.at 2026-08-14`, no `verified`. §ArgoCD substrate invariants updated under 2026-08-14.
+- `reference/tasks.md`: `generated.at 2026-08-23`, no `verified`. Rewritten again in this change — the `knowledge:validate` and `knowledge:new` rows — so the 2026-08-23 reading recorded earlier in this section no longer covers its content. Also re-read against its sources and corrected: the rules-apply row named the pre-0.12 command, the `knowledge:validate` row now describes all three gates and the version precondition, and the openknowledge/lychee pin values are replaced by the Taskfile variable names.
+- `rules/talos-base-bundle.md`: `generated.at 2026-08-23`, no `verified`. Nine bullets become fifteen here; authoring is never verifying, so the file does not certify its own edit. Its re-verification criterion was also narrowed to "a change that lands inside what the concept describes", and it gained the rule to invoke the CLI through the `knowledge:*` targets rather than bare.
+- `workflows/first-consumer-cluster.md`: `generated.at 2026-08-14`, `verified 2026-08-12`. Day-2 narration changed under 2026-08-14; the 2026-08-12 re-verification is kept although it predates it.
+- `workflows/issue-lifecycle.md`: `generated.at 2026-07-11`, no `verified`. Created with the bundle, no later entry.
+- `workflows/mcp-setup.md`: `generated.at 2026-07-11`, no `verified`. Created with the bundle, no later entry.
+- `workflows/release-process.md`: `generated.at 2026-07-29`, no `verified`. Content changed 2026-07-29 without bumping the key, so the old 2026-07-21 value was stale and moves forward.
+- `workflows/spec-driven-development.md`: `generated.at 2026-08-12`, `verified 2026-08-23`. Content change under 2026-08-12; "re-read against its sources ... needed no edit beyond the date" earlier in this section. Re-read against its sources at the CLI bump; no edit was needed beyond the date.
+- `workflows/verify-release.md`: `generated.at 2026-07-11`, no `verified`. Created with the bundle, no later entry.
+- `decisions/0001-multi-repo-platform-split.md`: `decided 2026-04-27`. Its own `history:` first entry; the old `timestamp` of 2026-05-18 was the third amendment.
+- `decisions/0002-namespace-ownership-rendered-manifests.md`: `decided 2026-05-18`. Its body: "2026-05-18 initial: Architecture C accepted".
+- `decisions/0003-three-layer-capability-architecture.md`: `decided 2026-05-23`. `history:` "2026-05-23 proposed + accepted".
+- `decisions/0004-substrate-only-base.md`: `decided 2026-05-27`. `history:` "2026-05-27 accepted"; the 2026-05-26 entry is the proposal, not the decision.
+- `decisions/0005-shared-render-artifact.md`: `decided 2026-05-29`. `history:` "2026-05-29 initial (accepted...)". Status also moves to `deprecated`.
+- `decisions/0006-opentofu-cluster-lifecycle.md`: `decided 2026-06-02`. No `history:` and no log statement; the old `timestamp` stands.
+- `decisions/0007-cluster-yaml-sot.md`: `decided 2026-06-06`. Old `timestamp`.
+- `decisions/0008-task-runner-consolidation.md`: `decided 2026-06-07`. `history:` "2026-06-07 initial (accepted...)". Status also moves to `deprecated`.
+- `decisions/0009-node-capability-composition.md`: `decided 2026-06-20`. Old `timestamp`.
+- `decisions/0010-composition-logic-placement.md`: `decided 2026-06-20`, status `draft`. Its §Decision Outcome line stays "**Deferred (proposed).**" — that is the MADR state it records, not a frontmatter citation. Only the header line at the top, which cites the frontmatter explicitly, follows the field.
+- `decisions/0011-substrate-hard-constraints.md`: `decided 2026-06-21`, status `stable`. The maintainer decision its 2026-07-11 verification banner deferred, taken here and recorded in a dated addendum; the banner's own `status: proposed` citation is untouched.
+- `decisions/0012-makefile-retirement.md`: `decided 2026-06-22`. Old `timestamp`.
+- `decisions/0013-kubelet-serving-cert-rotation.md`: `decided 2026-06-30`. Old `timestamp`. Its frontmatter comment stating the partial-supersession convention now says the status stays `stable`.
+- `decisions/0014-ship-ai-tool-artifacts.md`: `decided 2026-07-13`. Old `timestamp`.
+- `decisions/0015-openspec-adoption.md`: `decided 2026-07-13`. Old `timestamp`. Same partial-supersession comment change as 0013. A dated clarification is appended saying the config file is now `knowledge/.openknowledge.toml`; the record text above it, including the legacy filename, is untouched.
+- `decisions/0016-capability-profiles-predicate-only.md`: `decided 2026-07-15`. Old `timestamp`.
+- `decisions/0017-consumer-image-kernel-args.md`: `decided 2026-07-15`. Old `timestamp`.
+- `decisions/0019-postfinance-kubelet-csr-approver.md`: `decided 2026-07-17`. Old `timestamp`.
+- `decisions/0020-automated-release-no-approval-gate.md`: `decided 2026-07-21`. Old `timestamp`.
+- `decisions/0021-spec-vs-bundle-normativity.md`: `decided 2026-07-22`. Old `timestamp`.
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: `decided 2026-07-22`. This file states under 2026-08-14 that its `timestamp` was "left at 2026-07-22 — it records the decision date"; the 2026-08-15 addendum bumped it anyway, against that stated convention. The only ADR whose `timestamp` had drifted off its decision date.
+- `decisions/0023-node-identity-map-key.md`: `decided 2026-07-26`. Old `timestamp`.
+- `decisions/0024-argocd-substrate-relocation.md`: `decided 2026-07-29`. Old `timestamp`.
+- `decisions/0025-argocd-crd-apply-scope.md`: `decided 2026-08-14`. Old `timestamp`.
+- `decisions/template.md`: the `timestamp: YYYY-MM-DD` placeholder is retired with no replacement key — a placeholder is a value a copy can ship with, and a date-typing parser chokes on it. The instruction moves into the template's body comment. Status `draft`.
+- `decisions/index.md`: new §Status vocabulary with the MADR-to-OKF mapping, the `decided` contract, and why a decision concept carries no `generated` or `verified`. The group headings and the per-entry `(word)` suffixes keep the MADR words and are now stated to be the record rather than a duplicate of the field; 0011 moves to §Accepted. §Authoring convention names `decided`.
+- `index.md`: `okf_version: "0.2"`, and the non-normative reasoning section loses its `timestamp` bullet for the two-field explanation plus the two `verified` findings above. The v0.1 label is also corrected in `README.md`, `ARCHITECTURE.md`, `AGENTS.md` and `CLAUDE.md`, which had said v0.1 while `okf_version` said otherwise. The tooling-config carve-out also now states that the placement inside the bundle is mandatory rather than tidy.
 
 ## 2026-08-15
 

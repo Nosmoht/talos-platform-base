@@ -2,9 +2,9 @@
 type: decision
 title: "ADR: Replace cert-approver (alex1989hu) with postfinance/kubelet-csr-approver + a per-cluster config surface"
 description: "Swaps the seeded kubelet-serving approver to postfinance/kubelet-csr-approver, delivered as a chart-rendered templatefile() seed with a three-knob per-cluster config surface, superseding ADR-0013 §D2 while D1 stands."
-status: accepted
+status: stable
 id: base:postfinance-kubelet-csr-approver
-timestamp: 2026-07-17
+decided: "2026-07-17T00:00:00Z"
 deciders:
   - platform-maintainer
 supersedes:

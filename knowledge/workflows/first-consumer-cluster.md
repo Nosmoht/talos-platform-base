@@ -3,18 +3,20 @@ type: workflow
 title: First Consumer Cluster
 description: End-to-end walk-through from verifying a published base release to a reconciling App-of-Apps root on a freshly provisioned Talos cluster.
 tags: [bootstrap, consumer, day-zero]
-timestamp: 2026-08-14
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
 sources:
-  - README.md
-  - Taskfile.yml
-  - cluster.yaml.example
-  - tofu/modules/talos-cluster/examples/complete/main.tf
-  - tofu/modules/talos-cluster/examples/complete/variables.tf
-  - tofu/modules/talos-cluster/examples/complete/cluster.yaml
-  - tofu/modules/talos-cluster/outputs.tf
-  - .github/workflows/oci-publish.yml
-  - kubernetes/bootstrap/argocd/root-application.yaml.tmpl
-  - kubernetes/bootstrap/argocd/root-project.yaml.tmpl
+  - resource: README.md
+  - resource: Taskfile.yml
+  - resource: cluster.yaml.example
+  - resource: tofu/modules/talos-cluster/examples/complete/main.tf
+  - resource: tofu/modules/talos-cluster/examples/complete/variables.tf
+  - resource: tofu/modules/talos-cluster/examples/complete/cluster.yaml
+  - resource: tofu/modules/talos-cluster/outputs.tf
+  - resource: .github/workflows/oci-publish.yml
+  - resource: kubernetes/bootstrap/argocd/root-application.yaml.tmpl
+  - resource: kubernetes/bootstrap/argocd/root-project.yaml.tmpl
 ---
 
 # First Consumer Cluster

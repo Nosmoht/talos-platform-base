@@ -30,7 +30,7 @@ this base.
 ### Documentation entry-points
 
 For the deep reference, read [`knowledge/index.md`](knowledge/index.md) —
-the OKF v0.1 knowledge bundle (architecture, reference, workflows,
+the OKF v0.2 knowledge bundle (architecture, reference, workflows,
 decisions, glossary). The root-level orientation files
 ([`README.md`](README.md), [`ARCHITECTURE.md`](ARCHITECTURE.md),
 [`AGENTS.md`](AGENTS.md), [`CONTRIBUTING.md`](CONTRIBUTING.md),

@@ -1,23 +1,10 @@
 #!/usr/bin/env bash
 # Bite-check for the bundle-policy gate (scripts/check-bundle-policy.sh).
 #
-# The gate exists because a config the CLI cannot find produces exit 0 and an
-# empty policy -- silence, not an error. A detector for a silent failure is
-# itself worth nothing unless something proves it still discriminates, so each
-# scenario below builds a throwaway bundle, puts the config somewhere, and
-# asserts the VERDICT LINE rather than the exit code alone: exit 1 is emitted
-# for a real miss and for an uncaught Python traceback, and those must not read
-# alike.
-#
-# The green scenario is not decoration. A checker that fails on everything
-# passes every red case, so the conforming input is what separates a working
-# detector from a broken one.
-#
-# Scenario 7 checks a second silent failure with the same shape: the telemetry
-# opt-out. It is an env var, so a release that renames or stops honouring it
-# produces no error and no exit-code change -- egress simply resumes. The
-# scenario is two-sided, because a one-sided assertion passes on a probe that
-# could never have detected a write.
+# Each scenario builds a throwaway bundle and asserts the VERDICT LINE, not the
+# exit code alone: exit 1 is emitted for a real miss and for an uncaught Python
+# traceback, and those must not read alike. The conforming scenario is what
+# separates a working detector from one that fails on everything.
 #
 # Runs offline, mutates nothing outside its temp dir. Exit 0 = every scenario
 # behaved, 1 = the gate regressed, 2 = environment error.
@@ -91,11 +78,16 @@ printf '[validation.rules]\nlink-target = "error"\nrule-catalog = "warn"\n' >"$t
 scenario "a required raise lowered to warn" fail "rule-catalog=error"
 
 # 6. The CLI itself cannot run. Must be reported as its own cause, not
-#    misdiagnosed as a discovery problem -- an unknown rule name is rejected at
-#    config-parse time (measured against 0.12.0: exit 2, no JSON at all).
+#    misdiagnosed as a discovery problem.
 build "$tmp/case"
 printf '[validation.rules]\nlink-target = "error"\nrule-catalog = "error"\nbogus-rule = "error"\n' >"$tmp/case/kb/.openknowledge.toml"
 scenario "unparseable config is reported as itself" fail "openknowledge could not run"
+
+# 6b. The same failure with the one input a maintainer actually produces. The
+#     CLI's own wording names neither the key nor the fix, so the gate adds it.
+build "$tmp/case"
+printf '[validation.rules]\nlink-target = "error"\nrule-catalog = "error"\nokf-0.2-metadata = "error"\n' >"$tmp/case/kb/.openknowledge.toml"
+scenario "an unquoted dotted rule key is named as such" fail "must be quoted"
 
 # 7. The telemetry opt-out is still honoured by THIS binary. Control first: with
 #    the variable empty the CLI must write its telemetry config, or the probe
@@ -125,4 +117,4 @@ fi
 rm -f "$probe"
 
 [ "$fails" -eq 0 ] || { echo "check-knowledge-gate-bite: a silent-failure detector regressed"; exit 1; }
-echo "OK: the policy gate and the telemetry opt-out bite in all $((7)) scenarios."
+echo "OK: the policy gate and the telemetry opt-out bite in all $((8)) scenarios."

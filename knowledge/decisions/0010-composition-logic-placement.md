@@ -2,9 +2,9 @@
 type: decision
 title: "ADR: Where the per-node capability-composition logic should live (HCL vs a portable pre-processing layer)"
 description: "Defers extracting the per-node capability-composition logic from HCL into a portable pre-processing layer, recording a hybrid recommendation and concrete triggers for revisiting."
-status: proposed
+status: draft
 id: base:composition-logic-placement
-timestamp: 2026-06-20
+decided: "2026-06-20T00:00:00Z"
 deciders:
   - platform-maintainer
 related:
@@ -15,7 +15,7 @@ tags: [adr, tooling]
 
 # ADR: Where the per-node capability-composition logic should live (HCL vs a portable pre-processing layer)
 
-> **An open question, not a settled decision** (frontmatter `status: proposed`).
+> **An open question, not a settled decision** (frontmatter `status: draft`).
 > This ADR records a tension surfaced
 > reviewing [base:node-capability-composition](./0009-node-capability-composition.md)
 > (PR #135). It does **not** reverse that decision — the composition *model* (M1

@@ -3,19 +3,21 @@ type: glossary
 title: Glossary
 description: Cross-domain vocabulary for the talos-platform-base substrate, its delivery pipeline, and its consumer contract.
 tags: [glossary, vocabulary, platform]
-timestamp: 2026-08-14
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-07-17T00:00:00Z" }
 sources:
-  - AGENTS.md
-  - Taskfile.yml
-  - tofu/modules/talos-cluster/variables.tf
-  - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
-  - tofu/modules/talos-cluster/profiles.tf
-  - scripts/render-component.sh
-  - scripts/check-render-determinism.sh
-  - .github/workflows/oci-publish.yml
-  - .releaserc.json
-  - kubernetes/substrate/argocd/chart.lock.yaml
-  - cluster.yaml.example
+  - resource: AGENTS.md
+  - resource: Taskfile.yml
+  - resource: tofu/modules/talos-cluster/variables.tf
+  - resource: tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
+  - resource: tofu/modules/talos-cluster/profiles.tf
+  - resource: scripts/render-component.sh
+  - resource: scripts/check-render-determinism.sh
+  - resource: .github/workflows/oci-publish.yml
+  - resource: .releaserc.json
+  - resource: kubernetes/substrate/argocd/chart.lock.yaml
+  - resource: cluster.yaml.example
 ---
 
 # Glossary

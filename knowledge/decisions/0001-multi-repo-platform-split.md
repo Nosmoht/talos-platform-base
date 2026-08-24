@@ -2,9 +2,9 @@
 type: decision
 title: "ADR: Multi-Repo Platform Split for Multi-Cluster Reuse"
 description: "Splits the platform into three repository roles — public platform base, private Claude-Code harness, and per-cluster consumer repos — consumed via OCI artifact at Day-0 and Multi-Source Applications at Day-2."
-status: accepted
+status: stable
 id: base:multi-repo-platform-split
-timestamp: 2026-05-18
+decided: "2026-04-27T00:00:00Z"
 history:
   - 2026-04-27 initial
   - 2026-04-29 amended (consumption mechanism)

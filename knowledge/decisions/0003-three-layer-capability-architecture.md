@@ -2,9 +2,9 @@
 type: decision
 title: "ADR: Three-Layer Capability Architecture — Tool-Capability-Index (Layer A) + PNI Network-Trust Registry (Layer B) + Hardware Features Registry (Layer C)"
 description: "Introduces the Layer-C Hardware Features Registry of atomic hardware predicates alongside Layers A and B; after the v2.0.0 substrate-only ablation only Layer C remains base-resident."
-status: accepted
+status: stable
 id: base:three-layer-capability-architecture
-timestamp: 2026-05-23
+decided: "2026-05-23T00:00:00Z"
 history:
   - 2026-05-23 proposed + accepted
 deciders:

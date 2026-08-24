@@ -93,6 +93,9 @@ footer, or the change ships as a non-breaking release. See
 ```bash
 task gitops:validate             # kustomize + conftest + kubeconform
 task spec:validate               # when openspec/ or a spec's primary source changed
+task knowledge:install-cli       # once — the bundle gates refuse an unpinned CLI
+task knowledge:validate          # when knowledge/ changed — docs-lint blocks on it
+task knowledge:rules-check       # when knowledge/rules/ changed
 task spec:check-staleness        # primary-source diff must touch the owning spec
                                  # (escape for no-behavior-change diffs:
                                  #  'Spec-Impact: none' trailer on EVERY commit
@@ -153,7 +156,7 @@ hard constraints), update **at minimum**:
   [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
 
 The bundle's own authoring conventions — the closed `type` vocabulary, the
-`timestamp`/`sources` staleness contract, the link rule, and the `log.md`
+`generated.at`/`sources[].resource` staleness contract, the link rule, and the `log.md`
 maintenance rule — are stated in `knowledge/rules/talos-base-bundle.md`. Read
 that file rather than this section for them; it is the source of truth and is
 rendered into `AGENTS.md` for agents.

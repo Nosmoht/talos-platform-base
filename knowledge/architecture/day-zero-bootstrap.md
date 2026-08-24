@@ -3,17 +3,19 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-timestamp: 2026-08-14
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
 sources:
-  - tofu/modules/talos-cluster/main.tf
-  - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
-  - kubernetes/bootstrap/argocd/root-application.yaml.tmpl
-  - kubernetes/bootstrap/argocd/root-project.yaml.tmpl
-  - kubernetes/bootstrap/cilium/values.yaml
-  - Taskfile.yml
-  - scripts/check-argocd-substrate-invariants.sh
-  - cluster.yaml.example
-  - AGENTS.md
+  - resource: tofu/modules/talos-cluster/main.tf
+  - resource: tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
+  - resource: kubernetes/bootstrap/argocd/root-application.yaml.tmpl
+  - resource: kubernetes/bootstrap/argocd/root-project.yaml.tmpl
+  - resource: kubernetes/bootstrap/cilium/values.yaml
+  - resource: Taskfile.yml
+  - resource: scripts/check-argocd-substrate-invariants.sh
+  - resource: cluster.yaml.example
+  - resource: AGENTS.md
 ---
 
 # Day-Zero Bootstrap

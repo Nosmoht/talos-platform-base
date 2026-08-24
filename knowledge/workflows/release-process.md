@@ -3,15 +3,15 @@ type: workflow
 title: Release Process
 description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-timestamp: 2026-07-21
+generated: { by: human:nosmoht, at: "2026-07-29T00:00:00Z" }
 sources:
-  - .github/workflows/release.yml
-  - .github/workflows/commitlint.yml
-  - .github/workflows/oci-publish.yml
-  - .releaserc.json
-  - package.json
-  - CHANGELOG.md
-  - CONTRIBUTING.md
+  - resource: .github/workflows/release.yml
+  - resource: .github/workflows/commitlint.yml
+  - resource: .github/workflows/oci-publish.yml
+  - resource: .releaserc.json
+  - resource: package.json
+  - resource: CHANGELOG.md
+  - resource: CONTRIBUTING.md
 ---
 
 # Release Process

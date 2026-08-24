@@ -3,11 +3,11 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-timestamp: 2026-08-23
+generated: { by: human:nosmoht, at: "2026-08-23T00:00:00Z" }
 sources:
-  - Taskfile.yml
-  - Makefile
-  - package.json
+  - resource: Taskfile.yml
+  - resource: Makefile
+  - resource: package.json
 ---
 
 # Task Runner Surface
@@ -119,10 +119,10 @@ Details of the render → apply path (`bootstrap:render-root`, `bootstrap:check-
 
 | Task | Purpose |
 | --- | --- |
-| `knowledge:validate` | Validate the `knowledge/` OKF bundle: `openknowledge validate` (with the binding `link-target = "error"` and `rule-catalog = "error"` rules from `knowledge/.openknowledge.toml`) plus an offline intra-repo link-resolution pass (`lychee --offline`) over the bundle, root Markdown files, `contracts/`, and the two `tofu/modules/talos-cluster` READMEs. Runs `scripts/check-knowledge-gate-bite.sh` then `scripts/check-bundle-policy.sh` first, so a config the CLI cannot find fails the gate instead of silently degrading every raise to a warning, and the checker itself is proven to still discriminate. Invoked directly by `docs-lint.yml`. Precondition: `openknowledge` must report exactly the pinned version — the target refuses to run otherwise (`task knowledge:install-cli`). |
+| `knowledge:validate` | Validate the `knowledge/` OKF bundle. Three gates, each preceded by its own bite check so a silent detector cannot pass for a verdict: `scripts/check-bundle-policy.sh` asserts the four raised rules in `knowledge/.openknowledge.toml` are the policy actually in effect and that the config raises nothing the caller fails to demand; `scripts/check-knowledge-frontmatter.sh` asserts the six frontmatter invariants `openknowledge` provably does not check (its header enumerates them, `resource` paths and `decided` values among them); and `openknowledge validate --spec 0.2` enforces the OKF v0.2 field contract. `--spec` is pinned to `OKF_SPEC` rather than left at the CLI default of `latest`, so the gate's meaning is a property of this repo rather than of the installed binary. Finally an offline intra-repo link-resolution pass (`lychee --offline`) over the bundle, root Markdown files, `contracts/`, and the two `tofu/modules/talos-cluster` READMEs. Invoked directly by `docs-lint.yml`. Precondition: `openknowledge` must report exactly the pinned version — the target refuses to run otherwise (`task knowledge:install-cli`). |
 | `knowledge:rules-apply` | Regenerate the Open Knowledge Maintenance block in `AGENTS.md` from `knowledge/rules/` via `openknowledge prompt rules apply`. The block is a managed region between `openknowledge:rules` markers; run this after changing a rule document rather than hand-editing `AGENTS.md`. |
 | `knowledge:rules-check` | Fail if the `AGENTS.md` managed block drifted from what `knowledge/rules/` currently renders — hand-edited, stale, or missing a configured rule. Asserts every rule in `OK_RULES` reached the block, so a rule that silently fails to render is caught rather than passing as a smaller-but-consistent block. Invoked by `docs-lint.yml`. |
-| `knowledge:new` | Scaffold a new concept file with the bundle's frontmatter convention (usage: `task knowledge:new FILE=reference/foo.md TYPE=reference`). |
+| `knowledge:new` | Scaffold a new concept file with the bundle's OKF v0.2 frontmatter (usage: `task knowledge:new FILE=reference/foo.md TYPE=reference`). `TYPE` is an enum and deliberately excludes `decision`: an ADR carries `decided` and neither `generated` nor `sources`, so copy `knowledge/decisions/template.md` instead. |
 | `knowledge:install-cli` | Download the pinned, checksum-verified `openknowledge` + `lychee` release binaries for the host platform into `~/.local/bin`. |
 
 ## `spec:*` — OpenSpec behavioral specs

@@ -2,15 +2,15 @@
 type: decision
 title: "ADR: Kubelet serving-cert rotation as substrate default + cert-approver as a Talos seed"
 description: "Enables kubelet serving-cert rotation by default on all nodes and delivers cert-approver as an unconditional, digest-pinned Talos controlplane inlineManifest seed."
-status: accepted
+status: stable
 id: base:kubelet-serving-cert-rotation
-timestamp: 2026-06-30
+decided: "2026-06-30T00:00:00Z"
 deciders:
   - platform-maintainer
 supersedes: []
 # Partially superseded by 0019 (§D2 approver identity + seed mechanism only; D1
 # rotation stands) — recorded via the dated in-body banner + 0019's `supersedes`,
-# per the 0003/0004 partial-supersession convention (status stays accepted; a
+# per the 0003/0004 partial-supersession convention (status stays stable; a
 # populated superseded_by is reserved for FULL supersession, cf. 0005/0008).
 superseded_by: []
 related:

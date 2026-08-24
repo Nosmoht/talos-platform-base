@@ -69,6 +69,8 @@ vars:
   # constants above, the openknowledge tarball is flat as the install line
   # assumes, and lychee's nested binary is found by the same `find`.
   OPENKNOWLEDGE_VERSION: 0.12.0
+  # knowledge/index.md declares this same literal; the frontmatter gate asserts it.
+  OKF_SPEC: "0.2"
   OPENKNOWLEDGE_SHA256_DARWIN_ARM64: 24e5fe37f87dae647121b98dc708997206906558413b7620617f0a8690da0e1d
   OPENKNOWLEDGE_SHA256_DARWIN_AMD64: 8f20fe1c09c7ac69124f020f219f1d9b61c92aaac6bb156704b8886a38bed2aa
   OPENKNOWLEDGE_SHA256_LINUX_AMD64: 614e317499eb29f8367edbba78b4c81a1a7c895c3203c5b9ef861a9b1875f108
@@ -571,24 +573,24 @@ tasks:
     desc: Validate the knowledge/ OKF bundle (openknowledge + offline link check)
     cmd: |
       set -e
-      # Pinned like the rules targets: which config filename the CLI reads is
-      # version-dependent (0.12.0 ignores the pre-0.10 name), so an unpinned
-      # binary is a differently-configured gate reporting green. Subsumes
-      # `command -v`.
       {{.OK_GUARD}}
       command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
-      # Why this gate needs a gate: scripts/check-bundle-policy.sh's header.
-      # The bite test runs first so the checker is known to discriminate
-      # before its verdict is trusted — the pairing spec:validate already uses
-      # for the staleness gate.
+      # Each bite test runs before the gate it covers: a detector's verdict is
+      # worth nothing until it is known to still discriminate.
       scripts/check-knowledge-gate-bite.sh
-      scripts/check-bundle-policy.sh knowledge link-target=error rule-catalog=error
-      openknowledge validate knowledge/
-      # Offline link-resolution gate: intra-repo markdown links must resolve.
-      # Scope: the bundle, root orientation files, contracts/. CHANGELOG.md is
-      # a historical record and excluded by design. The two tofu READMEs ship
-      # in the OCI tarball and carry relative links into knowledge/ — checked
-      # so a decision rename cannot rot them silently.
+      scripts/check-bundle-policy.sh knowledge --spec {{.OKF_SPEC}} \
+        link-target=error rule-catalog=error okf-0.2-metadata=error okf-version=error
+      scripts/check-knowledge-frontmatter.test.sh
+      scripts/check-knowledge-frontmatter.sh knowledge
+      # --spec is pinned, not left at the CLI default of `latest`.
+      openknowledge validate --spec {{.OKF_SPEC}} knowledge/ || {
+        echo "FAIL: the OKF v{{.OKF_SPEC}} field contract is BINDING here (okf-0.2-metadata = error)."
+        echo "      'sources' entries are '- resource: <path>'; dates are quoted ISO 8601"
+        echo "      datetimes; decision concepts carry 'decided', never 'generated'."
+        echo "      The contract: knowledge/rules/talos-base-bundle.md"
+        exit 1; }
+      # CHANGELOG.md is excluded by design; the two tofu READMEs are included
+      # because they ship in the OCI tarball and link into knowledge/.
       lychee --offline --no-progress --exclude-path CHANGELOG.md \
         'knowledge/**/*.md' './*.md' 'contracts/*.md' \
         'tofu/modules/talos-cluster/README.md' \
@@ -663,13 +665,32 @@ tasks:
   knowledge:new:
     desc: "Scaffold a new knowledge concept (usage: task knowledge:new FILE=reference/foo.md TYPE=reference)"
     requires:
-      vars: [FILE, TYPE]
+      vars:
+        - name: FILE
+        # `decision` is absent on purpose — an ADR carries `decided` and neither
+        # `generated` nor `sources`. Copy knowledge/decisions/template.md instead.
+        - name: TYPE
+          enum: [architecture, reference, workflow, glossary, project]
     cmd: |
       set -e
       target="knowledge/{{.FILE}}"
       [ -e "$target" ] && { echo "ERROR: $target already exists"; exit 1; }
       mkdir -p "$(dirname "$target")"
-      printf -- '---\ntype: {{.TYPE}}\ntitle: TODO\ndescription: TODO one sentence.\ntags: [TODO]\ntimestamp: %s\nsources:\n  - TODO\n---\n\n# TODO\n' "$(date +%Y-%m-%d)" > "$target"
+      # A heredoc, not printf: go-task's shell has no `--` end-of-options marker,
+      # so `printf -- '---\n…'` writes a 2-byte file containing `--`.
+      cat > "$target" <<EOF
+      ---
+      type: {{.TYPE}}
+      title: TODO
+      description: TODO one sentence.
+      tags: [TODO]
+      generated: { by: human:TODO, at: "$(date -u +%Y-%m-%dT00:00:00Z)" }
+      sources:
+        - resource: TODO
+      ---
+
+      # TODO
+      EOF
       echo "Created $target — fill frontmatter, then run 'task knowledge:validate'."
 
   knowledge:install-cli:

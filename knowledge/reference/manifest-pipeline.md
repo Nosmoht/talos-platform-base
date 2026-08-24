@@ -3,21 +3,21 @@ type: reference
 title: Manifest Pipeline
 description: How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 tags: [rendered-manifests, validation, ci, conftest]
-timestamp: 2026-08-14
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
-  - scripts/render-component.sh
-  - scripts/verify-rendered.sh
-  - scripts/render_kustomize_safe.sh
-  - scripts/discover_kustomize_targets.sh
-  - scripts/verify_sops_files.sh
-  - scripts/run_conftest.sh
-  - scripts/check-argocd-substrate-invariants.sh
-  - scripts/render-component-readmes.sh
-  - scripts/lint-cluster-yaml.sh
-  - policies/conftest/k8s.rego
-  - policies/conftest/argocd.rego
-  - Taskfile.yml
-  - .github/workflows/gitops-validate.yml
+  - resource: scripts/render-component.sh
+  - resource: scripts/verify-rendered.sh
+  - resource: scripts/render_kustomize_safe.sh
+  - resource: scripts/discover_kustomize_targets.sh
+  - resource: scripts/verify_sops_files.sh
+  - resource: scripts/run_conftest.sh
+  - resource: scripts/check-argocd-substrate-invariants.sh
+  - resource: scripts/render-component-readmes.sh
+  - resource: scripts/lint-cluster-yaml.sh
+  - resource: policies/conftest/k8s.rego
+  - resource: policies/conftest/argocd.rego
+  - resource: Taskfile.yml
+  - resource: .github/workflows/gitops-validate.yml
 ---
 
 # Manifest Pipeline

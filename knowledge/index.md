@@ -1,11 +1,11 @@
 ---
-okf_version: "0.1"
+okf_version: "0.2"
 ---
 
 # talos-platform-base — Knowledge Bundle
 
 Deep reference for the cluster-agnostic Talos + Cilium + ArgoCD substrate,
-as an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog) v0.1
+as an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog) v0.2
 bundle. Orientation and governance stay at the repository root (`README.md`,
 `ARCHITECTURE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`,
 `UPGRADING.md`, `MAINTAINERS.md`); everything deeper lives here.
@@ -67,12 +67,14 @@ into the bundle.
 
 - [Bundle Conventions](rules/talos-base-bundle.md) - Repo-specific OKF bundle conventions layered on top of the built-in maintenance rules, rendered into the AGENTS.md managed block.
 
-## Bundle conventions (repo convention on top of OKF v0.1)
+## Bundle conventions (repo convention on top of OKF v0.2)
 
-OKF v0.1 requires only `type` in concept frontmatter. The conventions this
+OKF v0.2 requires only `type` in concept frontmatter, and §4 tells consumers
+not to reject producer-defined keys. The conventions this
 bundle adds on top are **normatively stated in
 [Bundle Conventions](rules/talos-base-bundle.md)** — the closed `type`
-vocabulary, the `title`/`description`/`tags`/`timestamp`/`sources` field set,
+vocabulary, the `title`/`description`/`tags`/`generated`/`verified`/`sources`
+field set,
 the staleness contract, the link rule, and the `log.md` maintenance rule. That
 file is the source of truth, and `openknowledge` renders it into `AGENTS.md`
 so an agent reading only that file still sees the contract.
@@ -84,12 +86,27 @@ document wins:
 - Most of the contract is enforced by review discipline, NOT by
   `openknowledge validate`. A green validation run means links resolve and
   frontmatter parses; it is not evidence that a concept is still true.
-- `timestamp` is the date of the last *substantive verification*, not the last
-  typo fix. Bumping it for a wording change silently resets the staleness
-  clock, which is the failure this contract exists to prevent.
+- `generated.at` and `verified[].at` answer two different questions, and v0.1's
+  single `timestamp` could only answer one. `generated.at` is when the content
+  last meaningfully changed; a `verified` entry is when someone read the
+  content against its `sources` and confirmed it. Content can change without
+  re-confirmation and facts can be re-confirmed without an edit, so bumping
+  one never implies the other.
+- A `verified` entry is a machine-readable claim, not a note: any `human:<id>`
+  entry makes the concept `human-reviewed` to an OKF consumer. So an invented
+  entry is a false claim in machine-readable form, and certifying your own edit
+  is the easiest way to make one without noticing.
+- `verified` is a history, and an entry is never suppressed because content
+  changed afterwards. A reading that happened stays true; deleting it would
+  discard a fact and leave the concept reading `unverified`, which is a
+  different false claim. The freshness signal is the comparison itself —
+  measured, the CLI does not flag a `verified` older than `generated.at`, so
+  four concepts here carry an honest verification that is no longer current and
+  a reader has to look at the two dates rather than at the tier.
 - `sources` is what makes staleness checkable at all: it names the paths a
-  concept was derived from, so a reader can compare them against `timestamp`.
-  Nothing does this mechanically yet — it is a reading discipline.
+  concept was derived from, so a reader can compare them against the dates.
+  Nothing does this mechanically yet — it is a reading discipline; nothing
+  validates a `resource` path either, so a typo there is silently accepted.
 - `description` is reused verbatim as the link description in this index, so
   it is written as one self-contained sentence.
 - The link rule has teeth: `.openknowledge.toml` raises `link-target` to error,
