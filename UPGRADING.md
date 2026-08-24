@@ -45,7 +45,7 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
-## Unreleased (next MAJOR) — the substrate ships no ArgoCD identity (MAJOR — action required for EVERY consumer using the shipped RBAC binding)
+## `v9.0.0` — the substrate ships no ArgoCD identity (MAJOR — action required for EVERY consumer using the shipped RBAC binding)
 
 **Type:** MAJOR. The base stops shipping an access policy and a base URL for
 ArgoCD, and the Day-0 `kubectl apply` stops converging the application. Read
@@ -253,7 +253,7 @@ component's `values.yaml` documents that opt-out).
 
 ---
 
-## Unreleased (ships in the next MAJOR) — Cilium operator replicas follow the node count, and become pinnable (default change — affects every multi-node consumer without an override)
+## `v9.1.0` — Cilium operator replicas follow the node count, and become pinnable (MINOR — default change affecting every multi-node consumer without an override)
 
 **Type:** MINOR. A new optional input (`substrate.cilium.operator_replicas`) plus
 a default change for consumers who do not set it. A single-node cluster is
@@ -431,7 +431,7 @@ kubectl -n kube-system get pods -l io.cilium/app=operator \
 A `Pending` second operator pod on a cluster whose nodes are all cordoned or
 tainted beyond the operator's toleration set is §4, not a defect in the rollout.
 
-## Unreleased (ships in the next MAJOR) — two further typed Cilium metric inputs (additive, default off)
+## `v9.0.0` — two further typed Cilium metric inputs (additive, default off)
 
 **Type:** MINOR (additive). `substrate.cilium.agent_metric_overrides` and
 `substrate.cilium.hubble_open_metrics` are new, both default off. Nothing
@@ -550,7 +550,7 @@ kubectl -n kube-system rollout status ds/cilium
 
 ---
 
-## Unreleased (ships in the next MAJOR) — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (additive — manual action for argocd-overlay consumers)
+## `v8.1.0` — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (additive — manual action for argocd-overlay consumers)
 
 **Type:** additive for consumers, but it ships inside a MAJOR release — read
 the identity section above, which is the breaking part. Decision: ADR-0024
@@ -619,7 +619,7 @@ change this steady-state publication path.
 
 ---
 
-## Unreleased (ships in the next MAJOR) — Cilium chart `1.19.4` → `1.20.0` (additive by interface — action required for EVERY consumer)
+## `v8.2.0` — Cilium chart `1.19.4` → `1.20.0` (additive by interface — action required for EVERY consumer)
 
 **Type:** MINOR by interface (no input renamed, no input removed, no schema
 change) — but **not** low-effort to adopt, and the SemVer label is the wrong
