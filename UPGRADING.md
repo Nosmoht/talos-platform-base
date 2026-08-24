@@ -553,8 +553,9 @@ kubectl -n kube-system rollout status ds/cilium
 
 ## `v8.1.0` — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (additive — manual action for argocd-overlay consumers)
 
-**Type:** additive for consumers, but it ships inside a MAJOR release — read
-the identity section above, which is the breaking part. Decision: ADR-0024
+**Type:** additive for consumers, and it shipped in `v8.1.0`, a MINOR. The
+breaking ArgoCD change is the identity removal, which landed later in `v9.0.0`
+and has its own section. Decision: ADR-0024
 (`knowledge/decisions/0024-argocd-substrate-relocation.md`, issue #156,
 Option 3). Two changes land together:
 
@@ -568,11 +569,11 @@ Option 3). Two changes land together:
    published tag (the gap #156 documents; tracked downstream as the
    consumer's render-reproducibility issue).
 
-   `kubernetes/substrate/argocd/kustomization.yaml` joins them in this same
-   release. Without it a vendoring consumer received the resources but not the
-   file that assembles them, so they had to reconstruct the resource list by
-   hand; `kustomize build vendor/base/kubernetes/substrate/argocd/` now works
-   directly. Purely additive — nothing that worked before stops working.
+   `kubernetes/substrate/argocd/kustomization.yaml` followed in `v9.0.0`, not
+   here. Until that tag a vendoring consumer received the resources but not the
+   file that assembles them and had to reconstruct the resource list by hand;
+   from `v9.0.0` on, `kustomize build vendor/base/kubernetes/substrate/argocd/`
+   works directly. Purely additive — nothing that worked before stops working.
 
 This is NOT a breaking change for OCI consumers: the old path was never
 present in any published artifact, so no consumer overlay that rendered
@@ -650,9 +651,10 @@ Pick one:
    in your `cluster.yaml` and bump the shim's literal too if it still reads
    `1.19.4`. You keep control and keep the maintenance.
 
-Option 1 relies on `nullable = false`, added to both chart-version inputs in this
-release — without it a passed `null` stays `null` rather than falling back, so do
-not apply the shim change against an older base tag. A fresh bootstrap from the
+Option 1 relies on `nullable = false`, which reached the chart-version inputs in
+`v9.0.0`, not in this one — before that tag a passed `null` stays `null` rather
+than falling back to the base pin, so Option 1 needs a base at `v9.0.0` or newer
+and Option 2 is the route from here. A fresh bootstrap from the
 current `cluster.yaml.example` already inherits 1.20.0 and needs neither edit.
 
 ### 1. Running clusters are NOT upgraded by this bump — but the frozen seed goes stale (affects anyone who adds or replaces a controlplane)
@@ -1862,7 +1864,7 @@ behaviour. No spec change.
 
 ---
 
-## `v0.6.0` (forthcoming) — 5-axis cutover (MAJOR / breaking)
+## `v0.6.0` (2026-05-28) — 5-axis cutover (MAJOR / breaking)
 
 > **Superseded by the OpenTofu cluster-lifecycle cutover** (see the section
 > below). The 5-axis `cluster.yaml` schema this checklist migrates *to* has
