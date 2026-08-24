@@ -5,6 +5,11 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+> Also holds entries that shipped in `v7.0.0` through `v9.0.0`: those tags were
+> cut without a CHANGELOG section. `UPGRADING.md` headings already carry the
+> tag each migration shipped in, so the two files disagree until the backfill
+> tracked in #233 lands.
+
 ### Added
 
 - **`talos-cluster`: `register_with_fqdn` input (bool, default `false`).** Sets
@@ -480,9 +485,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - **`schemas/cluster.schema.json`: the `operator_replicas` description said the
-  bound only warns.** It is a plan-time rejection — `variables.tf` enforces it in
-  a `validation` block, and the module README and the behavioural spec both said
-  so already. The schema was the single outlier; no validation behaviour changed.
+  node-count bound only warns.** It is a plan-time rejection. Description text
+  only — no validation behaviour changed.
 
 ## v6.0.0 — 2026-07-20
 

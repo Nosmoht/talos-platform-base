@@ -8,7 +8,8 @@ For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 - This file documents **cumulative migration steps** for each MAJOR
   bump and any MINOR that requires a manual action.
 - Read every section between the version you currently pin and the
-  version you want to adopt. Apply in order.
+  version you want to adopt, oldest tag first. Sections are not stored in
+  version order — locate them by the tag in the heading, not by position.
 - Always verify the new artifact (cosign + provenance) before vendoring
   — see [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
 
