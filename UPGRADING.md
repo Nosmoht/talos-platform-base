@@ -8,7 +8,9 @@ For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 - This file documents **cumulative migration steps** for each MAJOR
   bump and any MINOR that requires a manual action.
 - Read every section between the version you currently pin and the
-  version you want to adopt. Apply in order.
+  version you want to adopt, oldest tag first. Sections are not stored in
+  version order and one tag may own more than one of them — locate every
+  section carrying a tag in your range by its heading, not by position.
 - Always verify the new artifact (cosign + provenance) before vendoring
   — see [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
 
@@ -45,7 +47,7 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
-## Unreleased (next MAJOR) — the substrate ships no ArgoCD identity (MAJOR — action required for EVERY consumer using the shipped RBAC binding)
+## `v9.0.0` — the substrate ships no ArgoCD identity (MAJOR — action required for EVERY consumer using the shipped RBAC binding)
 
 **Type:** MAJOR. The base stops shipping an access policy and a base URL for
 ArgoCD, and the Day-0 `kubectl apply` stops converging the application. Read
@@ -253,7 +255,7 @@ component's `values.yaml` documents that opt-out).
 
 ---
 
-## Unreleased (ships in the next MAJOR) — Cilium operator replicas follow the node count, and become pinnable (default change — affects every multi-node consumer without an override)
+## `v9.1.0` — Cilium operator replicas follow the node count, and become pinnable (MINOR — default change affecting every multi-node consumer without an override)
 
 **Type:** MINOR. A new optional input (`substrate.cilium.operator_replicas`) plus
 a default change for consumers who do not set it. A single-node cluster is
@@ -431,7 +433,7 @@ kubectl -n kube-system get pods -l io.cilium/app=operator \
 A `Pending` second operator pod on a cluster whose nodes are all cordoned or
 tainted beyond the operator's toleration set is §4, not a defect in the rollout.
 
-## Unreleased (ships in the next MAJOR) — two further typed Cilium metric inputs (additive, default off)
+## `v9.0.0` — two further typed Cilium metric inputs (additive, default off)
 
 **Type:** MINOR (additive). `substrate.cilium.agent_metric_overrides` and
 `substrate.cilium.hubble_open_metrics` are new, both default off. Nothing
@@ -445,7 +447,7 @@ self-management `Application` are byte-identical to the previous tag.
 enough — your copy must map them, exactly as it already maps `agent_metrics`.
 Without the two lines below the value passes `check-jsonschema`, passes
 `tofu plan`, and silently never reaches the module. This is the same trap the
-`chart_version` note in the v8.0.0 section describes.
+`chart_version` note in the `v8.2.0` section describes.
 
 ```hcl
   cilium_agent_metric_overrides  = try(local.cilium.agent_metric_overrides, [])
@@ -550,10 +552,11 @@ kubectl -n kube-system rollout status ds/cilium
 
 ---
 
-## Unreleased (ships in the next MAJOR) — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (additive — manual action for argocd-overlay consumers)
+## `v8.1.0` — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (additive — manual action for argocd-overlay consumers)
 
-**Type:** additive for consumers, but it ships inside a MAJOR release — read
-the identity section above, which is the breaking part. Decision: ADR-0024
+**Type:** additive for consumers, and it shipped in `v8.1.0`, a MINOR. The
+breaking ArgoCD change is the identity removal, which landed later in `v9.0.0`
+and has its own section. Decision: ADR-0024
 (`knowledge/decisions/0024-argocd-substrate-relocation.md`, issue #156,
 Option 3). Two changes land together:
 
@@ -567,11 +570,11 @@ Option 3). Two changes land together:
    published tag (the gap #156 documents; tracked downstream as the
    consumer's render-reproducibility issue).
 
-   `kubernetes/substrate/argocd/kustomization.yaml` joins them in this same
-   release. Without it a vendoring consumer received the resources but not the
-   file that assembles them, so they had to reconstruct the resource list by
-   hand; `kustomize build vendor/base/kubernetes/substrate/argocd/` now works
-   directly. Purely additive — nothing that worked before stops working.
+   `kubernetes/substrate/argocd/kustomization.yaml` followed in `v9.0.0`, not
+   here. Until that tag a vendoring consumer received the resources but not the
+   file that assembles them and had to reconstruct the resource list by hand;
+   from `v9.0.0` on, `kustomize build vendor/base/kubernetes/substrate/argocd/`
+   works directly. Purely additive — nothing that worked before stops working.
 
 This is NOT a breaking change for OCI consumers: the old path was never
 present in any published artifact, so no consumer overlay that rendered
@@ -619,7 +622,7 @@ change this steady-state publication path.
 
 ---
 
-## Unreleased (ships in the next MAJOR) — Cilium chart `1.19.4` → `1.20.0` (additive by interface — action required for EVERY consumer)
+## `v8.2.0` — Cilium chart `1.19.4` → `1.20.0` (additive by interface — action required for EVERY consumer)
 
 **Type:** MINOR by interface (no input renamed, no input removed, no schema
 change) — but **not** low-effort to adopt, and the SemVer label is the wrong
@@ -640,19 +643,22 @@ and both win over the module default. So vendoring this tag alone keeps renderin
 
 Pick one:
 
-1. **Recommended — stop pinning, inherit the base.** Delete
-   `substrate.cilium.chart_version` from your `cluster.yaml` and change the shim
-   fallback to `try(local.cilium.chart_version, null)`. `null` now means "take
-   the base's pin", so this bump and every future one reach you by vendoring
-   alone. This is what the shipped examples do as of this release.
+1. **Stop pinning, inherit the base — needs a base at `v9.0.0` or newer.**
+   Delete `substrate.cilium.chart_version` from your `cluster.yaml` and change
+   the shim fallback to `try(local.cilium.chart_version, null)`, so this bump
+   and every future one reach you by vendoring alone. Read the `nullable` note
+   below before taking this route: at this tag the shipped example still carries
+   the literal `"1.20.0"` and switches to `null` only at `v9.0.0`.
 2. **Keep pinning deliberately.** Set `substrate.cilium.chart_version: "1.20.0"`
    in your `cluster.yaml` and bump the shim's literal too if it still reads
    `1.19.4`. You keep control and keep the maintenance.
 
-Option 1 relies on `nullable = false`, added to both chart-version inputs in this
-release — without it a passed `null` stays `null` rather than falling back, so do
-not apply the shim change against an older base tag. A fresh bootstrap from the
-current `cluster.yaml.example` already inherits 1.20.0 and needs neither edit.
+Option 1 relies on `nullable = false`, which reached the chart-version inputs in
+`v9.0.0`, not in this one — before that tag a passed `null` stays `null` rather
+than falling back to the base pin, so Option 2 is the route from here. A fresh
+bootstrap from this tag's `cluster.yaml.example` needs neither edit: it pins
+`1.20.0` outright. That pin does not follow a later base bump — omitting the key
+to inherit becomes possible at `v9.0.0`.
 
 ### 1. Running clusters are NOT upgraded by this bump — but the frozen seed goes stale (affects anyone who adds or replaces a controlplane)
 
@@ -1861,7 +1867,7 @@ behaviour. No spec change.
 
 ---
 
-## `v0.6.0` (forthcoming) — 5-axis cutover (MAJOR / breaking)
+## `v0.6.0` (2026-05-28) — 5-axis cutover (MAJOR / breaking)
 
 > **Superseded by the OpenTofu cluster-lifecycle cutover** (see the section
 > below). The 5-axis `cluster.yaml` schema this checklist migrates *to* has
