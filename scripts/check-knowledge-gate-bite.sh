@@ -83,6 +83,12 @@ build "$tmp/case"
 printf '[validation.rules]\nlink-target = "error"\nrule-catalog = "error"\nbogus-rule = "error"\n' >"$tmp/case/kb/.openknowledge.toml"
 scenario "unparseable config is reported as itself" fail "openknowledge could not run"
 
+# 6b. The same failure with the one input a maintainer actually produces. The
+#     CLI's own wording names neither the key nor the fix, so the gate adds it.
+build "$tmp/case"
+printf '[validation.rules]\nlink-target = "error"\nrule-catalog = "error"\nokf-0.2-metadata = "error"\n' >"$tmp/case/kb/.openknowledge.toml"
+scenario "an unquoted dotted rule key is named as such" fail "must be quoted"
+
 # 7. The telemetry opt-out is still honoured by THIS binary. Control first: with
 #    the variable empty the CLI must write its telemetry config, or the probe
 #    proves nothing. Then the assertion. Both runs are pointed at a temp path so
@@ -111,4 +117,4 @@ fi
 rm -f "$probe"
 
 [ "$fails" -eq 0 ] || { echo "check-knowledge-gate-bite: a silent-failure detector regressed"; exit 1; }
-echo "OK: the policy gate and the telemetry opt-out bite in all $((7)) scenarios."
+echo "OK: the policy gate and the telemetry opt-out bite in all $((8)) scenarios."

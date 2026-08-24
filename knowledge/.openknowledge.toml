@@ -1,19 +1,3 @@
-# openknowledge configuration for the knowledge/ OKF bundle.
-#
-# Comment lines outweigh keys here, deliberately: each key is a policy choice
-# whose failure mode is silent, and there is no code for the reason to sit next
-# to. Why each raise was chosen is in git, not here.
-#
-# Must be a dotfile AND sit inside the bundle: any other name or location is
-# read by nothing and every raise below degrades to a warning with no signal.
-# Quote any key containing a dot — unquoted, `okf-0.2-metadata` is a TOML
-# dotted key and the CLI exits 2, dropping every rule in this file.
-#
-# okf-version cannot see an ABSENT okf_version, so it does not bind the
-# bundle's declared version to the pinned --spec; the frontmatter gate does.
-# markdown-syntax stays at warn on purpose. No [rules] section: knowledge/rules/
-# is the CLI's default rule path, so declaring it would restate the default.
-
 [validation.rules]
 link-target = "error"
 rule-catalog = "error"

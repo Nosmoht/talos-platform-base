@@ -45,6 +45,14 @@ openknowledge validate "${spec[@]}" --format json "$bundle" >"$raw" 2>"$err" || 
 if [ "$st" -gt 1 ]; then
   echo "FAIL: openknowledge could not run (exit $st). Its own report:"
   cat "$err"
+  # The CLI's own wording for an unquoted rule key names neither the key nor the
+  # fix, and the whole file is lost rather than the one rule.
+  if grep -q "unhandled kv part" "$err"; then
+    echo "HINT: a rule key containing a dot must be quoted in the config —"
+    echo "      \"okf-0.2-metadata\" = \"error\", not okf-0.2-metadata = \"error\"."
+    echo "      Unquoted it parses as a TOML dotted key and every rule in the"
+    echo "      file is dropped, not just that one."
+  fi
   exit 2
 fi
 
