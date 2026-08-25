@@ -6,12 +6,16 @@ name: docs-lint
 #     touching *.md must still trigger the gate;
 # (2) an unfiltered job is safe to be a required branch-protection context
 #     (a path-filtered required check hangs non-matching PRs as
-#     "Expected — waiting"). The job is cheap (~seconds).
+#     "Expected — waiting"). Cost: measured 56s locally for the release-guard
+#     bite-check alone (65 throwaway-git-repo scenarios), the heaviest step
+#     here; the rest is seconds. timeout-minutes: 10 leaves headroom. Re-measure
+#     before adding another suite of that shape rather than assuming "cheap".
 #
 # Contract: every CHECK step runs a Taskfile target, never inline shell —
 # the identical chain is runnable locally (`task dev:verify-pins`,
 # `task docs:lint`, `task knowledge:validate`, `task knowledge:rules-check`,
-# `task spec:validate`, `task spec:check-regen`, `task spec:check-staleness`).
+# `task spec:validate`, `task spec:check-regen`, `task spec:check-staleness`,
+# `task supply-chain:check-release-guard`).
 # Tool pins live in .tool-versions + the Taskfile vars block + package.json;
 # `dev:verify-pins` asserts those pairs.
 #
@@ -105,6 +109,15 @@ jobs:
         # knowledge/rules/. Fails if it was hand-edited or left stale.
         run: task knowledge:rules-check
 
+      - name: task supply-chain:check-release-guard
+        # The release guard's only merge-blocking binding. It lives here rather
+        # than in gitops-validate.yml's oci-allowlist-check job because that job
+        # is NOT a required context (measured: the required set is validate,
+        # Secret Scan (gitleaks), docs-lint, Hard Constraints, preflight), so a
+        # red bite-check there would not block a merge — and AC4 of #234 is
+        # exactly that a later narrowing cannot pass unnoticed.
+        run: task supply-chain:check-release-guard
+
       - name: task spec:validate
         # Strict validate + bite-check (malformed fixture must fail) +
         # source-ownership partition + offline link pass.
@@ -134,3 +147,50 @@ jobs:
           # Both are load-bearing; neither alone is sufficient.
           BASE_REF: ${{ github.base_ref }}
         run: task spec:check-staleness BASE="origin/${BASE_REF}"
+
+  # Advisory only: tells a PR author whether their branch touches a guarded path
+  # BEFORE the merge, which is the one question the guard cannot answer until it
+  # runs on main. It NEVER fails — a non-blocking signal must not become a new
+  # merge blocker — so it is a separate job rather than a step inside the
+  # required docs-lint job.
+  #
+  # Two ranges are printed and labelled, because they answer different questions:
+  # the guard diffs last_tag..HEAD, so a PR touching nothing guarded can still
+  # land on a main that is already blocked by someone else's merge.
+  #
+  # fetch-depth: 0 is load-bearing. The guard treats a shallow or tagless
+  # checkout as an environment error, and in advisory mode that degrades to an
+  # "advisory unavailable" line — visible, but useless. gitops-validate.yml's
+  # jobs check out shallow, which is why this does not live there.
+  release-guard-advisory:
+    name: release-guard-advisory
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Guarded paths in this pull request
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -uo pipefail
+          {
+            echo "## Release guard — advisory"
+            echo ""
+            echo "**Guarded paths in this pull request** (\`merge-base..HEAD\`):"
+          } >> "$GITHUB_STEP_SUMMARY"
+          mb="$(git merge-base "origin/${BASE_REF}" HEAD)"
+          ./scripts/release-major-bump-guard.sh --advisory --base "$mb" || true
+          {
+            echo ""
+            echo "**Guarded paths already pending since the last tag** — this is the set that blocks the release:"
+          } >> "$GITHUB_STEP_SUMMARY"
+          ./scripts/release-major-bump-guard.sh --advisory || true
+          if ! git diff --quiet "origin/${BASE_REF}"...HEAD -- .ci-release-guard-pathspec.txt .ci-release-guard-exempt.txt .ci-release-guard-pathspec.expected.txt .ci-release-guard-exempt.expected.txt; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> This pull request edits the release guard's own data files. Read those hunks as a change to what the release gate protects." >> "$GITHUB_STEP_SUMMARY"
+          fi

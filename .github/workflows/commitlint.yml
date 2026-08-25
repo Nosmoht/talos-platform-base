@@ -1,8 +1,22 @@
 name: Commit Lint
 
-# Conventional-commit gate on the PR TITLE. Squash-merge uses the PR title as
-# the resulting commit subject on main, which is what semantic-release parses to
-# compute the next release — so the PR title is the correct thing to lint.
+# Conventional-commit gate on the PR TITLE.
+#
+# The old rationale here said squash-merge turns the PR title into the mainline
+# commit SUBJECT, which is what semantic-release parses. That is no longer the
+# mechanism: squash-merge is disabled (ADR-0020 §Amendment), and with
+# merge_commit_title=MERGE_MESSAGE the merge subject is "Merge pull request #N
+# from …". Measured, the release type comes from the BRANCH COMMITS preserved in
+# the range — `git log v9.0.0..v9.1.0` contains the `feat(ci):` commit the MINOR
+# came from — not from the tip subject.
+#
+# What linting the title still buys, and why this check is required:
+#   * merge_commit_message=PR_TITLE puts the title in the merge commit BODY, so
+#     an unconstrained title is a line the release guard reads. The closed type
+#     list below is what stops `Allow-Non-Major: …` reaching it. That makes this
+#     check a premise of the guard, not house style — hence `name:` below.
+#   * it is the subject readers see in the PR list and in `git log --oneline`.
+#   * it is where the `!` breaking-change marker is caught before merge.
 # `requireScope: false`: scope is a soft house-style preference per CONTRIBUTING.md,
 # not mandatory (scope-less subjects like `docs: fix typo` are valid).
 # Note: this gates PRs only; direct-main commits bypass it (repo convention is
@@ -18,7 +32,14 @@ permissions:
 
 jobs:
   lint-pr-title:
+    # name: MUST stay "lint-pr-title" — branch protection requires that context,
+    # and GitHub derives it from name: (falling back to the job id). Declared
+    # explicitly rather than riding the fallback, so a job-id rename cannot
+    # silently un-gate a check the release guard's forgery-resistance depends on.
+    # Same contract as docs-lint.yml; scripts/preflight-checks.sh asserts it.
+    name: lint-pr-title
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
         env:

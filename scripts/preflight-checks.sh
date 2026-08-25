@@ -90,7 +90,8 @@ else
               "GitOps Validate / validate|validate" \
               "GitOps Validate / Secret Scan (gitleaks)|Secret Scan (gitleaks)" \
               "Preflight / preflight|preflight" \
-              "docs-lint / docs-lint|docs-lint"; do
+              "docs-lint / docs-lint|docs-lint" \
+              "Commit Lint / lint-pr-title|lint-pr-title"; do
     qualified="${line%|*}"
     bare="${line#*|}"
     if printf '%s\n' "$CONTEXTS" | grep -Fxq "$qualified"; then
@@ -186,6 +187,40 @@ else
       yellow "  WARN: unexpected tag_immutability value: ${IMMUTABLE}"
       ;;
   esac
+fi
+
+# ---------------------------------------------------------------------------
+# Check 4: merge methods. The release guard's `Allow-Non-Major:` attestation is
+# a MAINTAINER attestation, and that only holds while the merge commit body is
+# maintainer-authored. Under squash-merge the branch commit bodies are
+# concatenated into it (squash_merge_commit_message=COMMIT_MESSAGES); under
+# rebase-merge the tip IS an author-authored commit. Either one makes the
+# attestation forgeable by any contributor.
+#
+# Unlike Check 1, this reads the REPO object, which the default CI token can
+# see — so this is a genuine CI gate rather than a local-admin one. The guard
+# itself carries the primary control (it refuses an attestation on a
+# single-parent tip); this check is what makes a silent re-enable visible
+# instead of merely ineffective. ADR-0020 §Amendment records the dependency.
+# ---------------------------------------------------------------------------
+printf '\n=== Check 4: merge methods (release-guard attestation premise) ===\n'
+
+REPO_JSON="$(gh_api_or_empty "repos/${REPO}")"
+if [ -z "$REPO_JSON" ]; then
+  warn_annot "Check 4 SKIP — could not read the repository object for ${REPO}."
+else
+  for pair in "allow_squash_merge|false" "allow_rebase_merge|false" \
+              "merge_commit_message|PR_TITLE" "merge_commit_title|MERGE_MESSAGE"; do
+    key="${pair%|*}"; want="${pair#*|}"
+    got="$(printf '%s' "$REPO_JSON" | jq -r ".${key}")"
+    if [ "$got" = "$want" ]; then
+      green "  OK: ${key}=${got}"
+    else
+      err "${key} is '${got}', expected '${want}' — the Allow-Non-Major attestation is only maintainer-owned under merge-commit-only"
+      yellow "  Hint: https://github.com/${REPO}/settings — Pull Requests, merge button options"
+      FAIL=1
+    fi
+  done
 fi
 
 printf '\n'
