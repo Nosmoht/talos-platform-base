@@ -100,10 +100,14 @@ rg_load_pathspec
 
 # A syntactically valid pathspec that matches nothing is not an error to git, so
 # a directory rename silently empties the guarded set and the guard reports "no
-# change". Assert every positive entry still selects something.
+# change". Assert every positive entry selected something AT THE BASE: an entry
+# that matched at ${last_tag} and matches nothing now describes a deletion inside
+# the range, which is a surface change the diff must report -- not a broken
+# pathspec. Checking HEAD instead would turn every deletion of a guarded path
+# into an environment error.
 dead=""
 while IFS= read -r entry; do
-  [ -n "$(git -c core.ignoreCase=false ls-files -- "${entry}" | head -1)" ] \
+  [ -n "$(git -c core.ignoreCase=false ls-files --with-tree="${last_tag}" -- "${entry}" | head -1)" ] \
     || dead="${dead}${dead:+, }${entry}"
 done < <(rg_positive_pathspec)
 [ -z "${dead}" ] \

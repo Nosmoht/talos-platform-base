@@ -9,7 +9,7 @@
 #   gitops:*       — kustomize manifest validation + rendered-manifests pipeline
 #   bootstrap:*    — consumer App-of-Apps root seed (NOT module-delivered)
 #   cluster:*      — declarative cluster SoT (cluster.yaml) init
-#   supply-chain:* — OCI tarball allowlist verification
+#   supply-chain:* — OCI artifact + release-gate verification
 #   mcp:*          — MCP server binary management
 #   dev:*          — contributor hygiene (pre-commit, tool pins)
 #
@@ -542,8 +542,31 @@ tasks:
       fi
 
   # ===========================================================================
-  # supply-chain:* — OCI artifact verification
+  # supply-chain:* — OCI artifact + release-gate verification
   # ===========================================================================
+  supply-chain:check-release-guard:
+    desc: "CI fence: the release guard's pathspec covers every tarball member, and its red/green bite-check passes"
+    # Both halves are needed and neither substitutes for the other. The coverage
+    # check is the EXTERNAL anchor -- it walks .ci-oci-tarball-expected.txt, a
+    # list that exists for another reason, so it can see the guard's own data
+    # files being narrowed. The bite-check generates its scenarios FROM those
+    # data files, so it proves the guard bites but could not notice them
+    # shrinking; its fixture-equality abort is what makes a narrowing a
+    # two-file deletion instead of a one-file pattern tightening.
+    #
+    # The completion marker is asserted, not just the exit code: a suite edited
+    # into running zero scenarios exits 0 (Taskfile.yml's staleness-gate target
+    # records the same lesson).
+    cmd: |
+      set -e
+      ./scripts/check-release-guard-coverage.sh
+      bite_out="$(./scripts/check-release-guard-gate-bites.sh)" || { printf '%s\n' "$bite_out"; exit 1; }
+      printf '%s\n' "$bite_out"
+      printf '%s\n' "$bite_out" | grep -qE '^release-guard bite-check OK \([0-9]+ scenarios\)$' || {
+        echo "ERROR: the bite-check did not report a completion marker — it may have run no scenarios" >&2
+        exit 1
+      }
+
   supply-chain:oci-allowlist:
     desc: Build the talos OCI tarball locally and diff against .ci-oci-tarball-expected.txt (fail-closed)
     # Allowlist-based (fail-closed) tarball verification. Builds locally per the
