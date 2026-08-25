@@ -47,6 +47,18 @@
 /package-lock.json                               @nosmoht
 /.ci-oci-tarball-include.txt                     @nosmoht
 /.ci-oci-tarball-expected.txt                    @nosmoht
+# The MAJOR-bump guard, its data files and the checks that bind them. Routing
+# only, per the "Marker, not a gate" note above — the enforcing controls are
+# `task supply-chain:check-release-guard` (a required docs-lint step) and the
+# guard's own two-parent rule.
+/.ci-release-guard-pathspec.txt                   @nosmoht
+/.ci-release-guard-pathspec.expected.txt          @nosmoht
+/.ci-release-guard-exempt.txt                     @nosmoht
+/.ci-release-guard-exempt.expected.txt            @nosmoht
+/scripts/release-guard-lib.sh                     @nosmoht
+/scripts/release-major-bump-guard.sh              @nosmoht
+/scripts/check-release-guard-coverage.sh          @nosmoht
+/scripts/check-release-guard-gate-bites.sh        @nosmoht
 
 # Talos machine-config patches — boot-loop risk.
 /talos/                                          @nosmoht

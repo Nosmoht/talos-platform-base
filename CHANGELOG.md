@@ -5,10 +5,39 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-> Every entry below shipped in `v7.0.0` through `v9.0.0`: those tags were cut
-> without a CHANGELOG section, and nothing here is awaiting release.
-> `UPGRADING.md` headings already carry the tag each migration shipped in, so
-> the two files disagree until the backfill tracked in #233 lands.
+### Pending release
+
+Entries awaiting the next tag. A by-hand release cut moves **this block only**
+under the new version heading; the historical backfill below it stays put.
+
+- **Fixed — the MAJOR-bump guard no longer blocks on files no consumer
+  receives.** Its surface set moved out of `.github/workflows/release.yml` into
+  `.ci-release-guard-pathspec.txt` (membership rule in that file's header), with
+  `schemas/fixtures/**` excluded. Three pushes to `main` were blocked for ten
+  days on a negative lint fixture and a schema description. The guard also stops
+  failing open: an empty `NEXT`, a `git diff` error, a shallow checkout and a
+  pathspec that matches nothing are now environment errors rather than a silent
+  pass.
+- **Changed — five published paths are newly guarded**, including
+  `tofu/modules/talos-cluster/helm/{argocd,cilium}-values.yaml`, the shipped base
+  Helm values. A change to any of them now needs a MAJOR bump or an
+  `Allow-Non-Major:` attestation. Contributor-visible: the attestation is read
+  from the merge commit **body**, is honoured only on a merge commit, and refuses
+  a placeholder reason.
+- **Changed — the repository is merge-commit only** and `Commit Lint` is a
+  required check. `AGENTS.md §Issue-Interface` `state:close` gains the
+  `--subject`/`--body` form; the bare `--merge` form cannot carry an attestation.
+  `scripts/preflight-checks.sh` asserts both.
+- **Added — a failed or blocked release now files a tracking issue**
+  (ADR-0020's listed follow-up), and a `release-guard-advisory` job tells a PR
+  author before merging whether their branch touches a guarded path.
+
+### Historical backfill
+
+> Every entry from `### Added` onward shipped in `v7.0.0` through `v9.0.0`:
+> those tags were cut without a CHANGELOG section, and nothing in this block is
+> awaiting release. `UPGRADING.md` headings already carry the tag each migration
+> shipped in, so the two files disagree until the backfill tracked in #233 lands.
 
 ### Added
 

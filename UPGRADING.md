@@ -1401,9 +1401,11 @@ leaves the adopted `Application` inert/degraded.
 
 1. `tofu fmt -check` + `tofu validate` (module + your root) — confirms your
    OpenTofu binary meets the new `>= 1.9` floor.
-2. `check-jsonschema --schemafile vendor/base/schemas/cluster.schema.json
+2. `check-jsonschema --schemafile <base-checkout>/schemas/cluster.schema.json
    --default-filetype yaml cluster.yaml` — confirms no stray key under
-   `substrate.cilium`.
+   `substrate.cilium`. The schema is **not** an OCI tarball member, so it is not
+   under `vendor/base/`; run this from the base checkout at the tag you pinned,
+   the same checkout steps 3 and 5 of the first-consumer workflow already use.
 3. If adopting `self_management`: confirm `tofu plan` succeeds (the guard
    would otherwise hard-reject it) and review the emitted
    `cilium_self_management_app` output before committing it to GitOps.

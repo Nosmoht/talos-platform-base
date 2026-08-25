@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-25
+
+- `decisions/0020-automated-release-no-approval-gate.md`: added a `history:` key
+  and an `## Amendment (2026-08-25)`. The amendment corrects the surface set
+  (`kubernetes/base/**` -> the committed pathspec file), supersedes the
+  squash-merge sentence in §Decision 3, records the guard's departures from its
+  original logic and three residuals, and marks the notification follow-up
+  shipped. The Decision section is unchanged.
+- `workflows/release-process.md`: `generated.at 2026-08-25`. The §MAJOR-bump
+  guard bullet now points at `.ci-release-guard-pathspec.txt` instead of listing
+  the set; both squash-merge sentences are rewritten; §Commit gate states what
+  the PR-title lint actually buys; a new §When the release is blocked carries the
+  recovery procedure and is named the authoritative copy; §CHANGELOG contract
+  describes the `### Pending release` / historical-backfill split. `sources:`
+  gains `scripts/release-major-bump-guard.sh` and
+  `.ci-release-guard-pathspec.txt`.
+- `reference/tasks.md`: the `supply-chain:*` heading widens to "OCI artifact +
+  release-gate verification" and gains the `supply-chain:check-release-guard`
+  row.
+
 ## 2026-08-23
 
 Two changes, one day: the pinned `openknowledge` CLI moved 0.5.0 -> 0.12.0, and

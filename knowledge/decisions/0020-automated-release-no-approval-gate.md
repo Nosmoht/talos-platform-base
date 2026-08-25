@@ -5,6 +5,9 @@ description: "Drops the environment:release manual-approval protection so a merg
 status: stable
 id: base:automated-release-no-approval-gate
 decided: "2026-07-21T00:00:00Z"
+history:
+  - 2026-07-21 accepted
+  - 2026-08-25 amended (surface set corrected and moved to committed data; merge-commit-only premise made mechanical; fail-opens closed; notification shipped)
 deciders:
   - platform-maintainer
 related:
@@ -100,5 +103,58 @@ losing that MAJOR backstop.
 
 - Automate the `[Unreleased]` → `## vX.Y.Z — DATE` cut via a post-release bot PR
   with auto-merge (no direct-to-`main` push, no branch-protection bypass).
-- Add a `failure()`-conditioned notification on `release.yml` so an unattended
-  release failure surfaces without polling.
+- ~~Add a `failure()`-conditioned notification on `release.yml` so an unattended
+  release failure surfaces without polling.~~ Shipped, see §Amendment.
+
+## Amendment (2026-08-25)
+
+Issue #234. The Decision above stands; what follows corrects it where the
+implementation and the record had drifted, and records the departures.
+
+**The surface set named in §Decision 2 was wrong and is now data, not prose.**
+It named `kubernetes/base/**/values.yaml`; that tree was retired by ADR-0024 and
+the workflow guarded `kubernetes/substrate/` plus three globs this ADR never
+mentioned. The set now lives in `.ci-release-guard-pathspec.txt` with its
+membership rule in that file's header — this record does not restate it, so the
+two cannot drift again. Five paths consumers actually receive were outside the
+old net and are now inside it, including
+`tofu/modules/talos-cluster/helm/{argocd,cilium}-values.yaml`, which `main.tf`
+loads as the shipped base Helm values, i.e. the class `AGENTS.md` makes a MAJOR.
+`schemas/fixtures/**` is excluded: negative lint fixtures reach no consumer
+through the tarball or the pinned checkout, and blocking on them cost ten days.
+
+**§Decision 3's squash-merge sentence is superseded, and its premise is now
+mechanical.** All three merge methods were enabled and `Commit Lint` was not a
+required context, so the attestation was forgeable under every method, not only
+squash. The repository is restricted to merge-commit-only and the title lint is
+required. Two carriers keep that from being another claim about a mutable
+setting: the guard refuses an attestation unless the tip commit has ≥2 parents
+(a re-enabled squash or rebase makes the tip single-parent, so the guard fails
+closed on its own premise without an API call), and `scripts/preflight-checks.sh`
+Check 4 asserts the merge-method settings from the repo object, which the default
+CI token can read.
+
+**Departures from the guard's original logic**, each measured before it was
+changed: the trailer is read from the commit BODY (`%b`) because `%B` matched an
+author-controlled subject line; a placeholder reason (`<reason>`, `TODO`) is
+refused because both matched the line-anchored regex and the recovery command is
+documented in several places; an empty `NEXT` made the guard print "guard
+satisfied" and exit 0 on a changed surface; a `git diff` error was swallowed by
+`|| true` and read as "no surface"; and a syntactically valid pathspec that
+matches nothing is not an error to git, so a directory renamed in an earlier
+release would silently guard nothing. All five now exit 2 rather than passing.
+
+**Disclosure before decision.** The guard prints the surface list before its
+verdict on every exit path, to the run log and the job summary, and the override
+path states that the attestation clears every guarded file changed since the tag
+— not only the merger's own. The escape hatch itself is unchanged (#234
+Non-Goal); its scope is now visible at the moment it is used.
+
+**Residuals, recorded rather than closed.** The guard adjudicates the version
+`plan` computed while `release` recomputes its own; the window is bounded by the
+concurrency group and the shared checkout SHA. The trailer is read from the tip
+only, so an ordinary push after an attested one re-arms the block for the same
+attested change — the guard reports a prior attestation it finds in the range and
+names the re-attest command, but does not honour it. `Commit Lint`'s presence in
+the required-context list is asserted only by Check 1, which degrades to a
+warning in CI because the default token cannot read branch protection.
