@@ -36,9 +36,14 @@ jobs:
       contents: write # dry-run only — satisfies @semantic-release/github verifyConditions.
       # GITHUB_TOKEN cannot push to protected main nor trigger downstream
       # workflows, so it cannot cut a real release from this ungated job.
+    timeout-minutes: 15
     outputs:
       will-release: ${{ steps.dry.outputs.will-release }}
       next-version: ${{ steps.dry.outputs.next-version }}
+      # Empty unless the guard reached a verdict. `notify` gates on this rather
+      # than on the job result: most `plan` failures are npm/registry noise, and
+      # a guard-shaped tracking issue must not collect them.
+      guard-verdict: ${{ steps.guard.outputs.guard-verdict }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -77,107 +82,60 @@ jobs:
               echo "will-release=false" >> "$GITHUB_OUTPUT"
               echo "next-version=" >> "$GITHUB_OUTPUT"
             fi
-            # Breaking-change prompt (AGENTS.md: a base Helm-value breaking change
-            # requires a MAJOR bump). semantic-release only bumps MAJOR on a
-            # `BREAKING CHANGE:` footer / `type!:` — prose "BREAKING" is ignored.
-            last_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+            # Breaking-change prompt (AGENTS.md: a base Helm-value breaking
+            # change requires a MAJOR bump). semantic-release only bumps MAJOR on
+            # a `BREAKING CHANGE:` footer / `type!:` -- prose "BREAKING" is
+            # ignored. This block is INFORMATIONAL and fires on every push; the
+            # blocking guard below is gated on will-release, so a non-releasing
+            # push that parks a surface change on main is visible only here.
+            #
+            # The surface set is read from .ci-release-guard-pathspec.txt via the
+            # same parser the guard uses -- a second copy of the globs here is
+            # what let this prompt and the guard disagree (#234). Tag selection is
+            # the guard's rule too, not `git describe`, which returns the nearest
+            # REACHABLE tag and diverges from what the guard decides on.
+            set -f
+            . ./scripts/release-guard-lib.sh
+            rg_load_pathspec
+            set +f
+            last_tag="$(git tag --list 'v*' --sort=-v:refname \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
             if [ -n "$last_tag" ]; then
-              base_values_changed="$(git diff --name-only "${last_tag}..HEAD" -- 'kubernetes/substrate/**/values.yaml' || true)"
-              if [ -n "$base_values_changed" ]; then
+              surface="$(git -c core.ignoreCase=false diff --name-only \
+                "${last_tag}..HEAD" -- "${RG_PATHSPEC[@]}" || true)"
+              if [ -n "$surface" ]; then
                 echo ""
-                echo "> ⚠️ **Base Helm values changed since \`${last_tag}\`** — confirm MAJOR-vs-MINOR per AGENTS.md before approving. A genuine breaking change needs a \`BREAKING CHANGE:\` footer to bump MAJOR."
+                echo "> **Guarded base surface changed since \`${last_tag}\`** -- confirm the computed version above is MAJOR if a published contract, layout or Helm-value default moved. A squash-merge strips \`type!:\` subjects of branch commits; the marker must survive on the mainline commit."
                 echo ""
-                echo "Changed value files:"
+                echo "Changed guarded files:"
                 echo '```'
-                echo "$base_values_changed"
-                echo '```'
-              fi
-              # Second breaking-change class: the published artifact/contract
-              # surface (tarball allowlist, schemas, the Layer-C registry).
-              # A path or layout change here breaks tarball consumers without
-              # touching any Helm value — the prompt above stays silent for it,
-              # which is how a squash-merge that drops the `!` marker could
-              # ship a breaking base as a MINOR unnoticed.
-              artifact_surface_changed="$(git diff --name-only "${last_tag}..HEAD" -- '.ci-oci-tarball-include.txt' '.ci-oci-tarball-expected.txt' 'schemas/**' 'platform-hardware-features.yaml' 'contracts/**' 'kubernetes/substrate/**/_rendered/**' 'kubernetes/substrate/**/namespace.yaml' 'kubernetes/substrate/**/chart.lock.yaml' || true)"
-              if [ -n "$artifact_surface_changed" ]; then
-                echo ""
-                echo "> ⚠️ **Published artifact/contract surface changed since \`${last_tag}\`** (tarball allowlist, schemas, registry, contracts) — confirm the computed version above is MAJOR if the layout or paths moved. A squash-merge strips \`type!:\` subjects of branch commits; the marker must survive on the mainline commit."
-                echo ""
-                echo "Changed artifact-surface files:"
-                echo '```'
-                echo "$artifact_surface_changed"
+                printf '%s\n' "$surface" | while IFS= read -r f; do printf '  %s\n' "$f"; done
                 echo '```'
               fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Hard MAJOR-bump guard — the backstop that replaces the removed manual
-      # approval Environment. semantic-release only bumps MAJOR on a
-      # `BREAKING CHANGE:` footer / `type!:` marker; a merge that drops the
-      # marker would ship a breaking base-surface change as MINOR/PATCH. This
-      # step FAILS the release (blocks `release`, which is `needs: plan`) when a
-      # published artifact/contract surface changed since the last tag but the
-      # computed bump is not MAJOR — unless a maintainer attests the change is
-      # non-breaking via an `Allow-Non-Major:` trailer on the tip commit.
+      # Hard MAJOR-bump guard -- the backstop that replaced the removed manual
+      # approval Environment (ADR-0020 §Decision 3). The logic lives in
+      # scripts/release-major-bump-guard.sh so it is runnable locally and bound
+      # by scripts/check-release-guard-gate-bites.sh; the guarded set lives in
+      # .ci-release-guard-pathspec.txt with its membership rule. Do not inline
+      # either back into this file -- check-release-guard-coverage.sh fails if a
+      # `git diff --name-only` reappears here, and neither `--base` nor
+      # `--advisory` may be added to the invocation below: each neuters the gate.
       # Gated on will-release so a non-releasing push (docs/chore) never fails.
       - name: MAJOR-bump guard
+        id: guard
         if: steps.dry.outputs.will-release == 'true'
         env:
           NEXT: ${{ steps.dry.outputs.next-version }}
-        run: |
-          set -euo pipefail
-          # Highest STABLE semver tag by version order — not `git describe`,
-          # which returns the nearest *reachable* tag (reachability-dependent)
-          # and would fail open on a non-semver or prerelease nearest tag.
-          # Filtering to `vX.Y.Z` excludes prerelease (`-rc.N`) and stray tags.
-          last_tag="$(git tag --list 'v*' --sort=-v:refname \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
-          if [ -z "$last_tag" ]; then
-            echo "First release — no prior stable tag to compare; guard n/a."
-            exit 0
-          fi
-          # Breaking base-surface: published tarball layout, consumer-parsed
-          # contracts/schemas, and base Helm-value defaults. NOT exhaustive of
-          # every breaking change (tofu module interfaces and machine-config
-          # patches are out of this mechanical net — reviewer judgment covers
-          # those); this is the high-signal subset a dropped marker most often
-          # slips through.
-          surface="$(git diff --name-only "${last_tag}..HEAD" -- \
-            '.ci-oci-tarball-include.txt' '.ci-oci-tarball-expected.txt' \
-            'schemas/**' 'platform-hardware-features.yaml' 'contracts/**' \
-            'kubernetes/substrate/**/values.yaml' \
-            'kubernetes/substrate/**/_rendered/**' \
-            'kubernetes/substrate/**/namespace.yaml' \
-            'kubernetes/substrate/**/chart.lock.yaml' || true)"
-          if [ -z "$surface" ]; then
-            echo "No breaking base-surface change since ${last_tag}; guard n/a."
-            exit 0
-          fi
-          last_major="${last_tag#v}"; last_major="${last_major%%.*}"
-          next_major="${NEXT%%.*}"
-          if [ "$next_major" != "$last_major" ]; then
-            echo "MAJOR bump (${last_tag} → v${NEXT}) matches the base-surface change; guard satisfied."
-            exit 0
-          fi
-          # Override: an `Allow-Non-Major: <reason>` git trailer on the tip
-          # (merge) commit — a maintainer attestation that the surface change is
-          # genuinely non-breaking. Anchored to line-start so a prose mention or
-          # a negation ("does NOT qualify …") cannot match. The merging
-          # maintainer owns this line; under squash-merge, verify it in the
-          # concatenated commit body before merging (ADR-0020 §Decision 3).
-          if git log -1 --format=%B | grep -qiE '^Allow-Non-Major:[[:space:]]*[^[:space:]]'; then
-            echo "::warning::Base-surface changed since ${last_tag} without a MAJOR bump (v${NEXT}); overridden via an 'Allow-Non-Major:' trailer on the tip commit."
-            printf 'Overridden surface files:\n%s\n' "$surface"
-            exit 0
-          fi
-          echo "::error::Base artifact/contract surface changed since ${last_tag} but the computed bump is v${NEXT} (not MAJOR). Add a 'BREAKING CHANGE:' footer / type! marker to bump MAJOR, or attest a genuinely non-breaking change with an 'Allow-Non-Major: <reason>' trailer on the tip commit."
-          printf 'Changed base-surface files:\n%s\n' "$surface"
-          exit 1
+        run: ./scripts/release-major-bump-guard.sh
 
   release:
     needs: plan
     if: ${{ needs.plan.outputs.will-release == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read # the App token performs writes, not GITHUB_TOKEN
     steps:
@@ -200,3 +158,83 @@ jobs:
           # App token (NOT GITHUB_TOKEN) so the tag push triggers oci-publish.yml.
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: npx semantic-release
+
+  # A failed automated release is silent unless someone watches the Actions tab
+  # (ADR-0020 §Consequences listed a notification as follow-up). This job is that
+  # follow-up: it files ONE tracking issue and updates it, rather than a new one
+  # per push.
+  #
+  # Gated on the guard's own verdict, not on `needs.plan.result`: most `plan`
+  # failures are npm/registry noise and would fill a guard-shaped issue with
+  # unrelated infrastructure errors. `release` failures are covered separately --
+  # an expired App key produces the same user-visible outcome as a block.
+  #
+  # The body is a fixed sentence plus the run URL and carries NO diff-derived
+  # text: the guard's surface list is contributor-chosen filenames, this job
+  # holds `issues: write`, and AGENTS.md §Session-Start Ritual tells agents to
+  # read the tracker. Everything variable is env-bound, never interpolated into
+  # `run:` (the convention docs-lint.yml documents for the same class).
+  notify:
+    needs: [plan, release]
+    if: >-
+      ${{ always() && (
+        startsWith(needs.plan.outputs.guard-verdict, 'guard blocked') ||
+        startsWith(needs.plan.outputs.guard-verdict, 'guard error') ||
+        needs.release.result == 'failure'
+      ) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the release-blocked tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: "release: the automated release is not completing"
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --repo "$REPO" --state open \
+            --search "in:title \"$TITLE\"" --json number,title \
+            --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")"
+          body() {
+            printf '%s\n\n%s\n' \
+              "The Release workflow did not complete. The run log carries the guard's verdict and the surface list: $RUN_URL" \
+              "Recovery: knowledge/workflows/release-process.md, section \"When the release is blocked\". Filenames are deliberately not reproduced here."
+          }
+          if [ -n "$existing" ]; then
+            body | gh issue comment "$existing" --repo "$REPO" --body-file -
+          else
+            body | gh issue create --repo "$REPO" --title "$TITLE" \
+              --label 'status: ready' --label 'kind: ci' --label 'area: ci' --body-file -
+          fi
+
+  # The mirror of `notify`: a run that actually released closes the tracking
+  # issue, so a permanently-open alert cannot train the operator to ignore it.
+  # A human close means "start a fresh record" -- the lookup is state:open only.
+  notify-resolved:
+    needs: [plan, release]
+    if: ${{ always() && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Close the release-blocked tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: "release: the automated release is not completing"
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --repo "$REPO" --state open \
+            --search "in:title \"$TITLE\"" --json number,title \
+            --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")"
+          [ -n "$existing" ] || { echo "no open tracking issue"; exit 0; }
+          printf '%s' "A release completed: $RUN_URL" \
+            | gh issue comment "$existing" --repo "$REPO" --body-file -
+          gh issue close "$existing" --repo "$REPO" --reason completed
