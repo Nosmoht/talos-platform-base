@@ -26,9 +26,12 @@ under the new version heading; the historical backfill below it stays put.
   a placeholder reason.
 - **Changed — the release path now requires merge-commit-only**, with an empty
   default merge body and a required `Commit Lint`. These are repository settings,
-  applied by the maintainer rather than by this change;
-  `scripts/preflight-checks.sh` fails until they are, so the requirement is
-  visible rather than assumed. `AGENTS.md §Issue-Interface` `state:close` gains
+  applied by the maintainer rather than by this change. `scripts/preflight-checks.sh`
+  reports them, but only for a run with admin credentials: measured, the default
+  CI token reads those fields back as `null`. The controls that hold regardless
+  are in the guard — an attestation counts only on a merge commit, and only with
+  maintainer prose above the trailer, which is what a PR-title-derived body
+  cannot contain. `AGENTS.md §Issue-Interface` `state:close` gains
   the `--subject`/`--body` form — the bare `--merge` form cannot carry an
   attestation.
 - **Added — a failed or blocked release now files a tracking issue**

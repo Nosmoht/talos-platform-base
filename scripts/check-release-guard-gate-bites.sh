@@ -395,7 +395,9 @@ git commit -qam "side: touch a second guarded file"
 git checkout -q main
 printf 'changed\n' >> schemas/cluster.schema.json
 git commit -qam "main: touch a guarded file"
-git merge -q --no-ff side -m "Merge side" -m "Allow-Non-Major: additive optional key in the cilium substrate object, no consumer contract narrows" >/dev/null
+git merge -q --no-ff side -m "Merge side" -m "Reviewed the cilium substrate object: the new key is optional and nothing that validated before stops validating.
+
+Allow-Non-Major: additive optional key in the cilium substrate object, no consumer contract narrows" >/dev/null
 parents=$(( $(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ') - 1 ))
 [ "$parents" = 2 ] || note "SETUP BROKEN: expected a merge commit, got $parents parent(s)"
 guard 0 'guard overridden' "a merge-commit attestation with a real reason overrides" || true
@@ -414,7 +416,9 @@ merge_with_body() {
   git checkout -q -b "$br"; printf 'x\n' >> kubernetes/bootstrap/cilium/extras.yaml
   git commit -qam "$br side"; git checkout -q main
   printf 'x\n' >> schemas/cluster.schema.json; git commit -qam "$br main"
-  git merge -q --no-ff "$br" -m "Merge $br" -m "$body" >/dev/null
+  git merge -q --no-ff "$br" -m "Merge $br" -m "maintainer reasoning line
+
+$body" >/dev/null
   local n; n=$(( $(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ') - 1 ))
   [ "$n" = 2 ] || { note "SETUP BROKEN: $br produced $n parent(s)"; return 1; }
 }
@@ -436,6 +440,18 @@ merge_with_body side2b "Allow-Non-Major: <a real reason naming the surface path 
 reset_tree
 merge_with_body side2c "Allow-Non-Major: typo fix" \
   && guard 1 'guard blocked' "a too-short reason cannot attest (length, not regex)" || true
+
+echo "guard) an attestation standing alone in the body is not a maintainer's"
+# The shape merge_commit_message=PR_TITLE produces: a two-parent commit whose
+# entire body is one contributor-authored line. Measured in CI that the default
+# token cannot read that setting back, so this is the control that holds without
+# it.
+reset_tree
+git checkout -q -b side6; printf 'x\n' >> kubernetes/bootstrap/cilium/extras.yaml
+git commit -qam "side6"; git checkout -q main
+printf 'x\n' >> schemas/cluster.schema.json; git commit -qam "main6"
+git merge -q --no-ff side6 -m "Merge side6" -m "Allow-Non-Major: an otherwise perfectly good reason naming schemas/cluster.schema.json" >/dev/null
+guard 1 'guard blocked' "a body that is only the trailer cannot attest" || true
 
 echo "guard) the trailer is read from the body only"
 # This needs a MERGE commit whose SUBJECT carries the trailer and whose body does
@@ -516,7 +532,7 @@ cd "${ROOT}"
 # edited into running nothing, and a bare count satisfies that trivially.
 # Raise this deliberately when scenarios are added; never lower it to make a
 # run pass.
-SCENARIO_FLOOR=77
+SCENARIO_FLOOR=78
 if [ "$scenarios" -lt "$SCENARIO_FLOOR" ]; then
   printf 'ERROR: only %s scenarios ran, floor is %s — the suite was narrowed\n' "$scenarios" "$SCENARIO_FLOOR" >&2
   rc=1

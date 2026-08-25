@@ -36,6 +36,7 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 cd "${ROOT}"
 
 # shellcheck source=scripts/release-guard-lib.sh
+# shellcheck disable=SC1091
 . "${ROOT}/scripts/release-guard-lib.sh"
 
 BASE=""
@@ -52,6 +53,7 @@ SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 # Library errors take this script's failure contract, not the library's: they
 # degrade under --advisory and publish a verdict for the notify job.
+# shellcheck disable=SC2034  # read by rg_die() in the sourced library
 RG_FAIL_HOOK=fail
 
 # say — one line to stdout and to the job summary. The summary copy is
@@ -186,10 +188,22 @@ fi
 #     recovery command is documented in three places — a copy-paste must not
 #     attest anything.
 parents=$(( $(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ') - 1 ))
-trailer="$(git log -1 --format=%b | grep -iE '^Allow-Non-Major:' | head -1 || true)"
+body="$(git log -1 --format=%b)"
+trailer="$(printf '%s\n' "${body}" | grep -iE '^Allow-Non-Major:' | head -1 || true)"
+# Prose above the trailer is required, and it is the control that does NOT
+# depend on a repository setting. Measured: with merge_commit_message=PR_TITLE
+# the merge commit body IS the PR title -- one line, contributor-authored, on a
+# two-parent commit where the merge-commit rule cannot discriminate. Measured
+# again in CI: the default GITHUB_TOKEN reads that setting back as `null`, so no
+# workflow check can assert it. A body whose only content is the trailer is
+# therefore refused: the documented form is `<why>\n\nAllow-Non-Major: <reason>`,
+# and the PR-title channel structurally cannot produce it.
+prose="$(printf '%s\n' "${body}" | grep -vE '^[[:space:]]*$' | grep -viE '^[A-Za-z-]+:' | head -1 || true)"
 if [ -n "${trailer}" ]; then
   reason="$(printf '%s' "${trailer}" | sed -E 's/^[Aa][Ll][Ll][Oo][Ww]-[Nn][Oo][Nn]-[Mm][Aa][Jj][Oo][Rr]:[[:space:]]*//')"
-  if [ "${parents}" -lt 2 ]; then
+  if [ -z "${prose}" ]; then
+    printf '::error::the Allow-Non-Major attestation stands alone in the commit body; a maintainer attestation needs the reasoning above it (gh pr merge --merge --subject "..." --body $'"'"'<why>\\n\\nAllow-Non-Major: <reason>'"'"'). A body that is only the trailer is what a PR title produces.\n'
+  elif [ "${parents}" -lt 2 ]; then
     printf '::error::an Allow-Non-Major attestation was found on a single-parent commit; it is only honoured on a merge commit (merge-commit-only is the release premise — ADR-0020 §Amendment)\n'
   elif printf '%s' "${reason}" | grep -qiE '^(<.*>|todo|fixme|reason|xxx|n/?a)$' \
     || [ "${#reason}" -lt 12 ]; then

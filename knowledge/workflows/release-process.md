@@ -106,10 +106,12 @@ Triggered on every push to `main` (concurrency group `release-main`,
   `main` without a release is visible there.
   **Override:** a maintainer who has confirmed the change is genuinely
   non-breaking adds an `Allow-Non-Major: <reason>` trailer to the **body** of the
-  merge commit. Three properties make it an attestation rather than a string: it
-  is read from the body only, it is honoured only on a merge commit (≥2 parents,
-  so a re-enabled squash or rebase merge makes the guard fail closed), and a
-  placeholder reason is refused. Additive, backward-compatible edits to a guarded
+  merge commit. Four properties make it an attestation rather than a string: it
+  is read from the body only; it is honoured only on a merge commit (≥2 parents,
+  so a re-enabled squash or rebase merge makes the guard fail closed); it needs
+  maintainer prose above it, so a body that is only the trailer — which is what
+  a PR-title-derived merge body is — is refused; and a placeholder reason is
+  refused. Additive, backward-compatible edits to a guarded
   path (a new optional schema field, a new default value) are the expected
   override case — the guard flags any change to the path, not only breaking ones.
   The set is the high-signal subset a dropped `type!:` marker most often slips

@@ -132,12 +132,24 @@ contributor-authored text at all, and the title lint made required. Those are
 repo settings, not files: at the time this record was written they were **not
 yet applied**, and `scripts/preflight-checks.sh` Check 4 is red until they are —
 which is what blocks the change that introduced this amendment from merging.
-Two carriers keep the dependency from being another claim about a mutable
-setting: the guard refuses an attestation unless the tip commit has ≥2 parents
-(a re-enabled squash or rebase makes the tip single-parent, so the guard fails
-closed on its own premise without an API call), and `scripts/preflight-checks.sh`
-Check 4 asserts the merge-method settings from the repo object, which the default
-CI token can read.
+The carriers that keep the dependency from being another claim about a mutable
+setting are **both in the guard**, because — measured on the first CI run — the
+default `GITHUB_TOKEN` reads `allow_squash_merge`, `allow_rebase_merge`,
+`merge_commit_message` and `merge_commit_title` back as `null`: those fields need
+admin or push scope. `scripts/preflight-checks.sh` Check 4 is therefore a
+local-admin gate like Check 1, not a CI gate, and it reports an unreadable field
+as unreadable rather than as wrong.
+
+The two carriers that hold with no API access at all:
+
+1. an attestation is honoured only on a **merge commit** (≥2 parents), so a
+   re-enabled squash or rebase merge makes the tip single-parent and the guard
+   refuses;
+2. an attestation is honoured only when **maintainer prose sits above the
+   trailer**. With `merge_commit_message: PR_TITLE` the merge commit body is
+   exactly the PR title — one contributor-authored line on a two-parent commit,
+   where carrier 1 cannot discriminate. A body that is only the trailer is
+   refused, and the PR-title channel structurally cannot produce anything else.
 
 **Departures from the guard's original logic**, each measured before it was
 changed: the trailer is read from the commit BODY (`%b`) because `%B` matched an
