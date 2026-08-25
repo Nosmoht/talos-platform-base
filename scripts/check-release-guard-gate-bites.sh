@@ -323,10 +323,24 @@ reset_tree
 git branch -D side side2 >/dev/null 2>&1 || true
 
 echo "guard) the trailer is read from the body only"
+# This needs a MERGE commit whose SUBJECT carries the trailer and whose body does
+# not: on a single-parent commit the two-parent rule would refuse it anyway, so
+# the scenario would pass against `%B` too and discriminate nothing.
+reset_tree
+git checkout -q -b side3; printf 'x\n' >> kubernetes/bootstrap/cilium/extras.yaml
+git commit -qam "side3"; git checkout -q main
+printf 'x\n' >> schemas/cluster.schema.json; git commit -qam "main3"
+git merge -q --no-ff side3 -m "Allow-Non-Major: an otherwise valid reason naming schemas/cluster.schema.json" >/dev/null
+parents=$(( $(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ') - 1 ))
+[ "$parents" = 2 ] || note "SETUP BROKEN: subject-line scenario needs a merge commit, got $parents parent(s)"
+[ -z "$(git log -1 --format=%b | grep -i '^Allow-Non-Major:' || true)" ] \
+  || note "SETUP BROKEN: the trailer must be in the subject only, not the body"
+guard 1 'guard blocked' "a subject-line trailer cannot attest, even on a merge commit" || true
+git branch -D side3 >/dev/null 2>&1 || true
 reset_tree
 printf 'changed\n' >> schemas/cluster.schema.json
 git add -A >/dev/null; git commit -q -m "Allow-Non-Major: subject-line attempt"
-guard 1 'guard blocked' "a subject-line trailer cannot attest" || true
+guard 1 'guard blocked' "a subject-line trailer on a single-parent tip cannot attest" || true
 reset_tree
 touch_commit schemas/cluster.schema.json "Allow-Non-Major: none of this is breaking" >/dev/null
 reset_tree
