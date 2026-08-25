@@ -12,10 +12,11 @@
   guard bullet now points at `.ci-release-guard-pathspec.txt` instead of listing
   the set; both squash-merge sentences are rewritten; §Commit gate states what
   the PR-title lint actually buys; a new §When the release is blocked carries the
-  recovery procedure and is named the authoritative copy; §CHANGELOG contract
+  recovery procedure and is named the authoritative copy, with subsections for a
+  `guard error` verdict and for reverting the guard itself; §CHANGELOG contract
   describes the `### Pending release` / historical-backfill split. `sources:`
-  gains `scripts/release-major-bump-guard.sh` and
-  `.ci-release-guard-pathspec.txt`.
+  gains `scripts/release-major-bump-guard.sh`, `scripts/release-guard-lib.sh`
+  and `.ci-release-guard-pathspec.txt`.
 - `reference/tasks.md`: the `supply-chain:*` heading widens to "OCI artifact +
   release-gate verification" and gains the `supply-chain:check-release-guard`
   row.

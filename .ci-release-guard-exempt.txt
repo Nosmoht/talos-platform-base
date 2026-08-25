@@ -21,7 +21,8 @@
 #      openspec/specs/oci-supply-chain/spec.md — the change needs a spec touch
 #      or a `Spec-Impact: none` trailer on every contributing commit)
 #   3. .ci-release-guard-pathspec.txt  OR  this file
-#   4. the matching .expected.txt fixture for whichever of the two you edited
+#   4. `task supply-chain:relock-release-guard` (the digests in
+#      .ci-release-guard.lock are what make a narrowing a second, conscious edit)
 #   5. re-run `task supply-chain:check-release-guard`
 
 # reason: ADR-0020 §Consequences — module interface, reviewer judgment.

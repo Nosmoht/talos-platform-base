@@ -1,0 +1,16 @@
+# Integrity lock for the release guard's data files.
+#
+# scripts/check-release-guard-gate-bites.sh verifies this before running any
+# scenario, because its scenarios are GENERATED from those files: an entry
+# removed there would remove its own test and the suite would stay green. The
+# lock makes a narrowing a two-file edit -- the entry and its digest -- instead
+# of a one-file pattern tightening.
+#
+# It is a speed bump, not a gate: CODEOWNERS is documented in this repo as
+# non-enforcing (see its header). The external anchor is
+# scripts/check-release-guard-coverage.sh, which reads .ci-oci-tarball-expected.txt.
+#
+# Regenerate deliberately, never reflexively:
+#   task supply-chain:relock-release-guard
+ba9c381a8a232e2ab0a5abbfaf392c7eaefd9bea9864320645e03e6683189b27  .ci-release-guard-pathspec.txt
+c4101db7a216973a5884685484ed49670c6042007170fedd4287513803a9ddc8  .ci-release-guard-exempt.txt

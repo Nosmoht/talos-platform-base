@@ -126,8 +126,13 @@ through the tarball or the pinned checkout, and blocking on them cost ten days.
 **§Decision 3's squash-merge sentence is superseded, and its premise is now
 mechanical.** All three merge methods were enabled and `Commit Lint` was not a
 required context, so the attestation was forgeable under every method, not only
-squash. The repository is restricted to merge-commit-only and the title lint is
-required. Two carriers keep that from being another claim about a mutable
+squash. The repository is **to be** restricted to merge-commit-only, with
+`merge_commit_message: BLANK` so the default merge body carries no
+contributor-authored text at all, and the title lint made required. Those are
+repo settings, not files: at the time this record was written they were **not
+yet applied**, and `scripts/preflight-checks.sh` Check 4 is red until they are —
+which is what blocks the change that introduced this amendment from merging.
+Two carriers keep the dependency from being another claim about a mutable
 setting: the guard refuses an attestation unless the tip commit has ≥2 parents
 (a re-enabled squash or rebase makes the tip single-parent, so the guard fails
 closed on its own premise without an API call), and `scripts/preflight-checks.sh`
@@ -150,9 +155,18 @@ path states that the attestation clears every guarded file changed since the tag
 — not only the merger's own. The escape hatch itself is unchanged (#234
 Non-Goal); its scope is now visible at the moment it is used.
 
-**Residuals, recorded rather than closed.** The guard adjudicates the version
-`plan` computed while `release` recomputes its own; the window is bounded by the
-concurrency group and the shared checkout SHA. The trailer is read from the tip
+**Notification scope.** The `notify` job covers a guard verdict, any `plan`
+failure, and a `release` failure — not merely the guard-block half. `release` is
+*skipped* rather than failed when `plan` dies, so the `plan`-result disjunct is
+what actually carries the infrastructure classes ADR §Consequences named.
+
+**Residuals, recorded rather than closed.** `NEXT` is scraped from
+semantic-release's human-readable dry-run log, which also contains contributor
+commit subjects; the scrape now takes the first match (the version line precedes
+the generated notes) and the `release` job refuses to publish a version that
+differs from the one the guard judged, but the input remains a log parse. A tag
+pushed at `HEAD` empties the compared range, so the guard reports `guard n/a` —
+inherent to a range-based check, not closed here. The trailer is read from the tip
 only, so an ordinary push after an attested one re-arms the block for the same
 attested change — the guard reports a prior attestation it finds in the range and
 names the re-attest command, but does not honour it. `Commit Lint`'s presence in

@@ -13,15 +13,21 @@
 #   env NEXT      the computed next version, bare semver (required unless --advisory)
 #   --base <ref>  compare against <ref> instead of the highest stable tag
 #   --advisory    never exit non-zero; report only (PR pre-merge signal)
-#   --allow-no-tag  tolerate a repo with no stable tag (first release)
 #   exit 0  a verdict was reached and it passes
 #   exit 1  blocked
 #   exit 2  environment error — no verdict could be reached
 #
-# Five verdict lines, one per exit path, all exit-2 causes sharing one. The
-# bite-check asserts they are pairwise distinct: a crash must never read as a
-# block, and the surface list is printed BEFORE the verdict on every path, so a
-# maintainer sees what is being decided on rather than only what was decided.
+# The five verdict lines, verbatim -- `notify` in release.yml matches the first
+# two prefixes, so this is a contract, not just log text:
+#   guard blocked — …      (exit 1)
+#   guard error — …        (exit 2, every environment cause shares this line)
+#   guard n/a — …          (exit 0, nothing guarded changed)
+#   guard satisfied — …    (exit 0, the bump is MAJOR)
+#   guard overridden — …   (exit 0, a maintainer attestation)
+# The bite-check asserts they are pairwise distinct from the guard's own output:
+# a crash must never read as a block. The surface list is printed BEFORE the
+# verdict on every path, so a maintainer sees what is being decided on rather
+# than only what was decided.
 
 set -euo pipefail
 
@@ -34,17 +40,19 @@ cd "${ROOT}"
 
 BASE=""
 ADVISORY=0
-ALLOW_NO_TAG=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --base) [ $# -ge 2 ] || rg_die 2 "--base needs a value"; BASE="$2"; shift 2 ;;
     --advisory) ADVISORY=1; shift ;;
-    --allow-no-tag) ALLOW_NO_TAG=1; shift ;;
     *) printf 'ERROR: unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
 done
 
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+# Library errors take this script's failure contract, not the library's: they
+# degrade under --advisory and publish a verdict for the notify job.
+RG_FAIL_HOOK=fail
 
 # say — one line to stdout and to the job summary. The summary copy is
 # unconditional: the override path SUCCEEDS, so nothing else draws a human to
@@ -77,6 +85,14 @@ fail() {
   || fail "shallow clone — the guard cannot see the tag range (fetch-depth: 0 required)"
 
 if [ -n "${BASE}" ]; then
+  # The MAJOR comparison below derives last_major from this value, so a commit
+  # SHA would make it a hex string that never equals the next major and the
+  # guard would report "satisfied" on any changed surface. Verified by
+  # execution. Advisory runs skip the comparison entirely, so they may pass a
+  # merge-base.
+  if [ "${ADVISORY}" != 1 ] && ! printf '%s' "${BASE}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+    fail "--base must be a stable vX.Y.Z tag when the guard is enforcing (got '${BASE}'); pass --advisory to report against an arbitrary ref"
+  fi
   last_tag="${BASE}"
 else
   # Highest STABLE semver tag by version order — not `git describe`, which
@@ -86,12 +102,10 @@ else
     | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
 fi
 
-if [ -z "${last_tag}" ]; then
-  [ "${ALLOW_NO_TAG}" = 1 ] \
-    || fail "no stable tag matched 'vX.Y.Z' — tags were probably not fetched (pass --allow-no-tag for a genuine first release)"
-  say "Surface files considered since <no prior stable tag>: (none)"
-  verdict 0 "guard n/a — no prior stable tag to compare against"
-fi
+# With v9.1.0 on record this branch can only mean tags were not fetched. A
+# genuine first release would need this relaxed deliberately, with a scenario.
+[ -n "${last_tag}" ] \
+  || fail "no stable tag matched 'vX.Y.Z' — tags were not fetched (fetch-depth: 0)"
 
 git rev-parse -q --verify "${last_tag}^{commit}" >/dev/null \
   || fail "cannot resolve ${last_tag} to a commit"
@@ -126,8 +140,17 @@ if [ -z "${surface}" ]; then
   say "Surface files considered since ${last_tag}: (none)"
   verdict 0 "guard n/a — no breaking base-surface change since ${last_tag}"
 fi
+# Paths are contributor-chosen. Two channels, two hazards: the run log parses
+# `::`-prefixed lines as workflow commands and percent-decodes %0A/%0D, and the
+# job summary renders Markdown. Indentation alone closes neither (the runner
+# trims leading whitespace; Markdown needs four spaces for a code block), so the
+# stdout copy escapes `%` and a leading `:`, and the summary copy goes inside a
+# fence.
 say "Surface files considered since ${last_tag}:"
-printf '%s\n' "${surface}" | sed 's/^/  /' | tee -a "${SUMMARY}"
+printf '%s\n' "${surface}" \
+  | sed -e 's/%/%25/g' -e 's/^:/\\:/' -e 's/^/  /'
+# shellcheck disable=SC2016  # the backticks are a Markdown fence, not a subshell
+{ printf '```\n%s\n```\n' "${surface}"; } >> "${SUMMARY}"
 
 if [ "${ADVISORY}" = 1 ]; then
   verdict 0 "advisory — the listed paths are guarded; on push to main this blocks unless the release is MAJOR or the merge commit carries an 'Allow-Non-Major:' attestation"
@@ -140,8 +163,15 @@ esac
 
 last_major="${last_tag#v}"; last_major="${last_major%%.*}"
 next_major="${NEXT%%.*}"
-if [ "${next_major}" != "${last_major}" ]; then
+# Greater-than, not inequality. `!=` accepted a DOWNGRADE as a MAJOR bump --
+# verified: with a stray v10.0.0 tag and NEXT=9.2.0 the guard printed
+# "guard satisfied". One mistyped or aborted-release tag would have disarmed it
+# permanently for every later 9.x release.
+if [ "${next_major}" -gt "${last_major}" ]; then
   verdict 0 "guard satisfied — MAJOR bump (${last_tag} -> v${NEXT}) matches the base-surface change"
+fi
+if [ "${next_major}" -lt "${last_major}" ]; then
+  fail "the computed version v${NEXT} is BELOW the highest stable tag ${last_tag}; refusing to reason about a downgrade"
 fi
 
 # The override is a MAINTAINER attestation. Three properties make it one:
@@ -179,5 +209,5 @@ prior="$(git log "${last_tag}..HEAD" --format='%h %b' | grep -iE 'Allow-Non-Majo
 [ -z "${prior}" ] || say "A prior attestation exists in this range but is not on the tip commit, so it does not apply: ${prior}"
 
 printf '::error::base surface changed since %s but the computed bump is v%s (not MAJOR). Bump MAJOR with a BREAKING CHANGE: footer / type! marker, or re-merge with an attestation: gh pr merge <N> --merge --subject "<conventional subject>" --body $'"'"'<why>\\n\\nAllow-Non-Major: <a real reason naming the surface path or issue>'"'"'. Blocking files: %s\n' \
-  "${last_tag}" "${NEXT}" "$(printf '%s' "${surface}" | tr '\n' ' ')"
+  "${last_tag}" "${NEXT}" "$(printf '%s' "${surface}" | sed 's/%/%25/g' | tr '\n' ' ')"
 verdict 1 "guard blocked — base surface changed since ${last_tag} but the computed bump is v${NEXT} (not MAJOR)"

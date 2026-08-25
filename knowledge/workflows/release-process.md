@@ -7,6 +7,7 @@ generated: { by: human:nosmoht, at: "2026-08-25T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
   - resource: scripts/release-major-bump-guard.sh
+  - resource: scripts/release-guard-lib.sh
   - resource: .ci-release-guard-pathspec.txt
   - resource: .github/workflows/commitlint.yml
   - resource: .github/workflows/oci-publish.yml
@@ -191,6 +192,32 @@ at all — the supported route is to **move** it into
 `.ci-release-guard-exempt.txt` with a reason, not to delete it from the pathspec.
 `scripts/check-release-guard-coverage.sh` prints the exact five-file edit
 sequence when it refuses.
+
+### When the guard errors (exit 2)
+
+A `guard error` verdict is a different situation from `guard blocked`, and the
+attestation route above **cannot** clear it — the guard exits before the trailer
+is read. The causes are enumerated in
+[ADR-0020 §Amendment](../decisions/0020-automated-release-no-approval-gate.md);
+each is an environment fault, not a judgement call: tags not fetched, a shallow
+checkout, an unresolvable tag, a `NEXT` that is missing or below the highest
+stable tag, a pathspec entry that matches nothing at the base (a guarded
+directory renamed in an earlier release), or a malformed data file. Fix the
+cause; there is nothing to attest.
+
+### Break glass — the guard itself is broken
+
+If the guard errors on every push and the cause cannot be fixed quickly, note
+that removing it is deliberately not a one-file edit:
+`scripts/check-release-guard-coverage.sh` fails when `release.yml` stops
+invoking the guard, and it runs in the **required** `docs-lint` context — so a
+naive revert PR is un-mergeable. The supported emergency revert touches, in one
+PR: the guard step in `.github/workflows/release.yml`, the invocation assertion
+in `scripts/check-release-guard-coverage.sh`, the
+`supply-chain:check-release-guard` step in `.github/workflows/docs-lint.yml`, and
+its Taskfile target. That PR still clears the required checks. The alternative,
+for a repo admin, is an admin merge of the minimal revert; prefer the four-file
+PR, because the admin path leaves no record of what was disabled.
 
 ## CHANGELOG contract
 

@@ -112,10 +112,10 @@ jobs:
       - name: task supply-chain:check-release-guard
         # The release guard's only merge-blocking binding. It lives here rather
         # than in gitops-validate.yml's oci-allowlist-check job because that job
-        # is NOT a required context (measured: the required set is validate,
-        # Secret Scan (gitleaks), docs-lint, Hard Constraints, preflight), so a
-        # red bite-check there would not block a merge — and AC4 of #234 is
-        # exactly that a later narrowing cannot pass unnoticed.
+        # is NOT a required context, so a red bite-check there would not block a
+        # merge — and AC4 of #234 is exactly that a later narrowing cannot pass
+        # unnoticed. scripts/preflight-checks.sh Check 1 owns the required-context
+        # list; it is not duplicated here.
         run: task supply-chain:check-release-guard
 
       - name: task spec:validate
@@ -183,8 +183,16 @@ jobs:
             echo ""
             echo "**Guarded paths in this pull request** (\`merge-base..HEAD\`):"
           } >> "$GITHUB_STEP_SUMMARY"
-          mb="$(git merge-base "origin/${BASE_REF}" HEAD)"
-          ./scripts/release-major-bump-guard.sh --advisory --base "$mb" || true
+          mb="$(git merge-base "origin/${BASE_REF}" HEAD)" || mb=""
+          if [ -n "$mb" ]; then
+            ./scripts/release-major-bump-guard.sh --advisory --base "$mb" || true
+          else
+            # Never fall through to a bare --advisory here: without --base the
+            # guard reports the whole range since the last tag, which would be
+            # printed under the "in this pull request" heading and read as this
+            # PR's doing.
+            echo "advisory unavailable: could not compute merge-base against origin/${BASE_REF}" >> "$GITHUB_STEP_SUMMARY"
+          fi
           {
             echo ""
             echo "**Guarded paths already pending since the last tag** — this is the set that blocks the release:"

@@ -15,9 +15,17 @@
 #       `platform-hardware-features.yaml`. A fourth member requires an AGENTS.md
 #       edit, not a judgement call here; or
 #   (d) it is a human-authored input to a published render (`values.yaml`,
-#       `chart.lock.yaml`), kept because ADR-0020 §Decision 2 named them and
-#       AGENTS.md makes a breaking Helm-value change a MAJOR.
-# …minus schemas/fixtures/**, which reach no consumer through either channel.
+#       `chart.lock.yaml`). AGENTS.md §Commit & Pull Request Guidelines makes a
+#       breaking base Helm-value change a MAJOR, which covers `values.yaml`;
+#       `chart.lock.yaml` pins what gets rendered into the published output.
+#       (ADR-0020 §Decision 2 named an equivalent path under the retired
+#       `kubernetes/base/` tree and never named `chart.lock.yaml` — see its
+#       §Amendment.)
+# …minus schemas/fixtures/**, which reach no consumer through either channel,
+# and minus every path listed in .ci-release-guard-exempt.txt (ADR-0020
+# §Consequences: tofu module interface changes are covered by reviewer judgment,
+# not by this net). Without that second subtraction the rule as written admits
+# the nine exempt paths, since all nine are tarball members under clause (a).
 #
 # DELIBERATELY OUT: kubernetes/substrate/*/_rendered-overlay/kustomization.yaml.
 # It is a render input, so clause (d) would reach it — but scripts/verify-rendered.sh

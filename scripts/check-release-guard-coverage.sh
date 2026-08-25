@@ -16,14 +16,18 @@
 
 set -euo pipefail
 
-ROOT="$(git rev-parse --show-toplevel)"
+ROOT="${RELEASE_GUARD_ROOT:-$(git rev-parse --show-toplevel)}"
 cd "${ROOT}"
 # shellcheck source=scripts/release-guard-lib.sh
+# shellcheck disable=SC1091
 . "${ROOT}/scripts/release-guard-lib.sh"
 
-FIXTURE=".ci-oci-tarball-expected.txt"
+# Overridable so the bite-check can exercise this script against a sandbox copy
+# instead of mutating the repo's own tracked data files (the parser already
+# parameterises its two).
+FIXTURE="${RELEASE_GUARD_TARBALL_FIXTURE:-.ci-oci-tarball-expected.txt}"
+WORKFLOW="${RELEASE_GUARD_WORKFLOW_FILE:-.github/workflows/release.yml}"
 GUARD="scripts/release-major-bump-guard.sh"
-WORKFLOW=".github/workflows/release.yml"
 # The two shipped base Helm-value floors. AGENTS.md makes a breaking Helm-value
 # change a MAJOR, so exempting them would un-guard the guard's own charter class.
 HARD_PINNED="tofu/modules/talos-cluster/helm/argocd-values.yaml
@@ -63,23 +67,40 @@ for p in "${RG_EXEMPT[@]}"; do
   printf '%s' "${reason}" | grep -qiE '^(<.*>|todo|fixme|reason|xxx|n/?a)\.?$' \
     && note "${p}: '# reason:' is a placeholder (${reason})"
   case "${reason}" in *ADR-*) : ;; *) note "${p}: '# reason:' must cite the ADR clause that admits it (got: ${reason})" ;; esac
+  # Same floor the guard applies to an attestation reason: the two gates that
+  # exist to reject a copy-paste must not disagree, and the weaker one governs
+  # the file that un-guards a path permanently.
+  [ "${#reason}" -ge 12 ] \
+    || note "${p}: '# reason:' is too short to be one (${reason})"
 done
 
-# 3) the guard is invocable and the release workflow actually calls it, without
-#    the two knobs that would neuter it
+# 3) the workflow actually enforces the guard. Asserted STRUCTURALLY: the first
+#    version of this check grepped the file for the script path, which the
+#    explanatory comment block in release.yml contains -- deleting the `run:`
+#    step left the check green. A whole-value match on the step's `run:` also
+#    proves no neutering flag is appended, so no separate knob list can go stale.
 [ -x "${GUARD}" ] || note "${GUARD} is not executable — release.yml invokes it directly"
-grep -q "${GUARD}" "${WORKFLOW}" \
-  || note "${WORKFLOW} does not invoke ${GUARD} — the extraction left the enforcement point behind"
-grep -E "${GUARD}[^\"']*(--base|--advisory)" "${WORKFLOW}" >/dev/null \
-  && note "${WORKFLOW} invokes the guard with --base or --advisory; either one neuters the release gate"
+if command -v yq >/dev/null 2>&1; then
+  runs="$(yq -r '.jobs.plan.steps[] | select(.id == "guard") | .run' "${WORKFLOW}" 2>/dev/null | sed 's/[[:space:]]*$//')"
+  [ "${runs}" = "./${GUARD}" ] \
+    || note "${WORKFLOW} job 'plan' step id 'guard' must run exactly './${GUARD}' (got: '${runs:-<no such step>}'). Any argument here — --base or --advisory above all — neuters the release gate."
+else
+  grep -Eq "^[[:space:]]*run:[[:space:]]*\./${GUARD//\//\\/}[[:space:]]*$" "${WORKFLOW}" \
+    || note "${WORKFLOW} has no bare 'run: ./${GUARD}' line — install yq for the structural check"
+fi
 
-# 4) the de-duplication stays done. Three copies of the surface globs in this
-#    one file is what let the guard and the job summary disagree (#234), so the
-#    assertion is on a PATHSPEC LITERAL reappearing here -- not on `git diff`
-#    itself, which the summary step legitimately runs over "${RG_PATHSPEC[@]}".
-for lit in '.ci-oci-tarball-' 'schemas/' 'contracts/' 'kubernetes/substrate/' 'kubernetes/bootstrap/' 'platform-hardware-features'; do
-  grep -n "git diff[^\n]*${lit}" "${WORKFLOW}" >/dev/null \
-    && note "${WORKFLOW} passes the literal '${lit}' to git diff — the surface definition belongs in ${RELEASE_GUARD_PATHSPEC_FILE}, read via scripts/release-guard-lib.sh"
+# 4) the de-duplication stays done. Three copies of the surface globs in one
+#    file is what let the guard and the job summary disagree (#234). Comments
+#    are stripped first (they legitimately quote these paths), and the match is
+#    on a pathspec literal anywhere on a remaining line -- the first version
+#    anchored on the string "git diff", which the workflow does not even contain
+#    (it writes `git -c core.ignoreCase=false diff`), and used `[^\n]`, which in
+#    a bracket expression means "not backslash and not n" rather than "not a
+#    newline". Both made the check inert.
+lits=".ci-oci-tarball- schemas/ contracts/ kubernetes/substrate/ kubernetes/bootstrap/ platform-hardware-features"
+for lit in ${lits}; do
+  sed 's/#.*//' "${WORKFLOW}" | grep -Fq -- "${lit}" \
+    && note "${WORKFLOW} carries the surface literal '${lit}' outside a comment — the definition belongs in ${RELEASE_GUARD_PATHSPEC_FILE}, read via scripts/release-guard-lib.sh"
 done
 
 if [ "${fail}" != 0 ]; then
@@ -91,7 +112,7 @@ To un-guard a published path, MOVE it — do not delete it:
      openspec/specs/oci-supply-chain/spec.md — needs a spec touch or a
      `Spec-Impact: none` trailer on every contributing commit)
   3. .ci-release-guard-pathspec.txt  OR  .ci-release-guard-exempt.txt
-  4. the matching .expected.txt fixture for whichever of the two you edited
+  4. task supply-chain:relock-release-guard
   5. re-run `task supply-chain:check-release-guard`
 HINT
   exit 1

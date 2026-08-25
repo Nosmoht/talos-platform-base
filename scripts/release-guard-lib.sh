@@ -13,9 +13,20 @@
 RELEASE_GUARD_PATHSPEC_FILE="${RELEASE_GUARD_PATHSPEC_FILE:-.ci-release-guard-pathspec.txt}"
 RELEASE_GUARD_EXEMPT_FILE="${RELEASE_GUARD_EXEMPT_FILE:-.ci-release-guard-exempt.txt}"
 
-# rg_die <exit-code> <message…> — uniform failure channel for every consumer.
+# rg_die <exit-code> <message…> — the library's failure channel.
+#
+# A consumer that has its own failure contract sets RG_FAIL_HOOK to the name of
+# a function taking the message; the guard sets it to `fail`, so a library error
+# degrades under --advisory and publishes a `guard error` verdict to
+# $GITHUB_OUTPUT like every other exit-2 cause. Without the hook a library error
+# exits straight past the guard's verdict machinery, which left the advisory job
+# silent and the notify job un-triggered for the whole data-file-corruption
+# class.
 rg_die() {
   local rc="$1"; shift
+  if [ -n "${RG_FAIL_HOOK:-}" ] && command -v "${RG_FAIL_HOOK}" >/dev/null 2>&1; then
+    "${RG_FAIL_HOOK}" "$*"
+  fi
   printf 'ERROR: %s\n' "$*" >&2
   exit "$rc"
 }
@@ -36,6 +47,11 @@ rg_read_lines() {
 # guess what the author meant.
 rg_assert_no_trailing_comment() {
   local f="$1" bad
+  # Readability is asserted here, not left to rg_read_lines: its rg_die would
+  # exit only the command substitution below, `bad` would come back empty and
+  # `|| true` would swallow the status — the function would return success on a
+  # missing file.
+  [ -r "$f" ] || rg_die 2 "$f is missing or unreadable"
   bad="$(rg_read_lines "$f" | grep -n '[[:space:]]#' || true)"
   [ -z "$bad" ] || rg_die 2 "$f: trailing '#' comment on a payload line (reasons must be whole-line comments above their entry):
 $bad"

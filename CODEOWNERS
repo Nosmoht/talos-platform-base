@@ -52,9 +52,8 @@
 # `task supply-chain:check-release-guard` (a required docs-lint step) and the
 # guard's own two-parent rule.
 /.ci-release-guard-pathspec.txt                   @nosmoht
-/.ci-release-guard-pathspec.expected.txt          @nosmoht
 /.ci-release-guard-exempt.txt                     @nosmoht
-/.ci-release-guard-exempt.expected.txt            @nosmoht
+/.ci-release-guard.lock                           @nosmoht
 /scripts/release-guard-lib.sh                     @nosmoht
 /scripts/release-major-bump-guard.sh              @nosmoht
 /scripts/check-release-guard-coverage.sh          @nosmoht

@@ -70,7 +70,16 @@ jobs:
           # semantic-release logs "The next release version is X.Y.Z" (and a
           # "...the next release version is X.Y.Z" first-release variant) —
           # match case-insensitively and take the version token.
-          version="$(grep -ioE 'the next release version is [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?' sr-dry.log | awk '{print $NF}' | tail -1 || true)"
+          #
+          # head -1, NOT tail -1. This greps a human-readable log, and
+          # @semantic-release/release-notes-generator prints the generated notes
+          # -- which embed contributor commit subjects -- AFTER the version line.
+          # With tail -1, a commit whose subject contained this sentence would
+          # have supplied the version the MAJOR-bump guard then reasons about,
+          # and commitlint never sees branch commit subjects. The version line is
+          # emitted during analyzeCommits, so the first match is the real one.
+          # The `release` job re-asserts the value below; this is the cheap half.
+          version="$(grep -ioE 'the next release version is [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?' sr-dry.log | awk '{print $NF}' | head -1 || true)"
           {
             echo "# Release plan"
             if [ -n "$version" ]; then
@@ -105,7 +114,7 @@ jobs:
                 "${last_tag}..HEAD" -- "${RG_PATHSPEC[@]}" || true)"
               if [ -n "$surface" ]; then
                 echo ""
-                echo "> **Guarded base surface changed since \`${last_tag}\`** -- confirm the computed version above is MAJOR if a published contract, layout or Helm-value default moved. A squash-merge strips \`type!:\` subjects of branch commits; the marker must survive on the mainline commit."
+                echo "> **Guarded base surface changed since \`${last_tag}\`** -- confirm the computed version above is MAJOR if a published contract, layout or Helm-value default moved. The bump is computed from the branch commits in the range, so a \`type!:\` marker or a \`BREAKING CHANGE:\` footer has to reach one of them."
                 echo ""
                 echo "Changed guarded files:"
                 echo '```'
@@ -153,6 +162,23 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
+      # The guard adjudicated the version `plan` computed; this job recomputes
+      # its own. Nothing bound the two, so a divergence would ship a version the
+      # guard never judged. Re-run the dry-run here and refuse a mismatch.
+      - name: Assert the version the guard judged is the version about to ship
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          PLANNED: ${{ needs.plan.outputs.next-version }}
+        run: |
+          set -euo pipefail
+          npx semantic-release --dry-run > sr-confirm.log 2>&1 || true
+          actual="$(grep -ioE 'the next release version is [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?' sr-confirm.log | awk '{print $NF}' | head -1 || true)"
+          if [ "$actual" != "$PLANNED" ]; then
+            echo "::error::the release job computes v${actual:-<none>} but the MAJOR-bump guard judged v${PLANNED}; refusing to publish a version no guard verdict covers"
+            exit 1
+          fi
+          echo "OK: v${actual} matches the guarded plan"
+
       - name: semantic-release
         env:
           # App token (NOT GITHUB_TOKEN) so the tag push triggers oci-publish.yml.
@@ -164,10 +190,14 @@ jobs:
   # follow-up: it files ONE tracking issue and updates it, rather than a new one
   # per push.
   #
-  # Gated on the guard's own verdict, not on `needs.plan.result`: most `plan`
-  # failures are npm/registry noise and would fill a guard-shaped issue with
-  # unrelated infrastructure errors. `release` failures are covered separately --
-  # an expired App key produces the same user-visible outcome as a block.
+  # Three disjuncts, because each covers a class the others miss. The guard's
+  # verdict classifies a block or an environment error. `needs.plan.result ==
+  # 'failure'` is the backstop: a `plan` that dies before the guard publishes a
+  # verdict (npm, the dry-run, a corrupt data file) would otherwise be silent,
+  # and `release` is SKIPPED rather than failed in that case, so the third
+  # disjunct does not cover it either. Together they close the class ADR-0020
+  # named -- "a failed automated release is silent unless someone watches the
+  # Actions tab" -- rather than the guard-block half of it.
   #
   # The body is a fixed sentence plus the run URL and carries NO diff-derived
   # text: the guard's surface list is contributor-chosen filenames, this job
@@ -180,6 +210,7 @@ jobs:
       ${{ always() && (
         startsWith(needs.plan.outputs.guard-verdict, 'guard blocked') ||
         startsWith(needs.plan.outputs.guard-verdict, 'guard error') ||
+        needs.plan.result == 'failure' ||
         needs.release.result == 'failure'
       ) }}
     runs-on: ubuntu-latest
@@ -196,19 +227,27 @@ jobs:
           TITLE: "release: the automated release is not completing"
         run: |
           set -euo pipefail
-          existing="$(gh issue list --repo "$REPO" --state open \
-            --search "in:title \"$TITLE\"" --json number,title \
-            --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")"
+          # --state open + an exact title match over the LIST api, not --search:
+          # the search index lags, so two queued blocked pushes would each miss
+          # the other's issue and file a duplicate. The author filter keeps a
+          # same-titled issue opened by anyone else from capturing the alert --
+          # this job comments on and closes whatever it finds.
+          existing="$(gh issue list --repo "$REPO" --state open --limit 100 \
+            --json number,title,author \
+            --jq '[.[] | select(.title == env.TITLE) | select(.author.login == "github-actions")] | .[].number')"
           body() {
             printf '%s\n\n%s\n' \
               "The Release workflow did not complete. The run log carries the guard's verdict and the surface list: $RUN_URL" \
               "Recovery: knowledge/workflows/release-process.md, section \"When the release is blocked\". Filenames are deliberately not reproduced here."
           }
           if [ -n "$existing" ]; then
-            body | gh issue comment "$existing" --repo "$REPO" --body-file -
+            printf '%s\n' "$existing" | while IFS= read -r n; do
+              [ -n "$n" ] || continue
+              body | gh issue comment "$n" --repo "$REPO" --body-file - || true
+            done
           else
             body | gh issue create --repo "$REPO" --title "$TITLE" \
-              --label 'status: ready' --label 'kind: ci' --label 'area: ci' --body-file -
+              --label 'kind: ci' --label 'area: ci' --body-file -
           fi
 
   # The mirror of `notify`: a run that actually released closes the tracking
@@ -231,10 +270,21 @@ jobs:
           TITLE: "release: the automated release is not completing"
         run: |
           set -euo pipefail
-          existing="$(gh issue list --repo "$REPO" --state open \
-            --search "in:title \"$TITLE\"" --json number,title \
-            --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")"
+          # --state open + an exact title match over the LIST api, not --search:
+          # the search index lags, so two queued blocked pushes would each miss
+          # the other's issue and file a duplicate. The author filter keeps a
+          # same-titled issue opened by anyone else from capturing the alert --
+          # this job comments on and closes whatever it finds.
+          existing="$(gh issue list --repo "$REPO" --state open --limit 100 \
+            --json number,title,author \
+            --jq '[.[] | select(.title == env.TITLE) | select(.author.login == "github-actions")] | .[].number')"
           [ -n "$existing" ] || { echo "no open tracking issue"; exit 0; }
-          printf '%s' "A release completed: $RUN_URL" \
-            | gh issue comment "$existing" --repo "$REPO" --body-file -
-          gh issue close "$existing" --repo "$REPO" --reason completed
+          # Every match, not just the first: a duplicate left open is the alert
+          # fatigue this job exists to prevent. `|| true` so a race with a human
+          # closing the issue cannot red an otherwise successful release.
+          printf '%s\n' "$existing" | while IFS= read -r n; do
+            [ -n "$n" ] || continue
+            printf '%s' "A release completed: $RUN_URL" \
+              | gh issue comment "$n" --repo "$REPO" --body-file - || true
+            gh issue close "$n" --repo "$REPO" --reason completed || true
+          done
