@@ -2,10 +2,9 @@
 #
 # FORMAT: one git pathspec per line. Reasons are WHOLE-LINE `#` comments above
 # their entry — never trailing. Git does not treat `#` as a comment inside a
-# pathspec, so `schemas/** # note` is a literal pattern that matches nothing and
-# would make the guard report an empty surface. scripts/release-guard-lib.sh is
-# the only parser; it strips whole-line comments and blanks and reads entries
-# under `set -f` so the shell cannot expand a glob before git sees it.
+# pathspec, so `schemas/** # note` is a literal pattern matching nothing and the
+# guard would report an empty surface. scripts/release-guard-lib.sh is the only
+# parser.
 #
 # MEMBERSHIP RULE. A path is guarded iff:
 #   (a) it is a member of .ci-oci-tarball-expected.txt; or
@@ -16,25 +15,19 @@
 #       edit, not a judgement call here; or
 #   (d) it is a human-authored input to a published render (`values.yaml`,
 #       `chart.lock.yaml`). AGENTS.md §Commit & Pull Request Guidelines makes a
-#       breaking base Helm-value change a MAJOR, which covers `values.yaml`;
-#       `chart.lock.yaml` pins what gets rendered into the published output.
-#       (ADR-0020 §Decision 2 named an equivalent path under the retired
-#       `kubernetes/base/` tree and never named `chart.lock.yaml` — see its
-#       §Amendment.)
-# …minus schemas/fixtures/**, which reach no consumer through either channel,
-# and minus every path listed in .ci-release-guard-exempt.txt (ADR-0020
-# §Consequences: tofu module interface changes are covered by reviewer judgment,
-# not by this net). Without that second subtraction the rule as written admits
-# the nine exempt paths, since all nine are tarball members under clause (a).
+#       breaking base Helm-value change a MAJOR; `chart.lock.yaml` pins what gets
+#       rendered into the published output.
+# …minus schemas/fixtures/**, which reach no consumer through either channel, and
+# minus every path in .ci-release-guard-exempt.txt — all nine of which clause (a)
+# would otherwise admit (ADR-0020 §Consequences: tofu module interface changes
+# are covered by reviewer judgment, not by this net).
 #
 # DELIBERATELY OUT: kubernetes/substrate/*/_rendered-overlay/kustomization.yaml.
-# It is a render input, so clause (d) would reach it — but scripts/verify-rendered.sh
-# re-renders from chart.lock.yaml + values.yaml + _rendered-overlay/ and fails on
-# drift, in the REQUIRED `validate` job. An overlay change that affects output
-# cannot land without the matching _rendered/ change, which clause (a) guards. The
-# same argument makes (d) belt-and-braces rather than load-bearing; both are kept
-# because ADR-0020 decided them. The two `:(glob)` entries below are what keeps
-# the overlay out: `:(glob)` stops `*` crossing `/`, plain `**` does not.
+# Clause (d) would reach it, but scripts/verify-rendered.sh fails on render drift
+# in the REQUIRED `validate` job, so an overlay change that affects output cannot
+# land without the matching _rendered/ change, which clause (a) guards. The two
+# `:(glob)` entries below are what keeps it out: `:(glob)` stops `*` crossing
+# `/`, plain `**` does not.
 #
 # TO UN-GUARD A PATH: move it into .ci-release-guard-exempt.txt with a reason —
 # do not delete it. See that file's header for the full edit sequence.

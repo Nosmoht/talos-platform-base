@@ -1,19 +1,17 @@
 # Tarball members deliberately OUTSIDE the MAJOR-bump guard's surface set.
 #
 # FORMAT: one repo-relative path per line, each preceded by a WHOLE-LINE
-# `# reason:` comment naming the ADR clause that admits it. A placeholder reason
-# (`<…>`, `TODO`, `FIXME`, a bare `reason`) or a missing one fails
-# scripts/check-release-guard-coverage.sh. Same parser as the pathspec file.
+# `# reason:` comment naming the ADR clause that admits it. A missing or
+# placeholder reason fails scripts/check-release-guard-coverage.sh.
 #
-# WHY THIS FILE EXISTS: .ci-oci-tarball-expected.txt is the coverage check's
-# external anchor — every member must be matched by .ci-release-guard-pathspec.txt
-# or listed here. Without the second branch a deliberate carve-out is
+# WHY THIS FILE EXISTS: the coverage check requires every member of
+# .ci-oci-tarball-expected.txt to be matched by .ci-release-guard-pathspec.txt or
+# listed here. Without this second branch a deliberate carve-out would be
 # indistinguishable from a hole.
 #
-# HARD PIN: tofu/modules/talos-cluster/helm/argocd-values.yaml and
-# helm/cilium-values.yaml may NEVER appear here. They are the shipped base Helm
-# values (loaded in main.tf), i.e. the class AGENTS.md makes a MAJOR. The
-# coverage check fails hard if either is listed.
+# HARD PIN: tofu/modules/talos-cluster/helm/{argocd,cilium}-values.yaml may NEVER
+# appear here — they are the shipped base Helm values, the class AGENTS.md makes
+# a MAJOR. The coverage check fails hard if either is listed.
 #
 # EDIT SEQUENCE when tarball membership changes (five files, two owners):
 #   1. .ci-oci-tarball-include.txt

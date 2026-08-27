@@ -546,29 +546,19 @@ tasks:
   # ===========================================================================
   supply-chain:check-release-guard:
     desc: "CI fence: the release guard's pathspec covers every tarball member, and its red/green bite-check passes"
-    # Both halves are needed and neither substitutes for the other. The coverage
-    # check is the EXTERNAL anchor -- it walks .ci-oci-tarball-expected.txt, a
-    # list that exists for another reason, so it can see the guard's own data
-    # files being narrowed. The bite-check generates its scenarios FROM those
-    # data files, so it proves the guard bites but could not notice them
-    # shrinking; its fixture-equality abort is what makes a narrowing a
-    # two-file deletion instead of a one-file pattern tightening.
-    #
-    # The completion marker is asserted, not just the exit code: a suite edited
-    # into running zero scenarios exits 0 (Taskfile.yml's staleness-gate target
-    # records the same lesson).
+    # Neither half substitutes for the other. The coverage check is the EXTERNAL
+    # anchor -- it walks .ci-oci-tarball-expected.txt, a list that exists for
+    # another reason, so it sees the guard's own data files being narrowed. The
+    # bite-check generates its scenarios FROM those files: it proves the guard
+    # bites but cannot notice them shrinking.
     cmd: |
       set -e
       ./scripts/check-release-guard-coverage.sh
-      # 2>&1 so a FAIL: line stays next to the scenario label that produced it;
-      # without it the diagnostics stream live while the labels arrive in one
-      # buffered block afterwards, uncorrelated.
+      # 2>&1 so a FAIL: line stays next to the scenario label that produced it.
       bite_out="$(./scripts/check-release-guard-gate-bites.sh 2>&1)" || { printf '%s\n' "$bite_out"; exit 1; }
       printf '%s\n' "$bite_out"
-      # The count is floored, not merely present: `[0-9]+` matched 0, which is
-      # precisely the "edited into running no scenarios" case the marker exists
-      # to reject. The script asserts the same floor itself; this is the copy a
-      # reader of the CI log sees.
+      # A two-digit count, not `[0-9]+`, which matches the zero-scenario case the
+      # marker exists to reject. The script asserts its own, higher floor.
       printf '%s\n' "$bite_out" | grep -qE '^release-guard bite-check OK \([0-9]{2,} scenarios\)$' || {
         echo "ERROR: the bite-check did not report a two-digit scenario count — it may have been narrowed" >&2
         exit 1
@@ -576,9 +566,8 @@ tasks:
 
   supply-chain:relock-release-guard:
     desc: "Re-lock the release guard's data files after a DELIBERATE change to what it protects"
-    # Not run by CI and not chained into any other target on purpose: the lock
-    # exists so a narrowing of the guarded set is a second, conscious edit. A
-    # target that regenerated it automatically would remove the property.
+    # Never chained into another target: the lock exists so that narrowing the
+    # guarded set takes a second, conscious edit.
     cmd: |
       set -e
       tmp="$(mktemp)"

@@ -2,19 +2,14 @@ name: Commit Lint
 
 # Conventional-commit gate on the PR TITLE.
 #
-# The old rationale here said squash-merge turns the PR title into the mainline
-# commit SUBJECT, which is what semantic-release parses. That is no longer the
-# mechanism: squash-merge is disabled (ADR-0020 §Amendment), and with
-# merge_commit_title=MERGE_MESSAGE the merge subject is "Merge pull request #N
-# from …". Measured, the release type comes from the BRANCH COMMITS preserved in
-# the range — `git log v9.0.0..v9.1.0` contains the `feat(ci):` commit the MINOR
-# came from — not from the tip subject.
-#
-# What linting the title still buys, and why this check is required:
+# NOT because the title becomes the mainline commit subject: with
+# merge_commit_title=MERGE_MESSAGE the subject is "Merge pull request #N from …"
+# and the release type comes from the branch commits preserved in the range.
+# What linting the title buys:
 #   * merge_commit_message=PR_TITLE puts the title in the merge commit BODY, so
 #     an unconstrained title is a line the release guard reads. The closed type
-#     list below is what stops `Allow-Non-Major: …` reaching it. That makes this
-#     check a premise of the guard, not house style — hence `name:` below.
+#     list below keeps `Allow-Non-Major: …` out of it — which makes this check a
+#     premise of the guard rather than house style.
 #   * it is the subject readers see in the PR list and in `git log --oneline`.
 #   * it is where the `!` breaking-change marker is caught before merge.
 # `requireScope: false`: scope is a soft house-style preference per CONTRIBUTING.md,
@@ -32,11 +27,10 @@ permissions:
 
 jobs:
   lint-pr-title:
-    # name: MUST stay "lint-pr-title" — branch protection requires that context,
-    # and GitHub derives it from name: (falling back to the job id). Declared
-    # explicitly rather than riding the fallback, so a job-id rename cannot
-    # silently un-gate a check the release guard's forgery-resistance depends on.
-    # Same contract as docs-lint.yml; scripts/preflight-checks.sh asserts it.
+    # MUST stay "lint-pr-title": that is the context branch protection is to
+    # require (ADR-0020 §Amendment, not yet applied), and GitHub derives it from
+    # name:, so riding the job-id fallback would let a rename silently un-gate
+    # the check. scripts/preflight-checks.sh Check 1 asserts both.
     name: lint-pr-title
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -191,35 +191,26 @@ fi
 
 # ---------------------------------------------------------------------------
 # Check 4: merge methods. The release guard's `Allow-Non-Major:` attestation is
-# a MAINTAINER attestation, and that only holds while the merge commit body is
-# maintainer-authored. Under squash-merge the branch commit bodies are
-# concatenated into it (squash_merge_commit_message=COMMIT_MESSAGES); under
-# rebase-merge the tip IS an author-authored commit. Either one makes the
+# a MAINTAINER attestation, and that holds only while the merge commit body is
+# maintainer-authored. Squash-merge concatenates the branch commit bodies into
+# it; rebase-merge makes the tip an author-authored commit. Either one makes the
 # attestation forgeable by any contributor.
 #
-# Unlike Check 1, this reads the REPO object, which the default CI token can
-# see — so this is a genuine CI gate rather than a local-admin one. The guard
-# itself carries the primary control (it refuses an attestation on a
-# single-parent tip); this check is what makes a silent re-enable visible
-# instead of merely ineffective. ADR-0020 §Amendment records the dependency.
+# Measured: the default CI token reads these fields back as null, so this SKIPs
+# in CI and is a local-admin gate. The control that holds without it lives in the
+# guard, which refuses a trailer that is not preceded by maintainer prose on a
+# two-parent commit. ADR-0020 §Amendment records the dependency.
 # ---------------------------------------------------------------------------
 printf '\n=== Check 4: merge methods (release-guard attestation premise) ===\n'
 
 REPO_JSON="$(gh_api_or_empty "repos/${REPO}")"
 if [ -z "$REPO_JSON" ]; then
-  # The premise of this check is that the repo object is readable by the default
-  # token. In CI that premise either holds or something is wrong -- degrading to
-  # a warning there would lose the only signal the check exists to give.
   warn_annot "Check 4 SKIP — could not read the repository object for ${REPO}."
 else
-  # merge_commit_message=BLANK, not PR_TITLE. With PR_TITLE the merge commit
-  # BODY is the PR title -- contributor-authored text in the exact field the
-  # guard parses for `Allow-Non-Major:`, on a two-parent commit where the
-  # guard's merge-commit rule cannot discriminate. The only barrier would be
-  # commitlint's closed type list, i.e. a branch-protection setting no in-CI
-  # check can read. BLANK removes the channel instead of filtering it: the
-  # default merge body is empty and only an explicit `--body` (maintainer-typed,
-  # per AGENTS.md state:close) can carry an attestation.
+  # merge_commit_message=BLANK, not PR_TITLE: with PR_TITLE the merge commit BODY
+  # is the PR title -- contributor-authored text in the exact field the guard
+  # parses, on a two-parent commit where its merge-commit rule cannot
+  # discriminate. BLANK removes that channel rather than filtering it.
   for pair in "allow_squash_merge|false" "allow_rebase_merge|false" \
               "merge_commit_message|BLANK" "merge_commit_title|MERGE_MESSAGE"; do
     key="${pair%|*}"; want="${pair#*|}"

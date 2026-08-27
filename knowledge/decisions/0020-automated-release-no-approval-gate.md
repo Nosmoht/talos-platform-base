@@ -130,8 +130,8 @@ squash. The repository is **to be** restricted to merge-commit-only, with
 `merge_commit_message: BLANK` so the default merge body carries no
 contributor-authored text at all, and the title lint made required. Those are
 repo settings, not files: at the time this record was written they were **not
-yet applied**, and `scripts/preflight-checks.sh` Check 4 is red until they are —
-which is what blocks the change that introduced this amendment from merging.
+yet applied**, and `scripts/preflight-checks.sh` Check 4 is red against an admin
+token until they are.
 The carriers that keep the dependency from being another claim about a mutable
 setting are **both in the guard**, because — measured on the first CI run — the
 default `GITHUB_TOKEN` reads `allow_squash_merge`, `allow_rebase_merge`,

@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # check-release-guard-coverage.sh — the release guard's EXTERNAL anchor.
 #
-# The bite-check's scenarios are derived from the guard's own data files, so it
-# cannot notice a narrowing of those files. This check can: it walks
-# .ci-oci-tarball-expected.txt -- a list that exists for another reason entirely
-# -- and requires every published path to be guarded or exempt-with-reason.
+# The bite-check derives its scenarios from the guard's own data files and so
+# cannot notice those files being narrowed. This check can: it walks
+# .ci-oci-tarball-expected.txt, a list that exists for another reason entirely,
+# and requires every published path to be guarded or exempt-with-reason.
 #
-# Membership is decided by GIT's matcher (`git ls-files` with the full pathspec
-# as one argument list), never a shell glob: `:(exclude)` and `:(glob)` have no
-# shell equivalent, and passing entries one at a time would make an all-exclusion
-# invocation a fatal error. core.ignoreCase is forced false so a macOS laptop and
-# a Linux runner reach the same verdict.
+# Membership is decided by GIT's matcher, never a shell glob: `:(exclude)` and
+# `:(glob)` have no shell equivalent, and passing entries one at a time would
+# make an all-exclusion invocation a fatal error. core.ignoreCase is forced false
+# so a macOS laptop and a Linux runner reach the same verdict.
 #
 # Exit 0 = conforming, 1 = a coverage or hygiene violation, 2 = environment error.
 
@@ -23,13 +22,12 @@ cd "${ROOT}"
 . "${ROOT}/scripts/release-guard-lib.sh"
 
 # Overridable so the bite-check can exercise this script against a sandbox copy
-# instead of mutating the repo's own tracked data files (the parser already
-# parameterises its two).
+# rather than mutating the repo's own tracked data files.
 FIXTURE="${RELEASE_GUARD_TARBALL_FIXTURE:-.ci-oci-tarball-expected.txt}"
 WORKFLOW="${RELEASE_GUARD_WORKFLOW_FILE:-.github/workflows/release.yml}"
 GUARD="scripts/release-major-bump-guard.sh"
-# The two shipped base Helm-value floors. AGENTS.md makes a breaking Helm-value
-# change a MAJOR, so exempting them would un-guard the guard's own charter class.
+# AGENTS.md makes a breaking Helm-value change a MAJOR, so exempting either of
+# the two shipped floors would un-guard the guard's own charter class.
 HARD_PINNED="tofu/modules/talos-cluster/helm/argocd-values.yaml
 tofu/modules/talos-cluster/helm/cilium-values.yaml"
 
@@ -68,17 +66,17 @@ for p in "${RG_EXEMPT[@]}"; do
     && note "${p}: '# reason:' is a placeholder (${reason})"
   case "${reason}" in *ADR-*) : ;; *) note "${p}: '# reason:' must cite the ADR clause that admits it (got: ${reason})" ;; esac
   # Same floor the guard applies to an attestation reason: the two gates that
-  # exist to reject a copy-paste must not disagree, and the weaker one governs
-  # the file that un-guards a path permanently.
+  # reject a copy-paste must not disagree, and this one governs the file that
+  # un-guards a path permanently.
   [ "${#reason}" -ge 12 ] \
     || note "${p}: '# reason:' is too short to be one (${reason})"
 done
 
-# 3) the workflow actually enforces the guard. Asserted STRUCTURALLY: the first
-#    version of this check grepped the file for the script path, which the
-#    explanatory comment block in release.yml contains -- deleting the `run:`
-#    step left the check green. A whole-value match on the step's `run:` also
-#    proves no neutering flag is appended, so no separate knob list can go stale.
+# 3) the workflow actually enforces the guard. Asserted STRUCTURALLY, because
+#    release.yml's comment block names the script too and a plain grep stays
+#    green when the `run:` step is deleted. Matching the step's whole `run:`
+#    value also proves no neutering flag was appended, so no knob list can go
+#    stale.
 [ -x "${GUARD}" ] || note "${GUARD} is not executable — release.yml invokes it directly"
 if command -v yq >/dev/null 2>&1; then
   runs="$(yq -r '.jobs.plan.steps[] | select(.id == "guard") | .run' "${WORKFLOW}" 2>/dev/null | sed 's/[[:space:]]*$//')"
@@ -89,14 +87,11 @@ else
     || note "${WORKFLOW} has no bare 'run: ./${GUARD}' line — install yq for the structural check"
 fi
 
-# 4) the de-duplication stays done. Three copies of the surface globs in one
-#    file is what let the guard and the job summary disagree (#234). Comments
-#    are stripped first (they legitimately quote these paths), and the match is
-#    on a pathspec literal anywhere on a remaining line -- the first version
-#    anchored on the string "git diff", which the workflow does not even contain
-#    (it writes `git -c core.ignoreCase=false diff`), and used `[^\n]`, which in
-#    a bracket expression means "not backslash and not n" rather than "not a
-#    newline". Both made the check inert.
+# 4) the de-duplication stays done. Three copies of the surface globs in one file
+#    is what let the guard and the job summary disagree (#234). Comments are
+#    stripped first, since they legitimately quote these paths; the match is on a
+#    pathspec literal anywhere on a remaining line rather than on a command
+#    spelling, which varies.
 lits=".ci-oci-tarball- schemas/ contracts/ kubernetes/substrate/ kubernetes/bootstrap/ platform-hardware-features"
 for lit in ${lits}; do
   sed 's/#.*//' "${WORKFLOW}" | grep -Fq -- "${lit}" \

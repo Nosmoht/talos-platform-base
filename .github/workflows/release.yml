@@ -41,8 +41,8 @@ jobs:
       will-release: ${{ steps.dry.outputs.will-release }}
       next-version: ${{ steps.dry.outputs.next-version }}
       # Empty unless the guard reached a verdict. `notify` gates on this rather
-      # than on the job result: most `plan` failures are npm/registry noise, and
-      # a guard-shaped tracking issue must not collect them.
+      # than on the job result: most `plan` failures are npm/registry noise and a
+      # guard-shaped tracking issue must not collect them.
       guard-verdict: ${{ steps.guard.outputs.guard-verdict }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -71,14 +71,11 @@ jobs:
           # "...the next release version is X.Y.Z" first-release variant) —
           # match case-insensitively and take the version token.
           #
-          # head -1, NOT tail -1. This greps a human-readable log, and
-          # @semantic-release/release-notes-generator prints the generated notes
-          # -- which embed contributor commit subjects -- AFTER the version line.
-          # With tail -1, a commit whose subject contained this sentence would
-          # have supplied the version the MAJOR-bump guard then reasons about,
-          # and commitlint never sees branch commit subjects. The version line is
-          # emitted during analyzeCommits, so the first match is the real one.
-          # The `release` job re-asserts the value below; this is the cheap half.
+          # head -1, NOT tail -1: release-notes-generator prints the notes, which
+          # embed contributor commit subjects, AFTER the version line. Under
+          # tail -1 a commit whose subject contained this sentence would supply
+          # the version the MAJOR-bump guard then reasons about. The real line is
+          # emitted during analyzeCommits, so the first match is it.
           version="$(grep -ioE 'the next release version is [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?' sr-dry.log | awk '{print $NF}' | head -1 || true)"
           {
             echo "# Release plan"
@@ -94,15 +91,13 @@ jobs:
             # Breaking-change prompt (AGENTS.md: a base Helm-value breaking
             # change requires a MAJOR bump). semantic-release only bumps MAJOR on
             # a `BREAKING CHANGE:` footer / `type!:` -- prose "BREAKING" is
-            # ignored. This block is INFORMATIONAL and fires on every push; the
-            # blocking guard below is gated on will-release, so a non-releasing
-            # push that parks a surface change on main is visible only here.
+            # ignored. INFORMATIONAL and fires on every push, unlike the guard
+            # below, which is gated on will-release: a non-releasing push that
+            # parks a surface change on main is visible only here.
             #
-            # The surface set is read from .ci-release-guard-pathspec.txt via the
-            # same parser the guard uses -- a second copy of the globs here is
-            # what let this prompt and the guard disagree (#234). Tag selection is
-            # the guard's rule too, not `git describe`, which returns the nearest
-            # REACHABLE tag and diverges from what the guard decides on.
+            # Surface set and tag selection come from the guard's own data file
+            # and rule via the shared parser. A second copy of the globs here is
+            # what let this prompt and the guard disagree (#234).
             set -f
             . ./scripts/release-guard-lib.sh
             rg_load_pathspec
@@ -125,13 +120,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Hard MAJOR-bump guard -- the backstop that replaced the removed manual
-      # approval Environment (ADR-0020 §Decision 3). The logic lives in
-      # scripts/release-major-bump-guard.sh so it is runnable locally and bound
-      # by scripts/check-release-guard-gate-bites.sh; the guarded set lives in
-      # .ci-release-guard-pathspec.txt with its membership rule. Do not inline
-      # either back into this file -- check-release-guard-coverage.sh fails if a
-      # `git diff --name-only` reappears here, and neither `--base` nor
-      # `--advisory` may be added to the invocation below: each neuters the gate.
+      # approval Environment (ADR-0020 §Decision 3). Neither the logic nor the
+      # guarded set may be inlined back into this file, and neither `--base` nor
+      # `--advisory` may be added to the invocation: each neuters the gate, and
+      # check-release-guard-coverage.sh fails on all three.
       # Gated on will-release so a non-releasing push (docs/chore) never fails.
       - name: MAJOR-bump guard
         id: guard
@@ -162,9 +154,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
-      # The guard adjudicated the version `plan` computed; this job recomputes
-      # its own. Nothing bound the two, so a divergence would ship a version the
-      # guard never judged. Re-run the dry-run here and refuse a mismatch.
+      # This job recomputes the version the guard adjudicated in `plan`. Nothing
+      # else binds the two, so a divergence would ship a version no guard judged.
       - name: Assert the version the guard judged is the version about to ship
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -185,25 +176,18 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: npx semantic-release
 
-  # A failed automated release is silent unless someone watches the Actions tab
-  # (ADR-0020 §Consequences listed a notification as follow-up). This job is that
-  # follow-up: it files ONE tracking issue and updates it, rather than a new one
-  # per push.
+  # A failed automated release is otherwise silent unless someone watches the
+  # Actions tab. ONE tracking issue, updated, rather than a new one per push.
   #
-  # Three disjuncts, because each covers a class the others miss. The guard's
-  # verdict classifies a block or an environment error. `needs.plan.result ==
-  # 'failure'` is the backstop: a `plan` that dies before the guard publishes a
-  # verdict (npm, the dry-run, a corrupt data file) would otherwise be silent,
-  # and `release` is SKIPPED rather than failed in that case, so the third
-  # disjunct does not cover it either. Together they close the class ADR-0020
-  # named -- "a failed automated release is silent unless someone watches the
-  # Actions tab" -- rather than the guard-block half of it.
+  # Three disjuncts, each covering a class the others miss: the guard's verdict
+  # classifies a block or an environment error, while a `plan` that dies BEFORE
+  # publishing a verdict (npm, the dry-run, a corrupt data file) leaves `release`
+  # SKIPPED rather than failed, so neither of the other two sees it.
   #
   # The body is a fixed sentence plus the run URL and carries NO diff-derived
-  # text: the guard's surface list is contributor-chosen filenames, this job
-  # holds `issues: write`, and AGENTS.md §Session-Start Ritual tells agents to
-  # read the tracker. Everything variable is env-bound, never interpolated into
-  # `run:` (the convention docs-lint.yml documents for the same class).
+  # text: the surface list is contributor-chosen filenames, this job holds
+  # `issues: write`, and AGENTS.md §Session-Start Ritual tells agents to read the
+  # tracker. Everything variable is env-bound, never interpolated into `run:`.
   notify:
     needs: [plan, release]
     if: >-
@@ -227,11 +211,10 @@ jobs:
           TITLE: "release: the automated release is not completing"
         run: |
           set -euo pipefail
-          # --state open + an exact title match over the LIST api, not --search:
-          # the search index lags, so two queued blocked pushes would each miss
-          # the other's issue and file a duplicate. The author filter keeps a
-          # same-titled issue opened by anyone else from capturing the alert --
-          # this job comments on and closes whatever it finds.
+          # The LIST api, not --search: the search index lags, so two queued
+          # blocked pushes would each miss the other's issue and file a
+          # duplicate. The author filter keeps a same-titled issue opened by
+          # anyone else from capturing the alert.
           existing="$(gh issue list --repo "$REPO" --state open --limit 100 \
             --json number,title,author \
             --jq '[.[] | select(.title == env.TITLE) | select(.author.login == "github-actions")] | .[].number')"
@@ -252,7 +235,7 @@ jobs:
 
   # The mirror of `notify`: a run that actually released closes the tracking
   # issue, so a permanently-open alert cannot train the operator to ignore it.
-  # A human close means "start a fresh record" -- the lookup is state:open only.
+  # A human close means "start a fresh record", hence the state:open lookup.
   notify-resolved:
     needs: [plan, release]
     if: ${{ always() && needs.release.result == 'success' }}
@@ -270,11 +253,10 @@ jobs:
           TITLE: "release: the automated release is not completing"
         run: |
           set -euo pipefail
-          # --state open + an exact title match over the LIST api, not --search:
-          # the search index lags, so two queued blocked pushes would each miss
-          # the other's issue and file a duplicate. The author filter keeps a
-          # same-titled issue opened by anyone else from capturing the alert --
-          # this job comments on and closes whatever it finds.
+          # The LIST api, not --search: the search index lags, so two queued
+          # blocked pushes would each miss the other's issue and file a
+          # duplicate. The author filter keeps a same-titled issue opened by
+          # anyone else from capturing the alert.
           existing="$(gh issue list --repo "$REPO" --state open --limit 100 \
             --json number,title,author \
             --jq '[.[] | select(.title == env.TITLE) | select(.author.login == "github-actions")] | .[].number')"

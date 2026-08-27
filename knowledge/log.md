@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-27
+
+- `workflows/release-process.md`: `generated.at 2026-08-27`. §Commit gate no
+  longer states that the PR-title lint is a required status check or that
+  squash-merge is disabled; both describe settings that are not applied. It now
+  names the outstanding branch-protection change and the check that fails until
+  it lands.
+- `decisions/0020-automated-release-no-approval-gate.md`: the §Amendment clause
+  claiming Check 4 blocks the amending change from merging is removed; the
+  paragraph two sentences later already records that Check 4 is a local-admin
+  gate, not a CI gate.
+
 ## 2026-08-25
 
 - `decisions/0020-automated-release-no-approval-gate.md`: added a `history:` key

@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 # release-major-bump-guard.sh — the blocking MAJOR-bump guard of release.yml.
 #
-# ADR-0020 §Decision 3 removed the manual approval Environment and made this the
-# only control between a breaking base-surface change and an unattended,
-# cosign-signed tag. Extracted from the workflow so it can be run locally and
-# bound by scripts/check-release-guard-gate-bites.sh.
-#
 # The guarded set lives in .ci-release-guard-pathspec.txt (membership rule in its
 # header); scripts/release-guard-lib.sh is the only parser.
 #
@@ -17,17 +12,14 @@
 #   exit 1  blocked
 #   exit 2  environment error — no verdict could be reached
 #
-# The five verdict lines, verbatim -- `notify` in release.yml matches the first
-# two prefixes, so this is a contract, not just log text:
+# The verdict lines are a contract, not log text: `notify` in release.yml matches
+# the first two prefixes, and they must stay pairwise distinct so that a crash
+# can never read as a block.
 #   guard blocked — …      (exit 1)
 #   guard error — …        (exit 2, every environment cause shares this line)
 #   guard n/a — …          (exit 0, nothing guarded changed)
 #   guard satisfied — …    (exit 0, the bump is MAJOR)
 #   guard overridden — …   (exit 0, a maintainer attestation)
-# The bite-check asserts they are pairwise distinct from the guard's own output:
-# a crash must never read as a block. The surface list is printed BEFORE the
-# verdict on every path, so a maintainer sees what is being decided on rather
-# than only what was decided.
 
 set -euo pipefail
 
@@ -51,18 +43,16 @@ done
 
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
-# Library errors take this script's failure contract, not the library's: they
-# degrade under --advisory and publish a verdict for the notify job.
+# Library errors take this script's failure contract, not the library's.
 # shellcheck disable=SC2034  # read by rg_die() in the sourced library
 RG_FAIL_HOOK=fail
 
 # say — one line to stdout and to the job summary. The summary copy is
-# unconditional: the override path SUCCEEDS, so nothing else draws a human to
+# unconditional because the override path SUCCEEDS: nothing else draws a human to
 # it, and run logs expire while the summary is part of the run's record.
 say() { printf '%s\n' "$*"; printf '%s\n' "$*" >> "${SUMMARY}"; }
 
-# verdict <exit-code> <line> — emit the verdict, publish it for the notify job,
-# and leave. Never called before the surface list has been printed.
+# verdict <exit-code> <line> — never called before the surface list is printed.
 verdict() {
   local rc="$1"; shift
   say "$*"
@@ -71,9 +61,9 @@ verdict() {
   exit "$rc"
 }
 
-# fail — the single exit-2 line. In advisory mode it degrades to a loud
-# "unavailable" marker rather than silence: an advisory step that swallows an
-# environment error reads as "nothing guarded", which is the opposite of true.
+# fail — the single exit-2 line. Advisory mode degrades to a loud "unavailable"
+# marker rather than silence: a swallowed environment error reads as "nothing
+# guarded", the opposite of what is true.
 fail() {
   if [ "${ADVISORY}" = 1 ]; then
     say "advisory unavailable: $*"
@@ -88,10 +78,9 @@ fail() {
 
 if [ -n "${BASE}" ]; then
   # The MAJOR comparison below derives last_major from this value, so a commit
-  # SHA would make it a hex string that never equals the next major and the
-  # guard would report "satisfied" on any changed surface. Verified by
-  # execution. Advisory runs skip the comparison entirely, so they may pass a
-  # merge-base.
+  # SHA would make it a hex string that never equals the next major and the guard
+  # would report "satisfied" on any changed surface. Advisory runs skip the
+  # comparison entirely, so they may pass a merge-base.
   if [ "${ADVISORY}" != 1 ] && ! printf '%s' "${BASE}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
     fail "--base must be a stable vX.Y.Z tag when the guard is enforcing (got '${BASE}'); pass --advisory to report against an arbitrary ref"
   fi
@@ -99,13 +88,13 @@ if [ -n "${BASE}" ]; then
 else
   # Highest STABLE semver tag by version order — not `git describe`, which
   # returns the nearest REACHABLE tag and would fail open on a non-semver or
-  # prerelease nearest tag. The grep drops prereleases and stray tags.
+  # prerelease nearest tag.
   last_tag="$(git tag --list 'v*' --sort=-v:refname \
     | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
 fi
 
-# With v9.1.0 on record this branch can only mean tags were not fetched. A
-# genuine first release would need this relaxed deliberately, with a scenario.
+# With a release on record this can only mean tags were not fetched; a genuine
+# first release would need it relaxed deliberately.
 [ -n "${last_tag}" ] \
   || fail "no stable tag matched 'vX.Y.Z' — tags were not fetched (fetch-depth: 0)"
 
@@ -114,13 +103,10 @@ git rev-parse -q --verify "${last_tag}^{commit}" >/dev/null \
 
 rg_load_pathspec
 
-# A syntactically valid pathspec that matches nothing is not an error to git, so
-# a directory rename silently empties the guarded set and the guard reports "no
-# change". Assert every positive entry selected something AT THE BASE: an entry
-# that matched at ${last_tag} and matches nothing now describes a deletion inside
-# the range, which is a surface change the diff must report -- not a broken
-# pathspec. Checking HEAD instead would turn every deletion of a guarded path
-# into an environment error.
+# A pathspec matching nothing is not an error to git, so a directory rename would
+# silently empty the guarded set. Liveness is asserted AT THE BASE, not at HEAD:
+# an entry that matched at ${last_tag} and matches nothing now describes a
+# deletion inside the range, which the diff must report as a surface change.
 dead=""
 while IFS= read -r entry; do
   [ -n "$(git -c core.ignoreCase=false ls-files --with-tree="${last_tag}" -- "${entry}" | head -1)" ] \
@@ -136,18 +122,15 @@ set -e
 [ "${diff_rc}" -eq 0 ] \
   || fail "git diff against ${last_tag} exited ${diff_rc} — no verdict reachable"
 
-# AC3: disclose before deciding, on EVERY path. Indented so a contributor-chosen
-# filename cannot open a GitHub workflow command in the run log.
+# Disclose before deciding, on EVERY path.
 if [ -z "${surface}" ]; then
   say "Surface files considered since ${last_tag}: (none)"
   verdict 0 "guard n/a — no breaking base-surface change since ${last_tag}"
 fi
-# Paths are contributor-chosen. Two channels, two hazards: the run log parses
-# `::`-prefixed lines as workflow commands and percent-decodes %0A/%0D, and the
-# job summary renders Markdown. Indentation alone closes neither (the runner
-# trims leading whitespace; Markdown needs four spaces for a code block), so the
-# stdout copy escapes `%` and a leading `:`, and the summary copy goes inside a
-# fence.
+# Paths are contributor-chosen, and the two output channels have two hazards: the
+# run log parses `::`-prefixed lines as workflow commands and percent-decodes
+# %0A/%0D, the job summary renders Markdown. Indentation closes neither, hence
+# the escaping on stdout and the fence in the summary.
 say "Surface files considered since ${last_tag}:"
 printf '%s\n' "${surface}" \
   | sed -e 's/%/%25/g' -e 's/^:/\\:/' -e 's/^/  /'
@@ -165,10 +148,8 @@ esac
 
 last_major="${last_tag#v}"; last_major="${last_major%%.*}"
 next_major="${NEXT%%.*}"
-# Greater-than, not inequality. `!=` accepted a DOWNGRADE as a MAJOR bump --
-# verified: with a stray v10.0.0 tag and NEXT=9.2.0 the guard printed
-# "guard satisfied". One mistyped or aborted-release tag would have disarmed it
-# permanently for every later 9.x release.
+# Greater-than, not inequality: `!=` accepts a DOWNGRADE as a MAJOR bump, so one
+# mistyped or aborted-release tag would disarm the guard for every later release.
 if [ "${next_major}" -gt "${last_major}" ]; then
   verdict 0 "guard satisfied — MAJOR bump (${last_tag} -> v${NEXT}) matches the base-surface change"
 fi
@@ -176,28 +157,23 @@ if [ "${next_major}" -lt "${last_major}" ]; then
   fail "the computed version v${NEXT} is BELOW the highest stable tag ${last_tag}; refusing to reason about a downgrade"
 fi
 
-# The override is a MAINTAINER attestation. Three properties make it one:
-#   * read from the BODY only (%b): %B includes the subject, and a subject-line
-#     `Allow-Non-Major:` is author-controlled under every merge method;
-#   * accepted only on a MERGE commit (>=2 parents). Under merge-commit-only
-#     every PR tip is a merge commit the maintainer authors; if squash or rebase
-#     merge is ever re-enabled the tip is single-parent and this refuses — the
-#     guard fails closed on its own premise, with no API call and no admin scope;
-#   * the reason must be a real one. `Allow-Non-Major: <reason>` and
-#     `Allow-Non-Major: TODO` both match a bare line-anchored regex, and the
-#     recovery command is documented in three places — a copy-paste must not
-#     attest anything.
+# The override is a MAINTAINER attestation, and three properties make it one:
+#   * BODY only (%b): %B includes the subject, which is author-controlled under
+#     every merge method;
+#   * merge commit only (>=2 parents), so a re-enabled squash or rebase merge
+#     makes the tip single-parent and this refuses — fail-closed on its own
+#     premise, with no API call and no admin scope;
+#   * a real reason: the documented recovery command is repeated in three
+#     documents, and a copy-paste must not attest anything.
 parents=$(( $(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ') - 1 ))
 body="$(git log -1 --format=%b)"
 trailer="$(printf '%s\n' "${body}" | grep -iE '^Allow-Non-Major:' | head -1 || true)"
-# Prose above the trailer is required, and it is the control that does NOT
-# depend on a repository setting. Measured: with merge_commit_message=PR_TITLE
-# the merge commit body IS the PR title -- one line, contributor-authored, on a
-# two-parent commit where the merge-commit rule cannot discriminate. Measured
-# again in CI: the default GITHUB_TOKEN reads that setting back as `null`, so no
-# workflow check can assert it. A body whose only content is the trailer is
-# therefore refused: the documented form is `<why>\n\nAllow-Non-Major: <reason>`,
-# and the PR-title channel structurally cannot produce it.
+# Prose above the trailer is the control that does NOT depend on a repository
+# setting -- which matters because the default GITHUB_TOKEN reads those settings
+# back as `null`. With merge_commit_message=PR_TITLE the merge body IS the PR
+# title: one contributor-authored line on a two-parent commit, where the
+# merge-commit rule cannot discriminate. A body that is only the trailer is
+# therefore refused; the documented form is `<why>\n\nAllow-Non-Major: <reason>`.
 prose="$(printf '%s\n' "${body}" | grep -vE '^[[:space:]]*$' | grep -viE '^[A-Za-z-]+:' | head -1 || true)"
 if [ -n "${trailer}" ]; then
   reason="$(printf '%s' "${trailer}" | sed -E 's/^[Aa][Ll][Ll][Oo][Ww]-[Nn][Oo][Nn]-[Mm][Aa][Jj][Oo][Rr]:[[:space:]]*//')"
@@ -215,10 +191,8 @@ if [ -n "${trailer}" ]; then
   fi
 fi
 
-# Prior attestations in the range are reported, never honoured: the trailer is
-# read from the tip only, so an ordinary push after an attested one re-arms the
-# block for the same, already-attested change (documented in
-# knowledge/workflows/release-process.md §When the release is blocked).
+# Reported, never honoured: the trailer is read from the tip only, so an ordinary
+# push after an attested one re-arms the block for the same change.
 prior="$(git log "${last_tag}..HEAD" --format='%h %b' | grep -iE 'Allow-Non-Major:' | head -1 || true)"
 [ -z "${prior}" ] || say "A prior attestation exists in this range but is not on the tip commit, so it does not apply: ${prior}"
 

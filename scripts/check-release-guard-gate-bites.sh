@@ -1,28 +1,23 @@
 #!/usr/bin/env bash
 # check-release-guard-gate-bites.sh — proves the release guard actually bites.
 #
-# Three disciplines, each of which caught a real defect while this was written
-# (the same three scripts/check-staleness-gate-bite.sh records):
+# Three disciplines every scenario here has to keep (the same three
+# scripts/check-staleness-gate-bite.sh records):
 #
-#   1. Every scenario asserts the git state it claims to have built BEFORE
-#      reading a verdict, so it cannot pass because its setup silently failed.
-#   2. Every scenario asserts the VERDICT LINE, not just the exit code. The guard
-#      emits exit 0 on three different verdicts and exit 2 on a crash; an exit
-#      code alone cannot tell "blocked" from "died after printing the list".
-#   3. Each direction of a rule needs a scenario on BOTH sides. A red case alone
-#      is satisfied by an implementation that is wrong the other way -- an
-#      over-broad pathspec passes every red scenario in this file.
+#   1. Assert the git state the scenario claims to have built BEFORE reading a
+#      verdict, so it cannot pass because its setup silently failed.
+#   2. Assert the VERDICT LINE, not just the exit code: the guard emits exit 0 on
+#      three different verdicts and exit 2 on a crash, so an exit code alone
+#      cannot tell "blocked" from "died after printing the list".
+#   3. Cover BOTH directions of a rule. A red case alone is satisfied by an
+#      implementation that is wrong the other way -- an over-broad pathspec
+#      passes every red scenario in this file.
 #
-# THE INTEGRITY-LOCK CHECK COMES FIRST. The scenarios below are generated from
-# the guard's own data files, so deleting an entry would delete its scenario and
-# the suite would stay green. .ci-release-guard.lock makes a narrowing a two-file
-# edit instead of a one-file pattern tightening. It is a speed bump, not a gate
-# -- CODEOWNERS is documented in this repo as non-enforcing -- and the real
-# external anchor is scripts/check-release-guard-coverage.sh, which is exercised
-# here too because it is otherwise an untested oracle.
-#
-# The scenario COUNT is floored at the end for the same reason the lock exists:
-# a suite edited into running nothing exits 0 and reports a marker.
+# THE INTEGRITY-LOCK CHECK COMES FIRST, because the scenarios below are generated
+# from the guard's own data files: deleting an entry would delete its scenario
+# and the suite would stay green. The real external anchor is
+# scripts/check-release-guard-coverage.sh, exercised here too since it is
+# otherwise an untested oracle.
 #
 # Runs offline, mutates nothing outside its temp dir.
 # Exit 0 = all scenarios behaved, 1 = the guard regressed, 2 = environment error.
@@ -57,17 +52,16 @@ cov_cleanup() { [ -n "${SANDBOX}" ] && rm -rf "${SANDBOX}"; SANDBOX=""; }
 trap cov_cleanup EXIT INT TERM
 
 # cov_case <label> <expect-exit> <pattern> <mutation-command>
-# The mutation is applied to a COPY. An earlier version mutated the repo's own
-# tracked data files and restored them afterwards; an interrupt between the two
-# left a fabricated exemption or a fabricated tarball member in the working tree
-# -- in the files that define what the release gate protects.
+# The mutation is applied to a COPY: mutate-and-restore on the repo's own tracked
+# data files leaves a fabricated exemption behind if it is interrupted, in the
+# files that define what the release gate protects.
 cov_case() {
   local label="$1" want="$2" pattern="$3" mut="$4" out got=0
   SANDBOX="$(mktemp -d)"
   cp .ci-release-guard-pathspec.txt .ci-release-guard-exempt.txt .ci-oci-tarball-expected.txt "${SANDBOX}/"
   ( cd "${SANDBOX}" && eval "$mut" ) || { note "cov setup failed: $label"; cov_cleanup; return; }
-  # A scenario that wants to mutate the workflow drops a w.yml into the sandbox;
-  # the export cannot travel out of the mutation subshell, so it is wired here.
+  # A scenario mutating the workflow drops a w.yml into the sandbox; the export
+  # cannot travel out of the mutation subshell, so it is wired here.
   local wf=".github/workflows/release.yml"
   [ -f "${SANDBOX}/w.yml" ] && wf="${SANDBOX}/w.yml"
   out="$(RELEASE_GUARD_PATHSPEC_FILE="${SANDBOX}/.ci-release-guard-pathspec.txt" \
@@ -126,11 +120,10 @@ export GIT_CONFIG_GLOBAL=/dev/null   # versionsort.* and friends must not leak i
 export GIT_CONFIG_SYSTEM=/dev/null
 
 # Every path the scenarios touch, materialised so `git ls-files -- <entry>`
-# behaves in the fixture the way it does in the real repo.
-# The library is the only parser for the exempt file -- an ad-hoc grep here was
-# a second reader that differed from it (no trailing-whitespace strip, no
-# `# reason:` grammar), so a scenario could materialise a path the guard never
-# sees. `mapfile` is bash 4 only and macOS ships 3.2, so read in a loop.
+# behaves in the fixture the way it does in the real repo. The exempt file is
+# read through the library, never an ad-hoc grep: a second reader that differs on
+# whitespace or the `# reason:` grammar materialises paths the guard never sees.
+# `mapfile` is bash 4 only and macOS ships 3.2, so read in a loop.
 # shellcheck source=scripts/release-guard-lib.sh
 # shellcheck disable=SC1091
 . "${ROOT}/scripts/release-guard-lib.sh"
@@ -167,8 +160,8 @@ mkdir -p scripts .github/workflows
 cp "${ROOT}/scripts/release-guard-lib.sh" "${ROOT}/scripts/release-major-bump-guard.sh" scripts/
 cp "${ROOT}/.ci-release-guard-pathspec.txt" "${ROOT}/.ci-release-guard-exempt.txt" .
 printf 'run: ./scripts/release-major-bump-guard.sh\n' > .github/workflows/release.yml
-# The two allowlist files are guarded entries in their own right, so the fixture
-# has to carry them or every entry-liveness check reports them dead.
+# The two allowlist files are guarded entries in their own right: without them in
+# the fixture, every entry-liveness check reports them dead.
 cp "${ROOT}/.ci-oci-tarball-include.txt" "${ROOT}/.ci-oci-tarball-expected.txt" .
 for p in "${FIXTURE_PATHS[@]}" "${EXEMPT_PATHS[@]}" "${EXTRA_PATHS[@]}"; do
   mkdir -p "$(dirname "$p")"; printf 'seed\n' > "$p"
@@ -188,15 +181,15 @@ if NEXT=9.2.0 ./scripts/release-major-bump-guard.sh 2>/dev/null | grep -v '(none
   echo "ERROR: the fixture repo has a non-empty surface before any mutation" >&2; exit 2
 fi
 
-# Refs are restored too. Without it a failed `git checkout main` (swallowed)
-# would leave a scenario branch checked out and `git reset --hard` would reset
-# THAT branch, so every later scenario ran somewhere else.
+# Refs are restored too: a swallowed `git checkout main` failure would otherwise
+# leave a scenario branch checked out and `git reset --hard` would reset THAT
+# branch, running every later scenario somewhere else.
 reset_tree() {
   git checkout -q main 2>/dev/null || note "SETUP BROKEN: could not check out main"
   [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || note "SETUP BROKEN: HEAD is not main after reset"
   git reset -q --hard "$BASE_SHA"
   # `|| true` on both: with only `main` present the grep finds nothing and, under
-  # `set -e`, the failing pipeline would take the whole suite down mid-run.
+  # `set -e`, the failing pipeline takes the whole suite down mid-run.
   { git for-each-ref --format='%(refname:short)' refs/heads | grep -v '^main$' || true; } \
     | while IFS= read -r b; do [ -n "$b" ] && git branch -q -D "$b" >/dev/null 2>&1 || true; done
   { git for-each-ref --format='%(refname:short)' refs/tags || true; } \
@@ -226,13 +219,13 @@ guard() {
   if ! printf '%s\n' "$out" | grep -q -- "$pattern"; then
     note "$label (exit $got as expected, but no '$pattern' in the verdict)"; printf '%s\n' "$out" | sed 's/^/        /' >&2; return 1
   fi
-  # Record the verdict line the guard actually emitted. An earlier version
-  # compared five hardcoded literals this file wrote, which can never differ.
+  # The verdict line the guard actually emitted -- comparing literals this file
+  # wrote would compare it against itself.
   VERDICTS="${VERDICTS}$(printf '%s\n' "$out" | grep -oE '^guard (blocked|error|n/a|satisfied|overridden) —.*' | head -1)
 "
-  # AC3: the list header appears exactly once, above the verdict -- on the paths
-  # that reached a verdict. An exit-2 environment error can happen before the
-  # range is even computable, so there is no surface to name.
+  # The list header appears exactly once, above the verdict -- on the paths that
+  # reached one. An exit-2 environment error can happen before the range is even
+  # computable, so there is no surface to name.
   [ "$want" = 2 ] && return 0
   local hdr_n hdr_line verdict_line
   hdr_n="$(printf '%s\n' "$out" | grep -c '^Surface files considered' || true)"
@@ -254,14 +247,13 @@ for p in "${FIXTURE_PATHS[@]}"; do
 done
 
 echo "guard) red — one representative per positive pathspec entry"
-# shellcheck source=/dev/null
 # shellcheck source=scripts/release-guard-lib.sh
 # shellcheck disable=SC1091
 set -f; . ./scripts/release-guard-lib.sh; rg_load_pathspec; set +f
 while IFS= read -r entry; do
   # The full pathspec, not the single entry: with only `schemas/**` the
-  # representative could be an EXCLUDED fixture path, and the scenario would
-  # assert "blocked" against input the guard correctly passes.
+  # representative could be an EXCLUDED path, and the scenario would assert
+  # "blocked" against input the guard correctly passes.
   rep="$(git -c core.ignoreCase=false ls-files -- "$entry" "${RG_PATHSPEC[@]}" | head -1)"
   [ -n "$rep" ] || { note "pathspec entry matches nothing in the fixture: $entry"; continue; }
   reset_tree; touch_commit "$rep" || continue
@@ -313,10 +305,8 @@ scenarios=$((scenarios+1))
 reset_tree
 
 echo "guard) exit 2 — a downgrade is not a MAJOR bump"
-# `!=` accepted this: with a stray higher tag, every later release read as a
-# satisfied MAJOR bump. Verified against the shipped guard before the fix.
-# The stray tag must NOT be at HEAD: a tag at the tip makes the range empty and
-# the guard correctly reports "guard n/a" before any version comparison runs.
+# The stray tag must NOT be at HEAD: a tag at the tip empties the range and the
+# guard correctly reports "guard n/a" before any version comparison runs.
 reset_tree
 git tag v10.0.0 "$BASE_SHA" >/dev/null 2>&1 || true
 touch_commit schemas/cluster.schema.json
@@ -362,11 +352,10 @@ sum_vrd="$(grep -n 'guard blocked' "$gs" | head -1 | cut -d: -f1)"
 reset_tree
 
 echo "guard) exit 2 — a pathspec entry dead AT THE BASE"
-# The liveness check runs against the base tree on purpose: an entry that matched
-# at the tag and matches nothing now is a DELETION inside the range, which the
-# diff must report (asserted below). What must be an environment error is an
-# entry that was already dead when the range opened -- a directory renamed in an
-# earlier release, leaving a valid pathspec that silently guards nothing.
+# What must be an environment error is an entry already dead when the range
+# opened -- a directory renamed in an earlier release, leaving a valid pathspec
+# that silently guards nothing. An entry that dies INSIDE the range is a deletion
+# the diff reports instead (scenario below).
 reset_tree
 mv contracts contracts-renamed
 git add -A >/dev/null; git commit -qm "rename a guarded directory"
@@ -430,9 +419,8 @@ guard 1 'guard blocked' "a single-parent tip cannot attest (squash/rebase re-ena
 reset_tree
 merge_with_body side2 "Allow-Non-Major: <reason>" \
   && guard 1 'guard blocked' "the short placeholder reason cannot attest" || true
-# The long placeholder isolates the regex from the length floor: this is the
-# string the guard prints in its own recovery command and the PR template
-# repeats, so a copy-paste must not attest.
+# The long placeholder isolates the regex from the length floor. It is the string
+# the guard's own recovery command prints, so a copy-paste must not attest.
 reset_tree
 merge_with_body side2b "Allow-Non-Major: <a real reason naming the surface path or issue>" \
   && guard 1 'guard blocked' "the long placeholder reason cannot attest (regex, not length)" || true
@@ -443,9 +431,8 @@ merge_with_body side2c "Allow-Non-Major: typo fix" \
 
 echo "guard) an attestation standing alone in the body is not a maintainer's"
 # The shape merge_commit_message=PR_TITLE produces: a two-parent commit whose
-# entire body is one contributor-authored line. Measured in CI that the default
-# token cannot read that setting back, so this is the control that holds without
-# it.
+# entire body is one contributor-authored line. No in-CI check can read that
+# setting back, so this is the control that holds without it.
 reset_tree
 git checkout -q -b side6; printf 'x\n' >> kubernetes/bootstrap/cilium/extras.yaml
 git commit -qam "side6"; git checkout -q main
@@ -454,9 +441,9 @@ git merge -q --no-ff side6 -m "Merge side6" -m "Allow-Non-Major: an otherwise pe
 guard 1 'guard blocked' "a body that is only the trailer cannot attest" || true
 
 echo "guard) the trailer is read from the body only"
-# This needs a MERGE commit whose SUBJECT carries the trailer and whose body does
-# not: on a single-parent commit the two-parent rule would refuse it anyway, so
-# the scenario would pass against `%B` too and discriminate nothing.
+# A MERGE commit whose SUBJECT carries the trailer and whose body does not: on a
+# single-parent commit the two-parent rule would refuse it anyway, so the
+# scenario would pass against `%B` too and discriminate nothing.
 reset_tree
 git checkout -q -b side3; printf 'x\n' >> kubernetes/bootstrap/cilium/extras.yaml
 git commit -qam "side3"; git checkout -q main
@@ -472,8 +459,8 @@ reset_tree
 printf 'changed\n' >> schemas/cluster.schema.json
 git add -A >/dev/null; git commit -q -m "Allow-Non-Major: subject-line attempt"
 guard 1 'guard blocked' "a subject-line trailer on a single-parent tip cannot attest" || true
-# On a MERGE commit, so the two-parent rule cannot supply the rejection: only
-# the `^` anchor can. On a single-parent tip this bound nothing.
+# On a MERGE commit, so the two-parent rule cannot supply the rejection: only the
+# `^` anchor can.
 reset_tree
 merge_with_body side4 "we considered Allow-Non-Major: but did not use it" \
   && guard 1 'guard blocked' "a mid-line mention cannot attest, even on a merge commit" || true
@@ -515,9 +502,8 @@ classes="$(printf '%s\n' "$VERDICTS" | grep -oE '^guard (blocked|error|n/a|satis
 n_classes="$(printf '%s\n' "$classes" | grep -c . || true)"
 [ "$n_classes" = 5 ] \
   || note "expected all five verdict classes to be observed in the guard's own output, saw $n_classes: $(printf '%s' "$classes" | tr '\n' ' ')"
-# release.yml's notify job matches on `guard blocked` / `guard error` prefixes,
-# so no observed verdict may contain another class's prefix -- that is the
-# property "distinct" has to mean here.
+# release.yml's notify job matches on the `guard blocked` / `guard error`
+# prefixes, so no observed verdict may contain another class's prefix.
 printf '%s\n' "$VERDICTS" | grep . | while IFS= read -r v; do
   for other in blocked error n/a satisfied overridden; do
     case "$v" in
@@ -528,10 +514,9 @@ printf '%s\n' "$VERDICTS" | grep . | while IFS= read -r v; do
 done
 
 cd "${ROOT}"
-# A floor, not just a count. The marker's whole purpose is to reject a suite
-# edited into running nothing, and a bare count satisfies that trivially.
-# Raise this deliberately when scenarios are added; never lower it to make a
-# run pass.
+# A floor, not just a count: the marker exists to reject a suite edited into
+# running nothing, which a bare count satisfies trivially. Raise it deliberately
+# when scenarios are added; never lower it to make a run pass.
 SCENARIO_FLOOR=78
 if [ "$scenarios" -lt "$SCENARIO_FLOOR" ]; then
   printf 'ERROR: only %s scenarios ran, floor is %s — the suite was narrowed\n' "$scenarios" "$SCENARIO_FLOOR" >&2

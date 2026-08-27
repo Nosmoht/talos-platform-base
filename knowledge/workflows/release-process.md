@@ -3,7 +3,7 @@ type: workflow
 title: Release Process
 description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-generated: { by: human:nosmoht, at: "2026-08-25T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-08-27T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
   - resource: scripts/release-major-bump-guard.sh
@@ -36,10 +36,13 @@ every release) is **not** replaced; automated releases are unattended.
 
 `.github/workflows/commitlint.yml` (job `lint-pr-title`, action
 `amannn/action-semantic-pull-request` v5) lints the **PR title**, not the
-individual commits, and is a **required** status check.
+individual commits. It is **not yet** a required status check — adding
+`Commit Lint / lint-pr-title` to branch protection is one of the settings
+ADR-0020 §Amendment records as outstanding, and `scripts/preflight-checks.sh`
+Check 1 fails until it is applied.
 
-The release type does *not* come from the title. Squash-merge is disabled and
-`merge_commit_title` is `MERGE_MESSAGE`, so the merge subject on `main` reads
+The release type does *not* come from the title. `merge_commit_title` is
+`MERGE_MESSAGE`, so the merge subject on `main` reads
 `Merge pull request #N from …`; semantic-release computes the bump from the
 branch commits preserved in the range. What the title lint buys is narrower and
 load-bearing: `merge_commit_message` is `PR_TITLE`, so the title becomes the
