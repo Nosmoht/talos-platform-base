@@ -6,9 +6,10 @@ name: docs-lint
 #     touching *.md must still trigger the gate;
 # (2) an unfiltered job is safe to be a required branch-protection context
 #     (a path-filtered required check hangs non-matching PRs as
-#     "Expected — waiting"). Cost: ~1 min, almost all of it the release-guard
-#     bite-check's 78 throwaway-git-repo scenarios; timeout-minutes: 10 leaves
-#     headroom. Re-measure before adding another suite of that shape.
+#     "Expected — waiting"). Cost: ~30s on the runner, of which ~9s is the
+#     release-guard bite-check's 78 throwaway-git-repo scenarios (far slower on
+#     a macOS working copy). timeout-minutes: 10 leaves headroom; re-measure
+#     before adding another suite of that shape.
 #
 # Contract: every CHECK step runs a Taskfile target, never inline shell —
 # the identical chain is runnable locally (`task dev:verify-pins`,
