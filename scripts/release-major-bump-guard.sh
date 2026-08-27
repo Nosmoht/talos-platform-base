@@ -174,6 +174,8 @@ trailer="$(printf '%s\n' "${body}" | grep -iE '^Allow-Non-Major:' | head -1 || t
 # title: one contributor-authored line on a two-parent commit, where the
 # merge-commit rule cannot discriminate. A body that is only the trailer is
 # therefore refused; the documented form is `<why>\n\nAllow-Non-Major: <reason>`.
+# EVERY `Word:` line counts as a trailer here, not just this one: a body made of
+# nothing but trailers is not maintainer prose either.
 prose="$(printf '%s\n' "${body}" | grep -vE '^[[:space:]]*$' | grep -viE '^[A-Za-z-]+:' | head -1 || true)"
 if [ -n "${trailer}" ]; then
   reason="$(printf '%s' "${trailer}" | sed -E 's/^[Aa][Ll][Ll][Oo][Ww]-[Nn][Oo][Nn]-[Mm][Aa][Jj][Oo][Rr]:[[:space:]]*//')"

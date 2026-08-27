@@ -211,6 +211,8 @@ touch_commit() {
 guard() {
   local want="$1" pattern="$2" label="$3"; shift 3
   local out got=0
+  # `-`, not `:-`: a scenario sets NEXT_OVERRIDE="" to exercise the empty-NEXT
+  # environment error, and `:-` would quietly substitute the default instead.
   out="$(NEXT="${NEXT_OVERRIDE-9.2.0}" ./scripts/release-major-bump-guard.sh "$@" 2>&1)" || got=$?
   scenarios=$((scenarios+1))
   if [ "$got" != "$want" ]; then

@@ -44,6 +44,9 @@ $bad"
 # rg_load_pathspec — populate RG_PATHSPEC[]. `set -f` for the duration so the
 # shell cannot expand `schemas/**` against the working tree before git sees it.
 rg_load_pathspec() {
+  # Globbing is restored only if the CALLER had it on: release.yml and the
+  # bite-check source this inside their own `set -f` and switch it off
+  # themselves. An unconditional `set +f` here re-enables it under their feet.
   local restore_glob=1
   case "$-" in *f*) restore_glob=0 ;; esac
   set -f
@@ -74,6 +77,9 @@ rg_load_exempt() {
   RG_EXEMPT_REASON=()
   local line reason=""
   while IFS= read -r line; do
+    # Trailing whitespace goes before the path is stored: the coverage check
+    # compares these with `grep -Fxq`, where one trailing space is a different
+    # string and surfaces as a stale exemption.
     line="${line%"${line##*[![:space:]]}"}"
     case "$line" in
       '# reason:'*) reason="${line#\# reason:}"; reason="${reason# }"; continue ;;
