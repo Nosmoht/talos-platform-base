@@ -3,9 +3,12 @@ type: workflow
 title: Release Process
 description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-generated: { by: human:nosmoht, at: "2026-07-29T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-08-27T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
+  - resource: scripts/release-major-bump-guard.sh
+  - resource: scripts/release-guard-lib.sh
+  - resource: .ci-release-guard-pathspec.txt
   - resource: .github/workflows/commitlint.yml
   - resource: .github/workflows/oci-publish.yml
   - resource: .releaserc.json
@@ -33,9 +36,18 @@ every release) is **not** replaced; automated releases are unattended.
 
 `.github/workflows/commitlint.yml` (job `lint-pr-title`, action
 `amannn/action-semantic-pull-request` v5) lints the **PR title**, not the
-individual commits. Rationale in the workflow header: squash-merge uses the PR
-title as the resulting commit subject on `main`, and that subject is what
-semantic-release parses.
+individual commits. It is **not yet** a required status check — adding
+`Commit Lint / lint-pr-title` to branch protection is one of the settings
+ADR-0020 §Amendment records as outstanding, and `scripts/preflight-checks.sh`
+Check 1 fails until it is applied.
+
+The release type does *not* come from the title. `merge_commit_title` is
+`MERGE_MESSAGE`, so the merge subject on `main` reads
+`Merge pull request #N from …`; semantic-release computes the bump from the
+branch commits preserved in the range. What the title lint buys is narrower and
+load-bearing: `merge_commit_message` is `PR_TITLE`, so the title becomes the
+merge commit **body** — the line the MAJOR-bump guard reads. The closed type list
+below is what keeps an `Allow-Non-Major:` line out of it.
 
 - Allowed types: `feat`, `fix`, `perf`, `chore`, `docs`, `test`, `refactor`, `ci`.
 - `requireScope: false` — a scope like `fix(cilium): …` is house style per
@@ -88,21 +100,29 @@ Triggered on every push to `main` (concurrency group `release-main`,
 - **MAJOR-bump guard** (blocking, `if: will-release == 'true'`): when a
   published base-surface path changed since the last tag but the computed bump
   is not MAJOR, the step **fails** — blocking `release` (which is
-  `needs: plan`). The surface set is `.ci-oci-tarball-{include,expected}.txt`,
-  `schemas/**`, `platform-hardware-features.yaml`, `contracts/**`, and
-  `kubernetes/base/**/values.yaml`. Gated on `will-release`, so a non-releasing
-  push (docs/chore) never fails it. **Override:** a maintainer who has confirmed
-  the change is genuinely non-breaking adds an `Allow-Non-Major: <reason>` git
-  trailer to the tip (merge) commit, downgrading the block to a warning. The
-  match is anchored to line-start (a prose mention or negation cannot trigger
-  it); under squash-merge the merging maintainer must verify the trailer in the
-  concatenated body. Additive, backward-compatible edits to a surface path (a
-  new optional schema field, a new default value) are the expected override
-  case — the guard flags any change to the path, not only breaking ones. The
-  set is the
-  high-signal subset a dropped `type!:` marker most often slips through — it is
-  **not** exhaustive (tofu module interfaces and machine-config patches are out
-  of the mechanical net; reviewer judgment covers those).
+  `needs: plan`). The logic lives in `scripts/release-major-bump-guard.sh`; the
+  guarded set and its membership rule live in `.ci-release-guard-pathspec.txt`,
+  which is the single source — this document deliberately does not restate the
+  list. Deliberate carve-outs are in `.ci-release-guard-exempt.txt`, one reason
+  per entry. Gated on `will-release`, so a non-releasing push (docs/chore) never
+  fails it; the job summary above is unconditional, so a surface change parked on
+  `main` without a release is visible there.
+  **Override:** a maintainer who has confirmed the change is genuinely
+  non-breaking adds an `Allow-Non-Major: <reason>` trailer to the **body** of the
+  merge commit. Four properties make it an attestation rather than a string: it
+  is read from the body only; it is honoured only on a merge commit (≥2 parents,
+  so a re-enabled squash or rebase merge makes the guard fail closed); it needs
+  maintainer prose above it, so a body that is only the trailer — which is what
+  a PR-title-derived merge body is — is refused; and a placeholder reason is
+  refused. Additive, backward-compatible edits to a guarded
+  path (a new optional schema field, a new default value) are the expected
+  override case — the guard flags any change to the path, not only breaking ones.
+  The set is the high-signal subset a dropped `type!:` marker most often slips
+  through — it is **not** exhaustive (tofu module interfaces and machine-config
+  patches are out of the mechanical net; reviewer judgment covers those).
+  `task supply-chain:check-release-guard` is the binding: a required `docs-lint`
+  step that fails if a published tarball member is neither guarded nor
+  exempt-with-reason, or if the guard stops biting.
 - The job runs with `GITHUB_TOKEN`, which cannot push to protected `main` nor
   trigger downstream workflows — so this ungated job cannot cut a real release.
 
@@ -119,10 +139,102 @@ workflows, so the App token is what makes the `v*` tag push fire
 only; `CHANGELOG.md` is cut by hand in the releasing PR (automating that cut is
 tracked as a follow-up).
 
+## When the release is blocked
+
+**This section is the authoritative copy of the recovery procedure.** The PR
+template, the guard's own `::error::` output and the `release-guard-advisory` job
+all point here.
+
+Three facts make the recovery non-obvious:
+
+1. **Re-running the failed workflow can never help.** The guard reads the
+   attestation from `git log -1` — the tip commit. A re-run inspects the same
+   tip.
+2. **The trailer has to land on a NEW tip commit**, and `main` is protected, so
+   that means another pull request — not a push.
+3. **`gh pr merge --merge` with no `--body` cannot carry it.** With
+   `merge_commit_message: PR_TITLE` the body is the PR title, and `Commit Lint`
+   rejects a title shaped like a trailer. `AGENTS.md §Issue-Interface` declares
+   the `--subject`/`--body` form for this reason.
+
+The procedure:
+
+```bash
+# 1. read what is actually blocking — the run log lists it, or locally:
+./scripts/release-major-bump-guard.sh --advisory
+
+# 2. decide. If any listed change IS breaking, do not attest: land a commit
+#    carrying a `BREAKING CHANGE:` footer or a `type!:` marker and let the
+#    release go MAJOR.
+
+# 3. if every listed change is genuinely non-breaking, merge the next PR with an
+#    attestation in the BODY:
+gh pr merge <N> --merge \
+  --subject "fix(scope): what the PR does" \
+  --body $'why this is not breaking\n\nAllow-Non-Major: the only guarded change since v9.1.0 is an additive optional key in schemas/cluster.schema.json; nothing that validated before stops validating'
+```
+
+The reason is not decoration. A placeholder (`<reason>`, `TODO`, `FIXME`, a bare
+`reason`, or anything under 12 characters) is refused, because the example above
+is published in three places and a copy-paste must not attest anything.
+
+**The attestation covers every guarded path changed since the last tag**, not
+only the ones the merged PR touched. The guard prints that full set before its
+verdict, in the run log and the job summary, precisely so the scope is visible at
+the moment it is used.
+
+**An attestation does not survive a later push.** It is read from the tip commit
+only, so an ordinary merge after an attested one re-arms the block for the same,
+already-attested change. The guard notices a prior attestation in the range and
+says so, but does not honour it — re-attest on the new tip.
+
+**Recovery latency is bounded by the required checks**, not by the guard: the
+recovery PR clears `validate`, `Secret Scan (gitleaks)`, `docs-lint`,
+`Hard Constraints`, `preflight` and `Commit Lint` like any other.
+
+If the block is not what you expected — a path you believe should not be guarded
+at all — the supported route is to **move** it into
+`.ci-release-guard-exempt.txt` with a reason, not to delete it from the pathspec.
+`scripts/check-release-guard-coverage.sh` prints the exact five-file edit
+sequence when it refuses.
+
+### When the guard errors (exit 2)
+
+A `guard error` verdict is a different situation from `guard blocked`, and the
+attestation route above **cannot** clear it — the guard exits before the trailer
+is read. The causes are enumerated in
+[ADR-0020 §Amendment](../decisions/0020-automated-release-no-approval-gate.md);
+each is an environment fault, not a judgement call: tags not fetched, a shallow
+checkout, an unresolvable tag, a `NEXT` that is missing or below the highest
+stable tag, a pathspec entry that matches nothing at the base (a guarded
+directory renamed in an earlier release), or a malformed data file. Fix the
+cause; there is nothing to attest.
+
+### Break glass — the guard itself is broken
+
+If the guard errors on every push and the cause cannot be fixed quickly, note
+that removing it is deliberately not a one-file edit:
+`scripts/check-release-guard-coverage.sh` fails when `release.yml` stops
+invoking the guard, and it runs in the **required** `docs-lint` context — so a
+naive revert PR is un-mergeable. The supported emergency revert touches, in one
+PR: the guard step in `.github/workflows/release.yml`, the invocation assertion
+in `scripts/check-release-guard-coverage.sh`, the
+`supply-chain:check-release-guard` step in `.github/workflows/docs-lint.yml`, and
+its Taskfile target. That PR still clears the required checks. The alternative,
+for a repo admin, is an admin merge of the minimal revert; prefer the four-file
+PR, because the admin path leaves no record of what was disabled.
+
 ## CHANGELOG contract
 
 `CHANGELOG.md` is **hand-maintained** (Keep a Changelog sections under
-`## Unreleased`); semantic-release ships no changelog plugin here. Released
+`## Unreleased`); semantic-release ships no changelog plugin here.
+
+`## [Unreleased]` carries two blocks with different lifetimes. `### Pending
+release` holds entries awaiting the next tag: the by-hand cut moves **that block
+only** under the new `## vX.Y.Z — DATE` heading. The historical-backfill block
+below it documents entries that shipped in `v7.0.0`–`v9.0.0` without a CHANGELOG
+section (tracked in #233) and stays where it is across every cut until that
+backfill lands. Released
 sections use the exact header form (illustrative example):
 
 ```markdown

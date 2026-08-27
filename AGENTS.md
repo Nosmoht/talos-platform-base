@@ -294,7 +294,7 @@ behavior): `knowledge/workflows/issue-lifecycle.md` and the script header.
 | `state:handoff` | `scripts/issue-state.sh handoff ${N}` |
 | `state:release` | `scripts/issue-state.sh release ${N}` |
 | `state:block` | `scripts/issue-state.sh block ${N} "${REASON}"` |
-| `state:close` | `gh pr merge ${PR_REF} --merge && scripts/issue-state.sh close ${N} --pr "${PR_REF}"` |
+| `state:close` | `gh pr merge ${PR_REF} --merge --subject "${SUBJECT}" --body "${BODY}" && scripts/issue-state.sh close ${N} --pr "${PR_REF}"` |
 | `pr:open` | `gh pr create --fill` |
 | `pr:list-by-branch` | `gh pr list --head "$(git rev-parse --abbrev-ref HEAD)" --json number --jq '.[0].number // empty'` |
 | `pr:status` | `gh pr checks ${PR_NUMBER} --required` |
@@ -320,6 +320,13 @@ contract.
 - `${N}` — issue number (decimal, no leading `#`)
 - `${PR_REF}` / `${PR_NUMBER}` — pull-request identifier
 - `${REASON}` — block reason string
+- `${SUBJECT}` — merge-commit subject, Conventional-Commit shaped
+- `${BODY}` — merge-commit body. On a PR touching a guarded release surface
+  (`.ci-release-guard-pathspec.txt`) this is where an `Allow-Non-Major: <reason>`
+  attestation goes: the guard reads the BODY of the tip commit only, so the bare
+  `--merge` form cannot carry one and the release blocks again. See
+  [`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md)
+  §When the release is blocked.
 - `${TITLE}` — issue title
 - `${LABEL}` — label name
 

@@ -1,0 +1,37 @@
+# The MAJOR-bump guard's surface set (.github/workflows/release.yml, ADR-0020).
+#
+# One git pathspec per line; reasons are WHOLE-LINE comments. A trailing `#` is
+# pattern text to git, so `schemas/** # note` matches nothing and the guard would
+# report an empty surface. `:(glob)` on the two depth-limited entries is
+# load-bearing (ADR-0020 §Amendment).
+#
+# MEMBERSHIP RULE. A path is guarded iff (a) it is a member of
+# .ci-oci-tarball-expected.txt, (b) it is one of the two allowlist files that
+# decide what (a) is, (c) AGENTS.md §Project Structure lists it as a
+# consumer-parsed contract outside the knowledge bundle, or (d) it is a
+# human-authored input to a published render — minus schemas/fixtures/** and
+# minus .ci-release-guard-exempt.txt. A fifth clause is an ADR-0020 amendment,
+# not a judgement call here.
+
+# (b) decides what (a) is
+.ci-oci-tarball-include.txt
+.ci-oci-tarball-expected.txt
+
+# (c) consumer-parsed contracts
+schemas/**
+:(exclude)schemas/fixtures/**
+contracts/**
+platform-hardware-features.yaml
+
+# (a) published tarball members
+kubernetes/bootstrap/cilium/values.yaml
+kubernetes/bootstrap/cilium/extras.yaml
+:(glob)kubernetes/substrate/*/kustomization.yaml
+kubernetes/substrate/**/_rendered/**
+kubernetes/substrate/**/namespace.yaml
+tofu/modules/talos-cluster/helm/argocd-values.yaml
+tofu/modules/talos-cluster/helm/cilium-values.yaml
+
+# (d) human-authored inputs to a published render
+:(glob)kubernetes/substrate/*/values.yaml
+kubernetes/substrate/**/chart.lock.yaml

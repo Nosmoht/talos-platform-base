@@ -90,7 +90,8 @@ else
               "GitOps Validate / validate|validate" \
               "GitOps Validate / Secret Scan (gitleaks)|Secret Scan (gitleaks)" \
               "Preflight / preflight|preflight" \
-              "docs-lint / docs-lint|docs-lint"; do
+              "docs-lint / docs-lint|docs-lint" \
+              "Commit Lint / lint-pr-title|lint-pr-title"; do
     qualified="${line%|*}"
     bare="${line#*|}"
     if printf '%s\n' "$CONTEXTS" | grep -Fxq "$qualified"; then
@@ -186,6 +187,44 @@ else
       yellow "  WARN: unexpected tag_immutability value: ${IMMUTABLE}"
       ;;
   esac
+fi
+
+# ---------------------------------------------------------------------------
+# Check 4: merge methods. The release guard's `Allow-Non-Major:` attestation is
+# a MAINTAINER attestation, and that holds only while the merge commit body is
+# maintainer-authored. Squash-merge concatenates the branch commit bodies into
+# it; rebase-merge makes the tip an author-authored commit. Either one makes the
+# attestation forgeable by any contributor.
+#
+# Measured: the default CI token reads these fields back as null, so this SKIPs
+# in CI and is a local-admin gate. The control that holds without it lives in the
+# guard, which refuses a trailer that is not preceded by maintainer prose on a
+# two-parent commit. ADR-0020 §Amendment records the dependency.
+# ---------------------------------------------------------------------------
+printf '\n=== Check 4: merge methods (release-guard attestation premise) ===\n'
+
+REPO_JSON="$(gh_api_or_empty "repos/${REPO}")"
+if [ -z "$REPO_JSON" ]; then
+  warn_annot "Check 4 SKIP — could not read the repository object for ${REPO}."
+else
+  # merge_commit_message=BLANK, not PR_TITLE: with PR_TITLE the merge commit BODY
+  # is the PR title -- contributor-authored text in the exact field the guard
+  # parses, on a two-parent commit where its merge-commit rule cannot
+  # discriminate. BLANK removes that channel rather than filtering it.
+  for pair in "allow_squash_merge|false" "allow_rebase_merge|false" \
+              "merge_commit_message|BLANK" "merge_commit_title|MERGE_MESSAGE"; do
+    key="${pair%|*}"; want="${pair#*|}"
+    got="$(printf '%s' "$REPO_JSON" | jq -r ".${key}")"
+    if [ "$got" = "$want" ]; then
+      green "  OK: ${key}=${got}"
+    elif [ "$got" = "null" ]; then
+      warn_annot "Check 4 SKIP for ${key} — the token cannot read it (needs admin/push scope; the default CI token cannot). Run locally with admin gh auth for a definitive answer."
+    else
+      err "${key} is '${got}', expected '${want}' — the Allow-Non-Major attestation is only maintainer-owned under merge-commit-only"
+      yellow "  Hint: https://github.com/${REPO}/settings — Pull Requests, merge button options"
+      FAIL=1
+    fi
+  done
 fi
 
 printf '\n'

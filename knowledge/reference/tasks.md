@@ -109,11 +109,12 @@ Details of the render → apply path (`bootstrap:render-root`, `bootstrap:check-
 | --- | --- |
 | `cluster:init-yaml` | Copy `cluster.yaml.example` to `cluster.yaml` (gitignored declarative SoT) if absent; no-op when the file already exists. |
 
-## `supply-chain:*` — OCI artifact verification
+## `supply-chain:*` — OCI artifact + release-gate verification
 
 | Task | Purpose |
 | --- | --- |
 | `supply-chain:oci-allowlist` | Build the OCI tarball locally from `.ci-oci-tarball-include.txt` and diff its sorted contents against `.ci-oci-tarball-expected.txt` (fail-closed allowlist). Run before pushing a tag to confirm the fixture matches actual contents. |
+| `supply-chain:check-release-guard` | Two halves, neither substitutable. `scripts/check-release-guard-coverage.sh` is the EXTERNAL anchor: it walks `.ci-oci-tarball-expected.txt` and fails unless every published path is matched by `.ci-release-guard-pathspec.txt` or listed in `.ci-release-guard-exempt.txt` with a non-placeholder reason, and it refuses a stale exemption, either shipped Helm-value floor being exempted, a guard invocation carrying `--base`/`--advisory`, and a pathspec literal reappearing in `release.yml`. `scripts/check-release-guard-gate-bites.sh` proves the guard bites, over a throwaway git repo; its scenarios are generated from the guard's own data files, so it aborts first unless those files equal their committed `.expected.txt` fixtures — otherwise a removed entry would remove its own test. The target asserts the bite-check's completion marker, not just its exit code. Run verbatim by `docs-lint.yml`. |
 
 ## `knowledge:*` — OKF knowledge bundle authoring + validation
 

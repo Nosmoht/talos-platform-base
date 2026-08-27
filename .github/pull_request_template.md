@@ -42,8 +42,18 @@ These run automatically; PR is blocked until all are green.
 - [ ] `gitops-validate` — full render + lint + policy pipeline
 - [ ] `hard-constraints-check` — no `Ingress`, no `Endpoints`, no SecureBoot installer, no `debugfs=off`
 - [ ] `secret-scan` (gitleaks) — last backstop on bypassed pre-commit
-- [ ] `docs-lint` — markdownlint + OKF bundle validation + offline link gate + AGENTS.md managed-block drift
-- [ ] `hardware-features-check` — Layer-C hardware-feature schema + provisioning-catalog refs (if Layer-C touching)
+- [ ] `docs-lint` — markdownlint + OKF bundle validation + offline link gate + AGENTS.md managed-block drift + the release-guard coverage/bite checks
+- [ ] `preflight` — release-time org-policy preconditions (branch protection,
+      Actions allowlist, GHCR tag immutability, merge methods)
+
+`Commit Lint` (Conventional-Commit PR title) becomes required once the
+merge-method settings land; until then it runs and is worth reading, but does
+not block. `scripts/preflight-checks.sh` Check 1 is the source of truth for the
+required set — this list is a convenience copy.
+
+Not merge-blocking, but run on every PR and worth reading:
+`hardware-features-check`, `OCI Allowlist Check`, `tofu-validate`,
+`release-guard-advisory` (see below).
 
 ## Documentation
 
@@ -72,4 +82,12 @@ change).
 - [ ] Commit messages follow Conventional Commits with scoped types
 - [ ] Each commit body explains the **why**, not just the what
 - [ ] No literal secrets, tokens, or internal RFC1918 IPs in any committed file
+- [ ] **If the `release-guard-advisory` job lists any guarded path**: this merge
+      blocks the next release unless the computed bump is MAJOR. To let it
+      through, merge with an attestation in the commit BODY —
+      `gh pr merge <N> --merge --subject "<conventional subject>" --body $'<why>\n\nAllow-Non-Major: <reason>'`.
+      The attestation clears **every** guarded path changed since the last tag,
+      not only this PR's, and a placeholder reason is refused. Full procedure:
+      [`knowledge/workflows/release-process.md`](../knowledge/workflows/release-process.md)
+      §When the release is blocked — the authoritative copy.
 - [ ] No `git commit --no-verify` or hook-skipping artifacts

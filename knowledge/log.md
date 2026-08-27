@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-08-27
+
+- `workflows/release-process.md`: `generated.at 2026-08-27`. §Commit gate no
+  longer states that the PR-title lint is a required status check or that
+  squash-merge is disabled; both describe settings that are not applied. It now
+  names the outstanding branch-protection change and the check that fails until
+  it lands.
+- `decisions/0020-automated-release-no-approval-gate.md`: the §Amendment clause
+  claiming Check 4 blocks the amending change from merging is removed; the
+  paragraph two sentences later already records that Check 4 is a local-admin
+  gate, not a CI gate.
+- `decisions/0020-automated-release-no-approval-gate.md`: §Amendment gains the
+  paragraph recording why `_rendered-overlay/kustomization.yaml` is deliberately
+  outside the guarded set and what the two `:(glob)` entries do; the reasoning
+  moved here out of `.ci-release-guard-pathspec.txt`'s header.
+
+## 2026-08-25
+
+- `decisions/0020-automated-release-no-approval-gate.md`: added a `history:` key
+  and an `## Amendment (2026-08-25)`. The amendment corrects the surface set
+  (`kubernetes/base/**` -> the committed pathspec file), supersedes the
+  squash-merge sentence in §Decision 3, records the guard's departures from its
+  original logic and three residuals, and marks the notification follow-up
+  shipped. The Decision section is unchanged.
+- `workflows/release-process.md`: `generated.at 2026-08-25`. The §MAJOR-bump
+  guard bullet now points at `.ci-release-guard-pathspec.txt` instead of listing
+  the set; both squash-merge sentences are rewritten; §Commit gate states what
+  the PR-title lint actually buys; a new §When the release is blocked carries the
+  recovery procedure and is named the authoritative copy, with subsections for a
+  `guard error` verdict and for reverting the guard itself; §CHANGELOG contract
+  describes the `### Pending release` / historical-backfill split. `sources:`
+  gains `scripts/release-major-bump-guard.sh`, `scripts/release-guard-lib.sh`
+  and `.ci-release-guard-pathspec.txt`.
+- `reference/tasks.md`: the `supply-chain:*` heading widens to "OCI artifact +
+  release-gate verification" and gains the `supply-chain:check-release-guard`
+  row.
+
 ## 2026-08-23
 
 Two changes, one day: the pinned `openknowledge` CLI moved 0.5.0 -> 0.12.0, and
