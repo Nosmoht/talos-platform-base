@@ -1,64 +1,37 @@
 # The MAJOR-bump guard's surface set (.github/workflows/release.yml, ADR-0020).
 #
-# FORMAT: one git pathspec per line. Reasons are WHOLE-LINE `#` comments above
-# their entry — never trailing. Git does not treat `#` as a comment inside a
-# pathspec, so `schemas/** # note` is a literal pattern matching nothing and the
-# guard would report an empty surface. scripts/release-guard-lib.sh is the only
-# parser.
+# One git pathspec per line; reasons are WHOLE-LINE comments. A trailing `#` is
+# pattern text to git, so `schemas/** # note` matches nothing and the guard would
+# report an empty surface. `:(glob)` on the two depth-limited entries is
+# load-bearing (ADR-0020 §Amendment).
 #
-# MEMBERSHIP RULE. A path is guarded iff:
-#   (a) it is a member of .ci-oci-tarball-expected.txt; or
-#   (b) it is one of the two tarball allowlist files, which decide what (a) is; or
-#   (c) AGENTS.md §Project Structure lists it as a consumer-parsed contract
-#       living outside the knowledge bundle — `schemas/`, `contracts/`,
-#       `platform-hardware-features.yaml`. A fourth member requires an AGENTS.md
-#       edit, not a judgement call here; or
-#   (d) it is a human-authored input to a published render (`values.yaml`,
-#       `chart.lock.yaml`). AGENTS.md §Commit & Pull Request Guidelines makes a
-#       breaking base Helm-value change a MAJOR; `chart.lock.yaml` pins what gets
-#       rendered into the published output.
-# …minus schemas/fixtures/**, which reach no consumer through either channel, and
-# minus every path in .ci-release-guard-exempt.txt — all nine of which clause (a)
-# would otherwise admit (ADR-0020 §Consequences: tofu module interface changes
-# are covered by reviewer judgment, not by this net).
-#
-# DELIBERATELY OUT: kubernetes/substrate/*/_rendered-overlay/kustomization.yaml.
-# Clause (d) would reach it, but scripts/verify-rendered.sh fails on render drift
-# in the REQUIRED `validate` job, so an overlay change that affects output cannot
-# land without the matching _rendered/ change, which clause (a) guards. The two
-# `:(glob)` entries below are what keeps it out: `:(glob)` stops `*` crossing
-# `/`, plain `**` does not.
-#
-# TO UN-GUARD A PATH: move it into .ci-release-guard-exempt.txt with a reason —
-# do not delete it. See that file's header for the full edit sequence.
+# MEMBERSHIP RULE. A path is guarded iff (a) it is a member of
+# .ci-oci-tarball-expected.txt, (b) it is one of the two allowlist files that
+# decide what (a) is, (c) AGENTS.md §Project Structure lists it as a
+# consumer-parsed contract outside the knowledge bundle, or (d) it is a
+# human-authored input to a published render — minus schemas/fixtures/** and
+# minus .ci-release-guard-exempt.txt. A fifth clause is an ADR-0020 amendment,
+# not a judgement call here.
 
-# (b) governs what (a) is
+# (b) decides what (a) is
 .ci-oci-tarball-include.txt
-# (b) governs what (a) is
 .ci-oci-tarball-expected.txt
-# (c) consumer-parsed contract per AGENTS.md §Project Structure
+
+# (c) consumer-parsed contracts
 schemas/**
-# negative lint fixtures; reach no consumer through the tarball or the checkout
 :(exclude)schemas/fixtures/**
-# (c) consumer-parsed contract per AGENTS.md §Project Structure
 contracts/**
-# (a)(c) Layer-C vocabulary: published, and a consumer-parsed contract
 platform-hardware-features.yaml
-# (a) published Cilium reference values
+
+# (a) published tarball members
 kubernetes/bootstrap/cilium/values.yaml
-# (a) published Cilium GatewayClass extras
 kubernetes/bootstrap/cilium/extras.yaml
-# (d) human-authored input to the published render; depth-limited on purpose
-:(glob)kubernetes/substrate/*/values.yaml
-# (a) published consumable unit; depth-limited to exclude _rendered-overlay/
 :(glob)kubernetes/substrate/*/kustomization.yaml
-# (a) the published rendered manifests themselves
 kubernetes/substrate/**/_rendered/**
-# (a) published namespace ownership
 kubernetes/substrate/**/namespace.yaml
-# (d) pins what gets rendered into the published output
-kubernetes/substrate/**/chart.lock.yaml
-# (a) published base Helm-value floor, loaded by the module (main.tf)
 tofu/modules/talos-cluster/helm/argocd-values.yaml
-# (a) published base Helm-value floor, loaded by the module (main.tf)
 tofu/modules/talos-cluster/helm/cilium-values.yaml
+
+# (d) human-authored inputs to a published render
+:(glob)kubernetes/substrate/*/values.yaml
+kubernetes/substrate/**/chart.lock.yaml

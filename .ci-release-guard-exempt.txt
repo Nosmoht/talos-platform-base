@@ -1,27 +1,17 @@
 # Tarball members deliberately OUTSIDE the MAJOR-bump guard's surface set.
 #
-# FORMAT: one repo-relative path per line, each preceded by a WHOLE-LINE
-# `# reason:` comment naming the ADR clause that admits it. A missing or
-# placeholder reason fails scripts/check-release-guard-coverage.sh.
+# The coverage check requires every member of .ci-oci-tarball-expected.txt to be
+# matched by .ci-release-guard-pathspec.txt or listed here; without this second
+# branch a deliberate carve-out is indistinguishable from a hole.
 #
-# WHY THIS FILE EXISTS: the coverage check requires every member of
-# .ci-oci-tarball-expected.txt to be matched by .ci-release-guard-pathspec.txt or
-# listed here. Without this second branch a deliberate carve-out would be
-# indistinguishable from a hole.
+# FORMAT: one repo-relative path per line, each preceded by a WHOLE-LINE
+# `# reason:` naming the ADR clause that admits it. A missing or placeholder
+# reason fails scripts/check-release-guard-coverage.sh, which also prints the
+# five-file sequence a membership change has to follow.
 #
 # HARD PIN: tofu/modules/talos-cluster/helm/{argocd,cilium}-values.yaml may NEVER
 # appear here — they are the shipped base Helm values, the class AGENTS.md makes
-# a MAJOR. The coverage check fails hard if either is listed.
-#
-# EDIT SEQUENCE when tarball membership changes (five files, two owners):
-#   1. .ci-oci-tarball-include.txt
-#   2. .ci-oci-tarball-expected.txt       (1+2 are `primary` sources of
-#      openspec/specs/oci-supply-chain/spec.md — the change needs a spec touch
-#      or a `Spec-Impact: none` trailer on every contributing commit)
-#   3. .ci-release-guard-pathspec.txt  OR  this file
-#   4. `task supply-chain:relock-release-guard` (the digests in
-#      .ci-release-guard.lock are what make a narrowing a second, conscious edit)
-#   5. re-run `task supply-chain:check-release-guard`
+# a MAJOR.
 
 # reason: ADR-0020 §Consequences — module interface, reviewer judgment.
 tofu/modules/talos-cluster/README.md

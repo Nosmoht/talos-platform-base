@@ -1,14 +1,6 @@
-# Integrity lock for the release guard's data files.
-#
-# scripts/check-release-guard-gate-bites.sh verifies this before running any
-# scenario, because its scenarios are GENERATED from those files: an entry
-# removed there would remove its own test and the suite would stay green. The
-# lock makes a narrowing a two-file edit -- the entry and its digest.
-#
-# A speed bump, not a gate. The external anchor is
-# scripts/check-release-guard-coverage.sh.
-#
-# Regenerate deliberately, never reflexively:
-#   task supply-chain:relock-release-guard
-bd69443bd947419bf15d690a2aa0f039afd21e32973bf744102bc150e2427591  .ci-release-guard-pathspec.txt
-0ab461ff65ca6f99fb2f00ec9d9da7a486aea845d2e7963d5fb9080a01fdb61c  .ci-release-guard-exempt.txt
+# Integrity lock for the release guard's data files. The bite-check verifies it
+# before running any scenario: its scenarios are GENERATED from those files, so
+# an entry removed there would delete its own test and the suite would stay green.
+# Regenerate deliberately: task supply-chain:relock-release-guard
+6c5a2118c8b093367346798a5e6b44d98d41019cf424859c1133c63411935771  .ci-release-guard-pathspec.txt
+37266b0a92cdfaa3d6e0b9627b0544a4ed73913c27e0873a06762622d5623016  .ci-release-guard-exempt.txt

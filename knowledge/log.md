@@ -11,6 +11,10 @@
   claiming Check 4 blocks the amending change from merging is removed; the
   paragraph two sentences later already records that Check 4 is a local-admin
   gate, not a CI gate.
+- `decisions/0020-automated-release-no-approval-gate.md`: §Amendment gains the
+  paragraph recording why `_rendered-overlay/kustomization.yaml` is deliberately
+  outside the guarded set and what the two `:(glob)` entries do; the reasoning
+  moved here out of `.ci-release-guard-pathspec.txt`'s header.
 
 ## 2026-08-25
 

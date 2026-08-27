@@ -123,6 +123,14 @@ loads as the shipped base Helm values, i.e. the class `AGENTS.md` makes a MAJOR.
 `schemas/fixtures/**` is excluded: negative lint fixtures reach no consumer
 through the tarball or the pinned checkout, and blocking on them cost ten days.
 
+`kubernetes/substrate/*/_rendered-overlay/kustomization.yaml` is deliberately
+outside the set. It is a render input, so the membership rule's clause (d) would
+reach it — but `scripts/verify-rendered.sh` fails on render drift inside the
+**required** `validate` job, so an overlay change that affects the published
+output cannot land without the matching `_rendered/` change, which clause (a)
+already guards. Two depth-limited `:(glob)` entries keep it out; `:(glob)` stops
+`*` crossing `/` where a plain `**` does not.
+
 **§Decision 3's squash-merge sentence is superseded, and its premise is now
 mechanical.** All three merge methods were enabled and `Commit Lint` was not a
 required context, so the attestation was forgeable under every method, not only
