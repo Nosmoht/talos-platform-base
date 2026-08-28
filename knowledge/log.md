@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-08-28
+
+- `workflows/issue-lifecycle.md`: `generated.at 2026-08-28`. The session-start
+  ritual now lists the `gh` commands the root AGENTS.md declares, with the MCP
+  server named as the optional accelerator it is.
+- `project/harness-plugin-contract.md`: `generated.at 2026-08-28`. The
+  no-hand-authored-primitives statement is attributed to `AGENTS.md` §Tool Notes,
+  where it now lives.
+- `architecture/substrate.md`, `architecture/day-zero-bootstrap.md`,
+  `glossary.md`: `verified 2026-08-28` — read against their `AGENTS.md` source
+  after that file was restructured; no claim in them moved.
+- `rules/talos-base-bundle.md`: three trigger bullets added — when to update a
+  concept, when to record a decision, when to document a schema. They carry the
+  content of the three built-in `openknowledge` rules the Taskfile no longer
+  renders, so the maintenance mandate stays stated.
+- `rules/talos-base-bundle.md`: `generated.at 2026-08-28`. The config file
+  the link-target convention names is spelled `knowledge/.openknowledge.toml`;
+  the bare basename read as a repo-root path in the rendered AGENTS.md block.
+
 ## 2026-08-27
 
 - `workflows/release-process.md`: `generated.at 2026-08-27`. §Commit gate no

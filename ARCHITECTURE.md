@@ -144,7 +144,7 @@ flowchart TB
 flowchart LR
   subgraph Base["talos-platform-base"]
     direction TB
-    Make[Makefile<br/>validate-gitops<br/>argocd-bootstrap]
+    Task["Taskfile.yml<br/>gitops:validate<br/>bootstrap:argocd"]
     Boot["kubernetes/bootstrap/<br/>(parameterized templates)"]
     Infra["kubernetes/substrate/<br/>substrate component<br/>(argocd)"]
     Talos["tofu/modules/talos-cluster/<br/>OpenTofu cluster-lifecycle module<br/>(per-class Image-Factory + bootstrap,<br/>Cilium + ArgoCD + cert-approver inlineManifest seeds)"]
@@ -154,9 +154,9 @@ flowchart LR
     Specs["openspec/<br/>behavioral capability specs"]
     CI[".github/workflows/<br/>gitops-validate<br/>oci-publish<br/>hard-constraints-check"]
 
-    Make --> Pol
-    Make --> Infra
-    CI --> Make
+    Task --> Pol
+    Task --> Infra
+    CI --> Task
   end
 ```
 
@@ -168,7 +168,7 @@ flowchart LR
 | `kubernetes/bootstrap/` | parameterized ArgoCD + Cilium bootstrap templates (envsubst) | `argocd/*.tmpl`, `cilium/extras.yaml` |
 | `tofu/modules/talos-cluster/` | OpenTofu cluster-lifecycle module — sole Talos provisioning path (per-class Image-Factory installer, Cilium + ArgoCD + cert-approver inlineManifest seeds, machine config, bootstrap, kubeconfig) | `*.tf`, `manifests/` (chart-rendered `kubelet-csr-approver` seed), `examples/complete/` |
 | `policies/` | conftest Rego — label hygiene over rendered manifests | `policies/conftest/*` |
-| Validation pipeline | kustomize render + conftest + kubeconform | `scripts/`, `Makefile`, `.github/workflows/gitops-validate.yml` |
+| Validation pipeline | kustomize render + conftest + kubeconform | `scripts/`, `Taskfile.yml`, `.github/workflows/gitops-validate.yml` |
 | OCI publish | cosign keyless + SLSA attestation + immutable GHCR tag | `.github/workflows/oci-publish.yml` |
 
 ## Key flows
@@ -225,7 +225,7 @@ backed by a load-bearing mechanism in the repo today.
 |---|---|---|
 | **Supply-chain integrity** | Every release verifiable to commit SHA via OIDC chain | cosign + SLSA + CycloneDX 1.6 SBOM in [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md) |
 | **Reproducibility** | `chart.lock.yaml` + `values.yaml` → identical rendered output | `verify-rendered.sh` (CI required); idempotent renderer |
-| **Cluster-agnostic** | A second cluster pins a tag and bootstraps without base edits | `make day0` flow in consumer repo; `.base-version` pin; no IPs/FQDNs in base |
+| **Cluster-agnostic** | A second cluster pins a tag and bootstraps without base edits | the consumer repo's own day-0 flow (`make day0`, adr-0001); `.base-version` pin; no IPs/FQDNs in base |
 | **CI-required gates** | No broken main; no silent regression | conftest, kubeconform, REUSE lint, hard-constraints-check, hardware-features-check |
 | **Multi-maintainer-ready** | New contributor can land a non-trivial change in ≤ 4 h human time | `CONTRIBUTING.md`, `MAINTAINERS.md`, per-component READMEs, MADR ADR template |
 | **Operator-facing docs** | Audience is platform operators, not end-users — content is at operator altitude | OKF-organised `knowledge/` bundle; arc42 §1 explicitly excludes end-user audience |
@@ -249,8 +249,8 @@ this list grow silently.
 
 The cross-domain vocabulary used in this document lives in
 [`knowledge/glossary.md`](knowledge/glossary.md) (the bundle's reference
-vocabulary). AGENTS.md §"Key Terms" carries the curated subset
-auto-loaded into agent contexts.
+vocabulary). AGENTS.md §Key Terms keeps only the three entries other
+repository artifacts cite it for and points at the glossary for the rest.
 
 ## See also
 

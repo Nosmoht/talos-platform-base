@@ -3,7 +3,7 @@ type: workflow
 title: Issue Lifecycle
 description: The GitHub issue state machine — status labels, guarded transitions via the issue-state script, and the session-start ritual that gates agent work.
 tags: [issues, workflow, labels, agents]
-generated: { by: human:nosmoht, at: "2026-07-11T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
 sources:
   - resource: scripts/issue-state.sh
   - resource: AGENTS.md
@@ -80,11 +80,15 @@ scripts/issue-state.sh close 138 --pr "https://github.com/Nosmoht/talos-platform
 ## Session-start ritual
 
 Per `AGENTS.md` §Session-Start Ritual, every session begins by scanning the
-backlog via the `github` MCP server:
+backlog with `gh` — the declared path, available on any clone:
 
-1. `mcp__github__list_issues(state="open", labels=["status: ready"])`
-2. `mcp__github__list_issues(state="open", labels=["status: in-progress"])`
+1. `gh issue list --state open --label 'status: ready'`
+2. `gh issue list --state open --label 'status: in-progress'`
 3. **Status gate**: only the `status: ready` label authorizes work to begin.
+
+The `github` MCP server serves the same two reads and is an optional
+accelerator, not the contract; it is absent on a fresh clone until
+`task mcp:install` has run.
 
 An issue that is merely open, or still `status: triage`, is not authorization —
 the gate is the label.

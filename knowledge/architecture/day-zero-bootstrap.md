@@ -5,6 +5,7 @@ description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed 
 tags: [bootstrap, day-zero, inline-manifests, argocd]
 generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 verified:
+  - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
 sources:
   - resource: tofu/modules/talos-cluster/main.tf
