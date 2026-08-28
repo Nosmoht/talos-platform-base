@@ -113,3 +113,8 @@ module "complete" {
   cert_approver_replicas             = try(local.cert_approver.replicas, 1)
   sops_age_key                       = var.sops_age_key # secret — tfvar/env, never cluster.yaml
 }
+
+output "node_apply_mode" {
+  description = "Per-node apply_mode the last apply was configured with — the signal that a staged window is open. Reports configuration, never node state."
+  value       = module.complete.node_apply_mode
+}

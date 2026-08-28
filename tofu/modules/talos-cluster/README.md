@@ -62,6 +62,10 @@ i.e. already booted into Talos maintenance mode.
 | **Day-2: Talos OS upgrade** | Bumping `talos_install_version` re-renders the affected per-node installer images and `talos_machine_configuration_apply` writes the new `install.image`, but `apply-config` alone does not re-image a node — the actual roll-out is out-of-band `talosctl upgrade` (see below). |
 | **Day-2: image / capability changes** | Edit `images` (baseline extensions/overlay), `hardware_capabilities`, or the base provisioning-profile catalog → an affected node's composed schematic ID + installer URL change → `machine_configuration_apply` writes the new `install.image`; the same out-of-band `talosctl upgrade` re-images affected nodes. |
 
+**The Day-2 rows above cover the phases that change a node's installer image.**
+They are not the full Day-2 inventory: the Kubernetes upgrade and the staged
+machine-config roll below have no row of their own.
+
 > **Re-image blast-radius — diff the hashes before adopting a change.** A node
 > re-images only when its composed schematic hash changes. `tofu plan` does not
 > warn which nodes that is, so before applying a base-tag bump, a
@@ -71,24 +75,7 @@ i.e. already booted into Talos maintenance mode.
 > out-of-band `talosctl upgrade`. Nodes with an unchanged hash keep their installer
 > and do NOT re-image.
 
-**A staged apply is the third out-of-band Day-2 op.** Setting a role's apply
-mode to `staged` writes the machine config without rebooting, which is what
-keeps a stateful role from rebooting unsequenced — but it makes the reboot an
-operator procedure with three properties worth knowing before starting:
-
-- **Revert to `auto` LAST.** An apply-mode change alone reaches the provider's
-  Update path, so flipping back while configs are still staged re-applies them
-  in `auto` mode and reboots exactly the nodes not yet gated. Order: set
-  `staged` → apply → reboot each node under your own health gate → revert.
-- **Do not add a node while a window is open.** The mode is role-scoped, not
-  lifecycle-scoped, so a node added during the window is staged instead of
-  installed; it stays in maintenance mode and the apply blocks on
-  `data.talos_cluster_health` until `cluster_health_timeout`.
-- **Nothing detects the open window for you.** The cluster is healthy on the old
-  config and the next `tofu plan` is clean. `tofu output node_apply_mode` is the
-  in-module signal.
-
-**Two Day-2 ops stay out-of-band** — the `siderolabs/talos` provider ships no
+**Two out-of-band Day-2 ops are upgrades** — the `siderolabs/talos` provider ships no
 OS- or Kubernetes-upgrade resource, so both are imperative `talosctl` commands
 the consumer Taskfile drives. The **OS upgrade** is `talosctl upgrade --image
 …:<version>` (bump `talos_install_version`; tofu renders the new installer URL
@@ -98,6 +85,106 @@ install-pin"). The **Kubernetes upgrade** is `talosctl upgrade-k8s --to
 both cases tofu owns the declarative state and the talosctl command performs the
 rolling upgrade. Tracked follow-up for when the provider exposes these as
 resources.
+
+**A staged apply is the other out-of-band Day-2 op.** Setting a role's
+`apply_mode` to `staged` keeps the apply from rebooting and hands the reboot to
+you — see [§Staged machine-config roll (Day-2)](#staged-machine-config-roll-day-2)
+for what the window obliges you to, and where the procedure itself belongs.
+
+## Staged machine-config roll (Day-2)
+
+Setting a role's apply mode to `staged` writes the machine configuration without
+rebooting. The module then stops being the thing that reboots your nodes, and the
+reboot becomes an operator procedure — one node at a time, under a health gate
+only you can define, because the predicate for a stateful workload (a replica
+back in sync, a quorum member caught up) is not something this module can see.
+
+**That procedure belongs in your cluster repository, not here.** It needs a
+cluster to be rehearsed against, and this repository has none. What follows is
+the contract the window imposes on it.
+
+> **Never revert a role to `auto` while any node of it still holds an unadopted
+> staged config.** Up to Talos 1.13 that reboots exactly the nodes you have not
+> yet gated, all at once — the failure this feature exists to prevent, reachable
+> from the last step of the roll. Mechanism:
+> [ADR-0026 §Consequences](../../../knowledge/decisions/0026-machine-config-apply-mode.md#consequences).
+
+**Which nodes a change reaches decides the whole window.** Three classes, and
+only the first is safe to reason about by role alone:
+
+- **Role-scoped:** `controlplane_config_patches` and `worker_config_patches`. A
+  per-node `nodes.<name>.config_patches` reaches that node only.
+- **Both roles:** the all-nodes `config_patches`, `kubernetes_version`,
+  `talos_version`, the CIDRs, `cluster_endpoint`, `register_with_fqdn`. Stage
+  both, or the un-staged role reboots concurrently on the same apply.
+- **Whichever nodes reference them:** `images`, `hardware_capabilities` and the
+  provisioning profiles compose per node, so an image or capability used only by
+  workers changes no controlplane configuration — stage the roles those nodes
+  are in, not both by reflex. These also change `install.image`, which no apply
+  adopts: the node re-images at the next out-of-band `talosctl upgrade`, so diff
+  `tofu output node_schematic_hashes` before and after rather than assuming the
+  window covers it.
+
+The controlplane-seed inputs — ArgoCD, Gateway API, cert-approver and the Cilium
+values — are baked into `cluster.inlineManifests` and are create-only, so on an
+already-bootstrapped cluster they have no Day-2 effect at all. **The exception is
+`cilium_self_management`:** with it enabled, the same Cilium values also render
+the emitted self-management Application, so changing them reconfigures running
+Cilium through ArgoCD — a live CNI change with its own rollout, unrelated to this
+window.
+
+**Open the window before the content, or with it — never after.** One apply
+carrying the mode flip and the change is safe. Split them the other way round and
+the first apply delivers a reboot-needing change while the role is still `auto`.
+
+**`tofu output node_apply_mode` reports configuration, never node state.** It is
+derived from the two input variables and each node's declared role, so it reads
+identically whether every apply instance succeeded or one errored, and it reads
+`auto` just the same on a cluster where an earlier window was closed too early
+and left staged configs behind. It tells you a window is configured open. Nothing
+in this module records which nodes have adopted — that ledger is yours to keep,
+and it is what authorises closing the window. Your root must re-export the
+output; the shipped example does so at
+[`examples/complete/main.tf`](examples/complete/main.tf).
+
+**Adoption is proven by reading the effective value back, not by reading the
+machine configuration** — and it needs a value captured before the window to
+compare against. That a staged configuration is adopted on the next boot is
+ADR-0026's own open predicate: unproven here, because proving it needs a cluster.
+
+**Any boot adopts, whoever causes it.** No OS or Kubernetes upgrade while a
+window is open — `talosctl upgrade` would land your machine-config change
+alongside the OS change with no signal that two things arrived together. A power
+loss or an unrelated reboot does the same, so a node that restarts unexpectedly
+during a window has adopted the change and needs its read-back before you treat
+it as un-rolled. Do not add a node either: it is staged instead of installed,
+stays in maintenance mode, and the apply blocks on `data.talos_cluster_health`
+until `cluster_health_timeout`.
+
+**Talos 1.14 inverts the risk.** Up to 1.13, apply mode `auto` reboots a node
+only when the change needs a reboot. From 1.14 apply-config never reboots on its
+own: `auto` applies immediately and reboot-bound settings sit inactive until
+someone runs `talosctl reboot`. Closing a window on 1.14+ therefore reboots
+nothing, and a node you believe is converged may still be running the old value.
+
+**Cluster shape bounds the roll.** A single controlplane cannot be rolled without
+an outage — the apiserver and the Talos endpoint are on the node being rebooted,
+so no gate is reachable while it is down. Above that the module rejects an even
+controlplane count, so an `n`-member etcd tolerates `(n-1)/2` down; roll one at a
+time regardless, and never start while another member is unhealthy. On a cluster
+with no spare schedulable host — two nodes is the ordinary case — draining one
+leaves the Cilium operator's second replica Pending for the duration, because the
+count derives from the declared node count rather than the schedulable one; that
+clears on uncordon, and renders as a Degraded `cilium` Application only under
+self-management and only past the 600 s progress deadline. With a spare host it
+does not arise, so a Degraded Application on a larger cluster is a real placement
+problem, not this. See
+[`UPGRADING.md`](../../../UPGRADING.md#4-the-predicate-is-node-count-not-schedulable-node-count).
+
+**`-parallelism=1` is not a rolling update.** It serialises the apply calls, not
+the reboots — `talos_machine_configuration_apply` returns without waiting for the
+node to come back. It bounds how many nodes a failing apply touches; it is no
+substitute for a staged window.
 
 ## Node roles vs images + capabilities
 

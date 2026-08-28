@@ -40,14 +40,12 @@ cluster:
   # controlplane_apply_mode: auto        # auto | reboot | no_reboot | staged
   # worker_apply_mode: auto              # same set, per role
   #   Leave at auto for Day-0: the first apply to a maintenance-mode node IS the
-  #   install, so a staging mode writes the config without installing and the
-  #   bootstrap then runs against a node that never left maintenance mode.
-  #   Set a role to `staged` to open a Day-2 window — the config is written for
-  #   the next boot and YOU reboot the nodes out of band, one at a time, under
-  #   your own health gate. Revert to auto only AFTER every node of that role has
-  #   rebooted, and do not add nodes while a window is open. `tofu output
-  #   node_apply_mode` is the only signal that one is: the cluster stays healthy
-  #   on the old config and the next plan is clean.
+  #   install, so a staging mode writes the config without installing.
+  #   `staged` opens a Day-2 window in which YOU reboot the nodes. Do not close
+  #   it until every node of the role has rebooted, and do not add a node while
+  #   it is open. What the window obliges you to:
+  #   tofu/modules/talos-cluster/README.md §Staged machine-config roll (Day-2).
+  #   The reboot sequence itself is yours to write and rehearse.
 
 repo:
   url: https://github.com/your-org/your-cluster-repo.git
