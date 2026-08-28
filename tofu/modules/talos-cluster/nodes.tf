@@ -70,3 +70,14 @@ locals {
     machine = { kubelet = { registerWithFQDN = true } }
   })] : []
 }
+
+# Per-node apply_mode, role-routed. Kept out of main.tf's resource body so the
+# routing is one named expression a test can name and a mutant can be applied
+# to; the oracle is tests/apply-mode.tftest.hcl, which reaches the real module
+# through mock_provider rather than through the provider-less fixtures.
+locals {
+  node_apply_mode = {
+    for h, n in local.nodes_checked :
+    h => n.role == "controlplane" ? var.controlplane_apply_mode : var.worker_apply_mode
+  }
+}

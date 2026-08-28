@@ -55,8 +55,10 @@ set, not a replacement for it), `cilium_hubble_open_metrics` (default
 (default `false`, guarded by the cross-variable validations below), and
 `cilium_self_management_project`
 (default `"default"`)); cluster network (`pod_cidr`, `service_cidr`,
-`dual_stack`, `allow_scheduling_on_controlplanes`); and the cluster health
-timeout. Because `deploy_argocd` defaults to true and a plan-time
+`dual_stack`, `allow_scheduling_on_controlplanes`); the machine-config apply mode
+(`controlplane_apply_mode` and `worker_apply_mode`, both defaulting to `auto` —
+see the `cluster-bootstrap-lifecycle` spec for the behaviour they select); and the
+cluster health timeout. Because `deploy_argocd` defaults to true and a plan-time
 precondition requires `sops_age_key` to be a valid age private key
 whenever ArgoCD is deployed, `sops_age_key` is de-facto required under the
 default toggles.
@@ -147,6 +149,20 @@ newline, the module's does not — no plain YAML scalar carries one).
 - **WHEN** a version input carries trailing text after the PATCH segment
   that is not a `-`/`+`-introduced suffix
 - **THEN** variable validation fails with the variable's error message
+
+### Requirement: Apply-mode input validation
+
+Each apply-mode input SHALL be constrained to the value set supported across the
+whole provider range the module declares — not the set the newest provider
+accepts — so that neither an unsupported spelling nor a mode newer than a
+consumer's in-range provider reaches an apply against a node.
+
+#### Scenario: An out-of-set apply mode is rejected
+
+- **WHEN** either apply-mode input carries a value outside that set — including
+  a mode the newest provider accepts but the declared floor does not
+- **THEN** the plan fails on that variable's validation, naming the accepted
+  values
 
 ### Requirement: Node identity
 
@@ -281,7 +297,10 @@ and the decoded rotation patch content, the cert-approver seed wiring,
 namespace labels, RBAC approve scope and per-object recommended-label
 gaps, the ArgoCD namespace labels, the distinct Kubernetes kinds in the
 manifest the module applies after the health gate
-(`argocd_day0_apply_kinds`, `[]` when `deploy_argocd = false`), and a
+(`argocd_day0_apply_kinds`, `[]` when `deploy_argocd = false`), a per-node map of the apply mode
+the last apply was written with (`node_apply_mode`) — the only in-module
+signal that a role sits in a staged window, since the cluster stays healthy
+on its previous configuration and the next plan is clean while it does — and a
 boolean asserting the non-sensitive base patch list is a prefix of the
 final controlplane patch list. For the cert-approver seed the module SHALL
 additionally expose,

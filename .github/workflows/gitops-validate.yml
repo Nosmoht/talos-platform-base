@@ -294,7 +294,8 @@ jobs:
             '$.substrate.cilium.hubble_metrics[1]' \
             '$.substrate.cilium.native_routing_cidr' \
             "\$.substrate.cilium.operator_replicas: 0.5 is not of type" \
-            "\$.substrate.cilium.operator_replicas: 0.5 is less than the minimum"; do
+            "\$.substrate.cilium.operator_replicas: 0.5 is less than the minimum" \
+            "\$.cluster.worker_apply_mode: 'staged_if_needing_reboot' is not one of"; do
             if ! printf '%s\n' "$out" | grep -qF "$v"; then
               echo "FAIL: expected schema violation on $v was not reported — that rule no longer bites" >&2
               printf '%s\n' "$out" >&2

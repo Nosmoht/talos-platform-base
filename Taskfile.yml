@@ -281,7 +281,8 @@ tasks:
         -filter=tests/conflict-guards.tftest.hcl \
         -filter=tests/input-validation.tftest.hcl \
         -filter=tests/image-kernel-args.tftest.hcl \
-        -filter=tests/kubeconfig-endpoint-marker.tftest.hcl
+        -filter=tests/kubeconfig-endpoint-marker.tftest.hcl \
+        -filter=tests/apply-mode.tftest.hcl
 
   tofu:ci:
     desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + test:offline — mirrors CI, stays offline"

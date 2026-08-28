@@ -10,6 +10,26 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Added — the machine-config apply mode is selectable per role.**
+  `controlplane_apply_mode` and `worker_apply_mode` plumb the talos provider's
+  `apply_mode` to the per-node machine-config apply. Both default to `auto`, so a
+  consumer that sets neither keeps the previous behaviour exactly. Setting a role
+  to `staged` writes the configuration without rebooting, which turns a
+  reboot-bound change to a stateful role from an unsequenced parallel reboot of
+  that whole role into a deliberate operator roll: reboot out of band, one node at
+  a time, under whatever health gate the workload needs. Between the staged apply
+  and that reboot the state file and the node's effective configuration disagree
+  and a later plan is clean — closing the window is the operator's obligation.
+  `auto` stays the default because the same apply resource carries the Day-0
+  install. The keys are reachable from `cluster.yaml`
+  (`cluster.controlplane_apply_mode` / `cluster.worker_apply_mode`) and the
+  module exposes a `node_apply_mode` output, which is the only signal that a
+  window is open — health stays green and the next plan is clean while it is.
+  The procedure and its two traps (revert to `auto` LAST; do not add nodes
+  during a window) are in the module README; see
+  [`knowledge/decisions/0026-machine-config-apply-mode.md`](knowledge/decisions/0026-machine-config-apply-mode.md),
+  which also records why `staged_if_needing_reboot` is documented but not
+  recommended.
 - **Fixed — the MAJOR-bump guard no longer blocks on files no consumer
   receives.** Its surface set moved out of `.github/workflows/release.yml` into
   `.ci-release-guard-pathspec.txt` (membership rule in that file's header), with

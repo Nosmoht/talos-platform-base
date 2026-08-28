@@ -71,6 +71,23 @@ i.e. already booted into Talos maintenance mode.
 > out-of-band `talosctl upgrade`. Nodes with an unchanged hash keep their installer
 > and do NOT re-image.
 
+**A staged apply is the third out-of-band Day-2 op.** Setting a role's apply
+mode to `staged` writes the machine config without rebooting, which is what
+keeps a stateful role from rebooting unsequenced — but it makes the reboot an
+operator procedure with three properties worth knowing before starting:
+
+- **Revert to `auto` LAST.** An apply-mode change alone reaches the provider's
+  Update path, so flipping back while configs are still staged re-applies them
+  in `auto` mode and reboots exactly the nodes not yet gated. Order: set
+  `staged` → apply → reboot each node under your own health gate → revert.
+- **Do not add a node while a window is open.** The mode is role-scoped, not
+  lifecycle-scoped, so a node added during the window is staged instead of
+  installed; it stays in maintenance mode and the apply blocks on
+  `data.talos_cluster_health` until `cluster_health_timeout`.
+- **Nothing detects the open window for you.** The cluster is healthy on the old
+  config and the next `tofu plan` is clean. `tofu output node_apply_mode` is the
+  in-module signal.
+
 **Two Day-2 ops stay out-of-band** — the `siderolabs/talos` provider ships no
 OS- or Kubernetes-upgrade resource, so both are imperative `talosctl` commands
 the consumer Taskfile drives. The **OS upgrade** is `talosctl upgrade --image
@@ -232,6 +249,8 @@ provider "talos" {}
 | `cert_approver_provider_regex` | string | `".*"` | `postfinance/kubelet-csr-approver` `PROVIDER_REGEX` — regex every kubelet-serving CSR's **SAN DNS name** must additionally match. Match the **full DNS SAN string**, which may be an FQDN (e.g. `node-1.internal.example.com`), not just the bare node name — a pattern too restrictive to match the actual SAN (e.g. `^node-[0-9]+$` against an FQDN SAN) denies those CSRs. `^node-.*$` is a safe permissive form. **SEED knob** (create-only). The always-on per-node DNS-SAN hostname-prefix binding applies regardless. Validated: non-empty/non-whitespace (empty crashes the approver; whitespace-only denies all), compiles, no `---`, no newline (protects the split-based audit outputs). |
 | `cert_approver_provider_ip_prefixes` | list(string) | `["0.0.0.0/0", "::/0"]` | `PROVIDER_IP_PREFIXES` — CIDRs a CSR's IP SANs must fall within. Default is the **safe floor** (all IPs); **never `[]`** (an empty set denies every serving CSR). Tighten to node subnets for an IP-SAN-to-subnet binding. **SEED knob.** Every entry must be a valid CIDR. |
 | `cert_approver_replicas` | number | `1` | approver Deployment replica count (`>= 1`). `> 1` derives leader-election + a namespaced `coordination.k8s.io/leases` Role/RoleBinding so the HA config is coherent; `1` keeps least privilege (no leases rule). **SEED knob.** |
+| `controlplane_apply_mode` | string | `auto` | apply_mode for the controlplane machine-config apply: `auto`, `reboot`, `no_reboot` or `staged`. `auto` is the only Day-0-safe value — the first apply to a maintenance-mode node IS the install. `staged` opens a Day-2 window: the config is written for the next boot and the reboot becomes an **out-of-band, health-gated operator step**. `reboot` forces a simultaneous reboot of every controlplane (etcd quorum loss); `no_reboot` fails the apply when the change needs a reboot. |
+| `worker_apply_mode` | string | `auto` | Same accepted set and same out-of-band reboot obligation, for the worker applies. Separate input because the roles roll under different gates (etcd quorum vs. workload/storage replication); a stateful worker set uses `staged` and reboots one node at a time. |
 
 **Patch precedence — two passes.** *Generation pass* (baked into the machine
 config by `data.talos_machine_configuration`): all-nodes (`config_patches`) then
@@ -264,6 +283,7 @@ overlay's job.
 | `schematic_ids` | no | Image-Factory schematic ID per distinct content-hash (identical nodes share one) |
 | `installer_images` | no | resolved `metal-installer` image URL per node hostname (was per-class; the upgrade task reads it from tfplan JSON) |
 | `node_schematic_hashes` | no | per-node content-hash of the composed schematic (dedup audit) |
+| `node_apply_mode` | no | per-node apply_mode the last apply used — the only in-module signal that a `staged` window is open (health stays green and the next plan is clean while it is) |
 | `distinct_schematic_count` | no | number of distinct schematics after content-hash dedup |
 | `talos_install_version` | no | effective installer version |
 | `cluster_health` | no | `"healthy (…)"` — references `data.talos_cluster_health`, so any consumer reading it blocks until the cluster is online |

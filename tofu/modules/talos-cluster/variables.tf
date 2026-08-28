@@ -1150,3 +1150,66 @@ variable "cert_approver_replicas" {
     error_message = "cert_approver_replicas must be an integer >= 1."
   }
 }
+
+variable "controlplane_apply_mode" {
+  description = <<-EOT
+    apply_mode for the controlplane machine-config apply. Accepted: auto |
+    reboot | no_reboot | staged — the set the provider has carried since 0.7.0,
+    the floor this module declares. The provider's fifth value
+    "staged_if_needing_reboot" is deliberately NOT accepted here: it arrived in
+    0.11.0, so admitting it would let a consumer inside the declared range pass
+    this validation and be rejected by their provider, and it resolves to "auto"
+    on Talos 1.14+ anyway.
+    Default "auto" — the provider's own default, and the ONLY value that works
+    on Day-0:
+    the first apply to a maintenance-mode node IS the install, so a staging mode
+    writes the config without installing and talos_machine_bootstrap then runs
+    against a node that never left maintenance mode.
+    Set "staged" for a Day-2 window on nodes that must not reboot from the apply:
+    the config is written to be picked up at the next boot, and the reboot becomes
+    an out-of-band, health-gated operator step (one node at a time). Between
+    staging and that reboot, tofu state and the node's effective config diverge
+    with no drift signal — the window is the operator's to close.
+    "reboot" forces a reboot of every controlplane on the apply even when the
+    change needs none — a simultaneous reboot of the whole role, i.e. etcd
+    quorum loss. "no_reboot" fails the apply when the change needs a reboot.
+  EOT
+  type        = string
+  default     = "auto"
+  # nullable=false so an explicit null from a consumer shim's try() lands on the
+  # default instead of reaching contains(), which errors on null with a message
+  # that names neither the variable nor the accepted values.
+  nullable = false
+
+  validation {
+    condition     = contains(["auto", "reboot", "no_reboot", "staged"], var.controlplane_apply_mode)
+    error_message = "controlplane_apply_mode must be one of: auto, reboot, no_reboot, staged."
+  }
+}
+
+variable "worker_apply_mode" {
+  description = <<-EOT
+    apply_mode for the worker machine-config applies — same accepted set, same
+    Day-0 constraint and same out-of-band reboot obligation as
+    controlplane_apply_mode.
+    Separate input because the two roles roll under different gates: controlplanes
+    under etcd quorum, workers under whatever the workload requires (storage
+    replication, quorum-based stores). A worker set applied with the default
+    reboots unsequenced, so a stateful worker set is set to "staged" for the
+    window and rebooted one node at a time. Revert to "auto" only AFTER every
+    node of the role has been rebooted: an apply_mode change alone reaches the
+    provider's Update path, so flipping back while configs are still staged
+    re-applies them in "auto" mode and reboots exactly the nodes not yet gated.
+  EOT
+  type        = string
+  default     = "auto"
+  # nullable=false so an explicit null from a consumer shim's try() lands on the
+  # default instead of reaching contains(), which errors on null with a message
+  # that names neither the variable nor the accepted values.
+  nullable = false
+
+  validation {
+    condition     = contains(["auto", "reboot", "no_reboot", "staged"], var.worker_apply_mode)
+    error_message = "worker_apply_mode must be one of: auto, reboot, no_reboot, staged."
+  }
+}

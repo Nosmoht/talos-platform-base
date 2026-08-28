@@ -41,6 +41,8 @@ module "complete" {
   dual_stack                        = try(local.cfg.cluster.dual_stack, false)
   allow_scheduling_on_controlplanes = try(local.cfg.cluster.allow_scheduling_on_controlplanes, false)
   register_with_fqdn                = try(local.cfg.cluster.register_with_fqdn, false)
+  controlplane_apply_mode           = try(local.cfg.cluster.controlplane_apply_mode, "auto")
+  worker_apply_mode                 = try(local.cfg.cluster.worker_apply_mode, "auto")
 
   # --- Topology (node config_patches re-encoded to YAML strings) ---
   nodes = { for name, n in local.cfg.nodes : name => {
