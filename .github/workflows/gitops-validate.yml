@@ -27,7 +27,7 @@ jobs:
       CONFTEST_VERSION: v0.69.0
       KUBECONFORM_VERSION: 0.8.0
       HELM_VERSION: 3.20.2
-      YQ_VERSION: 4.53.2
+      YQ_VERSION: 4.53.6
 
     steps:
       - name: Checkout
@@ -223,7 +223,7 @@ jobs:
     name: Hardware-features registry validation (Layer C)
     runs-on: ubuntu-latest
     env:
-      YQ_VERSION: 4.53.2
+      YQ_VERSION: 4.53.6
       # go-task runs the bootstrap render the check below asserts. Pinned for
       # the same reason as docs-lint.yml: an unpinned payload behind a pinned
       # installer is still an unpinned gate. KEEP IN SYNC with .tool-versions
