@@ -3,7 +3,7 @@ type: project
 title: Harness Plugin Contract
 description: The contract this base expects a Claude Code harness plugin to satisfy, stated from the base's side.
 tags: [project, harness]
-generated: { by: human:nosmoht, at: "2026-07-13T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
 migrated_from: docs/harness-plugin-integration.md (deleted in the OKF migration; see git history)
 sources:
   - resource: CLAUDE.md
@@ -35,7 +35,8 @@ contract from the base's side.
 
 ## Why this exists
 
-`CLAUDE.md` enforces: this base ships no hand-authored Claude-Code
+`AGENTS.md` §Tool Notes enforces (the statement moved out of `CLAUDE.md`
+on 2026-08-28): this base ships no hand-authored Claude-Code
 primitives (the committed OpenSpec-generated trees per ADR-0014 are the
 sole, regenerable exception). That is deliberate — tool-namespaced
 runtime content belongs to the runtime that consumes it. Claude Code is

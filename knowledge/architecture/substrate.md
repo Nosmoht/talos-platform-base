@@ -5,6 +5,7 @@ description: What talos-platform-base is and ships — the three-pillar substrat
 tags: [substrate, layer-model, oci-artifact, boundaries]
 generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 verified:
+  - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-07-17T00:00:00Z" }
 sources:
   - resource: .ci-oci-tarball-include.txt

@@ -249,8 +249,8 @@ this list grow silently.
 
 The cross-domain vocabulary used in this document lives in
 [`knowledge/glossary.md`](knowledge/glossary.md) (the bundle's reference
-vocabulary). AGENTS.md §"Key Terms" carries the curated subset
-auto-loaded into agent contexts.
+vocabulary). AGENTS.md §Key Terms keeps only the three entries other
+repository artifacts cite it for and points at the glossary for the rest.
 
 ## See also
 
