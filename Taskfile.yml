@@ -94,7 +94,10 @@ vars:
   # NOT [rules].enabled in .openknowledge.toml: whether a no-argument
   # `prompt rules apply` falls back to it is undocumented (the CLI help
   # contradicts itself), and a wrong guess renders the custom rule away.
-  OK_RULES: docs,decisions,schemas,talos-base-bundle
+  # Only the repo-specific rule is rendered. The three built-in rules (docs,
+  # decisions, schemas) said in generic terms what talos-base-bundle already
+  # states actionably, and the block loads in full in every session.
+  OK_RULES: talos-base-bundle
   # Both rules targets render with whatever openknowledge is on PATH. Pinning
   # the version here matters more than for validate: a mismatched binary
   # renders a different block, and the fence's own advice ("regenerate") would

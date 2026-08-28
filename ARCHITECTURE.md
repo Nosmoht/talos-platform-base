@@ -144,7 +144,7 @@ flowchart TB
 flowchart LR
   subgraph Base["talos-platform-base"]
     direction TB
-    Make[Makefile<br/>validate-gitops<br/>argocd-bootstrap]
+    Task["Taskfile.yml<br/>gitops:validate<br/>bootstrap:argocd"]
     Boot["kubernetes/bootstrap/<br/>(parameterized templates)"]
     Infra["kubernetes/substrate/<br/>substrate component<br/>(argocd)"]
     Talos["tofu/modules/talos-cluster/<br/>OpenTofu cluster-lifecycle module<br/>(per-class Image-Factory + bootstrap,<br/>Cilium + ArgoCD + cert-approver inlineManifest seeds)"]
@@ -154,9 +154,9 @@ flowchart LR
     Specs["openspec/<br/>behavioral capability specs"]
     CI[".github/workflows/<br/>gitops-validate<br/>oci-publish<br/>hard-constraints-check"]
 
-    Make --> Pol
-    Make --> Infra
-    CI --> Make
+    Task --> Pol
+    Task --> Infra
+    CI --> Task
   end
 ```
 
@@ -168,7 +168,7 @@ flowchart LR
 | `kubernetes/bootstrap/` | parameterized ArgoCD + Cilium bootstrap templates (envsubst) | `argocd/*.tmpl`, `cilium/extras.yaml` |
 | `tofu/modules/talos-cluster/` | OpenTofu cluster-lifecycle module — sole Talos provisioning path (per-class Image-Factory installer, Cilium + ArgoCD + cert-approver inlineManifest seeds, machine config, bootstrap, kubeconfig) | `*.tf`, `manifests/` (chart-rendered `kubelet-csr-approver` seed), `examples/complete/` |
 | `policies/` | conftest Rego — label hygiene over rendered manifests | `policies/conftest/*` |
-| Validation pipeline | kustomize render + conftest + kubeconform | `scripts/`, `Makefile`, `.github/workflows/gitops-validate.yml` |
+| Validation pipeline | kustomize render + conftest + kubeconform | `scripts/`, `Taskfile.yml`, `.github/workflows/gitops-validate.yml` |
 | OCI publish | cosign keyless + SLSA attestation + immutable GHCR tag | `.github/workflows/oci-publish.yml` |
 
 ## Key flows
