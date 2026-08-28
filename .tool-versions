@@ -56,4 +56,4 @@ markdownlint 0.42.0
 # go-task itself — the CI executor. Pinned via the TASK_VERSION env block in
 # docs-lint.yml AND gitops-validate.yml (drift-checked in both) and the
 # setup-task `version:` literal in tofu-validate.yml. Three sites.
-task 3.48.0
+task 3.53.1

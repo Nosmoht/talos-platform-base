@@ -228,7 +228,7 @@ jobs:
       # the same reason as docs-lint.yml: an unpinned payload behind a pinned
       # installer is still an unpinned gate. KEEP IN SYNC with .tool-versions
       # (asserted by the drift step below).
-      TASK_VERSION: "3.48.0"
+      TASK_VERSION: "3.53.1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
