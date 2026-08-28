@@ -225,7 +225,7 @@ backed by a load-bearing mechanism in the repo today.
 |---|---|---|
 | **Supply-chain integrity** | Every release verifiable to commit SHA via OIDC chain | cosign + SLSA + CycloneDX 1.6 SBOM in [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md) |
 | **Reproducibility** | `chart.lock.yaml` + `values.yaml` → identical rendered output | `verify-rendered.sh` (CI required); idempotent renderer |
-| **Cluster-agnostic** | A second cluster pins a tag and bootstraps without base edits | `make day0` flow in consumer repo; `.base-version` pin; no IPs/FQDNs in base |
+| **Cluster-agnostic** | A second cluster pins a tag and bootstraps without base edits | the consumer repo's own day-0 flow (`make day0`, adr-0001); `.base-version` pin; no IPs/FQDNs in base |
 | **CI-required gates** | No broken main; no silent regression | conftest, kubeconform, REUSE lint, hard-constraints-check, hardware-features-check |
 | **Multi-maintainer-ready** | New contributor can land a non-trivial change in ≤ 4 h human time | `CONTRIBUTING.md`, `MAINTAINERS.md`, per-component READMEs, MADR ADR template |
 | **Operator-facing docs** | Audience is platform operators, not end-users — content is at operator altitude | OKF-organised `knowledge/` bundle; arc42 §1 explicitly excludes end-user audience |

@@ -29,6 +29,9 @@ Two authoring constraints for this file, both learned from the renderer:
 
 ## Instructions
 
+- Update the owning concept in the SAME task that changes behavior, an API, a command, a config or an example — the bundle records shipped behavior, and anything not yet shipped is labelled as planned.
+- Record a meaningful technical decision as a `decision` concept carrying context, options, the chosen path and its tradeoffs, linked to the concepts, workflows and source files it affects. Decision history is append-only: supersede or append a clarification, never rewrite the old context away.
+- Create or update a concept when an API, schema, table, config key or contract changes at its source, and point at the authoritative file instead of copying generated or code-derived truth into prose.
 - Use the closed `type` vocabulary: `architecture`, `reference`, `workflow`, `decision`, `glossary`, `project`, `Rule`. Add a new type by editing this list and `knowledge/index.md` in the same change. `Rule` is capitalized because the CLI requires that spelling, not as a naming pattern to copy.
 - Record provenance as `generated: { by, at }` on every concept that lists `sources`. `by` is REQUIRED inside `generated` and is an actor — `human:<id>`, `process:<id>`, or `<producer>/<version>`; this bundle uses `human:nosmoht`. The v0.1 `timestamp` key is retired: no frontmatter under `knowledge/` may carry it, though prose describing what was done on a past date is record and stays.
 - Write every date as a quoted ISO 8601 datetime, `"2026-08-23T00:00:00Z"`. A date alone is rejected in both spellings; the midnight is padding for a record that has day precision, not an observed time.

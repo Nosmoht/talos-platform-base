@@ -2,6 +2,10 @@
 
 ## 2026-08-28
 
+- `rules/talos-base-bundle.md`: three trigger bullets added — when to update a
+  concept, when to record a decision, when to document a schema. They carry the
+  content of the three built-in `openknowledge` rules the Taskfile no longer
+  renders, so the maintenance mandate stays stated.
 - `rules/talos-base-bundle.md`: `generated.at 2026-08-28`. The config file
   the link-target convention names is spelled `knowledge/.openknowledge.toml`;
   the bare basename read as a repo-root path in the rendered AGENTS.md block.
