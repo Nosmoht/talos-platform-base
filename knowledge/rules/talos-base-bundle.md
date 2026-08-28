@@ -5,7 +5,7 @@ title: Bundle Conventions
 description: Repo-specific OKF bundle conventions layered on top of the built-in maintenance rules, rendered into the AGENTS.md managed block.
 rule_summary: Repo-specific bundle conventions on top of the built-in maintenance rules.
 tags: [okf, maintenance, conventions]
-generated: { by: human:nosmoht, at: "2026-08-23T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
 sources:
   - resource: Taskfile.yml
   - resource: CONTRIBUTING.md
@@ -39,7 +39,7 @@ Two authoring constraints for this file, both learned from the renderer:
 - Re-verify a concept when a change lands inside what the concept describes — not merely when a file listed in its `sources` was touched. A green validation run proves link and schema health, never freshness.
 - Give `decision` concepts `decided` instead: no `sources`, so no `generated` and no `verified` either. `knowledge/decisions/template.md` deliberately carries no `decided` so a copy cannot ship a placeholder date; add it when you copy. Their full field contract lives in `knowledge/decisions/index.md`.
 - Use the OKF lifecycle vocabulary in `status`: `stable`, `draft`, `deprecated`; an absent `status` means `stable`. See `knowledge/decisions/index.md` §Status vocabulary for the MADR mapping and why the record keeps the older words.
-- Link relatively inside the bundle, and cite anything outside it as an inline code span rather than a markdown link: `.openknowledge.toml` raises `link-target` to error, so an escaping link fails validation. Quote any rule key containing a dot in that file — `"okf-0.2-metadata"` unquoted is read as a TOML dotted key and drops every rule in the file.
+- Link relatively inside the bundle, and cite anything outside it as an inline code span rather than a markdown link: `knowledge/.openknowledge.toml` raises `link-target` to error, so an escaping link fails validation. Quote any rule key containing a dot in that file — `"okf-0.2-metadata"` unquoted is read as a TOML dotted key and drops every rule in the file.
 - Validate with `task knowledge:validate`, which runs `openknowledge validate` plus the offline link gate. Run `task knowledge:rules-check` as well after touching `knowledge/rules/`.
 - Invoke `openknowledge` through the `knowledge:*` task targets, never bare: the version pin and the telemetry opt-out both live in `Taskfile.yml`, and a bare run skips both silently. This supersedes the built-in instruction above to run `openknowledge validate "knowledge"` — `task knowledge:validate` performs that validation and satisfies it. Where a bare run is unavoidable, prefix it with `OPENKNOWLEDGE_TELEMETRY=off`.
 - Record bundle changes in `knowledge/log.md`, one bullet per changed concept under today's date, stating WHAT changed. Why it changed belongs in the commit body and the issue, which is where git already keeps it — do not restate a rationale here. User-facing changes belong in the root `CHANGELOG.md`; the two files have separate audiences and do not mirror each other.

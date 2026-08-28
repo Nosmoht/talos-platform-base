@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-28
+
+- `rules/talos-base-bundle.md`: `generated.at 2026-08-28`. The config file
+  the link-target convention names is spelled `knowledge/.openknowledge.toml`;
+  the bare basename read as a repo-root path in the rendered AGENTS.md block.
+
 ## 2026-08-27
 
 - `workflows/release-process.md`: `generated.at 2026-08-27`. §Commit gate no
