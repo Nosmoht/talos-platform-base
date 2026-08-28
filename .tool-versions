@@ -51,7 +51,7 @@ openknowledge 0.12.0
 lychee 0.24.2
 # npm-managed (no asdf plugin): pinned in package.json + package-lock.json
 # (integrity-hashed); install via `task spec:install-cli` / `task docs:install-cli`.
-openspec 1.6.0
+openspec 1.11.0
 markdownlint 0.49.1
 # go-task itself — the CI executor. Pinned via the TASK_VERSION env block in
 # docs-lint.yml AND gitops-validate.yml (drift-checked in both) and the
