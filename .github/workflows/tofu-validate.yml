@@ -75,7 +75,7 @@ jobs:
       - name: Install go-task
         uses: arduino/setup-task@v2
         with:
-          version: 3.48.0  # KEEP IN SYNC with the task pin in .tool-versions
+          version: 3.53.1  # KEEP IN SYNC with the task pin in .tool-versions
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: task tofu:ci (fmt-check + validate + lint)
@@ -101,7 +101,7 @@ jobs:
       - name: Install go-task
         uses: arduino/setup-task@v2
         with:
-          version: 3.48.0  # KEEP IN SYNC with the task pin in .tool-versions
+          version: 3.53.1  # KEEP IN SYNC with the task pin in .tool-versions
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       # NETWORK: `tofu test` resolves the live Talos Image Factory (schematic

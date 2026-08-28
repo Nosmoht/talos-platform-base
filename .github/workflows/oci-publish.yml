@@ -26,10 +26,15 @@ jobs:
       - name: Install oras
         uses: oras-project/setup-oras@v1
         with:
-          version: 1.2.0
+          version: 1.3.4
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3.5.0
+        uses: sigstore/cosign-installer@v4.1.2
+        with:
+          # Without this the installer silently uses its own default release,
+          # which is a cosign 2.x for every v3.x tag of the action — the
+          # .tool-versions pin only reaches CI through this input.
+          cosign-release: v3.1.3
 
       - name: Login to ghcr.io
         run: |

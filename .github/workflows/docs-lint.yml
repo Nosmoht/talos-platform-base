@@ -39,7 +39,7 @@ jobs:
     env:
       # KEEP IN SYNC with .tool-versions (the drift step below asserts it): an
       # unpinned payload behind a pinned installer is still an unpinned gate.
-      TASK_VERSION: "3.48.0"
+      TASK_VERSION: "3.53.1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:

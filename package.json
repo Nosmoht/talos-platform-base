@@ -5,9 +5,9 @@
   "description": "npm toolchain pins ONLY (semantic-release + conventionalcommits preset for releases; openspec + markdownlint-cli for the docs/spec gates). This repo is NOT a Node project; this manifest exists solely to pin the npm-distributed tools reproducibly with lockfile integrity hashes. It is excluded from the OCI artifact (see .ci-oci-tarball-include.txt) and installed via `npm ci --ignore-scripts` (CI and `task *:install-cli`). See knowledge/workflows/release-process.md and knowledge/workflows/spec-driven-development.md.",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@fission-ai/openspec": "1.6.0",
+    "@fission-ai/openspec": "1.11.0",
     "conventional-changelog-conventionalcommits": "9.3.1",
-    "markdownlint-cli": "0.42.0",
-    "semantic-release": "25.0.5"
+    "markdownlint-cli": "0.49.1",
+    "semantic-release": "25.0.9"
   }
 }

@@ -873,7 +873,7 @@ tasks:
       # Refuse on dirty generated trees: --force would overwrite uncommitted
       # edits there, and a pre-dirty generated file would mask real drift in
       # the porcelain delta below.
-      if [ -n "$(git status --porcelain .claude/ .codex/)" ]; then
+      if [ -n "$(git status --porcelain .claude/ .agents/)" ]; then
         echo "ERROR: uncommitted changes under the generated trees — commit or discard them first."; exit 1
       fi
       # Delta over the WHOLE tree: catches modified, deleted AND newly-added
@@ -898,7 +898,7 @@ tasks:
       #     So a write into a PRE-EXISTING ignored dir under .claude/
       #     (agents/, hooks/, operator scratch) does not move the delta.
       #     In CI those dirs do not exist, so a first creation is caught.
-      #   - the ignored set outside .claude//.codex/ (.work/, .mcp.json.local,
+      #   - the ignored set outside .claude//.agents/ (.work/, .mcp.json.local,
       #     ...) is in neither snapshot. Bounded by openspec's write scope,
       #     which is an assumption a CLI upgrade can break — the same class
       #     of upgrade this target exists to detect.
@@ -911,15 +911,15 @@ tasks:
       # The git call is separated from the greps: piping it straight into
       # `grep | sort` would hand the pipeline sort's exit status, so a git
       # failure (a build rejecting --ignored=matching, a pathspec error, a
-      # missing .codex/) would land as an empty snapshot on BOTH sides and
+      # missing .agents/) would land as an empty snapshot on BOTH sides and
       # this target would print OK having checked nothing. Same separation
       # spec:update makes, for the same reason.
       git status --porcelain > "$before"
-      git status --ignored=matching --porcelain .claude/ .codex/ > "$ignraw"
+      git status --ignored=matching --porcelain .claude/ .agents/ > "$ignraw"
       grep '^!!' "$ignraw" | sort > "$ignbefore" || true
       openspec update --force >/dev/null
       git status --porcelain > "$after"
-      git status --ignored=matching --porcelain .claude/ .codex/ > "$ignraw"
+      git status --ignored=matching --porcelain .claude/ .agents/ > "$ignraw"
       grep '^!!' "$ignraw" | sort > "$ignafter" || true
       if ! cmp -s "$before" "$after"; then
         echo "ERROR: regenerating with the pinned openspec changed the tree:"
@@ -955,7 +955,7 @@ tasks:
     cmd: python3 scripts/check-spec-staleness.py --base "$SPEC_BASE"
 
   spec:update:
-    desc: Regenerate OpenSpec tool integrations (.claude/, .codex/) after a CLI upgrade
+    desc: Regenerate OpenSpec tool integrations (.claude/, .agents/) after a CLI upgrade
     cmd: |
       set -e
       command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
@@ -969,9 +969,9 @@ tasks:
       # trees — commit or discard tree changes before running.
       before="$(mktemp)"; after="$(mktemp)"
       trap 'rm -f "$before" "$after" "$before.ign" "$after.ign"' EXIT
-      git status --ignored=matching --porcelain .claude/ .codex/ > "$before"
+      git status --ignored=matching --porcelain .claude/ .agents/ > "$before"
       openspec update --force
-      git status --ignored=matching --porcelain .claude/ .codex/ > "$after"
+      git status --ignored=matching --porcelain .claude/ .agents/ > "$after"
       grep '^!!' "$before" | sort > "$before.ign" || true
       grep '^!!' "$after"  | sort > "$after.ign"  || true
       new_ignored="$(comm -13 "$before.ign" "$after.ign")"
