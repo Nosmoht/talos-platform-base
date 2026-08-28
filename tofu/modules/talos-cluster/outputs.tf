@@ -469,3 +469,16 @@ output "cilium_operator_replicas_effective" {
     ) : "disabled"
   }
 }
+
+output "node_apply_mode" {
+  description = <<-EOT
+    Per-node apply_mode the last apply was written with, keyed by node name.
+    The one piece of state that decides whether a node runs what the state file
+    says it runs: while a role sits at "staged" its nodes keep the previous
+    config until an out-of-band reboot, the cluster stays healthy on the old
+    config, and the next plan is clean — so this output is the only in-module
+    signal that a window is open. Mirrors node_schematic_hashes as an audit
+    surface; carries no secret material.
+  EOT
+  value       = local.node_apply_mode
+}

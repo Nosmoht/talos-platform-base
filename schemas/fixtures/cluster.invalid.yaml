@@ -28,12 +28,18 @@
 #      by its own CI needle. A single-conjunct value would leave the other free
 #      to be relaxed with the step still green, since the needles match the
 #      linter's distinct messages rather than the bare path.
+#  11. cluster.worker_apply_mode: staged_if_needing_reboot — a real provider mode
+#      the module deliberately does NOT accept: it arrived in provider 0.11.0
+#      while the module's declared floor is 0.7.0, so admitting it would let a
+#      consumer inside that range be rejected by their own provider. The enum is
+#      the only thing keeping it out.
 # Relax any rule in schemas/cluster.schema.json and the negative CI step turns
 # red. Not a runnable cluster — RFC5737 documentation IPs; no node references
 # the four new images (check-jsonschema has no cross-reference check).
 cluster:
   name: bad-cluster
   endpoint: https://bad-cluster-api.example.com:6443
+  worker_apply_mode: staged_if_needing_reboot
 repo:
   url: https://github.com/example/bad-cluster.git
 talos:

@@ -733,7 +733,8 @@ resource "talos_machine_configuration_apply" "this" {
     ? data.talos_machine_configuration.controlplane.machine_configuration
     : data.talos_machine_configuration.worker.machine_configuration
   )
-  node = each.value.ip
+  node       = each.value.ip
+  apply_mode = local.node_apply_mode[each.key]
 
   config_patches = concat(
     [

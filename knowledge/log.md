@@ -18,6 +18,10 @@
 - `rules/talos-base-bundle.md`: `generated.at 2026-08-28`. The config file
   the link-target convention names is spelled `knowledge/.openknowledge.toml`;
   the bare basename read as a repo-root path in the rendered AGENTS.md block.
+- `decisions/0026-machine-config-apply-mode.md`: new. Records the per-role
+  `apply_mode` inputs, why the default is `auto` rather than a staging mode, why
+  `staged_if_needing_reboot` was rejected, and why `talos_machine` cannot carry
+  the same capability.
 
 ## 2026-08-27
 

@@ -67,6 +67,16 @@
         "register_with_fqdn": {
           "description": "Set machine.kubelet.registerWithFQDN so the kubelet registers with the node's FQDN instead of its short hostname. Talos splits a dotted hostname at the first dot and registers only the SHORT hostname by default, so a dotted node key is meaningless to Kubernetes unless this is true — and the module rejects dotted node keys while it is false. ALL-OR-NOTHING: one dotted node key flips FQDN registration for every node in the cluster. Default false.",
           "type": "boolean"
+        },
+        "controlplane_apply_mode": {
+          "type": "string",
+          "enum": ["auto", "reboot", "no_reboot", "staged"],
+          "description": "apply_mode for the controlplane machine-config apply. Default 'auto' — the only Day-0-safe value, because the first apply to a maintenance-mode node IS the install. 'staged' opens a Day-2 window: the config is written for the next boot and the reboot becomes an out-of-band, health-gated operator step. Revert to 'auto' only after every node of the role has rebooted, and do not add nodes while a window is open. 'reboot' reboots the whole role simultaneously (etcd quorum loss); 'no_reboot' fails the apply when the change needs a reboot."
+        },
+        "worker_apply_mode": {
+          "type": "string",
+          "enum": ["auto", "reboot", "no_reboot", "staged"],
+          "description": "apply_mode for the worker machine-config applies. Same accepted set and same obligations as controlplane_apply_mode; separate key because the roles roll under different gates (etcd quorum vs. workload/storage replication). A stateful worker set uses 'staged' and reboots one node at a time."
         }
       }
     },
