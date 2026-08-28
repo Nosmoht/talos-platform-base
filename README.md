@@ -83,13 +83,16 @@ receives a frozen tree containing:
   config). `task cluster:init-yaml` copies it to a `cluster.yaml` the
   consumer fills in.
 - **The substrate-only infrastructure component** under
-  `kubernetes/base/infrastructure/` — `argocd/`, the only component
+  `kubernetes/substrate/` — `argocd/`, the only component
   delivered as a base kustomize manifest set. ArgoCD is a co-equal
   substrate pillar. `cert-approver` is also substrate (Talos serving-cert
   glue — it approves the `kubernetes.io/kubelet-serving` CSRs the base's
   default-on kubelet rotation triggers) but is delivered as a controlplane
-  `inlineManifest` seed by `tofu/modules/talos-cluster` (adr-0013), not as
-  a kustomize component. Every non-substrate
+  `inlineManifest` seed by `tofu/modules/talos-cluster` (adr-0019, superseding
+  adr-0013 §D2), not as a kustomize component. The approver is
+  `postfinance/kubelet-csr-approver`, tunable per-cluster via
+  `substrate.cert_approver.*` (two security knobs + `replicas`) and carrying an
+  always-on per-node DNS-SAN binding. Every non-substrate
   component (monitoring, secrets, storage, device plugins, the
   network-trust contract, …) now lives in the separate
   [`talos-platform-apps`](https://github.com/devobagmbh/talos-platform-apps)
@@ -150,7 +153,9 @@ the module-seeded ArgoCD CRDs + server; the former Helm-based
 (`sops_age_key`, `cilium_ipsec_key`) are supplied via `TF_VAR_*`/env,
 never via `cluster.yaml`.
 
-Day-2 — reference both repos from a single ArgoCD Application:
+Day-2 — how a consumer Application reaches into the base depends on what it
+needs. For **Helm values**, a Multi-Source Application; `$ref` resolves inside
+`helm.valueFiles`:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -165,9 +170,28 @@ spec:
       path: kubernetes/overlays/<cluster>/<component>/
       helm:
         valueFiles:
-          - $base/kubernetes/base/infrastructure/<component>/values.yaml
+          - $base/kubernetes/substrate/<component>/values.yaml
           - values-<cluster>.yaml
 ```
+
+For a **kustomize component** — the `argocd` component is one — a single-source
+Application over the consumer repo, with the base entering as a tag-pinned
+Kustomize *remote base*. `$ref` does not resolve inside a kustomization, so this
+is the mechanism rather than a second option:
+
+```yaml
+# consumer-repo: kubernetes/overlays/<cluster>/argocd/kustomization.yaml
+resources:
+  - github.com/Nosmoht/talos-platform-base//kubernetes/substrate/argocd?ref=v1.0.0
+
+patches:
+  - path: argocd-cm.yaml       # url + oidc.config — the base ships neither
+  - path: argocd-rbac-cm.yaml  # policy.csv — the base ships no identity
+```
+
+Attaching an identity provider to the substrate's identity-free ArgoCD is its
+own contract, including the cut-over that retires the local `admin` account:
+[`knowledge/reference/argocd-sso-contract.md`](knowledge/reference/argocd-sso-contract.md).
 
 A worked walk-through (30 minutes, end-to-end):
 [`knowledge/workflows/first-consumer-cluster.md`](knowledge/workflows/first-consumer-cluster.md).
@@ -228,7 +252,7 @@ the base, not application developers or end-users.
 | [`AGENTS.md`](AGENTS.md) | Configure an agentic tool against the repo |
 | [`openspec/`](openspec/) | Read the behavioral requirements per substrate capability |
 
-Full knowledge-bundle index (OKF v0.1): [`knowledge/index.md`](knowledge/index.md).
+Full knowledge-bundle index (OKF v0.2): [`knowledge/index.md`](knowledge/index.md).
 Behavioral-spec workflow: [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
 
 ## Contributing

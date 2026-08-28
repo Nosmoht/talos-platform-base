@@ -81,6 +81,12 @@ variable "nodes" {
     expressed as a SET of `hardware_capabilities` (composed independently) plus
     the base `image` (architecture + CPU vendor + baseline extensions + overlay).
 
+    The MAP KEY is the node's name — its Talos hostname, its Kubernetes node
+    name, and the key of the per-node apply resource (and therefore its state
+    address). It is deliberately NOT a field: one node, one definition place,
+    uniqueness by construction instead of by an added-on check. Renaming a node
+    IS an identity change (new state address, new Kubernetes node).
+
     `image` (required) must exist as a key in var.images.
     `hardware_capabilities` (optional, default []) is the set of capability ids
     (keys in var.hardware_capabilities) the node holds — a node can hold any set
@@ -91,8 +97,7 @@ variable "nodes" {
     apply AFTER the module-generated capability patch, so a raw patch can still
     override a generated machine.kernel.modules / sysctls / nodeLabels value.
   EOT
-  type = list(object({
-    hostname              = string
+  type = map(object({
     ip                    = string
     role                  = string                     # "controlplane" | "worker"
     image                 = string                     # must exist as key in var.images
@@ -101,27 +106,125 @@ variable "nodes" {
   }))
 
   validation {
-    condition     = length([for n in var.nodes : n if n.role == "controlplane"]) >= 1
+    condition     = length([for h, n in var.nodes : h if n.role == "controlplane"]) >= 1
     error_message = "At least one controlplane node is required."
   }
 
+  # etcd quorum: an even control-plane count tolerates no more failures than the
+  # odd count below it (2 tolerates 0 like 1; 4 tolerates 1 like 3) while adding a
+  # member that can break quorum. Rejected at plan time rather than left as a
+  # cluster one failure away from a surprise. Consequence: growing 3 -> 5 must be
+  # declared in ONE step; a transient 4-member control plane is not plannable, and
+  # a control plane cannot be shrunk to an even count to eject a dead member —
+  # replace the entry instead of deleting it (UPGRADING §Unreleased).
+  #
+  # The count == 0 arm keeps this rule OFF the empty case, so the
+  # at-least-one-controlplane rule above owns it alone and stays isolatable
+  # red-green (0 % 2 == 0 would otherwise make both fire on the same input).
+  #
+  # NOTE: this counts DECLARED controlplanes, not live etcd members. A member
+  # removed out-of-band leaves the declared count unchanged — the rule prevents
+  # declaring an even topology, it does not observe the cluster.
   validation {
-    condition     = alltrue([for n in var.nodes : contains(["controlplane", "worker"], n.role)])
+    condition = (
+      length([for h, n in var.nodes : h if n.role == "controlplane"]) == 0 ||
+      length([for h, n in var.nodes : h if n.role == "controlplane"]) % 2 == 1
+    )
+    error_message = "The number of controlplane nodes must be ODD (etcd quorum): 1, 3, 5, … An even count tolerates no more failures than the odd count below it."
+  }
+
+  validation {
+    condition     = alltrue([for h, n in var.nodes : contains(["controlplane", "worker"], n.role)])
     error_message = "Each node.role must be either \"controlplane\" or \"worker\"."
   }
 
-  # Hostnames key the per-node apply resource; duplicates would silently collapse
-  # a node out of the apply set. IPs target talosctl; duplicates make bootstrap
-  # ambiguous. Catch both at plan time rather than as a silent mis-provision.
+  # Node keys must ALREADY be canonical Kubernetes node names — deliberately
+  # stricter than what either platform accepts. Talos validates the hostname's
+  # LENGTH only (HostnameConfigV1Alpha1.Validate: first label 1..63, whole value
+  # <= 253; no character class, no lowercasing), and what reaches the kubelet is
+  # then silently rewritten by nodename.FromHostname(): lowercased, '_' -> '-',
+  # every other non-[a-z0-9.-] rune dropped, leading/trailing '-'/'.' trimmed. So
+  # "NODE_01" and "node-01" are two distinct keys here that arrive in Kubernetes
+  # as ONE node. Rejecting what Talos would REWRITE — not merely what Kubernetes
+  # would reject — is what keeps the declared name and the live name identical.
   validation {
-    condition     = length(distinct([for n in var.nodes : n.hostname])) == length(var.nodes)
-    error_message = "node.hostname values must be unique."
+    condition = alltrue([for h, n in var.nodes :
+      can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$", h))
+      && length(h) <= 253
+      && alltrue([for label in split(".", h) : length(label) <= 63])
+    ])
+    error_message = "Node keys must be canonical Kubernetes node names: lowercase [a-z0-9-.], no leading/trailing '-' or '.', <= 63 chars per label, <= 253 total. Talos does NOT reject uppercase or '_' — it silently rewrites them, so two keys could collapse onto one Kubernetes node."
   }
 
+  # Talos splits the hostname at the FIRST dot (HostnameSpecSpec.ParseFQDN:
+  # Hostname = parts[0], Domainname = parts[1]) and registers the SHORT hostname
+  # with Kubernetes UNLESS register_with_fqdn is set. So while it is off, two keys
+  # sharing a first label are two kubelets claiming one Kubernetes Node object —
+  # rejected. With it ON, the full key is the Kubernetes identity and the map key
+  # already makes that unique, so a shared first label is permitted.
+  #
+  # Residual the operator owns in that case: the two machines still carry the same
+  # OS hostname (Talos sets only the first label via sethostname). That is visible
+  # in Talos-level output and in anything keyed on the short name; the module does
+  # not police it because it is no longer a Kubernetes-identity collision.
   validation {
-    condition     = length(distinct([for n in var.nodes : n.ip])) == length(var.nodes)
+    condition = (
+      var.register_with_fqdn ||
+      length(distinct([for h, n in var.nodes : split(".", h)[0]])) == length(var.nodes)
+    )
+    error_message = "The first label of every node key must be unique while register_with_fqdn is false: Talos splits the hostname at the first dot and uses the SHORT hostname as the Kubernetes node name, so two such keys would put two kubelets on one Node object."
+  }
+
+  # A dotted key without the switch is a lie: Kubernetes only ever sees the first
+  # label, so the domain part silently disappears from the cluster's identity.
+  validation {
+    condition     = var.register_with_fqdn || alltrue([for h, n in var.nodes : !strcontains(h, ".")])
+    error_message = "A dotted node key requires register_with_fqdn = true — otherwise Kubernetes only sees the first label and the domain part is silently dropped."
+  }
+
+  # IPs target talosctl and fill every Talos-facing argument; duplicates make
+  # bootstrap ambiguous. The map key already makes the NAME unique — the IP is a
+  # value, so it needs its own check. nodes.tf's node_name_by_ip is the structural
+  # backstop; this is the readable error that fires first.
+  validation {
+    condition     = length(distinct([for h, n in var.nodes : n.ip])) == length(var.nodes)
     error_message = "node.ip values must be unique."
   }
+
+  # …and uniqueness by STRING is only as good as the string being canonical:
+  # "192.0.2.11", "192.0.2.011" and "::ffff:192.0.2.11" are three distinct strings
+  # naming one host, so a duplicate would slip past the check above and put two
+  # apply resources on one machine. Round-tripping through cidrhost() rejects
+  # every non-canonical spelling (and every non-address) for both families: the
+  # function normalises, so a value that differs from its own normalisation was
+  # not canonical.
+  validation {
+    condition = alltrue([for h, n in var.nodes :
+      (can(cidrhost("${n.ip}/32", 0)) && cidrhost("${n.ip}/32", 0) == n.ip) ||
+      (can(cidrhost("${n.ip}/128", 0)) && cidrhost("${n.ip}/128", 0) == n.ip)
+    ])
+    error_message = "Each node.ip must be a single IP address in canonical form (no leading zeros, no IPv4-mapped IPv6, no CIDR suffix, no hostname). Non-canonical spellings of one address compare unequal, so they would defeat the ip-uniqueness check and put two nodes on one machine."
+  }
+}
+
+variable "register_with_fqdn" {
+  description = <<-EOT
+    Set machine.kubelet.registerWithFQDN, so the kubelet registers with the
+    node's FQDN instead of its short hostname.
+
+    Talos splits a dotted hostname at the first dot into hostname + domainname
+    and, by default, registers only the SHORT hostname with Kubernetes — so a
+    dotted node key is meaningless to Kubernetes unless this is true, which is
+    why var.nodes rejects dotted keys while it is false. Leave it off for
+    single-label node names.
+
+    ALL-OR-NOTHING: this is an all-nodes machine-config patch, so a single dotted
+    node key flips FQDN registration for every node in the cluster, including
+    short-named ones — which changes their Kubernetes node name. Do not mix
+    short and dotted node names unless that is what you want.
+  EOT
+  type        = bool
+  default     = false
 }
 
 variable "images" {
@@ -383,18 +486,29 @@ variable "argocd_chart_version" {
     re-renders the machine config — it does NOT upgrade a running ArgoCD. Steady-
     state version is owned by ArgoCD self-management (the app reconciles itself
     from git). VERIFY the exact current chart version at push.
+
+    As with `cilium_chart_version`, this default is the single source of truth
+    and `nullable = false` lets a caller pass `null` to mean "take the base's
+    pin" — see that variable for why the attribute is load-bearing.
   EOT
   type        = string
   default     = "9.4.5"
+  nullable    = false
 }
 
 variable "argocd_values_override" {
   description = <<-EOT
     Optional consumer Helm values, MERGED on top of the shipped
     helm/argocd-values.yaml (helm merges value files; later wins) — not a
-    wholesale replacement. Empty = just the shipped values (slim, ksops). The
-    steady state (cert-manager cert, RBAC, OIDC) arrives via ArgoCD
-    self-management.
+    wholesale replacement. Empty = just the shipped values (slim, ksops).
+
+    SEED-ONLY. This configures the create-only bootstrap inlineManifest; the
+    steady-state component (kubernetes/substrate/argocd) is what ArgoCD
+    self-manages afterwards, and it does not read this variable. Anything set
+    here that the steady-state render also declares is overwritten on the first
+    sync — so SSO and RBAC do NOT belong here. Those are a consumer contract,
+    patched onto the argocd-cm / argocd-rbac-cm ConfigMaps in the consumer's own
+    kustomize overlay.
   EOT
   type        = string
   default     = ""
@@ -499,9 +613,18 @@ variable "cilium_chart_version" {
     knob: Talos applies inlineManifests once at bootstrap and never re-runs them,
     so bumping this after bootstrap only re-renders the machine config — it does
     NOT upgrade a running Cilium. VERIFY the exact current chart version at push.
+
+    This default is the SINGLE source of truth for the pinned chart version.
+    `nullable = false` is what makes that true: a caller may pass `null` to mean
+    "take the base's pin", and OpenTofu then substitutes this default. Without
+    `nullable = false` a passed `null` stays null. That is the mechanism the
+    example shim relies on, so a consumer who omits
+    `substrate.cilium.chart_version` from `cluster.yaml` inherits every future
+    bump instead of freezing whatever literal their shim was copied with.
   EOT
   type        = string
-  default     = "1.19.4"
+  default     = "1.20.0"
+  nullable    = false
 }
 
 variable "cilium_chart_repository" {
@@ -551,6 +674,21 @@ variable "cilium_native_routing_cidr" {
   description = "ipv4NativeRoutingCIDR for routing_mode = native. Empty = derive from the first pod_cidr entry."
   type        = string
   default     = ""
+
+  # Well-formedness guard — same MANDATORY class as the two metric-list format
+  # guards below, and for the same measured reason: the chart renders this value
+  # RAW and UNQUOTED into cilium-config (`ipv4-native-routing-cidr: {{ . }}`),
+  # and that ConfigMap is baked into the create-only controlplane machine config.
+  # Verified against the pinned chart (1.20.0): the value
+  # "10.244.0.0/16\n  injected-native-key: pwned" renders `injected-native-key`
+  # as a standalone cilium-config key. A CIDR predicate is the precise guard —
+  # it admits exactly the value shape the input is FOR, so every newline-bearing
+  # or otherwise malformed string is rejected without enumerating attack shapes.
+  # cidrhost() also rejects null, so the default-nullable variable fails closed.
+  validation {
+    condition     = var.cilium_native_routing_cidr == "" || can(cidrhost(var.cilium_native_routing_cidr, 0))
+    error_message = "cilium_native_routing_cidr must be empty (derive from pod_cidr) or a well-formed CIDR such as \"10.244.0.0/16\"."
+  }
 }
 
 variable "cilium_kube_proxy_replacement" {
@@ -614,8 +752,9 @@ variable "cilium_gateway_api" {
     at runtime once the Gateway API CRDs exist. The CRDs themselves are NOT seeded
     by default — apply them via GitOps / the apps catalog (Day-1), or opt into
     bootstrap seeding via cilium_gateway_api_crds_url. Until the CRDs land the
-    gateway controller errors (harmless to the CNI). Cilium 1.19 needs Gateway API
-    v1.4.1 standard channel (TLSRoute is experimental and degrades gracefully).
+    gateway controller errors (harmless to the CNI). Cilium 1.20 needs Gateway API
+    v1.6.1 AT A MINIMUM; the standard channel now carries TLSRoute at v1, so the
+    standard bundle alone satisfies the Gateway-API-only Hard Constraint.
   EOT
   type        = bool
   default     = true
@@ -632,9 +771,13 @@ variable "cilium_gateway_api_crds_url" {
 
     Set this to a CRD manifest URL ONLY if you want Talos to seed it at bootstrap via
     cluster.extraManifests — appropriate for a CONNECTED cluster that accepts the
-    dependency. Cilium 1.19 needs Gateway API v1.4.1 STANDARD channel:
-    https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml
-    (use the EXPERIMENTAL bundle for TLSRoute). Point only at a source you trust —
+    dependency. Cilium 1.20 needs Gateway API v1.6.1 at a MINIMUM; STANDARD channel:
+    https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml
+    TLSRoute is in the standard channel as of v1.6.1 (served at v1), so standard is
+    the right bundle for a fresh cluster. Use the EXPERIMENTAL bundle ONLY if you
+    carry pre-existing v1alpha2 TLSRoute objects: standard v1.6.1 declares v1alpha2
+    but does not SERVE it, so those objects become unreadable.
+    Point only at a source you trust —
     no digest pin; extraManifests applies WHATEVER the URL returns at the most
     privileged moment of bootstrap. WARNING: a failed/blocked fetch is NOT graceful —
     Talos' ExtraManifestController crashloops with backoff and bootstrap does not
@@ -643,4 +786,430 @@ variable "cilium_gateway_api_crds_url" {
   EOT
   type        = string
   default     = ""
+}
+
+# ---------------------------------------------------------------------------
+# Cilium observability inputs + opt-in ArgoCD self-management (issue #188).
+# Default-off, first-class alternative to hand-rolling cilium_values_override
+# for the common "I want Cilium/Hubble metrics" case. Feed the SAME computed-
+# values map (cilium-values.tf) that serves both the frozen bootstrap seed and
+# the opt-in emitted self-management Application — single observability
+# data-flow, no double-application. See
+# knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
+# ---------------------------------------------------------------------------
+
+variable "cilium_agent_metrics" {
+  description = <<-EOT
+    Enable Cilium agent Prometheus metrics (prometheus.enabled). Default false.
+    Documented first-class alternative to hand-rolling cilium_values_override
+    for the "I want Cilium metrics" case (issue #188).
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "cilium_operator_metrics" {
+  description = <<-EOT
+    Enable Cilium operator Prometheus metrics (operator.prometheus.enabled).
+    Default false. See cilium_agent_metrics.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "cilium_operator_replicas" {
+  description = <<-EOT
+    Cilium operator Deployment replica count (operator.replicas). Default null =
+    derive it from the node count: 2 at two or more nodes (the chart's own
+    default), and NOTHING at exactly one node, where the shipped floor's 1 stays
+    effective because the chart's operator podAntiAffinity is
+    requiredDuringScheduling on kubernetes.io/hostname and a second replica would
+    stay Pending forever.
+
+    Set a number to pin the count instead. It wins on BOTH delivery paths, which
+    is the reason this input exists: cilium_values_override reaches only the seed
+    render, and the module hard-rejects that override together with
+    cilium_self_management — so before this input a self-managing consumer could
+    not pin the count at all.
+
+    Pinning MORE replicas than there are declared nodes is REJECTED at plan time.
+    The operator's podAntiAffinity is requiredDuringScheduling on
+    kubernetes.io/hostname, so at most one pod places per node and the surplus is
+    Pending forever — and because the value is baked into a create-only
+    inlineManifest, the bootstrap that carries it cannot be corrected by a later
+    apply. `var.nodes` IS the cluster this module builds, so this is one of the
+    few non-convergent inputs the module can decide with certainty from its own
+    declared state, in the same class as the odd-controlplane rule. It also
+    bounds the value, which nothing else does.
+
+    SEED knob on the default path (create-only inlineManifests): a changed value
+    reaches an already-bootstrapped cluster only through cilium_self_management
+    or a deliberate `-replace` of the render.
+  EOT
+  type        = number
+  default     = null
+
+  validation {
+    # Ternary, not `||`: the null default must not reach floor(), and the
+    # conditional operator is the form that does not evaluate the untaken arm.
+    condition = var.cilium_operator_replicas == null ? true : (
+      var.cilium_operator_replicas >= 1 &&
+      floor(var.cilium_operator_replicas) == var.cilium_operator_replicas
+    )
+    error_message = "cilium_operator_replicas must be null (derive from the node count) or an integer >= 1."
+  }
+
+  # Its own block, per the guard-isolation rule: merged into the conjunction
+  # above, whichever leg a test did not exercise would go untested. Reads
+  # var.nodes rather than local.nodes_checked because a validation may not
+  # reference locals — the two carry identical keys by construction, and the
+  # IP-distinctness round trip that distinguishes them cannot change a COUNT.
+  validation {
+    condition     = var.cilium_operator_replicas == null || var.cilium_operator_replicas <= length(var.nodes)
+    error_message = "cilium_operator_replicas must not exceed the number of declared nodes: the chart's operator podAntiAffinity is requiredDuringScheduling on kubernetes.io/hostname, so at most one operator pod places per node and every surplus replica stays Pending indefinitely. Rejected rather than warned because the value is baked into a create-only inlineManifest — the bootstrap that carries it cannot be walked back by a later apply."
+  }
+}
+
+variable "cilium_hubble_enabled" {
+  description = <<-EOT
+    Enable Hubble (hubble.enabled) for flow/metrics observability. Default false
+    — the frozen bootstrap seed floor (helm/cilium-values.yaml) ships
+    hubble.enabled: false for a deterministic render (see that file's header).
+    When true, the observability layer ALSO forces hubble.tls.enabled = false:
+    metrics-only scope (no Relay/UI — issue Non-goal), so the observer gRPC
+    API's server TLS is unnecessary. The Hubble METRICS scrape endpoint
+    (hubble-metrics Service, :9965) is gated by hubble.enabled + a non-empty
+    hubble.metrics.enabled and is architecturally INDEPENDENT of
+    hubble.tls.enabled (its own hubble.metrics.tls.enabled knob since Cilium
+    1.16) — see ADR-0022 §(g). Enabling this on an already-running cluster
+    (via the emitted self-management Application, cilium_self_management)
+    changes the DaemonSet pod template (new ports + scrape annotations) -> a
+    rolling restart; graceful-restart-gate on BGP-speaking clusters (UPGRADING.md).
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "cilium_hubble_metrics" {
+  description = <<-EOT
+    Hubble metrics to export (hubble.metrics.enabled), e.g. ["dns","drop","tcp"].
+    Default [] — with cilium_hubble_enabled=true and this left empty, the Hubble
+    server is up but no metrics are exported (a documented half-on state — see
+    README). Scrape wiring (ServiceMonitors/PodMonitors) stays consumer-side
+    (issue Non-goal).
+
+    Entries carry Hubble's own context syntax (e.g. "dns:query;ignoreAAAA",
+    "flow:sourceContext=pod;destinationContext=pod"), so the guard below is an
+    EXCLUSION rule, not an allowlist like cilium_agent_metric_overrides.
+  EOT
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  # Same corruption class as cilium_agent_metric_overrides, same measurement:
+  # the chart renders these entries raw and unquoted into cilium-config, which is
+  # baked into the create-only controlplane machine config. Verified against the
+  # pinned chart — an entry "x\n  injected-hubble-key: pwned" renders
+  # `injected-hubble-key` as a standalone ConfigMap key. "---" is excluded for the
+  # same reason it is on the sibling input: outputs.tf splits the rendered
+  # document on that literal, so an embedded one silently blanks the seed markers.
+  #
+  # An allowlist would be wrong here: the legitimate context syntax uses ":", ";",
+  # "=" and "," freely, and pinning that grammar would break on the next Hubble
+  # metric option. Excluding exactly the two measured corruption vectors keeps the
+  # guard correct without guessing at the grammar.
+  validation {
+    condition = alltrue([
+      for m in var.cilium_hubble_metrics : !strcontains(m, "\n") && !strcontains(m, "\r") && !strcontains(m, "---")
+    ])
+    error_message = "each cilium_hubble_metrics entry must be a single line and must not contain \"---\": the chart renders these raw and unquoted into the cilium-config ConfigMap that is baked into the controlplane machine config, so a newline injects arbitrary ConfigMap keys and a document separator corrupts the rendered manifest."
+  }
+}
+
+variable "cilium_agent_metric_overrides" {
+  description = <<-EOT
+    Cilium agent metric DELTA list (prometheus.metrics): "+name" ADDS a metric to
+    the agent's default metric set, "-name" REMOVES one, e.g.
+    ["+cilium_bpf_map_pressure", "-cilium_node_connectivity_status"]. It is NOT a
+    wholesale replacement of that set, and — despite the similar name — it is
+    unrelated to cilium_values_override, the free-form Helm-values escape hatch.
+    Default [] (chart defaults). Effective only with cilium_agent_metrics = true:
+    the chart renders the whole `prometheus` values block under
+    `{{- if .Values.prometheus.enabled }}`.
+
+    Layered into BOTH engines — the frozen bootstrap seed AND the emitted
+    self-management Application. WHEN that reaches a running cluster is a
+    separate question, and the answer is not "on the next apply": the seed
+    render is frozen at first capture (terraform_data.cilium_render carries
+    ignore_changes, and inlineManifests are create-only), so on an
+    already-bootstrapped cluster this value arrives ONLY through the emitted
+    Application (cilium_self_management = true), or at the next fresh bootstrap
+    or deliberate -replace of the render. With self-management off on an
+    existing cluster, setting this changes the plan and nothing else.
+  EOT
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  # Format guard — MANDATORY, and not merely a typo catcher. The chart renders
+  # these entries RAW and UNQUOTED into cilium-config as a multi-line plain
+  # scalar, and that ConfigMap is baked into the create-only controlplane
+  # machine config. An entry carrying a newline with matching indentation
+  # escapes the scalar and writes arbitrary cilium-config keys. Verified against
+  # the pinned chart: an entry "x\n  injected-key: pwned" renders `injected-key`
+  # as a standalone ConfigMap key. An embedded "---" is equally load-bearing: it
+  # would split the rendered document and silently blank the
+  # cilium_seed_observability_markers output (outputs.tf splits on that literal).
+  #
+  # The class is deliberately CONSERVATIVE — Prometheus metric-name characters
+  # minus ":" (no Cilium metric uses one). Widen it if a legitimate metric name
+  # is ever rejected; do not widen it to accommodate a value that needs quoting.
+  # Precedent for guarding a free-form list that reaches the machine config:
+  # var.images[*].extra_kernel_args.
+  validation {
+    condition = alltrue([
+      for m in var.cilium_agent_metric_overrides : can(regex("^[+-][a-zA-Z_][a-zA-Z0-9_]*$", m))
+    ])
+    error_message = "each cilium_agent_metric_overrides entry must be \"+metric_name\" or \"-metric_name\" (letters, digits and underscores only): the chart renders these raw and unquoted into the cilium-config ConfigMap that is baked into the controlplane machine config, so an entry containing a newline, a space or \"---\" corrupts that document."
+  }
+}
+
+variable "cilium_hubble_open_metrics" {
+  description = <<-EOT
+    Export the Hubble metrics endpoint in OpenMetrics format
+    (hubble.metrics.enableOpenMetrics). Default false. Effective only with
+    cilium_hubble_enabled = true — the chart renders the whole `hubble` values
+    block under that gate.
+
+    Layered into BOTH engines — the frozen bootstrap seed AND the emitted
+    self-management Application — but see cilium_agent_metric_overrides for when
+    that actually reaches a running cluster: the seed is frozen after first
+    capture, so on an existing cluster this arrives only via the emitted
+    Application, a fresh bootstrap, or a deliberate -replace.
+
+    Also inert with an EMPTY cilium_hubble_metrics: the chart gates the
+    OpenMetrics key on the metrics list being non-empty, so it would change the
+    exposition format of an endpoint that exports nothing. A plan-time check
+    warns about both conditions.
+
+    NO ROLLING RESTART: unlike cilium_hubble_enabled, this changes ONLY the
+    cilium-config ConfigMap (enable-hubble-open-metrics). Verified against the
+    pinned chart: the cilium DaemonSet pod template is byte-identical with the
+    flag on and off, and the chart emits no checksum/config annotation. So
+    ArgoCD reports Synced/Healthy while running agents keep the OLD exposition
+    format, and the switch would otherwise land at the next unrelated restart —
+    a scrape-format change at an unpredictable time. Make it effective with
+    `kubectl -n kube-system rollout restart ds/cilium`. See UPGRADING.md.
+  EOT
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
+variable "cilium_self_management" {
+  description = <<-EOT
+    Opt-in: emit a Cilium ArgoCD Application manifest (module OUTPUT only,
+    cilium_self_management_app — never applied by the module) for the
+    consumer's own GitOps to own and reconcile, as the Day-2 delivery path for
+    a Cilium config change (including the observability inputs above) on an
+    already-bootstrapped cluster — the frozen bootstrap inlineManifest seed is
+    create-only and does not reconcile.
+
+    The emitted Application's Helm valuesObject is the MODULE-SET layer (floor
+    + computed-incl-observability) ONLY — it does NOT inherit
+    cilium_values_override (see that variable). Default false. Requires
+    deploy_argocd = true AND deploy_cilium = true (first validation below).
+  EOT
+  type        = bool
+  default     = false
+
+  # Deploy-prereq guard: self-management presupposes both an ArgoCD to
+  # reconcile into and a module-delivered Cilium seed to hand off from.
+  validation {
+    condition     = !var.cilium_self_management || (var.deploy_argocd && var.deploy_cilium)
+    error_message = "cilium_self_management requires deploy_argocd = true AND deploy_cilium = true (self-management hands the Day-2 config off from the module-delivered Cilium seed to the consumer's ArgoCD)."
+  }
+
+  # Override-drop HARD-REJECT guard (ADR-0022): the emitted Application's
+  # valuesObject does NOT inherit cilium_values_override — a seed-active
+  # datapath override (BGP control-plane / L2 announcements / bpf tuning)
+  # would be SILENTLY DROPPED on ArgoCD adoption if this guard did not fire.
+  # Hard-reject (not a `check`-warn) because cilium_values_override is an
+  # opaque free-form YAML string the module cannot introspect to tell a
+  # datapath-critical override from a benign one — fail safe.
+  #
+  # KEEP THIS AS A SEPARATE validation block from the one above — merging the
+  # two conditions into one `condition` would collapse the deploy-prereq guard
+  # legs (A/B) and this override-drop guard leg (C) in
+  # tests/input-validation.tftest.hcl into a single untested predicate: an
+  # expect_failures check only proves SOME validation fired, so all three legs
+  # would stay vacuously green under a merged condition even if one half of
+  # the merged predicate were silently deleted. See tests/input-validation.tftest.hcl
+  # guard legs A/B/C.
+  validation {
+    condition     = !(var.cilium_self_management && var.cilium_values_override != "")
+    error_message = "cilium_self_management cannot be enabled while cilium_values_override is non-empty: the emitted Application's valuesObject does NOT inherit cilium_values_override, so a datapath-critical override (BGP control-plane / L2 announcements / bpf tuning) would be silently dropped when ArgoCD adopts Cilium. Migrate the override into your own Cilium Application first, then empty cilium_values_override on the SoT."
+  }
+}
+
+variable "cilium_self_management_project" {
+  description = <<-EOT
+    ArgoCD AppProject the emitted Cilium Application targets. Default "default"
+    (the always-present permissive project — the base defines exactly one
+    AppProject, root-bootstrap, kubernetes/bootstrap/argocd/root-project.yaml.tmpl;
+    no "cilium" project exists). STRONGLY RECOMMENDED to scope this to a
+    consumer-created project that grants destination namespace kube-system +
+    https://kubernetes.default.svc and the cluster-scoped resources Cilium
+    needs (its CRDs, ClusterRoles, ClusterRoleBindings) in
+    clusterResourceWhitelist — an under-scoped project makes the adopted
+    Application inert/degraded. See README + ADR-0022.
+  EOT
+  type        = string
+  default     = "default"
+}
+
+# ---------------------------------------------------------------------------
+# cert-approver (postfinance/kubelet-csr-approver) — per-cluster config surface.
+# The seed itself is UNCONDITIONAL (always delivered); these knobs tune the
+# SAN-to-node binding. Defaults keep every cluster booting + approving
+# out-of-the-box AND carry the always-on per-node DNS-SAN binding (the approver
+# binds each DNS SAN to the requesting node's hostname regardless of the regex).
+# See knowledge/decisions/0019-postfinance-kubelet-csr-approver.md.
+# ---------------------------------------------------------------------------
+
+variable "cert_approver_provider_regex" {
+  description = <<-EOT
+    postfinance/kubelet-csr-approver PROVIDER_REGEX — a cluster-wide regex every
+    kubelet-serving CSR's SAN DNS name must additionally match. Default ".*"
+    (no extra constraint): the approver still binds each DNS SAN to the requesting
+    node via HasPrefix(sanDNSName, hostname) regardless, so ".*" is not "no
+    binding". Tighten to your node-naming pattern (e.g. "^node-.*$") for a
+    cluster-wide pattern gate on top. SEED knob (create-only inlineManifest):
+    changing it re-renders the machine config but does NOT update a running
+    approver — see UPGRADING.md.
+  EOT
+  type        = string
+  default     = ".*"
+
+  validation {
+    condition     = trimspace(var.cert_approver_provider_regex) != ""
+    error_message = "cert_approver_provider_regex must not be empty or whitespace-only — an empty PROVIDER_REGEX makes postfinance/kubelet-csr-approver v1.2.14 exit fatally at startup so the approver never runs, and a whitespace-only regex compiles but matches no DNS SAN, denying every serving-cert CSR. Use \".*\" for no extra pattern constraint."
+  }
+  validation {
+    condition     = can(regexall(var.cert_approver_provider_regex, ""))
+    error_message = "cert_approver_provider_regex must be a valid RE2 regex (it is compiled by the Go approver)."
+  }
+  validation {
+    # The seed's audit outputs parse the rendered manifest by splitting on the
+    # YAML document separator "---"; a regex containing it (or a newline) would
+    # corrupt that parse. A compilable regex can still contain "---".
+    condition     = !strcontains(var.cert_approver_provider_regex, "---") && !strcontains(var.cert_approver_provider_regex, "\n")
+    error_message = "cert_approver_provider_regex must not contain a YAML document separator (---) or a newline."
+  }
+}
+
+variable "cert_approver_provider_ip_prefixes" {
+  description = <<-EOT
+    postfinance/kubelet-csr-approver PROVIDER_IP_PREFIXES — the CIDR set every
+    kubelet-serving CSR's SAN IP address must fall within. Default
+    ["0.0.0.0/0", "::/0"] (all IPs — the safe out-of-the-box floor). NOTE: an
+    EMPTY list would DENY every CSR carrying an IP SAN (the approver checks each
+    IP SAN for set membership unconditionally), so the default is all-IPs, not
+    empty. Tighten to your node subnets to bind IP SANs to the cluster's
+    addresses. SEED knob (create-only) — see cert_approver_provider_regex.
+  EOT
+  type        = list(string)
+  default     = ["0.0.0.0/0", "::/0"]
+
+  validation {
+    condition     = length(var.cert_approver_provider_ip_prefixes) > 0
+    error_message = "cert_approver_provider_ip_prefixes must not be empty — an empty set denies every CSR that carries an IP SAN. Use [\"0.0.0.0/0\", \"::/0\"] for all IPs."
+  }
+  validation {
+    condition     = alltrue([for c in var.cert_approver_provider_ip_prefixes : can(cidrhost(c, 0))])
+    error_message = "Every cert_approver_provider_ip_prefixes entry must be a valid CIDR (e.g. \"192.0.2.0/24\" or \"::/0\")."
+  }
+}
+
+variable "cert_approver_replicas" {
+  description = <<-EOT
+    cert-approver Deployment replica count. Default 1 (minimal footprint; a
+    single-node/edge cluster must not be forced to 2). Raise it (e.g. 2) to opt
+    into HA — replicas > 1 AUTO-enables leader-election and the
+    coordination.k8s.io/leases RBAC, so the default replicas:1 keeps least
+    privilege (no leases grant). SEED knob (create-only): on a running cluster,
+    basic redundancy is a `kubectl scale`; enabling leader-election Day-2 needs a
+    manual apply / re-seed. postfinance denies terminally, so a down approver
+    stalls new serving-cert issuance — HA matters more than under the old approver.
+  EOT
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.cert_approver_replicas >= 1 && floor(var.cert_approver_replicas) == var.cert_approver_replicas
+    error_message = "cert_approver_replicas must be an integer >= 1."
+  }
+}
+
+variable "controlplane_apply_mode" {
+  description = <<-EOT
+    apply_mode for the controlplane machine-config apply. Accepted: auto |
+    reboot | no_reboot | staged — the set the provider has carried since 0.7.0,
+    the floor this module declares. The provider's fifth value
+    "staged_if_needing_reboot" is deliberately NOT accepted here: it arrived in
+    0.11.0, so admitting it would let a consumer inside the declared range pass
+    this validation and be rejected by their provider, and it resolves to "auto"
+    on Talos 1.14+ anyway.
+    Default "auto" — the provider's own default, and the ONLY value that works
+    on Day-0:
+    the first apply to a maintenance-mode node IS the install, so a staging mode
+    writes the config without installing and talos_machine_bootstrap then runs
+    against a node that never left maintenance mode.
+    Set "staged" for a Day-2 window on nodes that must not reboot from the apply:
+    the config is written to be picked up at the next boot, and the reboot becomes
+    an out-of-band, health-gated operator step (one node at a time). Between
+    staging and that reboot, tofu state and the node's effective config diverge
+    with no drift signal — the window is the operator's to close.
+    "reboot" forces a reboot of every controlplane on the apply even when the
+    change needs none — a simultaneous reboot of the whole role, i.e. etcd
+    quorum loss. "no_reboot" fails the apply when the change needs a reboot.
+  EOT
+  type        = string
+  default     = "auto"
+  # nullable=false so an explicit null from a consumer shim's try() lands on the
+  # default instead of reaching contains(), which errors on null with a message
+  # that names neither the variable nor the accepted values.
+  nullable = false
+
+  validation {
+    condition     = contains(["auto", "reboot", "no_reboot", "staged"], var.controlplane_apply_mode)
+    error_message = "controlplane_apply_mode must be one of: auto, reboot, no_reboot, staged."
+  }
+}
+
+variable "worker_apply_mode" {
+  description = <<-EOT
+    apply_mode for the worker machine-config applies — same accepted set, same
+    Day-0 constraint and same out-of-band reboot obligation as
+    controlplane_apply_mode.
+    Separate input because the two roles roll under different gates: controlplanes
+    under etcd quorum, workers under whatever the workload requires (storage
+    replication, quorum-based stores). A worker set applied with the default
+    reboots unsequenced, so a stateful worker set is set to "staged" for the
+    window and rebooted one node at a time. Revert to "auto" only AFTER every
+    node of the role has been rebooted: an apply_mode change alone reaches the
+    provider's Update path, so flipping back while configs are still staged
+    re-applies them in "auto" mode and reboots exactly the nodes not yet gated.
+  EOT
+  type        = string
+  default     = "auto"
+  # nullable=false so an explicit null from a consumer shim's try() lands on the
+  # default instead of reaching contains(), which errors on null with a message
+  # that names neither the variable nor the accepted values.
+  nullable = false
+
+  validation {
+    condition     = contains(["auto", "reboot", "no_reboot", "staged"], var.worker_apply_mode)
+    error_message = "worker_apply_mode must be one of: auto, reboot, no_reboot, staged."
+  }
 }

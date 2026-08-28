@@ -3,21 +3,24 @@ type: reference
 title: cluster.yaml — Declarative Cluster SoT
 description: The two consumers of the declarative cluster.yaml Source-of-Truth, its secret-handling rules, and how CI wires the schema lint gate red-green.
 tags: [cluster-yaml, sot, schema, bootstrap]
-timestamp: 2026-07-15
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
-  - cluster.yaml.example
+  - resource: cluster.yaml.example
   # Kept despite the schema-shape section moving to openspec/specs/cluster-yaml-sot/:
   # the surviving prose still derives from this file (the deliberate absence of a
-  # schema_version, the unvalidated patch content, the structural exclusion of
-  # secrets), so it is still the trigger the bundle's re-verify rule needs — drop
-  # it and nothing tells a future reader those claims went stale.
-  - schemas/cluster.schema.json
-  - scripts/lint-cluster-yaml.sh
-  - schemas/fixtures/cluster.invalid.yaml
-  - Taskfile.yml
-  - tofu/modules/talos-cluster/examples/complete/main.tf
-  - tofu/modules/talos-cluster/examples/complete/variables.tf
-  - .github/workflows/gitops-validate.yml
+  # schema_version, the unvalidated patch content), so it is still the trigger
+  # the bundle's re-verify rule needs — drop it and nothing tells a future
+  # reader those claims went stale.
+  - resource: schemas/cluster.schema.json
+  - resource: scripts/lint-cluster-yaml.sh
+  - resource: scripts/check-shim-key-parity.sh
+  - resource: schemas/fixtures/cluster.invalid.yaml
+  - resource: Taskfile.yml
+  - resource: tofu/modules/talos-cluster/examples/complete/main.tf
+  - resource: tofu/modules/talos-cluster/examples/complete/variables.tf
+  - resource: .github/workflows/gitops-validate.yml
 ---
 
 # cluster.yaml — Declarative Cluster SoT
@@ -27,9 +30,11 @@ YAML document IS the cluster definition (identity, versions, network, images,
 capabilities, nodes, machine-config patches, substrate knobs). OpenTofu is the
 executor, not the SoT — the consumer's root module is a thin `yamldecode` shim
 that maps this file onto the typed interface of the `talos-cluster` module
-(interface tables in `tofu/modules/talos-cluster/README.md`). The base ships
-only `cluster.yaml.example`; the real `cluster.yaml` is gitignored at the base
-and committed in consumer repos per repo convention.
+(normative in `openspec/specs/module-interface-contract/`;
+`tofu/modules/talos-cluster/README.md` is the release-shipped copy of the
+same interface). The base ships only `cluster.yaml.example`; the real
+`cluster.yaml` is gitignored at the base and committed in consumer repos per
+repo convention.
 
 > **The file's shape is normative in the spec, not here.** Required keys, field
 > types, patterns and the closed-root rule live in
@@ -93,8 +98,10 @@ gitleaks' concern, not the schema's.
 
 ## What must never be in it
 
-Secrets have **no schema slot** — they are structurally excluded, not merely
-discouraged. Where they go instead:
+Secrets have **no schema slot**, per `openspec/specs/cluster-yaml-sot/`
+§"Requirement: Untyped escape hatches and structural secret exclusion" (which
+itself names `knowledge/decisions/0007-cluster-yaml-sot.md` as normative for
+why). Where they go instead:
 
 - `sops_age_key` (ArgoCD ksops repoServer) → `TF_VAR_sops_age_key` /
   gitignored tfvars / SOPS.
@@ -120,19 +127,35 @@ the wiring is what makes the gate bite:
 1. Positive step: `scripts/lint-cluster-yaml.sh cluster.yaml.example` must
    pass.
 2. Negative (schema red-green) step: the intentionally invalid fixture
-   `schemas/fixtures/cluster.invalid.yaml` — valid in every respect except six
-   violations (a node carrying `role: master`, a de-anchored
-   `talos.install_version`, and one image per kernel-arg lexical rule —
-   whitespace, removal spelling, empty key, `debugfs` key) — must fail with
-   **exit code exactly 1**, and CI names all six violations individually in
-   the output. Exit `0` fails CI ("malformed cluster.yaml fixture passed
-   schema validation"); any other non-zero code also fails ("linter errored,
-   did not reach a schema verdict"), so a broken toolchain cannot pass
-   vacuously. Relaxing any one of the six rules in the schema turns this step
-   red without affecting the other five.
+   `schemas/fixtures/cluster.invalid.yaml` — valid in every respect except ten
+   deliberate violations, each binding one schema rule owned by
+   `openspec/specs/cluster-yaml-sot/` — must fail, and CI names all ten
+   violations individually in the output. See the spec for the gate's exact
+   pass/fail/error behavior. Relaxing any one of the ten rules in the schema
+   turns this step red without affecting the other nine.
 3. `tofu/modules/talos-cluster/examples/complete/cluster.yaml` is linted the
    same way (issue #169) — the module's worked example is otherwise reachable
    by no CI job.
+
+## How CI binds the schema to the shim
+
+Lint proves a `cluster.yaml` matches the schema. It does not prove the declared
+value reaches the module: the shim reads the file through `try()`, which is
+total, so a key the shim never reads — or reads misspelled — resolves to the
+module default with no error anywhere. Schema lint passes, `tofu validate` and
+`tofu plan` pass, and the module's own test suite never loads the shim.
+
+`scripts/check-shim-key-parity.sh` closes that gap by asserting every key of
+every CLOSED substrate object in the schema is actually read by
+`tofu/modules/talos-cluster/examples/complete/main.tf`. It runs as
+`task tofu:check:shim-key-parity`, is carried by `task tofu:ci`, and
+`.github/workflows/tofu-validate.yml` lists `schemas/cluster.schema.json` among
+its trigger paths so a schema-only widening — the diff shape that leaves a new
+key unmapped — still runs it. Its scope is the closed objects only:
+`substrate.argocd` is deliberately loosely typed and declares no key set to
+bind, and the sections outside `substrate` restructure their data in the shim
+(node and image maps go through for-expressions), so key-name presence is not
+the right oracle for them.
 
 ## Worked references
 

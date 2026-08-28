@@ -28,12 +28,12 @@ hardware-capabilities:
     requires_features: ["iommu-enabled"]
     provisioning_profiles: ["iommu"]
 nodes:
-  - hostname: totally-different-host
+  totally-different-host:
     ip: 198.51.100.10
     role: controlplane
     image: amd
     hardware_capabilities: ["virt"]
-  - hostname: worker-9
+  worker-9:
     ip: 198.51.100.11
     role: worker
     image: amd

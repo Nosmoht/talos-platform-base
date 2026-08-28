@@ -14,7 +14,7 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
-INFRA_DIR="${ROOT}/kubernetes/base/infrastructure"
+INFRA_DIR="${ROOT}/kubernetes/substrate"
 
 # GNU find -printf is not portable to macOS; -exec sh -c … + (not | xargs)
 # avoids the SC2038 unsafe-filename split.

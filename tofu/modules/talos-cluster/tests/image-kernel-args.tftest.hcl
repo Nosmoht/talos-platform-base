@@ -52,9 +52,9 @@ run "default_consumer_kernel_args_are_composed_order_exactly" {
         emits_label           = "platform.io/hardware-capability.console"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["console"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["console"] },
+    }
   }
   assert {
     condition     = tolist(output.node_kernel_args["cp-1"]) == tolist(["console=tty0", "console=ttyS0,115200n8"])
@@ -100,10 +100,10 @@ run "default_consumer_shipped_catalog_node_is_not_re_imaged" {
         emits_label           = "platform.io/hardware-capability.virt"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-      { hostname = "w-1", ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
+    }
   }
   assert {
     condition     = tolist(output.node_kernel_args["w-1"]) == tolist(["intel_iommu=on"])
@@ -161,10 +161,10 @@ run "baseline_no_extra_kernel_args" {
         emits_label           = "platform.io/hardware-capability.virt"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-      { hostname = "w-1", ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
+    }
   }
   assert {
     condition     = output.node_schematic_hashes["w-1"] == "760a1a00eabe770b" # identical composition to run (b) above — same re-derivable literal
@@ -186,10 +186,10 @@ run "changed_extra_kernel_args_change_the_schematic_id" {
         emits_label           = "platform.io/hardware-capability.virt"
       }
     }
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
-      { hostname = "w-1", ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.21", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
+    }
   }
   assert {
     condition     = output.node_schematic_hashes["w-1"] != "760a1a00eabe770b" # the SAME baseline literal asserted above — proves the re-image path, not a silent no-op

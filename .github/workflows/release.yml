@@ -1,19 +1,22 @@
 name: Release
 
-# Conventional-commit-driven releases with a human approval gate.
+# Conventional-commit-driven, fully automated releases — no human approval step.
 #
 # Flow: a push to `main` runs `plan` (semantic-release --dry-run) which computes
 # the next version from the conventional-commit history and surfaces it in the
-# job summary. If a release is due, `release` waits for manual approval in the
-# `release` GitHub Environment, then runs the real semantic-release: it creates
+# job summary. `plan` also runs a blocking MAJOR-bump guard (see the step) — the
+# backstop that replaced the former manual approval. If a release is due and the
+# guard passes, `release` runs the real semantic-release unattended: it creates
 # the tag + GitHub Release. Because the tag is pushed with a GitHub App token
 # (NOT the default GITHUB_TOKEN, whose events do not trigger other workflows),
 # the existing `oci-publish.yml` (on: push tags 'v*') fires and attaches the
 # cosign-signed OCI assets to the Release. oci-publish.yml is unchanged, so the
-# signing identity + consumer verification regex are preserved.
+# signing identity + consumer verification regex are preserved. semantic-release
+# does NOT commit back to `main`; CHANGELOG.md is cut by hand in the releasing PR
+# (ADR-0020).
 #
-# See knowledge/workflows/release-process.md for the full design, the one-time GitHub App +
-# Environment setup, and the commit-message (BREAKING CHANGE footer) discipline.
+# See knowledge/workflows/release-process.md for the full design, the one-time GitHub App
+# setup, and the commit-message (BREAKING CHANGE footer) discipline.
 
 on:
   push:
@@ -33,9 +36,14 @@ jobs:
       contents: write # dry-run only — satisfies @semantic-release/github verifyConditions.
       # GITHUB_TOKEN cannot push to protected main nor trigger downstream
       # workflows, so it cannot cut a real release from this ungated job.
+    timeout-minutes: 15
     outputs:
       will-release: ${{ steps.dry.outputs.will-release }}
       next-version: ${{ steps.dry.outputs.next-version }}
+      # Empty unless the guard reached a verdict. `notify` gates on this rather
+      # than on the job result: most `plan` failures are npm/registry noise and a
+      # guard-shaped tracking issue must not collect them.
+      guard-verdict: ${{ steps.guard.outputs.guard-verdict }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -62,7 +70,13 @@ jobs:
           # semantic-release logs "The next release version is X.Y.Z" (and a
           # "...the next release version is X.Y.Z" first-release variant) —
           # match case-insensitively and take the version token.
-          version="$(grep -ioE 'the next release version is [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?' sr-dry.log | awk '{print $NF}' | tail -1 || true)"
+          #
+          # head -1, NOT tail -1: release-notes-generator prints the notes, which
+          # embed contributor commit subjects, AFTER the version line. Under
+          # tail -1 a commit whose subject contained this sentence would supply
+          # the version the MAJOR-bump guard then reasons about. The real line is
+          # emitted during analyzeCommits, so the first match is it.
+          version="$(grep -ioE 'the next release version is [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?' sr-dry.log | awk '{print $NF}' | head -1 || true)"
           {
             echo "# Release plan"
             if [ -n "$version" ]; then
@@ -74,45 +88,55 @@ jobs:
               echo "will-release=false" >> "$GITHUB_OUTPUT"
               echo "next-version=" >> "$GITHUB_OUTPUT"
             fi
-            # Breaking-change prompt (AGENTS.md: a base Helm-value breaking change
-            # requires a MAJOR bump). semantic-release only bumps MAJOR on a
-            # `BREAKING CHANGE:` footer / `type!:` — prose "BREAKING" is ignored.
-            last_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+            # Breaking-change prompt (AGENTS.md: a base Helm-value breaking
+            # change requires a MAJOR bump). semantic-release only bumps MAJOR on
+            # a `BREAKING CHANGE:` footer / `type!:` -- prose "BREAKING" is
+            # ignored. INFORMATIONAL and fires on every push, unlike the guard
+            # below, which is gated on will-release: a non-releasing push that
+            # parks a surface change on main is visible only here.
+            #
+            # Surface set and tag selection come from the guard's own data file
+            # and rule via the shared parser. A second copy of the globs here is
+            # what let this prompt and the guard disagree (#234).
+            set -f
+            . ./scripts/release-guard-lib.sh
+            rg_load_pathspec
+            set +f
+            last_tag="$(git tag --list 'v*' --sort=-v:refname \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
             if [ -n "$last_tag" ]; then
-              base_values_changed="$(git diff --name-only "${last_tag}..HEAD" -- 'kubernetes/base/**/values.yaml' || true)"
-              if [ -n "$base_values_changed" ]; then
+              surface="$(git -c core.ignoreCase=false diff --name-only \
+                "${last_tag}..HEAD" -- "${RG_PATHSPEC[@]}" || true)"
+              if [ -n "$surface" ]; then
                 echo ""
-                echo "> ⚠️ **Base Helm values changed since \`${last_tag}\`** — confirm MAJOR-vs-MINOR per AGENTS.md before approving. A genuine breaking change needs a \`BREAKING CHANGE:\` footer to bump MAJOR."
+                echo "> **Guarded base surface changed since \`${last_tag}\`** -- confirm the computed version above is MAJOR if a published contract, layout or Helm-value default moved. The bump is computed from the branch commits in the range, so a \`type!:\` marker or a \`BREAKING CHANGE:\` footer has to reach one of them."
                 echo ""
-                echo "Changed value files:"
+                echo "Changed guarded files:"
                 echo '```'
-                echo "$base_values_changed"
-                echo '```'
-              fi
-              # Second breaking-change class: the published artifact/contract
-              # surface (tarball allowlist, schemas, the Layer-C registry).
-              # A path or layout change here breaks tarball consumers without
-              # touching any Helm value — the prompt above stays silent for it,
-              # which is how a squash-merge that drops the `!` marker could
-              # ship a breaking base as a MINOR unnoticed.
-              artifact_surface_changed="$(git diff --name-only "${last_tag}..HEAD" -- '.ci-oci-tarball-include.txt' '.ci-oci-tarball-expected.txt' 'schemas/**' 'platform-hardware-features.yaml' 'contracts/**' || true)"
-              if [ -n "$artifact_surface_changed" ]; then
-                echo ""
-                echo "> ⚠️ **Published artifact/contract surface changed since \`${last_tag}\`** (tarball allowlist, schemas, registry, contracts) — confirm the computed version above is MAJOR if the layout or paths moved. A squash-merge strips \`type!:\` subjects of branch commits; the marker must survive on the mainline commit."
-                echo ""
-                echo "Changed artifact-surface files:"
-                echo '```'
-                echo "$artifact_surface_changed"
+                printf '%s\n' "$surface" | while IFS= read -r f; do printf '  %s\n' "$f"; done
                 echo '```'
               fi
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Hard MAJOR-bump guard -- the backstop that replaced the removed manual
+      # approval Environment (ADR-0020 §Decision 3). Neither the logic nor the
+      # guarded set may be inlined back into this file, and neither `--base` nor
+      # `--advisory` may be added to the invocation: each neuters the gate, and
+      # check-release-guard-coverage.sh fails on all three.
+      # Gated on will-release so a non-releasing push (docs/chore) never fails.
+      - name: MAJOR-bump guard
+        id: guard
+        if: steps.dry.outputs.will-release == 'true'
+        env:
+          NEXT: ${{ steps.dry.outputs.next-version }}
+        run: ./scripts/release-major-bump-guard.sh
+
   release:
     needs: plan
     if: ${{ needs.plan.outputs.will-release == 'true' }}
     runs-on: ubuntu-latest
-    environment: release # manual-approval gate (required reviewer = @nosmoht)
+    timeout-minutes: 15
     permissions:
       contents: read # the App token performs writes, not GITHUB_TOKEN
     steps:
@@ -130,8 +154,119 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
+      # This job recomputes the version the guard adjudicated in `plan`. Nothing
+      # else binds the two, so a divergence would ship a version no guard judged.
+      - name: Assert the version the guard judged is the version about to ship
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          PLANNED: ${{ needs.plan.outputs.next-version }}
+        run: |
+          set -euo pipefail
+          npx semantic-release --dry-run > sr-confirm.log 2>&1 || true
+          actual="$(grep -ioE 'the next release version is [0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?' sr-confirm.log | awk '{print $NF}' | head -1 || true)"
+          if [ "$actual" != "$PLANNED" ]; then
+            echo "::error::the release job computes v${actual:-<none>} but the MAJOR-bump guard judged v${PLANNED}; refusing to publish a version no guard verdict covers"
+            exit 1
+          fi
+          echo "OK: v${actual} matches the guarded plan"
+
       - name: semantic-release
         env:
           # App token (NOT GITHUB_TOKEN) so the tag push triggers oci-publish.yml.
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: npx semantic-release
+
+  # A failed automated release is otherwise silent unless someone watches the
+  # Actions tab. ONE tracking issue, updated, rather than a new one per push.
+  #
+  # Three disjuncts, each covering a class the others miss: the guard's verdict
+  # classifies a block or an environment error, while a `plan` that dies BEFORE
+  # publishing a verdict (npm, the dry-run, a corrupt data file) leaves `release`
+  # SKIPPED rather than failed, so neither of the other two sees it.
+  #
+  # The body is a fixed sentence plus the run URL and carries NO diff-derived
+  # text: the surface list is contributor-chosen filenames, this job holds
+  # `issues: write`, and AGENTS.md §Session-Start Ritual tells agents to read the
+  # tracker. Everything variable is env-bound, never interpolated into `run:`.
+  notify:
+    needs: [plan, release]
+    if: >-
+      ${{ always() && (
+        startsWith(needs.plan.outputs.guard-verdict, 'guard blocked') ||
+        startsWith(needs.plan.outputs.guard-verdict, 'guard error') ||
+        needs.plan.result == 'failure' ||
+        needs.release.result == 'failure'
+      ) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the release-blocked tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: "release: the automated release is not completing"
+        run: |
+          set -euo pipefail
+          # The LIST api, not --search: the search index lags, so two queued
+          # blocked pushes would each miss the other's issue and file a
+          # duplicate. The author filter keeps a same-titled issue opened by
+          # anyone else from capturing the alert.
+          existing="$(gh issue list --repo "$REPO" --state open --limit 100 \
+            --json number,title,author \
+            --jq '[.[] | select(.title == env.TITLE) | select(.author.login == "github-actions")] | .[].number')"
+          body() {
+            printf '%s\n\n%s\n' \
+              "The Release workflow did not complete. The run log carries the guard's verdict and the surface list: $RUN_URL" \
+              "Recovery: knowledge/workflows/release-process.md, section \"When the release is blocked\". Filenames are deliberately not reproduced here."
+          }
+          if [ -n "$existing" ]; then
+            printf '%s\n' "$existing" | while IFS= read -r n; do
+              [ -n "$n" ] || continue
+              body | gh issue comment "$n" --repo "$REPO" --body-file - || true
+            done
+          else
+            body | gh issue create --repo "$REPO" --title "$TITLE" \
+              --label 'kind: ci' --label 'area: ci' --body-file -
+          fi
+
+  # The mirror of `notify`: a run that actually released closes the tracking
+  # issue, so a permanently-open alert cannot train the operator to ignore it.
+  # A human close means "start a fresh record", hence the state:open lookup.
+  notify-resolved:
+    needs: [plan, release]
+    if: ${{ always() && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Close the release-blocked tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: "release: the automated release is not completing"
+        run: |
+          set -euo pipefail
+          # The LIST api, not --search: the search index lags, so two queued
+          # blocked pushes would each miss the other's issue and file a
+          # duplicate. The author filter keeps a same-titled issue opened by
+          # anyone else from capturing the alert.
+          existing="$(gh issue list --repo "$REPO" --state open --limit 100 \
+            --json number,title,author \
+            --jq '[.[] | select(.title == env.TITLE) | select(.author.login == "github-actions")] | .[].number')"
+          [ -n "$existing" ] || { echo "no open tracking issue"; exit 0; }
+          # Every match, not just the first: a duplicate left open is the alert
+          # fatigue this job exists to prevent. `|| true` so a race with a human
+          # closing the issue cannot red an otherwise successful release.
+          printf '%s\n' "$existing" | while IFS= read -r n; do
+            [ -n "$n" ] || continue
+            printf '%s' "A release completed: $RUN_URL" \
+              | gh issue comment "$n" --repo "$REPO" --body-file - || true
+            gh issue close "$n" --repo "$REPO" --reason completed || true
+          done

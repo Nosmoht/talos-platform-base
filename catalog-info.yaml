@@ -1,0 +1,22 @@
+# Backstage catalog entity — registered as a catalog location in devoba-backstage
+# (prod overlay) so Backstage ingests this repo and TechDocs renders its Open-Knowledge-
+# Format bundle under knowledge/ (backstage.io/techdocs-ref: dir:. → the root mkdocs.yml,
+# docs_dir: knowledge). Same pattern as talos-platform-docs / talos-platform-apps.
+# Read via the org-wide Backstage GitHub App integration (devoba-repo-reader).
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: talos-platform-base
+  title: Talos Platform Base
+  description: Cluster-agnostic Talos + Cilium + ArgoCD substrate (the OpenTofu talos-cluster module) — OKF knowledge bundle, ADRs, architecture.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+  tags:
+    - documentation
+    - okf
+    - substrate
+    - opentofu
+spec:
+  type: library
+  lifecycle: production
+  owner: platform-team

@@ -1,0 +1,113 @@
+crds:
+  install: true
+  keep: true
+
+# Substrate invariant: the bundled Dex server stays OFF in BOTH render paths
+# (this steady-state render AND the tofu bootstrap seed). Consumers wire ArgoCD
+# SSO against their own external OIDC provider by patching the `oidc.config` key
+# of the rendered `argocd-cm` ConfigMap in their own kustomize overlay — not
+# through these Helm values, which a consumer of the published component never
+# has — and set no `dex.config`, so the chart-default dex-server
+# (dex.enabled: true) is an idle, connector-less Deployment/Service/RBAC in every
+# cluster. Disabling it also drops the `server.dex.server*` cmd-params. See
+# README §Substrate invariants, knowledge/reference/argocd-sso-contract.md (the
+# wiring contract), and scripts/check-argocd-substrate-invariants.sh (the CI gate).
+dex:
+  enabled: false
+
+server:
+  # Substrate ships ArgoCD self-contained — no cert-manager dependency on the
+  # floor. argocd-server runs with server.insecure=true (see configs.params
+  # below): it serves plaintext at the pod, and a consumer terminates TLS at
+  # their gateway / ingress in front of it. The chart's server.certificate block
+  # provisions a cert-manager.io/v1 Certificate (secret argocd-server-tls) that
+  # the insecure pod does not consume and that would render against an absent
+  # CRD/issuer once cert-manager leaves the substrate — so it is disabled here.
+  # A consumer fronting ArgoCD with cert-manager-issued TLS re-enables
+  # server.certificate in a values overlay and provides the ClusterIssuer (and,
+  # to make the pod itself serve TLS, also sets server.insecure=false).
+  certificate:
+    enabled: false
+  service:
+    type: ClusterIP
+
+repoServer:
+  env:
+    - name: SOPS_AGE_KEY_FILE
+      value: /sops-age/keys.txt
+  volumes:
+    - name: custom-tools
+      emptyDir: {}
+    - name: sops-age
+      secret:
+        secretName: sops-age-key
+  volumeMounts:
+    - name: custom-tools
+      mountPath: /usr/local/bin/ksops
+      subPath: ksops
+    - name: sops-age
+      mountPath: /sops-age
+      readOnly: true
+  initContainers:
+    - name: install-ksops
+      image: viaductoss/ksops:v4.3.2
+      command: ["/bin/sh", "-c"]
+      args:
+        - cp /usr/local/bin/ksops /custom-tools/
+      volumeMounts:
+        - name: custom-tools
+          mountPath: /custom-tools
+
+configs:
+  rbac:
+    # The substrate ships NO identity. `policy.csv` and `scopes` are deliberately
+    # absent: an access policy names principals of a specific organisation, which
+    # a cluster-agnostic floor cannot know. The consumer owns both keys in their
+    # own overlay — contract: knowledge/reference/argocd-sso-contract.md.
+    #
+    # Consequence of the absence, so the render is not misread: the chart's
+    # argocd-rbac-cm template emits both keys unconditionally, so the render
+    # carries `policy.csv: ""` and the chart-default `scopes: '[groups]'`. Absent
+    # here means empty-but-present there, not missing.
+    #
+    # `policy.default: ''` pins a value identical to the chart default — an
+    # authenticated principal matching no rule gets no permission.
+    #
+    # This is the key with the WIDEST blast radius in the file: a policy binds
+    # the subjects it names, while a non-empty policy.default grants its role to
+    # every authenticated principal, in every consuming cluster, with no subject
+    # at all. So the real risk is an edit here, not a chart-default change (the
+    # value is pinned, which makes the chart's default irrelevant). Invariant I5
+    # asserts it stays empty — see README §Substrate invariants.
+    #
+    # Until a consumer supplies a policy, the local `admin` account is the only
+    # working access path; ArgoCD documents it as an unrestricted superuser.
+    policy.default: ''
+  params:
+    server.insecure: true
+    # No server.dex.server.* params: the bundled Dex is disabled (see `dex` above),
+    # so the cmd-params ConfigMap must carry no `server.dex.server*` data key.
+    server.repo.server.strict.tls: "false"
+  cm:
+    admin.enabled: "true"
+    # Substrate invariant I3: the render must carry NO `url` key. The chart
+    # derives it from global.domain, whose default is the placeholder hostname
+    # `argocd.example.com`, and ArgoCD derives the OIDC redirect URI from `url` —
+    # a placeholder therefore fails at the identity provider on a human's first
+    # login, not in the cluster. "" drops the key entirely, so an unconfigured
+    # cluster is visibly unconfigured. The consumer sets the real value in their
+    # overlay (knowledge/reference/argocd-sso-contract.md).
+    url: ""
+    resource.compareoptions: |
+      serverSideDiff: true
+    resource.customizations.ignoreDifferences.apps_Deployment: |
+      jqPathExpressions:
+        - '.status.terminatingReplicas'
+    kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
+    resource.exclusions: |
+      - apiGroups:
+          - cilium.io
+        kinds:
+          - CiliumIdentity
+        clusters:
+          - "*"

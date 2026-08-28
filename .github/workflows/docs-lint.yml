@@ -6,26 +6,20 @@ name: docs-lint
 #     touching *.md must still trigger the gate;
 # (2) an unfiltered job is safe to be a required branch-protection context
 #     (a path-filtered required check hangs non-matching PRs as
-#     "Expected — waiting"). The job is cheap (~seconds).
+#     "Expected — waiting"). Cost: ~30s on the runner, of which ~9s is the
+#     release-guard bite-check's 78 throwaway-git-repo scenarios (far slower on
+#     a macOS working copy). timeout-minutes: 10 leaves headroom; re-measure
+#     before adding another suite of that shape.
 #
-# Contract: every CHECK step runs a Taskfile target, never inline shell —
-# the identical chain is runnable locally (`task dev:verify-pins`,
-# `task docs:lint`, `task knowledge:validate`, `task knowledge:rules-check`,
-# `task spec:validate`, `task spec:check-regen`, `task spec:check-staleness`).
-# Tool pins live in .tool-versions + the Taskfile vars block + package.json;
-# `dev:verify-pins` asserts those pairs.
+# Contract: every CHECK step runs a Taskfile target, never inline shell, so the
+# local chain and this one are the same commands. Tool pins live in
+# .tool-versions + the Taskfile vars block + package.json; `dev:verify-pins`
+# asserts those pairs.
 #
-# go-task's own pin is the one inline step, for a narrow reason: setup-task
-# installs the binary that runs every target below, so the assert has to sit
-# before any target can run. `dev:verify-tools` DOES cover the task pin (and
-# covers it more strongly — it reads `task --version`, i.e. the installed
-# binary, not a string in a file), but it asserts the FULL .tool-versions set
-# and this job installs only a subset, so it is red here by construction.
-# Honest scope of the inline assert: it proves this file and .tool-versions
-# agree. It does not observe the installed binary — a setup-task cache hit or
-# a PATH-shadowed `task` would satisfy it. Nor does it reach the two
-# setup-task pins in tofu-validate.yml, which stay comment-only. Both gaps
-# are tracked as follow-ups.
+# The go-task pin is the one permitted inline assert: setup-task installs the
+# binary that runs every target below, so it must be checked before any target
+# can run. Its honest scope is this file against .tool-versions — it does not
+# observe the installed binary, and it does not reach tofu-validate.yml's pins.
 on:
   pull_request:
   push:
@@ -36,19 +30,16 @@ permissions:
 
 jobs:
   docs-lint:
-    # name: MUST stay "docs-lint" — branch protection requires that context,
-    # and GitHub derives it from name: (falling back to the job id). Declared
-    # explicitly rather than riding the fallback, so a job-id rename cannot
-    # silently un-gate the check. Same contract as hard-constraints-check.yml;
-    # scripts/preflight-checks.sh asserts it.
+    # MUST stay "docs-lint": branch protection requires that context and GitHub
+    # derives it from name:, so riding the job-id fallback would let a rename
+    # silently un-gate the check. scripts/preflight-checks.sh asserts it.
     name: docs-lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      # go-task — the executor of every gate below; an unpinned payload
-      # behind a pinned installer is still an unpinned gate. KEEP IN SYNC
-      # with .tool-versions (asserted by the drift step below).
-      TASK_VERSION: "3.48.0"
+      # KEEP IN SYNC with .tool-versions (the drift step below asserts it): an
+      # unpinned payload behind a pinned installer is still an unpinned gate.
+      TASK_VERSION: "3.53.1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -56,11 +47,6 @@ jobs:
           fetch-depth: 0
 
       - name: Verify TASK_VERSION matches .tool-versions
-        # The one inline check in this file, by necessity: it guards the pin
-        # of the binary that runs every Taskfile target below, so it cannot
-        # itself be a Taskfile target. Same drift-detector pattern as
-        # gitops-validate.yml. Every other tool pin is asserted by
-        # `task dev:verify-pins`.
         run: |
           set -eu
           tv="$(awk '$1=="task" {print $2}' .tool-versions)"
@@ -71,12 +57,9 @@ jobs:
           echo "OK: task $tv"
 
       - name: Install go-task (pinned to a commit)
-        # Two pins, both load-bearing. The action is SHA-pinned rather than
-        # @v3 because this workflow pins every other input and is a required,
-        # path-unfiltered context — a moving ref would reach every PR at once.
-        # The go-task VERSION is pinned exactly (not 3.x) for the reason in
-        # the env block above. tofu-validate.yml keeps the mutable @v2 ref;
-        # it is path-filtered and not required.
+        # SHA-pinned, not @v3: this is a required, path-unfiltered context, so a
+        # moving ref would reach every PR at once. tofu-validate.yml keeps the
+        # mutable @v2 ref — it is path-filtered and not required.
         uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
         with:
           version: ${{ env.TASK_VERSION }}
@@ -86,51 +69,96 @@ jobs:
         run: task dev:verify-pins
 
       - name: task install-cli (markdownlint + openspec via npm ci lockfile; openknowledge + lychee pinned + checksum)
-        # One task invocation so the shared `npm ci --ignore-scripts`
-        # (dev:npm-ci, run: once) executes exactly once for both npm tools.
+        # One invocation so the shared `npm ci --ignore-scripts` (dev:npm-ci,
+        # run: once) executes exactly once for both npm tools.
         run: task docs:install-cli spec:install-cli knowledge:install-cli
 
       - name: task docs:lint
         run: task docs:lint
 
       - name: task knowledge:validate
-        # Both gates live in the Taskfile target so the local chain and the CI
-        # chain are the same command. knowledge/openknowledge.toml raises
-        # link-target and rule-catalog to error, so a broken link or a
-        # malformed rule document fails this step.
+        # knowledge/.openknowledge.toml raises link-target and rule-catalog to
+        # error, so a broken link or a malformed rule document fails this step.
         run: task knowledge:validate
 
       - name: task knowledge:rules-check
-        # The Open Knowledge maintenance block in AGENTS.md is generated from
-        # knowledge/rules/. Fails if it was hand-edited or left stale.
         run: task knowledge:rules-check
 
+      - name: task supply-chain:check-release-guard
+        # The release guard's only merge-blocking binding, so it has to live in a
+        # REQUIRED context: gitops-validate.yml's oci-allowlist-check job is the
+        # topical home but is not required, and a red bite-check there would not
+        # block a merge.
+        run: task supply-chain:check-release-guard
+
       - name: task spec:validate
-        # Strict validate + bite-check (malformed fixture must fail) +
-        # source-ownership partition + offline link pass.
         run: task spec:validate
 
       - name: task spec:check-regen
-        # Committed tool trees must equal the pinned generator's output
-        # (whole-tree delta; catches added/modified/deleted files). Parity
-        # only — instruction-body review stays mandatory (ADR-0014).
+        # Parity with the pinned generator's output only — reviewing the
+        # instruction bodies stays mandatory (ADR-0014).
         run: task spec:check-regen
 
       - name: task spec:check-staleness (PR only)
-        # ADR-0015 staleness convention, CI-enforced: a PR touching a
-        # spec's primary source must also touch the owning spec. Escape
-        # for verified no-behavior-change diffs: the 'Spec-Impact: none'
-        # trailer on EVERY commit touching the file (per-commit scope;
-        # reviewer judges the claim).
+        # A PR touching a spec's primary source must also touch the owning spec
+        # (ADR-0015). The escape is a 'Spec-Impact: none' trailer on EVERY
+        # contributing commit, and the reviewer judges the claim.
         if: github.event_name == 'pull_request'
         env:
-          # env-bound (not inline-interpolated into `run:`): github.base_ref
-          # is on GitHub's untrusted-input list — inline expansion would let
-          # a metacharacter-named base branch inject into the runner shell.
-          # This closes the Actions-expression layer ONLY. The value then
-          # reaches go-task, which renders CLI vars as raw text into the
-          # command string — that second layer is closed in the Taskfile
-          # (spec:check-staleness passes BASE via env, never the template).
-          # Both are load-bearing; neither alone is sufficient.
+          # env-bound, never inline-interpolated into `run:`: github.base_ref is
+          # untrusted input. This closes the Actions-expression layer ONLY; the
+          # value then reaches go-task, which renders CLI vars as raw text, and
+          # that second layer is closed in the Taskfile. Neither alone suffices.
           BASE_REF: ${{ github.base_ref }}
         run: task spec:check-staleness BASE="origin/${BASE_REF}"
+
+  # Advisory only, and a separate job for that reason: it must never fail, so it
+  # cannot be a step inside the required docs-lint job.
+  #
+  # Two ranges are printed and labelled because they answer different questions:
+  # the guard diffs last_tag..HEAD, so a PR touching nothing guarded can still
+  # land on a main that is already blocked by someone else's merge.
+  #
+  # fetch-depth: 0 is load-bearing — a shallow or tagless checkout is an
+  # environment error, which advisory mode degrades to a useless "advisory
+  # unavailable" line. gitops-validate.yml's jobs check out shallow, which is why
+  # this does not live there.
+  release-guard-advisory:
+    name: release-guard-advisory
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Guarded paths in this pull request
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -uo pipefail
+          {
+            echo "## Release guard — advisory"
+            echo ""
+            echo "**Guarded paths in this pull request** (\`merge-base..HEAD\`):"
+          } >> "$GITHUB_STEP_SUMMARY"
+          mb="$(git merge-base "origin/${BASE_REF}" HEAD)" || mb=""
+          if [ -n "$mb" ]; then
+            ./scripts/release-major-bump-guard.sh --advisory --base "$mb" || true
+          else
+            # Never fall through to a bare --advisory: without --base the guard
+            # reports the whole range since the last tag, which would print under
+            # the "in this pull request" heading and read as this PR's doing.
+            echo "advisory unavailable: could not compute merge-base against origin/${BASE_REF}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          {
+            echo ""
+            echo "**Guarded paths already pending since the last tag** — this is the set that blocks the release:"
+          } >> "$GITHUB_STEP_SUMMARY"
+          ./scripts/release-major-bump-guard.sh --advisory || true
+          if ! git diff --quiet "origin/${BASE_REF}"...HEAD -- .ci-release-guard-pathspec.txt .ci-release-guard-exempt.txt .ci-release-guard.lock; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> This pull request edits the release guard's own data files. Read those hunks as a change to what the release gate protects." >> "$GITHUB_STEP_SUMMARY"
+          fi

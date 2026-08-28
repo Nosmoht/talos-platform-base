@@ -1,12 +1,16 @@
 kubernetes/bootstrap/cilium/extras.yaml
 kubernetes/bootstrap/cilium/values.yaml
+kubernetes/substrate/argocd/_rendered/crds.yaml
+kubernetes/substrate/argocd/_rendered/manifests.yaml
+kubernetes/substrate/argocd/kustomization.yaml
+kubernetes/substrate/argocd/namespace.yaml
 platform-hardware-features.yaml
 schemas/hardware-features.schema.json
 tofu/modules/talos-cluster/README.md
 tofu/modules/talos-cluster/helm/argocd-values.yaml
 tofu/modules/talos-cluster/helm/cilium-values.yaml
 tofu/modules/talos-cluster/main.tf
-tofu/modules/talos-cluster/manifests/cert-approver.yaml
+tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
 tofu/modules/talos-cluster/outputs.tf
 tofu/modules/talos-cluster/test/README.md
 tofu/modules/talos-cluster/test/pki-reconcile-microtest.sh

@@ -13,6 +13,20 @@ on:
       - 'tofu/**'
       - 'Taskfile.yml'
       - '.github/workflows/tofu-validate.yml'
+      # tofu:ci is the ONLY runner of these fences, so a PR touching just a
+      # fence script must still execute it — otherwise a weakening edit to the
+      # guard merges without the guard ever running (#218 review).
+      - 'scripts/check-render-determinism.sh'
+      - 'scripts/check-argocd-day0-apply-shape.sh'
+      - 'scripts/check-argocd-gate-bites.sh'
+      - 'scripts/check-kubeconfig-endpoint-regen.sh'
+      - 'scripts/check-node-projection-wiring.sh'
+      - 'scripts/check-module-readme-parity.sh'
+      - 'scripts/check-shim-key-parity.sh'
+      # tofu:ci carries check:shim-key-parity, which reads the schema. Without
+      # this entry a schema-only widening — the exact diff shape that leaves a
+      # new substrate key unmapped in the shim — would not run the gate at all.
+      - 'schemas/cluster.schema.json'
   push:
     branches:
       - main
@@ -20,6 +34,20 @@ on:
       - 'tofu/**'
       - 'Taskfile.yml'
       - '.github/workflows/tofu-validate.yml'
+      # tofu:ci is the ONLY runner of these fences, so a PR touching just a
+      # fence script must still execute it — otherwise a weakening edit to the
+      # guard merges without the guard ever running (#218 review).
+      - 'scripts/check-render-determinism.sh'
+      - 'scripts/check-argocd-day0-apply-shape.sh'
+      - 'scripts/check-argocd-gate-bites.sh'
+      - 'scripts/check-kubeconfig-endpoint-regen.sh'
+      - 'scripts/check-node-projection-wiring.sh'
+      - 'scripts/check-module-readme-parity.sh'
+      - 'scripts/check-shim-key-parity.sh'
+      # tofu:ci carries check:shim-key-parity, which reads the schema. Without
+      # this entry a schema-only widening — the exact diff shape that leaves a
+      # new substrate key unmapped in the shim — would not run the gate at all.
+      - 'schemas/cluster.schema.json'
 
 permissions:
   contents: read
@@ -47,7 +75,7 @@ jobs:
       - name: Install go-task
         uses: arduino/setup-task@v2
         with:
-          version: 3.48.0  # KEEP IN SYNC with the task pin in .tool-versions
+          version: 3.53.1  # KEEP IN SYNC with the task pin in .tool-versions
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: task tofu:ci (fmt-check + validate + lint)
@@ -73,7 +101,7 @@ jobs:
       - name: Install go-task
         uses: arduino/setup-task@v2
         with:
-          version: 3.48.0  # KEEP IN SYNC with the task pin in .tool-versions
+          version: 3.53.1  # KEEP IN SYNC with the task pin in .tool-versions
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       # NETWORK: `tofu test` resolves the live Talos Image Factory (schematic

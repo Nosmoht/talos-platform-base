@@ -3,18 +3,21 @@ type: architecture
 title: Substrate Boundary
 description: What talos-platform-base is and ships — the three-pillar substrate, the base/apps/consumer layer model, the tracked repo layout, and the fail-closed OCI artifact allowlist.
 tags: [substrate, layer-model, oci-artifact, boundaries]
-timestamp: 2026-07-15
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
+  - { by: human:nosmoht, at: "2026-07-17T00:00:00Z" }
 sources:
-  - .ci-oci-tarball-include.txt
-  - .ci-oci-tarball-expected.txt
-  - .ci-renderable-components.txt
-  - Taskfile.yml
-  - .github/workflows/oci-publish.yml
-  - tofu/modules/talos-cluster/main.tf
-  - tofu/modules/talos-cluster/manifests/cert-approver.yaml
-  - kubernetes/base/infrastructure/argocd/kustomization.yaml
-  - kubernetes/base/infrastructure/argocd/values.yaml
-  - AGENTS.md
+  - resource: .ci-oci-tarball-include.txt
+  - resource: .ci-oci-tarball-expected.txt
+  - resource: .ci-renderable-components.txt
+  - resource: Taskfile.yml
+  - resource: .github/workflows/oci-publish.yml
+  - resource: tofu/modules/talos-cluster/main.tf
+  - resource: tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
+  - resource: kubernetes/substrate/argocd/kustomization.yaml
+  - resource: kubernetes/substrate/argocd/values.yaml
+  - resource: AGENTS.md
 ---
 
 # Substrate Boundary
@@ -45,17 +48,26 @@ three as constitutive:
   default `true`), so it comes up with the bootstrap — opt-out, never an
   opt-in add-on.
 
-The only addition is **cert-approver** (`kubelet-serving-cert-approver`) —
-Talos serving-cert glue, not a fourth pillar. The module enables kubelet
-serving-cert rotation on all nodes (`serverTLSBootstrap: true`) and
-unconditionally seeds a vendored static manifest
-(`tofu/modules/talos-cluster/manifests/cert-approver.yaml`) that approves the
-resulting `kubernetes.io/kubelet-serving` CSRs. Its RBAC `approve` verb is
-signer-restricted to that one signer, and its namespace carries a
-PSA-`restricted` floor. Without it the cluster still boots (client-kubelet
-CSRs auto-approve), but metrics-server and `kubectl logs|exec|top` need the
-approved serving certs. Decision:
-[0013-kubelet-serving-cert-rotation](../decisions/0013-kubelet-serving-cert-rotation.md).
+The only addition is **cert-approver** (`kubelet-csr-approver`) — Talos
+serving-cert glue, not a fourth pillar. The module enables kubelet serving-cert
+rotation on all nodes (`serverTLSBootstrap: true`) and unconditionally seeds a
+chart-rendered, `templatefile()`-parameterized manifest
+(`tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml`, running
+**postfinance/kubelet-csr-approver**) that approves the resulting
+`kubernetes.io/kubelet-serving` CSRs. Its RBAC `approve` verb is
+signer-restricted to that one signer, its namespace carries a PSA-`restricted`
+floor, and it adds a per-node DNS-SAN-to-node binding **default-on**. Unlike the
+former knob-free approver, it exposes three per-cluster knobs under
+`substrate.cert_approver` — `provider_regex` and `provider_ip_prefixes` (two
+SAN-allowlist security values, defaulting to the permissive `.*` /
+`0.0.0.0/0,::/0` floor) plus `replicas` (default `1`; `> 1` derives HA). Without
+it the cluster still boots (client-kubelet CSRs auto-approve), but
+metrics-server and `kubectl logs|exec|top` need the approved serving certs.
+Decisions:
+[0013-kubelet-serving-cert-rotation](../decisions/0013-kubelet-serving-cert-rotation.md)
+(rotation default-on + seed model) and
+[0019-postfinance-kubelet-csr-approver](../decisions/0019-postfinance-kubelet-csr-approver.md)
+(the postfinance approver + config surface, superseding 0013 §D2).
 
 ## The base / apps / consumer layer model
 
@@ -88,7 +100,7 @@ base — see the note below):
 contracts/                   primitive-contract.md
 knowledge/                   this OKF bundle (architecture, reference,
                              workflows, decisions, glossary, rules)
-kubernetes/base/infrastructure/argocd/
+kubernetes/substrate/argocd/
                              the ONE base kustomize component (namespace +
                              committed _rendered/ manifests + values.yaml)
 kubernetes/bootstrap/argocd/ root-project / root-application *.tmpl seeds
@@ -97,14 +109,14 @@ policies/conftest/           Rego policies for rendered manifests
 schemas/                     cluster.schema.json, hardware-features.schema.json
 scripts/                     validation / render / helper scripts
 tofu/modules/talos-cluster/  the cluster-lifecycle module (+ helm values,
-                             vendored cert-approver manifest, tests)
+                             chart-rendered cert-approver manifest, tests)
 platform-hardware-features.yaml   Layer-C hardware-feature vocabulary (root)
 cluster.yaml.example         declarative cluster-SoT template
 Taskfile.yml                 the single task runner
 ```
 
 **Only `argocd/` is a tracked component.** `git ls-files` shows exactly one
-directory under `kubernetes/base/infrastructure/`, and the renderable-component
+directory under `kubernetes/substrate/`, and the renderable-component
 fixture `.ci-renderable-components.txt` contains the single line `argocd`. Any
 other directory found there on a working copy is untracked local chart
 residue, not shipped content. Post-ablation there is therefore no base
@@ -134,18 +146,22 @@ fails the publish. The same check runs locally via
 `task supply-chain:oci-allowlist`. The allowlist is the authoritative record
 of what ships; prose "what ships" summaries elsewhere are non-normative.
 
-The 15 shipped entries:
+The 19 shipped entries:
 
 ```text
 kubernetes/bootstrap/cilium/extras.yaml
 kubernetes/bootstrap/cilium/values.yaml
+kubernetes/substrate/argocd/_rendered/crds.yaml
+kubernetes/substrate/argocd/_rendered/manifests.yaml
+kubernetes/substrate/argocd/kustomization.yaml
+kubernetes/substrate/argocd/namespace.yaml
 platform-hardware-features.yaml
 schemas/hardware-features.schema.json
 tofu/modules/talos-cluster/README.md
 tofu/modules/talos-cluster/helm/argocd-values.yaml
 tofu/modules/talos-cluster/helm/cilium-values.yaml
 tofu/modules/talos-cluster/main.tf
-tofu/modules/talos-cluster/manifests/cert-approver.yaml
+tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
 tofu/modules/talos-cluster/outputs.tf
 tofu/modules/talos-cluster/test/README.md
 tofu/modules/talos-cluster/test/pki-reconcile-microtest.sh
@@ -155,10 +171,19 @@ tofu/modules/talos-cluster/versions.tf
 ```
 
 That is: a talos-cluster module subset (four of its `.tf` files, the helm
-value floors, the vendored cert-approver seed, the adoption/PKI proof
-scripts), the Cilium Day-2 reference values + GatewayClass extra, and the
-hardware-capability vocabulary (`platform-hardware-features.yaml` at the
-repo root plus its schema under `schemas/`). Note the allowlist does NOT
+value floors, the chart-rendered cert-approver seed, the adoption/PKI proof
+scripts), the Cilium Day-2 reference values + GatewayClass extra, the argocd
+component as a **buildable unit**, and the hardware-capability vocabulary
+(`platform-hardware-features.yaml` at the repo root plus its schema under
+`schemas/`).
+
+"Buildable unit" is the operative word for the argocd entries: the rendered
+manifests and the namespace alone would leave a vendoring consumer to
+reconstruct the resource list by hand, so `kustomization.yaml` ships with them
+and `scripts/check-substrate-consumability.sh` requires it for every renderable
+component. That is what makes the component's own spec claim — consumable as a
+single kustomization — true at a published tag rather than only in-repo. Note
+the allowlist does NOT
 ship `composition.tf` and `profiles.tf`, although `main.tf` requires locals
 defined there — the tarball-vendored module tree alone does not
 `tofu validate`; consumers currently need the git checkout at the pinned
@@ -170,10 +195,11 @@ by a CI cross-reference gate, not read by the module at plan time
 ### What stays git-only
 
 Everything else is repo content, not artifact content — notably the CI
-workflows, `policies/conftest/`, `scripts/`, the
-`kubernetes/base/infrastructure/argocd/` component with its committed
-`_rendered/` manifests ([manifest-pipeline](../reference/manifest-pipeline.md)),
-the `kubernetes/bootstrap/argocd/*.tmpl` root seeds, `Taskfile.yml`
+workflows, `policies/conftest/`, `scripts/`, the argocd component's
+**inputs** (`values.yaml`, `chart.lock.yaml`, `README.md`) as opposed to its
+shipped outputs ([manifest-pipeline](../reference/manifest-pipeline.md)), the
+worked consumer overlay under `kubernetes/examples/`, the
+`kubernetes/bootstrap/argocd/*.tmpl` root seeds, `Taskfile.yml`
 ([tasks](../reference/tasks.md)), `schemas/cluster.schema.json`, and
 `cluster.yaml.example`.
 

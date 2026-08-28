@@ -63,6 +63,20 @@
         },
         "allow_scheduling_on_controlplanes": {
           "type": "boolean"
+        },
+        "register_with_fqdn": {
+          "description": "Set machine.kubelet.registerWithFQDN so the kubelet registers with the node's FQDN instead of its short hostname. Talos splits a dotted hostname at the first dot and registers only the SHORT hostname by default, so a dotted node key is meaningless to Kubernetes unless this is true — and the module rejects dotted node keys while it is false. ALL-OR-NOTHING: one dotted node key flips FQDN registration for every node in the cluster. Default false.",
+          "type": "boolean"
+        },
+        "controlplane_apply_mode": {
+          "type": "string",
+          "enum": ["auto", "reboot", "no_reboot", "staged"],
+          "description": "apply_mode for the controlplane machine-config apply. Default 'auto' — the only Day-0-safe value, because the first apply to a maintenance-mode node IS the install. 'staged' opens a Day-2 window: the config is written for the next boot and the reboot becomes an out-of-band, health-gated operator step. Revert to 'auto' only after every node of the role has rebooted, and do not add nodes while a window is open. 'reboot' reboots the whole role simultaneously (etcd quorum loss); 'no_reboot' fails the apply when the change needs a reboot."
+        },
+        "worker_apply_mode": {
+          "type": "string",
+          "enum": ["auto", "reboot", "no_reboot", "staged"],
+          "description": "apply_mode for the worker machine-config applies. Same accepted set and same obligations as controlplane_apply_mode; separate key because the roles roll under different gates (etcd quorum vs. workload/storage replication). A stateful worker set uses 'staged' and reboots one node at a time."
         }
       }
     },
@@ -129,10 +143,14 @@
       }
     },
     "nodes": {
-      "description": "Bare-metal cluster members.",
-      "type": "array",
-      "minItems": 1,
-      "items": {
+      "description": "Bare-metal cluster members, keyed by node name. The KEY is the node's Talos hostname and its Kubernetes node name — one node, one definition place, so declaring the same node twice is structurally impossible. Keys must ALREADY be canonical Kubernetes node names: Talos validates hostname LENGTH only and silently rewrites the rest (lowercasing, '_' -> '-', dropping other characters), so a non-canonical key would arrive in the cluster under a different name than the one declared here. The per-label 63-character bound is not expressible in JSON Schema without a lookahead; the tofu module enforces it and is the gate that actually blocks an apply.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$",
+        "maxLength": 253
+      },
+      "additionalProperties": {
         "$ref": "#/$defs/node"
       }
     },
@@ -158,15 +176,163 @@
       }
     },
     "substrate": {
-      "description": "Layer-1 substrate delivery. Cilium + ArgoCD are the ONLY cluster.yaml-configurable substrate tools \u2014 the consumer yamldecode shim reads only substrate.cilium and substrate.argocd; cert-approver is always-on substrate (a controlplane inlineManifest seed, adr-0013) with no cluster.yaml knobs. Closed (additionalProperties:false) so a typo'd sibling key (e.g. argo_cd:) is caught at lint time instead of being silently dropped by the shim. The per-tool inner long tail (values_override, encryption, \u2026) stays loosely typed. A future configurable substrate tool ships a schema update in the same base OCI tag.",
+      "description": "Layer-1 substrate delivery. Cilium, ArgoCD and cert-approver are the cluster.yaml-configurable substrate tools \u2014 the consumer yamldecode shim reads substrate.cilium, substrate.argocd and substrate.cert_approver. cert-approver is always-on substrate (a controlplane inlineManifest seed, adr-0019 supersedes adr-0013 \u00a7D2); its substrate.cert_approver keys tune the SAN-to-node binding + replicas but cannot disable the seed. Closed (additionalProperties:false) so a typo'd sibling key (e.g. argo_cd:) is caught at lint time instead of being silently dropped by the shim. The per-tool inner long tail (values_override, encryption, \u2026) stays loosely typed. A future configurable substrate tool ships a schema update in the same base OCI tag.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "cilium": {
-          "type": "object"
+          "description": "Cilium CNI delivery + first-class observability inputs (default off) + opt-in ArgoCD self-management delivery mode (default off, module-emitted Application output only). Closed (additionalProperties:false) so a typo'd key is caught at lint time instead of being silently dropped. See knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "description": "Deliver Cilium as a controlplane inlineManifest seed. false keeps the Talos-default CNI (Flannel) or a caller-supplied CNI.",
+              "type": "boolean"
+            },
+            "chart_version": {
+              "description": "cilium Helm chart version. SEED knob (install-time), not an upgrade knob.",
+              "type": "string"
+            },
+            "chart_repository": {
+              "description": "Helm repository for the cilium chart. No digest/cosign pin — point only at a trusted source.",
+              "type": "string"
+            },
+            "routing_mode": {
+              "description": "Cilium datapath routing mode: tunnel (VXLAN/Geneve overlay) or native (routed fabric, e.g. BGP). Install-time-fixed.",
+              "type": "string"
+            },
+            "kube_proxy_replacement": {
+              "description": "Run Cilium as the kube-proxy replacement (also sets Talos cluster.proxy.disabled). Install-time-fixed.",
+              "type": "boolean"
+            },
+            "gateway_api": {
+              "description": "Enable the Cilium Gateway API controller. Hard Constraint: Gateway API only, no Ingress.",
+              "type": "boolean"
+            },
+            "gateway_api_crds_url": {
+              "description": "OPT-IN bootstrap seeding of the Gateway API CRDs via cluster.extraManifests. Empty = CRDs are a Day-1 GitOps concern. No digest pin — a failed fetch crashloops Talos bootstrap.",
+              "type": "string"
+            },
+            "mtu": {
+              "description": "Cilium datapath MTU. 0 = chart auto-detect.",
+              "type": "integer"
+            },
+            "native_routing_cidr": {
+              "description": "ipv4NativeRoutingCIDR for routing_mode: native. Empty = derive from the first pod_cidr entry. The chart renders this raw into cilium-config, which is baked into the machine config, so the value is format-validated on both paths.",
+              "type": "string",
+              "allOf": [
+                {
+                  "$comment": "Lexical mirror of variables.tf var.cilium_native_routing_cidr, whose guard is the semantic predicate can(cidrhost(...)) — not expressible in JSON Schema. This admits the CIDR SHAPE only; the module keeps the precise verdict. Empty stays legal (derive from pod_cidr).",
+                  "pattern": "^$|^[0-9A-Fa-f.:]+/[0-9]{1,3}$"
+                },
+                {
+                  "$comment": "Engine divergence, closed explicitly — same reason as agent_metric_overrides below: Python re matches $ before a trailing newline, RE2 does not.",
+                  "not": {
+                    "pattern": "[\\n\\r]|---"
+                  }
+                }
+              ]
+            },
+            "encryption": {
+              "description": "Transparent pod-traffic encryption: { type: none|wireguard|ipsec }. ipsec requires cilium_ipsec_key via tfvar/env. Inner long tail stays loosely typed.",
+              "type": "object"
+            },
+            "values_override": {
+              "description": "Long-tail consumer Helm values merged on the floor + computed values (Hubble long tail beyond the first-class inputs below, L2/BGP announcements, bpf tuning). Feeds ONLY the bootstrap seed, never the self-management emitted Application (see self_management).",
+              "type": "string"
+            },
+            "agent_metrics": {
+              "description": "Enable Cilium agent Prometheus metrics (prometheus.enabled). Default off.",
+              "type": "boolean"
+            },
+            "operator_metrics": {
+              "description": "Enable Cilium operator Prometheus metrics (operator.prometheus.enabled). Default off.",
+              "type": "boolean"
+            },
+            "operator_replicas": {
+              "description": "Cilium operator Deployment replica count (operator.replicas). Omit to derive it from the node count: 2 at two or more nodes (the chart's own default), and nothing at exactly one node, where the shipped floor's 1 stays effective. Set it to pin the count on BOTH delivery paths — values_override reaches only the seed and is mutually exclusive with self_management. Pinning more replicas than there are declared nodes is rejected at plan time: the operator's anti-affinity is per-hostname, so the surplus could never place.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "hubble_enabled": {
+              "description": "Enable Hubble for flow/metrics observability. Forces hubble.tls.enabled=false (observer-API server TLS off, metrics-only scope — the Hubble metrics endpoint is independent of observer TLS since Cilium 1.16). Default off.",
+              "type": "boolean"
+            },
+            "hubble_metrics": {
+              "description": "Hubble metrics to export (hubble.metrics.enabled), e.g. [\"dns\",\"drop\",\"tcp\"] or the context form \"flow:sourceContext=pod\". Default []. Scrape wiring (ServiceMonitors/PodMonitors) stays consumer-side.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "$comment": "Mirrors variables.tf var.cilium_hubble_metrics. An EXCLUSION rule, not an allowlist: the legitimate context syntax uses ':', ';', '=' and ',' freely. Newline and '---' are the two measured corruption vectors — the chart renders these entries raw into cilium-config, which is baked into the machine config.",
+                "not": {
+                  "pattern": "[\\n\\r]|---"
+                }
+              }
+            },
+            "agent_metric_overrides": {
+              "description": "Agent metric DELTA list (prometheus.metrics): \"+name\" adds a metric to the chart's default set, \"-name\" removes one. Not a replacement of that set, and unrelated to values_override. The chart renders these raw into cilium-config, which is baked into the machine config. Default []. On an ALREADY-BOOTSTRAPPED cluster this reaches the cluster only via substrate.cilium.self_management (the seed render is frozen after first capture) or at the next fresh bootstrap. Warns when it cannot take effect.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "allOf": [
+                  {
+                    "$comment": "Mirrors variables.tf var.cilium_agent_metric_overrides so the declarative path rejects a corrupting entry at lint time too, not only at plan time.",
+                    "pattern": "^[+-][a-zA-Z_][a-zA-Z0-9_]*$"
+                  },
+                  {
+                    "$comment": "Engine divergence, closed explicitly: check-jsonschema evaluates `pattern` with Python re, where $ also matches before a trailing newline; OpenTofu's regex() is RE2, where it does not. Without this the two engines disagree on \"+ok\\n\".",
+                    "not": {
+                      "pattern": "[\\n\\r]|---"
+                    }
+                  }
+                ]
+              }
+            },
+            "hubble_open_metrics": {
+              "description": "Export the Hubble metrics endpoint in OpenMetrics format (hubble.metrics.enableOpenMetrics). Changes only the cilium-config ConfigMap — no DaemonSet roll — so a running cluster keeps the old exposition format until `kubectl -n kube-system rollout restart ds/cilium`. Default off. Requires a NON-EMPTY hubble_metrics: the chart gates the OpenMetrics key on the metrics list, so it is inert on an endpoint that exports nothing. Same seed-freeze caveat as agent_metric_overrides. Warns when it cannot take effect.",
+              "type": "boolean"
+            },
+            "self_management": {
+              "description": "Opt-in: emit a Cilium ArgoCD Application (module output only, never applied by the module) as the Day-2 delivery path. HARD-REJECTED at plan time when values_override is non-empty (the emitted Application does not inherit it — see ADR-0022). Requires enabled=true and the ArgoCD substrate enabled. Default off.",
+              "type": "boolean"
+            },
+            "self_management_project": {
+              "description": "ArgoCD AppProject the emitted Application targets. Default \"default\" (the always-present permissive project) — scope to a dedicated project with the required destination + clusterResourceWhitelist for hardening (see README).",
+              "type": "string"
+            }
+          }
         },
         "argocd": {
           "type": "object"
+        },
+        "cert_approver": {
+          "description": "postfinance/kubelet-csr-approver tuning (the seed itself is unconditional; these keys cannot disable it). Closed so a typo'd security-control key fails lint rather than silently falling back to the permissive default. SEED knobs (create-only inlineManifest): changes re-render the machine config but do NOT update a running approver \u2014 see UPGRADING.md.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider_regex": {
+              "description": "Cluster-wide regex every kubelet-serving CSR's SAN DNS name must additionally match (the full DNS SAN, e.g. '^node-.*$', not the bare node name). Default '.*' (no extra constraint; the per-node HasPrefix DNS-SAN binding is always on regardless). Must contain a non-whitespace character — an empty PROVIDER_REGEX makes postfinance/kubelet-csr-approver v1.2.14 exit fatally, and a whitespace-only regex matches no DNS SAN (deny-all). Must not contain a YAML document separator (---) or newline — mirrors the module's var.cert_approver_provider_regex validation so the declarative path rejects it at lint time too.",
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
+              "not": {
+                "pattern": "---|\\n"
+              }
+            },
+            "provider_ip_prefixes": {
+              "description": "CIDR set every kubelet-serving CSR's SAN IP must fall within. Default ['0.0.0.0/0','::/0'] (all IPs). Must be non-empty \u2014 an empty set DENIES every CSR carrying an IP SAN. Tighten to node subnets for the IP-SAN-to-subnet binding.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "replicas": {
+              "description": "cert-approver Deployment replica count. Default 1. Raise (e.g. 2) to opt into HA \u2014 replicas > 1 auto-enables leader-election + the coordination.k8s.io/leases RBAC.",
+              "type": "integer",
+              "minimum": 1
+            }
+          }
         }
       }
     }
@@ -290,17 +456,11 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "hostname",
         "ip",
         "role",
         "image"
       ],
       "properties": {
-        "hostname": {
-          "description": "Unique node hostname; keys the per-node apply resource.",
-          "type": "string",
-          "minLength": 1
-        },
         "ip": {
           "description": "Unique node IP reachable on the Talos API port.",
           "type": "string",

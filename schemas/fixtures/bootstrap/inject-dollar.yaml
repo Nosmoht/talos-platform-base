@@ -15,7 +15,7 @@ images:
   intel:
     cpu_vendor: intel
 nodes:
-  - hostname: cp-1
+  cp-1:
     ip: 192.0.2.10
     role: controlplane
     image: intel

@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  # Required as soon as SSO is configured: ArgoCD derives the OIDC redirect URI
+  # from it. The base ships no value at all rather than a placeholder, because a
+  # wrong `url` fails at the identity provider on a human's first login instead
+  # of failing in the cluster. Hostnames here use the RFC 2606 documentation
+  # domain; substitute your own.
+  url: https://argocd.example.com
+
+  # clientSecret uses the `$<secret-name>:<key>` indirection into a Secret the
+  # consumer creates out-of-band and labels `app.kubernetes.io/part-of: argocd`.
+  # That Secret is deliberately NOT part of this example: it carries real
+  # credential material and belongs in the consumer's SOPS-encrypted tree, not
+  # in a base-shipped illustration.
+  oidc.config: |
+    name: Example IdP
+    issuer: https://idp.example.com/realms/example
+    clientID: argocd
+    clientSecret: $argocd-oidc:clientSecret
+    requestedScopes: ["openid", "profile", "email", "groups"]

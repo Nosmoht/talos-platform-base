@@ -75,6 +75,39 @@ the fail-closed allowlist excludes everything unlisted.
 - **WHEN** the published tarball's contents are listed
 - **THEN** no entry begins with `openspec/`, `.claude/`, or `.codex/`
 
+### Requirement: Steady-state ArgoCD consumables ship in the payload
+
+Per ADR-0024 (`knowledge/decisions/0024-argocd-substrate-relocation.md`), the
+steady-state ArgoCD component's consumable files SHALL be in the payload:
+`kubernetes/substrate/argocd/namespace.yaml`,
+`kubernetes/substrate/argocd/_rendered/manifests.yaml`,
+`kubernetes/substrate/argocd/_rendered/crds.yaml`, and
+`kubernetes/substrate/argocd/kustomization.yaml` appear in
+`.ci-oci-tarball-include.txt`.
+
+`kustomization.yaml` is a consumable, not an authoring input: it is what makes
+the other three a buildable unit, and without it the component's own
+"consumable as a single kustomization" requirement holds in the repository only.
+The remaining authoring inputs (`values.yaml`, `chart.lock.yaml`,
+`_rendered-overlay/`) stay outside the payload — consumers receive the render
+and the means to build it, not the render pipeline.
+
+#### Scenario: Consumer can source the steady-state render from the artifact
+
+- **WHEN** the published tarball's contents are listed
+- **THEN** `kubernetes/substrate/argocd/namespace.yaml`,
+  `kubernetes/substrate/argocd/_rendered/manifests.yaml`,
+  `kubernetes/substrate/argocd/_rendered/crds.yaml` and
+  `kubernetes/substrate/argocd/kustomization.yaml` are present, and no
+  other `kubernetes/substrate/` path is
+
+#### Scenario: A renderable component missing its kustomization fails the gate
+
+- **WHEN** a component listed in `.ci-renderable-components.txt` has no
+  `kustomization.yaml` entry in `.ci-oci-tarball-include.txt`
+- **THEN** `scripts/check-substrate-consumability.sh` fails, naming the
+  component
+
 ### Requirement: Keyless signature keyed to the digest
 
 The published artifact SHALL be cosign-signed with keyless OIDC, anchored to
@@ -87,6 +120,21 @@ tag. A failure to capture the digest SHALL fail the publication.
 - **WHEN** a consumer verifies the artifact's signature by digest
 - **THEN** the certificate chains to the GitHub Actions OIDC issuer and the
   publishing workflow's identity
+
+### Requirement: The signing tool's version is pinned and the pin reaches the runner
+
+The version of every tool that produces or pushes a release artifact SHALL be
+declared in `.tool-versions` AND passed explicitly to the action that installs
+it. An installer action invoked without a version input resolves its own
+default, so the declared pin is decorative and the tool that actually signs is
+whatever that action happens to ship — a floating tool version on the
+supply-chain path, invisible to any drift check.
+
+#### Scenario: The declared cosign version is the one that signs
+
+- **WHEN** the publish workflow installs cosign
+- **THEN** the installer is given the version declared in `.tool-versions`,
+  rather than falling back to the installer action's own default
 
 ### Requirement: SLSA provenance and CycloneDX SBOM attestations
 

@@ -2,9 +2,9 @@
 type: decision
 title: "ADR: Module-delivered Cilium + `cluster.yaml` as the declarative cluster SoT"
 description: "Delivers Cilium as a module inlineManifest seed (disabling the Talos default CNI) and makes cluster.yaml the declarative cluster Source-of-Truth, with the consumer's OpenTofu root as a thin yamldecode shim."
-status: accepted
+status: stable
 id: base:cluster-yaml-sot
-timestamp: 2026-06-06
+decided: "2026-06-06T00:00:00Z"
 deciders:
   - platform-maintainer
 supersedes: []
@@ -150,8 +150,8 @@ cleanly). Decisions 2 and 4 are the correction.
   `cilium_*` / `pod_cidr` / `service_cidr` / `dual_stack` /
   `allow_scheduling_on_controlplanes` inputs, IPsec key Secret seeding. **Gateway API controller** enabled in the seed
   (`cilium_gateway_api` default `true`); the Cilium operator creates the GatewayClass
-  at runtime once the Gateway API CRDs (v1.4.1 standard channel for Cilium 1.19)
-  exist. The CRDs are NOT seeded at bootstrap by default — they are a Day-1
+  at runtime once the Gateway API CRDs (v1.6.1 standard channel for Cilium 1.20 —
+  TLSRoute joined the standard channel at v1.6.1) exist. The CRDs are NOT seeded at bootstrap by default — they are a Day-1
   GitOps / apps-catalog concern (the substrate/apps boundary, and air-gap-safe).
   Bootstrap seeding via `cluster.extraManifests` is OPT-IN (`cilium_gateway_api_crds_url`),
   because a failed `extraManifests` fetch is NOT graceful — Talos' ExtraManifestController
@@ -204,8 +204,9 @@ cleanly). Decisions 2 and 4 are the correction.
   exposes only `verify`/`keyring` (GPG provenance via `.prov` files), no
   sha256/digest argument; SHA256 digest pinning is OCI-registry-only and
   unavailable for a classic HTTP repo like `helm.cilium.io`. And `helm.cilium.io`
-  publishes no provenance files (`cilium-1.19.4.prov` → HTTP 404), so even GPG
-  `verify` is blocked at the source. Pinning chart integrity therefore requires
+  publishes no provenance files (`cilium-1.19.4.prov` → HTTP 404; re-verified
+  2026-08-12 at the 1.20.0 bump — `cilium-1.20.0.prov` is likewise HTTP 404), so
+  even GPG `verify` is blocked at the source. Pinning chart integrity therefore requires
   consuming the chart from an OCI registry by digest (or self-mirroring with
   provenance) — beyond a module precondition. The building blocks already exist
   in-repo: `cilium_chart_repository` accepts a private OCI mirror, and the

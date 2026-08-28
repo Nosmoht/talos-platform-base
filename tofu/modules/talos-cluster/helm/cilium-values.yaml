@@ -42,7 +42,17 @@ securityContext:
       - KILL
       - NET_ADMIN
       - NET_RAW
-      - NET_BIND_SERVICE # Gateway API / envoy listeners on privileged ports
+      # NET_BIND_SERVICE is NOT in the chart's own ciliumAgent default (13 entries;
+      # this floor forks to 12 by withholding SYS_MODULE + SYSLOG and adding this).
+      # The old justification here read "Gateway API / envoy listeners on privileged
+      # ports", which does not explain the grant for THIS container: with the
+      # chart default (`envoy.enabled` unset => true for new installs) Envoy runs
+      # as the standalone `cilium-envoy` DaemonSet, so the agent serves no Gateway
+      # listener. Retained defensively for a consumer who sets
+      # `envoy.enabled: false` via cilium_values_override and runs Envoy embedded
+      # in the agent. Whether embedded mode actually needs it is NOT established —
+      # that verdict needs a live cluster, tracked in issue #214.
+      - NET_BIND_SERVICE
       - IPC_LOCK
       - SYS_ADMIN
       - SYS_RESOURCE
@@ -55,7 +65,28 @@ securityContext:
       - SYS_ADMIN
       - SYS_RESOURCE
 
-# --- Operator: single-replica floor; HA is a consumer override ---
+# --- Operator: the SINGLE-NODE floor, not the cluster-wide default ---
+# 1 is the only value that converges on a one-node cluster: the chart's operator
+# podAntiAffinity is requiredDuringScheduling on kubernetes.io/hostname, so a
+# second replica has nowhere to land and stays Pending. It is NOT the multi-node
+# value — the module's computed layer emits the chart's own default of 2 at
+# >= 2 nodes, or whatever cilium_operator_replicas pins. The full rationale for
+# that (and what it does NOT buy) lives in ONE place, deliberately:
+# cilium-values.tf's local.cilium_operator_replicas. Do not restate it here — an
+# earlier version of this comment carried a failover claim that turned out to be
+# wrong, and it survived the correction of every narrative file precisely
+# because it was a second copy.
+#
+# This key is ALSO load-bearing for two gates, so do not "clean it up" now that
+# the computed layer owns the value on every multi-node shape: it is the sole
+# floor contributor under `operator`, which is what keeps the explicit
+# `operator` sub-merge in cilium_effective_values falsifiable (mutant M2), and
+# it is what makes the render-layer replica assertions in
+# tests/composition.tftest.hcl discriminate — with the floor gone, a dropped or
+# misspelled computed key renders the CHART's default of 2 and the >= 2-node
+# assertion passes on the very mutation it exists to catch.
+#
+# A consumer override still wins over both (seed path only).
 operator:
   replicas: 1
 

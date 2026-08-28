@@ -10,7 +10,7 @@ This repository is the **substrate-only platform base** for the
 Talos-on-Kubernetes deployment family. The substrate is Talos + Cilium +
 ArgoCD (three co-equal pillars) plus `cert-approver` as serving-cert glue (a
 Talos `inlineManifest` seed, not a rendered component — adr-0013);
-`kubernetes/base/infrastructure/` ships only `argocd/`. Contributions that fit
+`kubernetes/substrate/` ships only `argocd/`. Contributions that fit
 this scope:
 
 - Improvements to the substrate components (`argocd/` rendered component; the
@@ -93,16 +93,20 @@ footer, or the change ships as a non-breaking release. See
 ```bash
 task gitops:validate             # kustomize + conftest + kubeconform
 task spec:validate               # when openspec/ or a spec's primary source changed
+task knowledge:install-cli       # once — the bundle gates refuse an unpinned CLI
+task knowledge:validate          # when knowledge/ changed — docs-lint blocks on it
+task knowledge:rules-check       # when knowledge/rules/ changed
 task spec:check-staleness        # primary-source diff must touch the owning spec
                                  # (escape for no-behavior-change diffs:
                                  #  'Spec-Impact: none' trailer on EVERY commit
-                                 #  touching the file)
+                                 #  that contributed to the file — a merge that
+                                 #  only synced your branch with main is not one)
 ```
 
 For changes touching a single component:
 
 ```bash
-kubectl kustomize --enable-helm kubernetes/base/infrastructure/<comp>/
+kubectl kustomize --enable-helm kubernetes/substrate/<comp>/
 ```
 
 For Layer-C hardware-feature / provisioning-catalog changes:
@@ -125,7 +129,7 @@ task tofu:ci   # tofu fmt -check + tofu validate + tflint
 | `gitops-validate` | full render+lint+policy pipeline |
 | `hard-constraints-check` | no Ingress/Endpoints kinds, etc. |
 | `secret-scan` (gitleaks) | last-backstop on bypassed pre-commit |
-| `docs-lint` | tool-pin drift, markdownlint, OKF bundle validation, offline link gate, AGENTS.md managed-block drift, OpenSpec strict validate (incl. bite-check + source-ownership partition), regeneration parity of the committed tool trees, and spec staleness (escape: a `Spec-Impact: none` trailer on every commit touching the file) |
+| `docs-lint` | tool-pin drift, markdownlint, OKF bundle validation, offline link gate, AGENTS.md managed-block drift, OpenSpec strict validate (incl. bite-check + source-ownership partition), regeneration parity of the committed tool trees, and spec staleness (escape: a `Spec-Impact: none` trailer on every commit that contributed to the file; a base-sync merge does not count as one) |
 | `preflight` | asserts the required-check contexts are wired |
 | `oci-publish` dry-run (on tag PRs only) | confirms signing path works |
 
@@ -152,7 +156,7 @@ hard constraints), update **at minimum**:
   [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
 
 The bundle's own authoring conventions — the closed `type` vocabulary, the
-`timestamp`/`sources` staleness contract, the link rule, and the `log.md`
+`generated.at`/`sources[].resource` staleness contract, the link rule, and the `log.md`
 maintenance rule — are stated in `knowledge/rules/talos-base-bundle.md`. Read
 that file rather than this section for them; it is the source of truth and is
 rendered into `AGENTS.md` for agents.
@@ -163,7 +167,7 @@ it with `task knowledge:rules-apply` after changing a rule document — do not
 hand-edit it, or `task knowledge:rules-check` (a required CI gate) fails.
 
 If your change adds, removes, or renames a component in
-`kubernetes/base/infrastructure/`, or changes a service-DNS or
+`kubernetes/substrate/`, or changes a service-DNS or
 `ClusterIssuer` cross-reference between components, also update
 [`knowledge/architecture/substrate.md`](knowledge/architecture/substrate.md).
 The graph is human-maintained — no render script enforces it; PR

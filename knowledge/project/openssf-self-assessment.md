@@ -3,16 +3,16 @@ type: project
 title: OpenSSF Best Practices Self-Assessment
 description: Self-assessment against the OpenSSF Best Practices Passing-level criteria, serving as the source of truth for the external enrolment answers.
 tags: [project, supply-chain]
-timestamp: 2026-07-15
+generated: { by: human:nosmoht, at: "2026-07-15T00:00:00Z" }
 migrated_from: docs/openssf-best-practices.md (deleted in the OKF migration; see git history)
 sources:
-  - .github/workflows/gitops-validate.yml
-  - .github/workflows/docs-lint.yml
-  - .github/workflows/scorecard.yml
-  - SECURITY.md
-  - MAINTAINERS.md
-  - CONTRIBUTING.md
-  - Taskfile.yml
+  - resource: .github/workflows/gitops-validate.yml
+  - resource: .github/workflows/docs-lint.yml
+  - resource: .github/workflows/scorecard.yml
+  - resource: SECURITY.md
+  - resource: MAINTAINERS.md
+  - resource: CONTRIBUTING.md
+  - resource: Taskfile.yml
 ---
 
 # OpenSSF Best Practices Self-Assessment

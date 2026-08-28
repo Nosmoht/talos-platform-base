@@ -23,6 +23,12 @@ catalog), and `platform-hardware-features.yaml` (the Layer-C atom
 registry). The downstream consumption of the composed schematics is owned
 by the `node-image-composition` spec.
 
+Every composed artifact is keyed by node NAME, which is the key of the
+`nodes` map itself rather than a field of each entry — so the composition
+inherits node-name uniqueness structurally and cannot compose two entries
+onto one key. The node identity model is owned by the
+`module-interface-contract` spec.
+
 ## Requirements
 
 ### Requirement: Base-owned provisioning-profile catalog

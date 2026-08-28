@@ -3,18 +3,20 @@ type: workflow
 title: First Consumer Cluster
 description: End-to-end walk-through from verifying a published base release to a reconciling App-of-Apps root on a freshly provisioned Talos cluster.
 tags: [bootstrap, consumer, day-zero]
-timestamp: 2026-07-15
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
 sources:
-  - README.md
-  - Taskfile.yml
-  - cluster.yaml.example
-  - tofu/modules/talos-cluster/examples/complete/main.tf
-  - tofu/modules/talos-cluster/examples/complete/variables.tf
-  - tofu/modules/talos-cluster/examples/complete/cluster.yaml
-  - tofu/modules/talos-cluster/outputs.tf
-  - .github/workflows/oci-publish.yml
-  - kubernetes/bootstrap/argocd/root-application.yaml.tmpl
-  - kubernetes/bootstrap/argocd/root-project.yaml.tmpl
+  - resource: README.md
+  - resource: Taskfile.yml
+  - resource: cluster.yaml.example
+  - resource: tofu/modules/talos-cluster/examples/complete/main.tf
+  - resource: tofu/modules/talos-cluster/examples/complete/variables.tf
+  - resource: tofu/modules/talos-cluster/examples/complete/cluster.yaml
+  - resource: tofu/modules/talos-cluster/outputs.tf
+  - resource: .github/workflows/oci-publish.yml
+  - resource: kubernetes/bootstrap/argocd/root-application.yaml.tmpl
+  - resource: kubernetes/bootstrap/argocd/root-project.yaml.tmpl
 ---
 
 # First Consumer Cluster
@@ -79,7 +81,7 @@ every re-vendor and CI verification runs against the same immutable release.
 
 Tarball membership is allowlist-driven (fail-closed) by
 `.ci-oci-tarball-include.txt`: the `tofu/modules/talos-cluster` module tree
-(with its `helm/` values floor and the `manifests/cert-approver.yaml` seed),
+(with its `helm/` values floor and the `manifests/kubelet-csr-approver.yaml` seed),
 the reference Cilium values under `kubernetes/bootstrap/cilium/`, and the
 Layer-C hardware-features vocabulary (`platform-hardware-features.yaml` +
 `schemas/hardware-features.schema.json`). The task runner (`Taskfile.yml`),
@@ -200,12 +202,36 @@ The seeded pair is intentionally minimal:
   consumer repo at `<target_revision>` with automated sync
   (`prune: true`, `selfHeal: true`, `ServerSideApply=true`).
 
-Your overlay directory is where all further Applications live. Day-2
-consumption of the base by those Applications uses ArgoCD Multi-Source
-Applications — `spec.sources[base, cluster]` pinning a base tag as a
-`ref: base` values source alongside your cluster repo.
+Your overlay directory is where all further Applications live. How those
+Applications consume the base depends on what they need from it:
 
-## Step 7 — Sanity checks
+- **Helm values** — a Multi-Source Application, `spec.sources[base, cluster]`,
+  pinning a base tag as a `ref: base` source and naming its files in
+  `helm.valueFiles`. `$ref` resolves there.
+- **A kustomize component** (the argocd component is one) — a single-source
+  Application over your repo, with the base entering as a Kustomize **remote
+  base**: a tag-pinned git URL in `resources:`. `$ref` does **not** resolve
+  inside a kustomization, so the Multi-Source form cannot be used here.
+
+## Step 7 — Attach an identity provider
+
+The substrate ships ArgoCD with no identity: no connector, no base URL, no RBAC
+policy. Until you supply them, the local `admin` account below is the only way
+in — and it is an unrestricted superuser, so treat this window as temporary.
+
+The wiring, the trust boundaries it crosses, and the cut-over that finally
+retires `admin` are one document:
+[argocd-sso-contract](../reference/argocd-sso-contract.md). The short version:
+patch `argocd-cm` (`url`, `oidc.config`) and `argocd-rbac-cm` (`policy.csv`, and
+`scopes` when your IdP's claim is not `groups`) from your own overlay over the
+remote base, hold the client secret in a separate labelled Secret, and do not
+disable `admin` until `argocd account can-i` answers `yes` for a real SSO
+principal — a successful **login** proves nothing, because an unmatched user
+authenticates fine and can do nothing.
+
+A worked overlay: `kubernetes/examples/argocd-consumer-sso/`.
+
+## Step 8 — Sanity checks
 
 ```bash
 tofu output cluster_health              # "healthy (...)" once the module gate passed

@@ -1,0 +1,33 @@
+# Tarball members deliberately OUTSIDE the MAJOR-bump guard's surface set.
+#
+# The coverage check requires every member of .ci-oci-tarball-expected.txt to be
+# matched by .ci-release-guard-pathspec.txt or listed here; without this second
+# branch a deliberate carve-out is indistinguishable from a hole.
+#
+# FORMAT: one repo-relative path per line, each preceded by a WHOLE-LINE
+# `# reason:` naming the ADR clause that admits it. A missing or placeholder
+# reason fails scripts/check-release-guard-coverage.sh, which also prints the
+# five-file sequence a membership change has to follow.
+#
+# HARD PIN: tofu/modules/talos-cluster/helm/{argocd,cilium}-values.yaml may NEVER
+# appear here — they are the shipped base Helm values, the class AGENTS.md makes
+# a MAJOR.
+
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/README.md
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/main.tf
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/outputs.tf
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/test/README.md
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/test/pki-reconcile-microtest.sh
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/test/run-adoption-proof.sh
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/variables.tf
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/versions.tf

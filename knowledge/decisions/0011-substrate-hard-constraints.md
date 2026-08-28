@@ -2,9 +2,9 @@
 type: decision
 title: "ADR: Substrate Hard Constraints — boot-loop guards and deprecated-API bans"
 description: "Retroactively records three already-enforced substrate invariants — no SecureBoot installer, no debugfs=off kernel argument, EndpointSlices only — with their failure modes and enforcement points."
-status: proposed
+status: stable
 id: base:substrate-hard-constraints
-timestamp: 2026-06-21
+decided: "2026-06-21T00:00:00Z"
 deciders:
   - platform-maintainer
 supersedes: []
@@ -136,3 +136,22 @@ stays correct?
 - `.github/workflows/hard-constraints-check.yml` — the CI gate for **all three** (SecureBoot / `debugfs=off` / forbidden-kinds steps).
 - `tofu/modules/talos-cluster/main.tf` — D1 code enforcement (installer-URL selection + `secureboot_patches` precondition).
 - [0006-opentofu-cluster-lifecycle.md](./0006-opentofu-cluster-lifecycle.md) — the ADR for that module.
+
+## Addendum 2026-08-23 — the status question the 2026-07-11 verification deferred
+
+That verification closed by saying the frontmatter `status: proposed` predates
+the enforcement it had just confirmed, and that flipping it was a maintainer
+decision rather than part of the verification. The decision is now taken: the
+frontmatter reads `status: stable`.
+
+What forced it was the OKF v0.2 migration making `status` machine-readable. The
+mechanical MADR map sends `proposed` to `draft`, and `draft` reads as
+work-in-progress to any consumer of this bundle — while `AGENTS.md` §Hard
+Constraints cites this ADR three times as binding and `hard-constraints-check`
+is a required branch-protection context. Shipping that label would have put the
+canonical agent file and the machine-readable record in contradiction.
+
+The evidence is the 2026-07-11 verification above, unchanged: all three
+invariants are enforced in CI and in module code. Only the frontmatter moves.
+The MADR word in this ADR's own record stays `proposed` — that is what the
+record said on that date.

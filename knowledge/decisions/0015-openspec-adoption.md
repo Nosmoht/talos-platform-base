@@ -2,14 +2,19 @@
 type: decision
 title: "ADR: OpenSpec as the behavioral-requirements surface"
 description: "The base adopts OpenSpec with a directly-authored backfill of 14 substrate capability specs; openspec/specs/ is normative for behavioral requirements, scoped to consumer-facing platform behavior."
-status: accepted
+status: stable
 id: base:openspec-adoption
-timestamp: 2026-07-13
+decided: "2026-07-13T00:00:00Z"
 deciders:
   - repo owner
 consulted: []
 informed: []
 supersedes: []
+# Partially superseded by 0021 (§Ownership model + §"SoT map vs
+# knowledge/reference/" scoped, not retracted) — recorded via the dated
+# in-body banner + 0021's `supersedes`, per the 0003/0004 partial-
+# supersession convention (status stays stable; a populated
+# superseded_by is reserved for FULL supersession, cf. 0005/0008).
 superseded_by: []
 related:
   - base:ship-ai-tool-artifacts
@@ -18,6 +23,16 @@ tags: [adr, spec-driven-development, governance]
 ---
 
 # ADR: OpenSpec as the behavioral-requirements surface
+
+> [2026-07-22 partial supersession] **§Ownership model and §"SoT map vs
+> `knowledge/reference/`" are scoped in part by
+> [0021-spec-vs-bundle-normativity.md](./0021-spec-vs-bundle-normativity.md).**
+> The doc→spec map's reference-doc targets and the terraform-docs exemption,
+> and the ownership model's zero-restatement and `sources:`-partition
+> claims, are now scoped rather than asserted as fully true for schema shape
+> and module-interface requirements — read the two records together.
+> Everything else below — the §Scope principle, the 2026-07-15 Correction
+> block, and the Consequences and Follow-ups — still stands.
 
 ## Context and Problem Statement
 
@@ -71,6 +86,10 @@ only) split into `primary` (exactly one owning spec per path) and
 they are `references:`. Normative statements stay in `AGENTS.md` §Hard
 Constraints and the ADRs; specs cite them and describe observable
 outcomes (pure reference, zero restatement).
+See [0021-spec-vs-bundle-normativity.md](./0021-spec-vs-bundle-normativity.md)
+for how this paragraph is scoped for schema shape and module-interface
+requirements, and for where its `sources:`-partition and zero-restatement
+claims stand against the delivered state.
 
 **SoT map vs `knowledge/reference/`.** Specs are normative for
 requirements; reference docs stay narrative:
@@ -82,6 +101,10 @@ requirements in `module-interface-contract`, composition in
 `node-image-composition`; [cluster-yaml](../reference/cluster-yaml.md) →
 `cluster-yaml-sot`. The module README's variable/output tables are
 terraform-docs-generated (inject mode) and exempt from this map.
+See [0021-spec-vs-bundle-normativity.md](./0021-spec-vs-bundle-normativity.md)
+for how this record scopes the reference-doc targets above against the
+delivered state — this is the paragraph the owner's issue #177 decision
+actually quoted.
 
 **Correction (2026-07-15).** The paragraph above is left standing, wording
 intact, because it is what was decided. Two things about it are wrong, and
@@ -90,6 +113,13 @@ one mechanical change to it: its `talos-cluster-module` markdown link is now
 an inline code span, because the target no longer exists and
 `openknowledge.toml` raises `link-target` to error, so the file could not
 otherwise validate. The sentence is unchanged.)
+
+**Clarification (2026-08-23).** The filename in the parenthesis above is the
+one the CLI used at the time and is left standing as record. Since the
+openknowledge 0.12.0 pin the file is `knowledge/.openknowledge.toml`: the
+pre-0.10 name is not read at all, and a config the CLI does not find degrades
+every raise back to the spec default without any signal. Recreating a file
+under the old name would silently do nothing.
 
 1. *"The module README's variable/output tables are terraform-docs-generated
    (inject mode)"* — **false**. `tofu/modules/talos-cluster/README.md`

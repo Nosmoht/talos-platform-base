@@ -22,12 +22,12 @@ jobs:
       # .tool-versions is the single source of truth (asdf/mise format);
       # these env vars exist because GitHub Actions inputs cannot read
       # .tool-versions natively.
-      KUSTOMIZE_VERSION: 5.3.0
-      KUSTOMIZE_SHA256_LINUX_AMD64: 3ab32f92360d752a2a53e56be073b649abc1e7351b912c0fb32b960d1def854c
-      CONFTEST_VERSION: v0.53.0
-      KUBECONFORM_VERSION: 0.6.7
-      HELM_VERSION: 3.20.2
-      YQ_VERSION: 4.53.2
+      KUSTOMIZE_VERSION: 5.8.1
+      KUSTOMIZE_SHA256_LINUX_AMD64: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
+      CONFTEST_VERSION: v0.69.0
+      KUBECONFORM_VERSION: 0.8.0
+      HELM_VERSION: 4.2.4
+      YQ_VERSION: 4.53.6
 
     steps:
       - name: Checkout
@@ -138,6 +138,18 @@ jobs:
         # Uses the helm + yq already installed above; runs on every PR.
         run: ./scripts/check-argocd-substrate-invariants.sh
 
+      - name: Check Cilium reference values against the pinned chart schema
+        # kubernetes/bootstrap/cilium/values.yaml ships in the OCI artifact and is
+        # what a consumer copies into a Day-2 self-managed Application, but nothing
+        # ever rendered it — so a value the pinned chart REMOVED was dropped
+        # silently by Helm (no --strict), leaving the consumer misconfigured with no
+        # error. That is what happened to encryption.strictMode.* at Cilium 1.20.
+        # Same script `task gitops:validate` runs, so local green means what CI
+        # green means. Uses the yq installed above; needs the chart registry, and
+        # SKIPS loudly rather than failing when it is unreachable — an outage must
+        # not block unrelated merges (same trade-off tofu-validate.yml makes).
+        run: ./scripts/check-cilium-reference-values.py
+
       - name: Discover kustomize targets
         run: ./scripts/discover_kustomize_targets.sh
 
@@ -154,7 +166,7 @@ jobs:
           expected_file="$(mktemp)"
           actual_file="$(mktemp)"
           sort -u < .ci-renderable-components.txt > "$expected_file"
-          awk -F/ '$3 == "infrastructure" {print $4}' \
+          awk -F/ '$2 == "substrate" {print $3}' \
               .work/kustomize-safe-targets.txt 2>/dev/null \
             | sort -u > "$actual_file"
           if ! cmp -s "$expected_file" "$actual_file"; then
@@ -211,12 +223,12 @@ jobs:
     name: Hardware-features registry validation (Layer C)
     runs-on: ubuntu-latest
     env:
-      YQ_VERSION: 4.53.2
+      YQ_VERSION: 4.53.6
       # go-task runs the bootstrap render the check below asserts. Pinned for
       # the same reason as docs-lint.yml: an unpinned payload behind a pinned
       # installer is still an unpinned gate. KEEP IN SYNC with .tool-versions
       # (asserted by the drift step below).
-      TASK_VERSION: "3.48.0"
+      TASK_VERSION: "3.53.1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -264,22 +276,33 @@ jobs:
             printf '%s\n' "$out" >&2
             exit 1
           fi
-          # Bind all SIX fixture violations individually: relaxing the role
-          # enum, de-anchoring the version pattern, or relaxing any of the four
-          # kernel-arg lexical rules (issue #169) must each turn this step red,
-          # even while the other violations still fail the file.
-          for v in '$.nodes[0].role' '$.talos.install_version' \
+          # Bind all TWELVE schema rules individually (eleven fixture entries —
+          # operator_replicas: 0.5 breaks two at once): relaxing the role
+          # enum, the node-key pattern (issue #204 — a key Talos would ACCEPT and
+          # silently rewrite), de-anchoring the version pattern, or relaxing any
+          # of the four kernel-arg lexical rules (issue #169) must each turn this
+          # step red, even while the other violations still fail the file.
+          # The node-key needle carries the offending VALUE, not just the path:
+          # "$.nodes" alone is a prefix of "$.nodes['cp-1'].role" and would pass
+          # vacuously on the role violation after the key rule was relaxed.
+          for v in "\$.nodes['cp-1'].role" "\$.nodes: 'CP_2'" '$.talos.install_version' \
             "\$.images['bad-karg-whitespace'].extra_kernel_args[0]" \
             "\$.images['bad-karg-removal'].extra_kernel_args[0]" \
             "\$.images['bad-karg-empty-key'].extra_kernel_args[0]" \
-            "\$.images['bad-karg-debugfs'].extra_kernel_args[0]"; do
+            "\$.images['bad-karg-debugfs'].extra_kernel_args[0]" \
+            '$.substrate.cilium.agent_metric_overrides[0]' \
+            '$.substrate.cilium.hubble_metrics[1]' \
+            '$.substrate.cilium.native_routing_cidr' \
+            "\$.substrate.cilium.operator_replicas: 0.5 is not of type" \
+            "\$.substrate.cilium.operator_replicas: 0.5 is less than the minimum" \
+            "\$.cluster.worker_apply_mode: 'staged_if_needing_reboot' is not one of"; do
             if ! printf '%s\n' "$out" | grep -qF "$v"; then
               echo "FAIL: expected schema violation on $v was not reported — that rule no longer bites" >&2
               printf '%s\n' "$out" >&2
               exit 1
             fi
           done
-          echo "OK: malformed cluster.yaml fixture rejected with all six expected violations (role enum + anchored version pattern + four kernel-arg lexical rules)"
+          echo "OK: malformed cluster.yaml fixture rejected with all twelve expected violations (role enum + node-key pattern + anchored version pattern + four kernel-arg lexical rules + three Cilium raw-render corruption rules + both operator_replicas numeric bounds)"
 
       - name: Verify TASK_VERSION matches .tool-versions
         # Inline by necessity — it guards the pin of the binary that runs the
@@ -385,6 +408,12 @@ jobs:
             echo "To update the fixture: mv .work/oci-check-contents.txt .ci-oci-tarball-expected.txt"
             exit 1
           fi
+
+      - name: Renderable substrate components are consumable + kubernetes/base stays retired
+        # Shared script with `task supply-chain:oci-allowlist` — closes the
+        # #156 class (renderable-but-unlisted component) and enforces the
+        # ADR-0024 layout invariant mechanically.
+        run: ./scripts/check-substrate-consumability.sh
 
   shellcheck:
     name: ShellCheck

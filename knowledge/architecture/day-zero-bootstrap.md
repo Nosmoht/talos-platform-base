@@ -3,17 +3,20 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-timestamp: 2026-07-15
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
+  - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
 sources:
-  - tofu/modules/talos-cluster/main.tf
-  - tofu/modules/talos-cluster/manifests/cert-approver.yaml
-  - kubernetes/bootstrap/argocd/root-application.yaml.tmpl
-  - kubernetes/bootstrap/argocd/root-project.yaml.tmpl
-  - kubernetes/bootstrap/cilium/values.yaml
-  - Taskfile.yml
-  - scripts/check-argocd-substrate-invariants.sh
-  - cluster.yaml.example
-  - AGENTS.md
+  - resource: tofu/modules/talos-cluster/main.tf
+  - resource: tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
+  - resource: kubernetes/bootstrap/argocd/root-application.yaml.tmpl
+  - resource: kubernetes/bootstrap/argocd/root-project.yaml.tmpl
+  - resource: kubernetes/bootstrap/cilium/values.yaml
+  - resource: Taskfile.yml
+  - resource: scripts/check-argocd-substrate-invariants.sh
+  - resource: cluster.yaml.example
+  - resource: AGENTS.md
 ---
 
 # Day-Zero Bootstrap
@@ -26,9 +29,16 @@ Hardware provisioning and PXE boot are out of scope for the base.
 
 ## What the module seeds via controlplane inlineManifests
 
-Talos `cluster.inlineManifests` are **create-only seeds** — applied once at
-bootstrap, never re-run. The module bakes three seeds into the controlplane
-machine config (workers carry none):
+Talos `cluster.inlineManifests` are **create-only seeds**: Talos re-applies
+them on every machine-config apply and **creates** any not-yet-existing
+manifest, but never **updates or deletes** a resource it already created
+("create-only" means an *existing* object is inert to the seed). So a fresh
+cluster gets every seed at bootstrap, a later `tofu apply` lands newly-added
+manifests (this is what makes the renamed cert-approver reach an existing
+cluster), and an in-place edit to an already-seeded resource does not
+propagate — see [ADR-0013](../decisions/0013-kubelet-serving-cert-rotation.md)
+and the upgrade guide (`UPGRADING.md`). The module bakes three seeds into the
+controlplane machine config (workers carry none):
 
 - **Cilium** (`deploy_cilium`, default `true`) — the `cilium` chart is
   rendered locally via `data.helm_template` (no `helm_release`, no live
@@ -50,15 +60,23 @@ machine config (workers carry none):
   `tofu/modules/talos-cluster/helm/argocd-values.yaml` plus an optional
   `argocd_values_override`. The render deliberately excludes CRDs
   (`include_crds = false`) — see the CRD side-channel below.
-- **cert-approver** — unconditional (no toggle): the
-  `kubelet-serving-cert-approver` Namespace (PSA-`restricted`) plus the
-  vendored upstream manifest
-  (`tofu/modules/talos-cluster/manifests/cert-approver.yaml`). This is the
-  vendored-static-manifest seed pattern (upstream ships raw YAML, no chart),
-  distinct from the helm-render/freeze pattern Cilium and ArgoCD use. It
-  pairs with the all-nodes kubelet patch `serverTLSBootstrap: true`; the
-  cluster-scoped approver approves serving CSRs from workers too. Decision:
-  [0013-kubelet-serving-cert-rotation](../decisions/0013-kubelet-serving-cert-rotation.md).
+- **cert-approver** — unconditional (no disable toggle): the
+  `kubelet-csr-approver` Namespace (PSA-`restricted`) plus the
+  **postfinance/kubelet-csr-approver** manifest
+  (`tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml`). The
+  manifest is the postfinance Helm chart rendered at pin time and committed,
+  then `templatefile()`-parameterized with the three per-cluster
+  `substrate.cert_approver` knobs — `provider_regex` / `provider_ip_prefixes`
+  (SAN allowlists) and `replicas` (`> 1` derives leader-election + leases RBAC).
+  Because `templatefile()` is pure, this seed stays outside the
+  `data.helm_template` freeze pattern Cilium and ArgoCD use. It pairs with the
+  all-nodes kubelet patch `serverTLSBootstrap: true`; the cluster-scoped approver
+  approves serving CSRs from workers too and enforces a per-node DNS-SAN binding
+  default-on. Decisions:
+  [0013-kubelet-serving-cert-rotation](../decisions/0013-kubelet-serving-cert-rotation.md)
+  (rotation default-on + seed model) and
+  [0019-postfinance-kubelet-csr-approver](../decisions/0019-postfinance-kubelet-csr-approver.md)
+  (the postfinance approver + config surface, superseding 0013 §D2).
 
 Two supporting mechanics:
 
@@ -103,12 +121,32 @@ Key properties:
 - **Blocking health gate** — `tofu apply` does not return at the bootstrap
   call; a health data source polls until etcd quorum, node readiness, and
   apiserver reachability hold (timeout `cluster_health_timeout`).
+- **Kubeconfig regenerates on an endpoint change** — `talos_cluster_kubeconfig.this`
+  carries a `lifecycle.replace_triggered_by` keyed on a `terraform_data`
+  marker tracking `var.cluster_endpoint` (`kubeconfig-refresh.tf`), so a
+  later change to the advertised cluster endpoint — a VIP move, a DNS
+  rename, or a control-plane node re-IP on a single-control-plane cluster
+  where the endpoint is expressed as that node's own IP — forces a
+  state-only destroy+recreate that re-fetches the kubeconfig instead of
+  leaving it frozen at the bootstrap-time value. On a VIP/DNS endpoint a
+  plain node re-IP is correctly inert. The recreate rotates the embedded
+  admin client certificate; adding the marker to an already-bootstrapped
+  cluster's state does not itself trigger a recreate (inert until the
+  endpoint actually changes). The existing health gate polls the
+  control-plane node IPs, not the advertised endpoint, so on a VIP/DNS
+  endpoint it does not verify the new endpoint is reachable — the
+  consumer confirms the endpoint is correct and propagated. A re-fetched
+  kubeconfig is also only usable once the new hostname/IP is in the
+  apiserver serving-cert SANs.
 - **CRD side-channel** — the three ArgoCD CRDs render to roughly 1.8 MB, far
   beyond inlineManifest budget (the app render is about 109 KB), so after
-  the health gate the module writes the kubeconfig plus the full ArgoCD
-  render to disk and runs `kubectl apply --server-side --force-conflicts`.
-  This is a deliberate, tofu-driven Day-2-convergent path (it re-runs on an
-  intended chart/version bump); every apply host must ship `kubectl`.
+  the health gate the module writes the kubeconfig plus the CRD documents to
+  disk and runs `kubectl apply --server-side`. The payload is projected down
+  to `CustomResourceDefinition` documents before the freeze and the apply
+  carries no `--force-conflicts`, so it delivers the CRDs and touches nothing
+  else — see [0025-argocd-crd-apply-scope](../decisions/0025-argocd-crd-apply-scope.md)
+  for what the former full-render, force-applying form did. It re-runs on an
+  intended chart/version bump; every apply host must ship `kubectl`.
   Rationale: [0006-opentofu-cluster-lifecycle](../decisions/0006-opentofu-cluster-lifecycle.md).
 
 ## Seeding the App-of-Apps root: `task bootstrap:argocd`
@@ -153,33 +191,60 @@ commit to git and let ArgoCD reconcile. The one documented exception is
 one-time bootstrap content under `kubernetes/bootstrap/` (exactly what
 `task bootstrap:argocd` applies). The module's server-side CRD apply is
 tofu-executed, not an operator workflow, and stays inside that spirit: it
-converges only what the seed cannot carry.
+delivers only what the seed cannot carry.
+
+That scope is now literal. The apply used to cover the chart's **full**
+default render — the data source behind it carries no values block — and used
+`--force-conflicts`, so on every re-fire (its trigger set includes
+`kubernetes_version`, i.e. a routine Kubernetes upgrade) it pushed
+chart-default workloads and ConfigMaps over ArgoCD's own state and took
+field-manager ownership of `argocd-cm` and `argocd-rbac-cm`. Since
+[adr-0025](../decisions/0025-argocd-crd-apply-scope.md) the render is projected
+down to `CustomResourceDefinition` documents before the freeze and applied
+without the force flag: the module delivers CRDs, and convergence of the app
+itself is ArgoCD self-management's job. Existing clusters are not repaired
+retroactively — `kubectl` stays a recorded field manager on what it already
+touched; the change stops future applies from re-taking it.
 
 ## Handoff to steady state
 
 Once the `root` Application syncs, GitOps owns the cluster: the consumer
 overlay fans out AppProjects and Applications, and ArgoCD transitions to
 self-management through the base's one kustomize component
-(`kubernetes/base/infrastructure/argocd/`, rendered manifests committed —
+(`kubernetes/substrate/argocd/`, rendered manifests committed —
 see [manifest-pipeline](../reference/manifest-pipeline.md)).
 
 ArgoCD therefore ships through **two render paths** — the slim Day-0 seed
 values (`tofu/modules/talos-cluster/helm/argocd-values.yaml`) and the
-steady-state values (`kubernetes/base/infrastructure/argocd/values.yaml`).
+steady-state values (`kubernetes/substrate/argocd/values.yaml`).
 Shared invariants must hold in both so they cannot drift silently, gated by
 `scripts/check-argocd-substrate-invariants.sh` (run in `task gitops:validate`
 and CI):
 
 - **I1** — neither render produces a bundled-Dex resource (no document
   labelled `app.kubernetes.io/component: dex-server`, none named
-  `argocd-dex-server`): SSO is wired via an external OIDC provider, and an
-  idle Dex would also bloat the inlineManifest seed.
+  `argocd-dex-server`): SSO is wired against an external OIDC provider by
+  patching the `oidc.config` key of the `argocd-cm` ConfigMap in the consumer's
+  own overlay, and an idle Dex would also bloat the inlineManifest seed.
 - **I2** — no rendered ConfigMap carries a `.data` key prefixed
   `server.dex.server` (scanning every ConfigMap is rename-proof; the
   legitimate `configMapKeyRef` *consumers* of those keys are not violations).
+- **I3** (shared across both render paths) — the rendered `argocd-cm` carries no
+  `url` key. ArgoCD documents `url` as required for SSO and derives the OIDC
+  redirect URI from it, so the chart's placeholder hostname fails at the IdP
+  rather than in the cluster; an absent key is the visible state, and the
+  consumer supplies the real value. `argocd-notifications-cm`'s `argocdUrl` is
+  an accepted residual — Helm's `default` treats `""` as unset, so it cannot be
+  cleared without disabling the whole notifications workload.
+- **I4** (steady-state render only) — `argocd-rbac-cm` carries no non-empty
+  `policy.csv`: the substrate ships no identity, and the seed values have never
+  carried one. Steady-state-only because the published component is what a
+  consumer's overlay merges onto, so a principal shipped there would become a
+  standing grant in every consuming cluster
+  ([argocd-sso-contract](../reference/argocd-sso-contract.md)).
 
 Both paths render from the same chart tarball, pinned and sha256-verified
-against `kubernetes/base/infrastructure/argocd/chart.lock.yaml`. Consumer
+against `kubernetes/substrate/argocd/chart.lock.yaml`. Consumer
 `values_override` content is out of base scope (consumer-cluster policy owns
 it). Day-2 boundaries follow from the seed semantics: ArgoCD upgrades itself
 via GitOps, Kubernetes upgrades run out-of-band via `talosctl upgrade-k8s`,

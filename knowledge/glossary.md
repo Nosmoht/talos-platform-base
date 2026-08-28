@@ -3,18 +3,22 @@ type: glossary
 title: Glossary
 description: Cross-domain vocabulary for the talos-platform-base substrate, its delivery pipeline, and its consumer contract.
 tags: [glossary, vocabulary, platform]
-timestamp: 2026-07-15
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
+  - { by: human:nosmoht, at: "2026-07-17T00:00:00Z" }
 sources:
-  - AGENTS.md
-  - Taskfile.yml
-  - tofu/modules/talos-cluster/variables.tf
-  - tofu/modules/talos-cluster/profiles.tf
-  - scripts/render-component.sh
-  - scripts/check-render-determinism.sh
-  - .github/workflows/oci-publish.yml
-  - .releaserc.json
-  - kubernetes/base/infrastructure/argocd/chart.lock.yaml
-  - cluster.yaml.example
+  - resource: AGENTS.md
+  - resource: Taskfile.yml
+  - resource: tofu/modules/talos-cluster/variables.tf
+  - resource: tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
+  - resource: tofu/modules/talos-cluster/profiles.tf
+  - resource: scripts/render-component.sh
+  - resource: scripts/check-render-determinism.sh
+  - resource: .github/workflows/oci-publish.yml
+  - resource: .releaserc.json
+  - resource: kubernetes/substrate/argocd/chart.lock.yaml
+  - resource: cluster.yaml.example
 ---
 
 # Glossary
@@ -35,12 +39,18 @@ record; deep-dive pages are linked where they exist.
   platform component that is *not* substrate, shipped as independently
   versioned signed OCI artifacts. Routing rule: not substrate → apps catalog,
   never base. See [0004-substrate-only-base](decisions/0004-substrate-only-base.md).
-- **cert-approver** — single-purpose controller seeded as a controlplane
-  `inlineManifest` (`tofu/modules/talos-cluster/manifests/cert-approver.yaml`)
+- **cert-approver** — single-purpose controller (**postfinance/kubelet-csr-approver**,
+  namespace `kubelet-csr-approver`) seeded as a controlplane `inlineManifest`
+  (`tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml`, the
+  postfinance Helm chart rendered at pin time then `templatefile()`-parameterized)
   that approves `kubernetes.io/kubelet-serving` CSRs triggered by the base's
   default-on kubelet serving-cert rotation; its RBAC `approve` verb is
-  signer-scoped to exactly that signer. Talos serving-cert glue, not a fourth
-  pillar. See [0013-kubelet-serving-cert-rotation](decisions/0013-kubelet-serving-cert-rotation.md).
+  signer-scoped to exactly that signer, and it binds each CSR's DNS SAN to the
+  requesting node by default. Exposes three `substrate.cert_approver` knobs
+  (`provider_regex`, `provider_ip_prefixes`, `replicas`). Talos serving-cert
+  glue, not a fourth pillar. See
+  [0013-kubelet-serving-cert-rotation](decisions/0013-kubelet-serving-cert-rotation.md)
+  and [0019-postfinance-kubelet-csr-approver](decisions/0019-postfinance-kubelet-csr-approver.md).
 - **chart.lock.yaml** — per-component pin spec for the Rendered Manifests
   Pattern: chart repo/name/version plus `tgz_sha256` digest, release
   name/namespace/`includeCRDs`, and the values file. Read by
@@ -108,10 +118,13 @@ record; deep-dive pages are linked where they exist.
   [0009-node-capability-composition](decisions/0009-node-capability-composition.md).
 - **Render-determinism fence** — `scripts/check-render-determinism.sh`
   (wired into `task tofu:ci`): static guard asserting every
-  `data.helm_template` render is consumed only through a frozen
-  `terraform_data` with `ignore_changes = [input]` (CRD renders additionally
-  `triggers_replace`), so non-byte-stable helm renders cannot re-push a fresh
-  machineConfig every plan.
+  `data.helm_template` render is read exactly once and consumed only through a
+  frozen `terraform_data` with `ignore_changes = [input]` (CRD renders
+  additionally `triggers_replace`), so non-byte-stable helm renders cannot
+  re-push a fresh machineConfig every plan. The single read may be captured
+  directly as the freeze's `input`, or sit in a `locals` block whose value the
+  freeze captures — the second shape admits a pure transform between read and
+  freeze, such as the ArgoCD CRD projection.
 - **Rendered Manifests Pattern** — charts are rendered at build time, not in
   the cluster: `scripts/render-component.sh` runs helm template (Stage 1) +
   kustomize build (Stage 2) from `chart.lock.yaml` and commits the split

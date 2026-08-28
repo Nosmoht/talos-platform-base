@@ -3,18 +3,20 @@ type: architecture
 title: Capability Composition
 description: How per-node hardware capabilities compose Layer-C atoms, the base-owned provisioning-profile catalog, deduplicated schematics, and node labels in the talos-cluster module.
 tags: [layer-c, hardware-capabilities, talos, opentofu]
-timestamp: 2026-07-15
+generated: { by: human:nosmoht, at: "2026-07-15T00:00:00Z" }
+verified:
+  - { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
-  - tofu/modules/talos-cluster/composition.tf
-  - tofu/modules/talos-cluster/profiles.tf
-  - tofu/modules/talos-cluster/variables.tf
-  - platform-hardware-features.yaml
-  - schemas/hardware-features.schema.json
-  - scripts/lint-hardware-features.sh
-  - scripts/check-provisioning-catalog-refs.sh
-  - tofu/modules/talos-cluster/tests/composition.tftest.hcl
-  - tofu/modules/talos-cluster/tests/conflict-guards.tftest.hcl
-  - .github/workflows/gitops-validate.yml
+  - resource: tofu/modules/talos-cluster/composition.tf
+  - resource: tofu/modules/talos-cluster/profiles.tf
+  - resource: tofu/modules/talos-cluster/variables.tf
+  - resource: platform-hardware-features.yaml
+  - resource: schemas/hardware-features.schema.json
+  - resource: scripts/lint-hardware-features.sh
+  - resource: scripts/check-provisioning-catalog-refs.sh
+  - resource: tofu/modules/talos-cluster/tests/composition.tftest.hcl
+  - resource: tofu/modules/talos-cluster/tests/conflict-guards.tftest.hcl
+  - resource: .github/workflows/gitops-validate.yml
 ---
 
 # Capability Composition

@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# A worked consumer overlay attaching an external OIDC provider to the
+# identity-free substrate. Contract: knowledge/reference/argocd-sso-contract.md.
+#
+# This `resources:` entry is a LOCAL path so the CI gate
+# (scripts/check-argocd-substrate-invariants.sh) can build it offline. A real
+# consumer overlay lives in the consumer's own repo and reaches this component
+# as a Kustomize REMOTE BASE pinned to a tag:
+#
+#   resources:
+#     - github.com/<owner>/talos-platform-base//kubernetes/substrate/argocd?ref=<tag>
+#
+# Multi-Source `$base/...` is NOT an alternative here: ArgoCD resolves the $ref
+# source reference only inside helm.valueFiles / helm.fileParameters, never from
+# a kustomization.
+#
+# The example lives outside kubernetes/substrate/argocd/ rather than under it
+# for a mechanical reason: kustomize refuses to build a root that contains its
+# own overlay ("cycle detected"), so a nested example could not be built at all.
+resources:
+  - ../../substrate/argocd
+
+# Strategic merge, deliberately: it merges into .data, so the keys the base
+# ships (kustomize.buildOptions, resource.exclusions, the compare options)
+# survive. A JSON6902 patch or `$patch: replace` would drop them — the gate
+# asserts the merged key set is a superset of the shipped one for exactly that
+# reason.
+patches:
+  - path: argocd-cm.yaml
+  - path: argocd-rbac-cm.yaml

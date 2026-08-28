@@ -9,7 +9,7 @@
 #   gitops:*       — kustomize manifest validation + rendered-manifests pipeline
 #   bootstrap:*    — consumer App-of-Apps root seed (NOT module-delivered)
 #   cluster:*      — declarative cluster SoT (cluster.yaml) init
-#   supply-chain:* — OCI tarball allowlist verification
+#   supply-chain:* — OCI artifact + release-gate verification
 #   mcp:*          — MCP server binary management
 #   dev:*          — contributor hygiene (pre-commit, tool pins)
 #
@@ -26,6 +26,20 @@ env:
   # auto-disabled when CI=true, verified in its dist/telemetry/index.js).
   # Explicit opt-out keeps LOCAL task runs network-quiet too.
   OPENSPEC_TELEMETRY: "0"
+  # openknowledge telemetry is ON by default (0.12.0). Not `--no-telemetry`:
+  # that flag is persistent (it writes `enabled: false` into the operator's
+  # config) and absent before 0.12.0, so it cannot cover the version probes.
+  # `off` is upstream's documented spelling, and the CLI reads anything it does
+  # not recognise as ENABLED. This block is only the default for targets that
+  # run the CLI: measured, go-task's `env:` LOSES to an inherited value, so an
+  # ambient `OPENKNOWLEDGE_TELEMETRY=on` defeats it. What actually binds is the
+  # unconditional export in `OK_GUARD` and in `knowledge:install-cli`.
+  OPENKNOWLEDGE_TELEMETRY: "off"
+  # Backstop, not the control: with the export in place nothing is written
+  # here. If the opt-out ever stops working, this bounds the write to the
+  # gitignored checkout instead of the operator's home, where
+  # scripts/check-knowledge-gate-bite.sh can see it.
+  OPENKNOWLEDGE_TELEMETRY_CONFIG: '{{.ROOT_DIR}}/.work/openknowledge-telemetry.json'
 
 vars:
   # Declarative cluster SoT consumed by bootstrap:* (override per invocation:
@@ -41,17 +55,31 @@ vars:
   MCP_GITHUB_VERSION: 0.33.0
   MCP_K8S_VERSION: 0.0.60
   MCP_TALOS_VERSION: 1.1.0
-  # knowledge:* tool pins — KEEP IN SYNC with .tool-versions and the
-  # docs-lint.yml env block. Checksums from the projects' released
-  # checksum files (verified 2026-07-11).
-  OPENKNOWLEDGE_VERSION: 0.5.0
-  OPENKNOWLEDGE_SHA256_DARWIN_ARM64: 8316f6206943e42973f6645b9deebba46299038f223cc1b1fe42d5cb2fac2150
-  OPENKNOWLEDGE_SHA256_DARWIN_AMD64: 29801d38436903b043812d04e0a5e364f167c54ab54760cc6cc87a933292f834
-  OPENKNOWLEDGE_SHA256_LINUX_AMD64: 0f58de81e52f064fbf52aac5289e0b1b6dc0e58de2f47c4e043263e9e927cb27
+  # knowledge:* tool pins. Which files must move together is stated once, in
+  # .tool-versions' update-workflow header — not restated here, because a
+  # second copy is a second thing to go stale. `task dev:verify-pins` asserts
+  # these vars against that file.
+  # Checksums from the projects' released checksum files. openknowledge: all
+  # four verified 2026-08-23
+  # against the v0.12.0 checksums.txt. lychee: the three original constants
+  # 2026-07-11, LYCHEE_SHA256_LINUX_ARM64 2026-08-23 against that asset's
+  # published .sha256 sidecar. The linux-arm64 arm is the one no maintainer or
+  # CI runner exercises, so it was run end to end in a linux/arm64 container
+  # (2026-08-23): both assets fetch, both checksums verify against the
+  # constants above, the openknowledge tarball is flat as the install line
+  # assumes, and lychee's nested binary is found by the same `find`.
+  OPENKNOWLEDGE_VERSION: 0.12.0
+  # knowledge/index.md declares this same literal; the frontmatter gate asserts it.
+  OKF_SPEC: "0.2"
+  OPENKNOWLEDGE_SHA256_DARWIN_ARM64: 24e5fe37f87dae647121b98dc708997206906558413b7620617f0a8690da0e1d
+  OPENKNOWLEDGE_SHA256_DARWIN_AMD64: 8f20fe1c09c7ac69124f020f219f1d9b61c92aaac6bb156704b8886a38bed2aa
+  OPENKNOWLEDGE_SHA256_LINUX_AMD64: 614e317499eb29f8367edbba78b4c81a1a7c895c3203c5b9ef861a9b1875f108
+  OPENKNOWLEDGE_SHA256_LINUX_ARM64: f004196c21de7fcb0855ee2718a386da6f947de68328b2ad3334fa5921031381
   LYCHEE_VERSION: 0.24.2
   LYCHEE_SHA256_DARWIN_ARM64: c9d3740ea2d891854d37116c9fba840f37b6e7c89d330e7db84ac333631c4977
   LYCHEE_SHA256_DARWIN_AMD64: 887503a9cff667d322b8d0892b40bf49976eb9507af8483220a3706cdad55978
   LYCHEE_SHA256_LINUX_AMD64: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+  LYCHEE_SHA256_LINUX_ARM64: 91a7bd65685da41b90ccb9bc867a3d649a7818042dae04ff405e55a25bddee4c
   # spec:*/docs:* tool pins (openspec, markdownlint-cli) live in
   # package.json + package-lock.json — installed via `npm ci
   # --ignore-scripts`. Scope of the control: the lockfile's integrity
@@ -63,19 +91,27 @@ vars:
   # Rule set rendered into AGENTS.md's managed block. Single source for both
   # knowledge:rules-apply and knowledge:rules-check — a divergence between the
   # two would make the fence prescribe a regeneration that drops content.
-  # NOT [rules].enabled in openknowledge.toml: whether a no-argument
-  # `rules apply` falls back to it is undocumented (the CLI help contradicts
-  # itself), and a wrong guess renders the custom rule away.
-  OK_RULES: docs,decisions,schemas,talos-base-bundle
+  # NOT [rules].enabled in .openknowledge.toml: whether a no-argument
+  # `prompt rules apply` falls back to it is undocumented (the CLI help
+  # contradicts itself), and a wrong guess renders the custom rule away.
+  # Only the repo-specific rule is rendered. The three built-in rules (docs,
+  # decisions, schemas) spent nine bullets on what talos-base-bundle's first
+  # three now state once; the block loads in full in every session, so the
+  # duplication was paid for on every turn.
+  OK_RULES: talos-base-bundle
   # Both rules targets render with whatever openknowledge is on PATH. Pinning
   # the version here matters more than for validate: a mismatched binary
   # renders a different block, and the fence's own advice ("regenerate") would
   # then rewrite AGENTS.md with it.
   OK_GUARD: |
+    # Beats an ambient value, which the env: block does not. Reason there.
+    export OPENKNOWLEDGE_TELEMETRY=off
     command -v openknowledge >/dev/null 2>&1 || { echo "ERROR: 'openknowledge' not installed — run 'task knowledge:install-cli'"; exit 1; }
-    # Normalize the same way scripts/verify-tools.sh does — it strips a leading
-    # "v" from this exact command, and two checks of one value must not
-    # disagree on the format.
+    # Byte-identical pipeline to the openknowledge arm of
+    # scripts/verify-tools.sh: two checks of one value must not disagree on the
+    # format. An env var keeps the probe parseable where a flag would not — but
+    # a binary predating the var still sends one event here, and that is the
+    # cost of being able to read a DRIFTED version at all.
     have="$(openknowledge version 2>/dev/null | head -n1 | tr -d '[:space:]' | sed -E 's/^v//')"
     [ "$have" = "{{.OPENKNOWLEDGE_VERSION}}" ] || { echo "ERROR: openknowledge '$have' != pinned '{{.OPENKNOWLEDGE_VERSION}}' — run 'task knowledge:install-cli' (and check PATH order)"; exit 1; }
 
@@ -167,6 +203,61 @@ tasks:
     desc: "CI fence: Cilium/ArgoCD/CRD helm renders must use frozen terraform_data (ignore_changes), not live data.helm_template"
     cmd: scripts/check-render-determinism.sh
 
+  tofu:check:argocd-day0-apply-shape:
+    # #218 — full rationale in scripts/check-argocd-day0-apply-shape.sh. The
+    # provisioner's command string is not observable from a `tofu test`, and the
+    # tftest that binds the PAYLOAD needs the network, so it runs only in the
+    # advisory `tofu:test`. This offline fence is the blocking layer.
+    desc: "CI fence: the Day-0 ArgoCD apply stays server-side, CRD-only-guarded, and never forces conflicts"
+    cmd: scripts/check-argocd-day0-apply-shape.sh
+
+  tofu:check:argocd-gate-bites:
+    # #218 — both fences above are static text analysis, and the module has one
+    # shape at a time (the compliant one), so a fence that matched nothing would
+    # report OK forever. This mutates a COPY of main.tf per regression and
+    # asserts each fence's error message, not just its exit code. Rationale and
+    # the two real near-misses that motivated it: the script header.
+    desc: "CI fence: prove the Day-0 ArgoCD fences actually bite (mutation bite-check over a main.tf copy)"
+    cmd: scripts/check-argocd-gate-bites.sh
+
+  tofu:check:kubeconfig-endpoint-regen:
+    # PR #187 review blocker #3 — full rationale in scripts/check-kubeconfig-endpoint-regen.sh.
+    # Without this, deleting the entire lifecycle block from main.tf leaves the
+    # full offline tofu test suite + tofu validate green (issue #186 regresses
+    # silently); this is the only committed check that references
+    # replace_triggered_by / kubeconfig_endpoint_marker.
+    desc: "CI fence: talos_cluster_kubeconfig.this keeps replace_triggered_by wired to terraform_data.kubeconfig_endpoint_marker (input = var.cluster_endpoint)"
+    cmd: scripts/check-kubeconfig-endpoint-regen.sh
+
+  tofu:check:node-projection-wiring:
+    # Issue #204 — full rationale in scripts/check-node-projection-wiring.sh.
+    # The offline fixture omits main.tf, so no `tofu test` can see WHICH node
+    # projection reaches WHICH Talos argument; swapping two of them leaves the
+    # whole suite green while pointing talosctl and the apply-blocking health
+    # gate at the wrong node set.
+    desc: "CI fence: the Talos boundary arguments stay bound to their intended node projections (nodes.tf), and the per-node apply keeps iterating local.nodes_checked"
+    cmd: scripts/check-node-projection-wiring.sh
+
+  tofu:check:cilium-operator-replicas-key:
+    # Full rationale in scripts/check-cilium-operator-replicas-key.sh. Helm
+    # merges values without --strict, so a renamed or mis-nested
+    # `operator.replicas` is discarded silently and the rendered Deployment keeps
+    # a different count with every offline test green. The runs that read the
+    # RENDERED Deployment live in the network-dependent composition suite, whose
+    # CI job is advisory, so this offline fence is the blocking layer — same
+    # shape as tofu:check:argocd-day0-apply-shape.
+    desc: "CI fence: the Cilium operator replica count keeps its chart key spelling on both sides (computed contributor + floor), and `operator` stays a single merge term"
+    cmd: scripts/check-cilium-operator-replicas-key.sh
+
+  tofu:check:shim-key-parity:
+    # Full rationale in scripts/check-shim-key-parity.sh. The worked example's
+    # shim reads cluster.yaml through try(), which is total: a mistyped key
+    # yields the default instead of an error, so the declared value never
+    # reaches the module while lint, validate, plan and the whole test suite
+    # stay green. This is the only check that binds the two sides.
+    desc: "CI fence: every key of a CLOSED substrate object in schemas/cluster.schema.json is actually read by the worked example's cluster.yaml shim"
+    cmd: scripts/check-shim-key-parity.sh
+
   tofu:test:
     desc: "tofu test — node-capability composition regression suite (dedup/determinism + hard-error guards). NETWORK: resolves the live Image Factory, so it is NOT part of tofu:ci (which stays offline). Superset of tofu:test:offline."
     cmd: |
@@ -189,16 +280,24 @@ tasks:
         -filter=tests/profile-predicate-only.tftest.hcl \
         -filter=tests/conflict-guards.tftest.hcl \
         -filter=tests/input-validation.tftest.hcl \
-        -filter=tests/image-kernel-args.tftest.hcl
+        -filter=tests/image-kernel-args.tftest.hcl \
+        -filter=tests/kubeconfig-endpoint-marker.tftest.hcl \
+        -filter=tests/apply-mode.tftest.hcl
 
   tofu:ci:
-    desc: Full local tofu validation (fmt-check + validate + lint + render-determinism fence + offline tests) — mirrors CI
+    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + test:offline — mirrors CI, stays offline"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
       - task: tofu:lint
       - task: tofu:check:render-determinism
+      - task: tofu:check:argocd-day0-apply-shape
+      - task: tofu:check:argocd-gate-bites
       - task: tofu:check:readme-parity
+      - task: tofu:check:kubeconfig-endpoint-regen
+      - task: tofu:check:node-projection-wiring
+      - task: tofu:check:shim-key-parity
+      - task: tofu:check:cilium-operator-replicas-key
       - task: tofu:test:offline
 
   # ===========================================================================
@@ -235,6 +334,13 @@ tasks:
       # the pre-PR requirement. Wired in CI only, a contributor following the
       # documented checklist would never run it.
       ./scripts/check-bootstrap-render.sh
+      # kubernetes/bootstrap/cilium/values.yaml ships in the OCI artifact and is
+      # what a consumer copies into a Day-2 self-managed Application, but no gate
+      # ever rendered it — so a value the pinned chart REMOVED was dropped silently
+      # (issue #211). Validates its key paths against the pinned chart's own
+      # values.schema.json. Networked: SKIPS loudly if the registry is unreachable,
+      # FAILS on a value the chart does not declare.
+      ./scripts/check-cilium-reference-values.py
 
   gitops:render-component:
     desc: 'Stage-1+2 render of one component. Usage: task gitops:render-component COMPONENT=<name>'
@@ -246,7 +352,7 @@ tasks:
   gitops:render-all:
     desc: Render every component that has a chart.lock.yaml
     cmd: |
-      components="$(find kubernetes/base/infrastructure -mindepth 2 -maxdepth 2 -name chart.lock.yaml -exec dirname {} \; | xargs -n1 basename | sort)"
+      components="$(find kubernetes/substrate -mindepth 2 -maxdepth 2 -name chart.lock.yaml -exec dirname {} \; | xargs -n1 basename | sort)"
       if [ -z "$components" ]; then echo "no chart.lock.yaml files yet — nothing to render"; exit 0; fi
       for c in $components; do ./scripts/render-component.sh "$c"; done
 
@@ -441,8 +547,40 @@ tasks:
       fi
 
   # ===========================================================================
-  # supply-chain:* — OCI artifact verification
+  # supply-chain:* — OCI artifact + release-gate verification
   # ===========================================================================
+  supply-chain:check-release-guard:
+    desc: "CI fence: the release guard's pathspec covers every tarball member, and its red/green bite-check passes"
+    # Neither half substitutes for the other. The coverage check is the EXTERNAL
+    # anchor -- it walks .ci-oci-tarball-expected.txt, a list that exists for
+    # another reason, so it sees the guard's own data files being narrowed. The
+    # bite-check generates its scenarios FROM those files: it proves the guard
+    # bites but cannot notice them shrinking.
+    cmd: |
+      set -e
+      ./scripts/check-release-guard-coverage.sh
+      # 2>&1 so a FAIL: line stays next to the scenario label that produced it.
+      bite_out="$(./scripts/check-release-guard-gate-bites.sh 2>&1)" || { printf '%s\n' "$bite_out"; exit 1; }
+      printf '%s\n' "$bite_out"
+      # A two-digit count, not `[0-9]+`, which matches the zero-scenario case the
+      # marker exists to reject. The script asserts its own, higher floor.
+      printf '%s\n' "$bite_out" | grep -qE '^release-guard bite-check OK \([0-9]{2,} scenarios\)$' || {
+        echo "ERROR: the bite-check did not report a two-digit scenario count — it may have been narrowed" >&2
+        exit 1
+      }
+
+  supply-chain:relock-release-guard:
+    desc: "Re-lock the release guard's data files after a DELIBERATE change to what it protects"
+    # Never chained into another target: the lock exists so that narrowing the
+    # guarded set takes a second, conscious edit.
+    cmd: |
+      set -e
+      tmp="$(mktemp)"
+      awk '/^#/ {print; next} {exit}' .ci-release-guard.lock > "$tmp"
+      shasum -a 256 .ci-release-guard-pathspec.txt .ci-release-guard-exempt.txt >> "$tmp"
+      mv "$tmp" .ci-release-guard.lock
+      echo "re-locked; review the diff of BOTH the data file and .ci-release-guard.lock"
+
   supply-chain:oci-allowlist:
     desc: Build the talos OCI tarball locally and diff against .ci-oci-tarball-expected.txt (fail-closed)
     # Allowlist-based (fail-closed) tarball verification. Builds locally per the
@@ -463,6 +601,7 @@ tasks:
         exit 1
       fi
       rm -f .work/oci-check.tar.gz
+      ./scripts/check-substrate-consumability.sh
 
   # ===========================================================================
   # knowledge:* — OKF knowledge bundle (knowledge/) authoring + validation
@@ -471,14 +610,24 @@ tasks:
     desc: Validate the knowledge/ OKF bundle (openknowledge + offline link check)
     cmd: |
       set -e
-      command -v openknowledge >/dev/null 2>&1 || { echo "ERROR: 'openknowledge' not installed — run 'task knowledge:install-cli'"; exit 1; }
+      {{.OK_GUARD}}
       command -v lychee >/dev/null 2>&1 || { echo "ERROR: 'lychee' not installed — run 'task knowledge:install-cli'"; exit 1; }
-      openknowledge validate knowledge/
-      # Offline link-resolution gate: intra-repo markdown links must resolve.
-      # Scope: the bundle, root orientation files, contracts/. CHANGELOG.md is
-      # a historical record and excluded by design. The two tofu READMEs ship
-      # in the OCI tarball and carry relative links into knowledge/ — checked
-      # so a decision rename cannot rot them silently.
+      # Each bite test runs before the gate it covers: a detector's verdict is
+      # worth nothing until it is known to still discriminate.
+      scripts/check-knowledge-gate-bite.sh
+      scripts/check-bundle-policy.sh knowledge --spec {{.OKF_SPEC}} \
+        link-target=error rule-catalog=error okf-0.2-metadata=error okf-version=error
+      scripts/check-knowledge-frontmatter.test.sh
+      scripts/check-knowledge-frontmatter.sh knowledge
+      # --spec is pinned, not left at the CLI default of `latest`.
+      openknowledge validate --spec {{.OKF_SPEC}} knowledge/ || {
+        echo "FAIL: the OKF v{{.OKF_SPEC}} field contract is BINDING here (okf-0.2-metadata = error)."
+        echo "      'sources' entries are '- resource: <path>'; dates are quoted ISO 8601"
+        echo "      datetimes; decision concepts carry 'decided', never 'generated'."
+        echo "      The contract: knowledge/rules/talos-base-bundle.md"
+        exit 1; }
+      # CHANGELOG.md is excluded by design; the two tofu READMEs are included
+      # because they ship in the OCI tarball and link into knowledge/.
       lychee --offline --no-progress --exclude-path CHANGELOG.md \
         'knowledge/**/*.md' './*.md' 'contracts/*.md' \
         'tofu/modules/talos-cluster/README.md' \
@@ -491,7 +640,7 @@ tasks:
       {{.OK_GUARD}}
       # --yes: without it the CLI prompts and, when declined, still exits 0 —
       # the target would report success while having written nothing.
-      openknowledge rules apply {{.OK_RULES}} \
+      openknowledge prompt rules apply {{.OK_RULES}} \
         --path knowledge --file AGENTS.md --target generic --yes
       grep -q '<!-- openknowledge:rules:start -->' AGENTS.md || {
         echo "FAIL: no managed block in AGENTS.md after apply"; exit 1; }
@@ -509,8 +658,11 @@ tasks:
 
       # Keep stderr: when the render fails (unknown rule, unreadable rule
       # document, bad config) it is the only statement of the actual cause.
+      # The render sits in a pipeline, so `set -e` sees awk's status, not the
+      # CLI's — a renamed subcommand exits 2 and this target still passes.
+      # The emptiness assertion below is the only thing that catches that.
       err="$(mktemp)"
-      gen="$(openknowledge rules apply {{.OK_RULES}} \
+      gen="$(openknowledge prompt rules apply {{.OK_RULES}} \
         --path knowledge --file AGENTS.md --target generic --dry-run 2>"$err" | extract_block)"
       cur="$(extract_block < AGENTS.md)"
 
@@ -550,24 +702,48 @@ tasks:
   knowledge:new:
     desc: "Scaffold a new knowledge concept (usage: task knowledge:new FILE=reference/foo.md TYPE=reference)"
     requires:
-      vars: [FILE, TYPE]
+      vars:
+        - name: FILE
+        # `decision` is absent on purpose — an ADR carries `decided` and neither
+        # `generated` nor `sources`. Copy knowledge/decisions/template.md instead.
+        - name: TYPE
+          enum: [architecture, reference, workflow, glossary, project]
     cmd: |
       set -e
       target="knowledge/{{.FILE}}"
       [ -e "$target" ] && { echo "ERROR: $target already exists"; exit 1; }
       mkdir -p "$(dirname "$target")"
-      printf -- '---\ntype: {{.TYPE}}\ntitle: TODO\ndescription: TODO one sentence.\ntags: [TODO]\ntimestamp: %s\nsources:\n  - TODO\n---\n\n# TODO\n' "$(date +%Y-%m-%d)" > "$target"
+      # A heredoc, not printf: go-task's shell has no `--` end-of-options marker,
+      # so `printf -- '---\n…'` writes a 2-byte file containing `--`.
+      cat > "$target" <<EOF
+      ---
+      type: {{.TYPE}}
+      title: TODO
+      description: TODO one sentence.
+      tags: [TODO]
+      generated: { by: human:TODO, at: "$(date -u +%Y-%m-%dT00:00:00Z)" }
+      sources:
+        - resource: TODO
+      ---
+
+      # TODO
+      EOF
       echo "Created $target — fill frontmatter, then run 'task knowledge:validate'."
 
   knowledge:install-cli:
     desc: Install pinned openknowledge + lychee binaries into ~/.local/bin (checksum-verified)
     cmd: |
       set -e
+      # No OK_GUARD here (it installs the binary the guard checks), so the
+      # export it carries has to be repeated: the closing `version` echo is a
+      # fresh binary's FIRST run, the one that writes the telemetry config.
+      export OPENKNOWLEDGE_TELEMETRY=off
       os="{{OS}}"; arch="{{ARCH}}"
       case "$os-$arch" in
         darwin-arm64) ok_sha="{{.OPENKNOWLEDGE_SHA256_DARWIN_ARM64}}"; ly_sha="{{.LYCHEE_SHA256_DARWIN_ARM64}}"; ok_asset="openknowledge_darwin_arm64.tar.gz"; ly_asset="lychee-aarch64-apple-darwin.tar.gz" ;;
         darwin-amd64) ok_sha="{{.OPENKNOWLEDGE_SHA256_DARWIN_AMD64}}"; ly_sha="{{.LYCHEE_SHA256_DARWIN_AMD64}}"; ok_asset="openknowledge_darwin_amd64.tar.gz"; ly_asset="lychee-x86_64-apple-darwin.tar.gz" ;;
         linux-amd64)  ok_sha="{{.OPENKNOWLEDGE_SHA256_LINUX_AMD64}}";  ly_sha="{{.LYCHEE_SHA256_LINUX_AMD64}}";  ok_asset="openknowledge_linux_amd64.tar.gz"; ly_asset="lychee-x86_64-unknown-linux-gnu.tar.gz" ;;
+        linux-arm64)  ok_sha="{{.OPENKNOWLEDGE_SHA256_LINUX_ARM64}}";  ly_sha="{{.LYCHEE_SHA256_LINUX_ARM64}}";  ok_asset="openknowledge_linux_arm64.tar.gz"; ly_asset="lychee-aarch64-unknown-linux-gnu.tar.gz" ;;
         *) echo "ERROR: unsupported platform $os-$arch — install openknowledge {{.OPENKNOWLEDGE_VERSION}} + lychee {{.LYCHEE_VERSION}} manually"; exit 1 ;;
       esac
       # sha256sum on Linux, shasum on macOS — match whichever is present so
@@ -621,7 +797,7 @@ tasks:
   # behavioral capability specs). See knowledge/workflows/spec-driven-development.md.
   # ===========================================================================
   spec:validate:
-    desc: Validate the openspec/ behavioral specs (strict + bite-check + source partition) + offline link check
+    desc: Validate the openspec/ behavioral specs (strict + bite-checks + source partition) + offline link check
     cmd: |
       set -e
       command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
@@ -663,6 +839,21 @@ tasks:
       # declares-primary detector have no committed spec exercising them —
       # this unit test is their only binding.
       python3 scripts/test/test_spec_lib.py >/dev/null || { echo "ERROR: spec_lib parser self-test failed"; python3 scripts/test/test_spec_lib.py; exit 1; }
+      # Staleness-gate merge attribution: which commits must carry the
+      # 'Spec-Impact: none' trailer is decided by re-running each merge, and
+      # neither failure direction (base-sync merge voids the escape / an
+      # invented-content merge inherits someone else's trailer) is observable
+      # from this repo's own history. Bound against a throwaway fixture repo,
+      # controls first, so a regression in either direction turns this red.
+      # Require a completion marker, not just exit 0: on a git without
+      # 'merge-tree --write-tree' the script runs its controls and reports
+      # PARTIAL (CI itself exits 2 there — see the script), and a bare exit code
+      # cannot tell that apart from a full pass. Neither marker means the script
+      # crashed or was edited into returning 0 without running.
+      bite_out="$(./scripts/check-staleness-gate-bite.sh)" || { printf '%s\n' "$bite_out"; exit 1; }
+      printf '%s\n' "$bite_out"
+      printf '%s\n' "$bite_out" | grep -qE '^staleness-gate bite-check (OK|PARTIAL)' || {
+        echo "ERROR: the staleness-gate bite-check produced no completion marker"; exit 1; }
       # Source-ownership partition: exclusivity + completeness over the
       # enumerated substrate source universe (ADR-0015 ownership model).
       python3 scripts/check-spec-partition.py .
@@ -687,7 +878,7 @@ tasks:
       # Refuse on dirty generated trees: --force would overwrite uncommitted
       # edits there, and a pre-dirty generated file would mask real drift in
       # the porcelain delta below.
-      if [ -n "$(git status --porcelain .claude/ .codex/)" ]; then
+      if [ -n "$(git status --porcelain .claude/ .agents/)" ]; then
         echo "ERROR: uncommitted changes under the generated trees — commit or discard them first."; exit 1
       fi
       # Delta over the WHOLE tree: catches modified, deleted AND newly-added
@@ -712,7 +903,7 @@ tasks:
       #     So a write into a PRE-EXISTING ignored dir under .claude/
       #     (agents/, hooks/, operator scratch) does not move the delta.
       #     In CI those dirs do not exist, so a first creation is caught.
-      #   - the ignored set outside .claude//.codex/ (.work/, .mcp.json.local,
+      #   - the ignored set outside .claude//.agents/ (.work/, .mcp.json.local,
       #     ...) is in neither snapshot. Bounded by openspec's write scope,
       #     which is an assumption a CLI upgrade can break — the same class
       #     of upgrade this target exists to detect.
@@ -725,15 +916,15 @@ tasks:
       # The git call is separated from the greps: piping it straight into
       # `grep | sort` would hand the pipeline sort's exit status, so a git
       # failure (a build rejecting --ignored=matching, a pathspec error, a
-      # missing .codex/) would land as an empty snapshot on BOTH sides and
+      # missing .agents/) would land as an empty snapshot on BOTH sides and
       # this target would print OK having checked nothing. Same separation
       # spec:update makes, for the same reason.
       git status --porcelain > "$before"
-      git status --ignored=matching --porcelain .claude/ .codex/ > "$ignraw"
+      git status --ignored=matching --porcelain .claude/ .agents/ > "$ignraw"
       grep '^!!' "$ignraw" | sort > "$ignbefore" || true
       openspec update --force >/dev/null
       git status --porcelain > "$after"
-      git status --ignored=matching --porcelain .claude/ .codex/ > "$ignraw"
+      git status --ignored=matching --porcelain .claude/ .agents/ > "$ignraw"
       grep '^!!' "$ignraw" | sort > "$ignafter" || true
       if ! cmp -s "$before" "$after"; then
         echo "ERROR: regenerating with the pinned openspec changed the tree:"
@@ -769,7 +960,7 @@ tasks:
     cmd: python3 scripts/check-spec-staleness.py --base "$SPEC_BASE"
 
   spec:update:
-    desc: Regenerate OpenSpec tool integrations (.claude/, .codex/) after a CLI upgrade
+    desc: Regenerate OpenSpec tool integrations (.claude/, .agents/) after a CLI upgrade
     cmd: |
       set -e
       command -v openspec >/dev/null 2>&1 || { echo "ERROR: 'openspec' not installed — run 'task spec:install-cli'"; exit 1; }
@@ -783,9 +974,9 @@ tasks:
       # trees — commit or discard tree changes before running.
       before="$(mktemp)"; after="$(mktemp)"
       trap 'rm -f "$before" "$after" "$before.ign" "$after.ign"' EXIT
-      git status --ignored=matching --porcelain .claude/ .codex/ > "$before"
+      git status --ignored=matching --porcelain .claude/ .agents/ > "$before"
       openspec update --force
-      git status --ignored=matching --porcelain .claude/ .codex/ > "$after"
+      git status --ignored=matching --porcelain .claude/ .agents/ > "$after"
       grep '^!!' "$before" | sort > "$before.ign" || true
       grep '^!!' "$after"  | sort > "$after.ign"  || true
       new_ignored="$(comm -13 "$before.ign" "$after.ign")"

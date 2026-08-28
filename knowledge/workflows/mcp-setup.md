@@ -3,12 +3,12 @@ type: workflow
 title: MCP Setup
 description: Installing and verifying the three MCP servers, and the wrapper security model that keeps the GitHub token out of shell environments.
 tags: [mcp, tooling, security]
-timestamp: 2026-07-11
+generated: { by: human:nosmoht, at: "2026-07-11T00:00:00Z" }
 sources:
-  - Taskfile.yml
-  - scripts/mcp-github-wrapper.sh
-  - .mcp.json
-  - scripts/check-mcp-config-portable.sh
+  - resource: Taskfile.yml
+  - resource: scripts/mcp-github-wrapper.sh
+  - resource: .mcp.json
+  - resource: scripts/check-mcp-config-portable.sh
 ---
 
 # MCP Setup

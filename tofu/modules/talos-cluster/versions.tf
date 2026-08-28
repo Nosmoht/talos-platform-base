@@ -6,7 +6,15 @@
 # Because machine_secrets land in state, the chosen backend MUST be encrypted.
 
 terraform {
-  required_version = ">= 1.7.0"
+  # >= 1.9.0: cilium_self_management's two cross-variable `validation` blocks
+  # (deploy-prereq guard + the override-drop hard-reject guard, variables.tf)
+  # reference OTHER variables in their `condition` — an OpenTofu >= 1.9 feature,
+  # parsed at module load regardless of the toggle's value. A consumer on
+  # 1.7.x/1.8.x gets a hard parse break the instant they consume a tag carrying
+  # this bump — a permanent, consumer-visible compatibility floor for one
+  # opt-in, default-off feature. See
+  # knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
+  required_version = ">= 1.9.0"
 
   required_providers {
     talos = {

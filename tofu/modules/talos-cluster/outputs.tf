@@ -45,8 +45,8 @@ output "cluster_endpoint" {
 }
 
 output "controlplane_ips" {
-  description = "IPs of the controlplane nodes (talosconfig endpoints)."
-  value       = [for n in local.controlplanes : n.ip]
+  description = "IPs of the controlplane nodes (talosconfig endpoints), ordered by node name — not by declaration order."
+  value       = local.controlplane_ips
 }
 
 output "schematic_ids" {
@@ -84,6 +84,33 @@ output "argocd_namespace_labels" {
   value       = var.deploy_argocd ? local.argocd_namespace_labels : {}
 }
 
+output "argocd_day0_apply_kinds" {
+  description = <<-EOT
+    Distinct Kubernetes kinds decoded from the exact manifest the module
+    kubectl-applies after the health gate, or [] when deploy_argocd = false.
+    Since #218 that apply is CRD-only, so this is expected to be exactly
+    ["CustomResourceDefinition"]; anything else means chart-default workloads or
+    ConfigMaps leaked past the projection and would be applied over ArgoCD's own
+    state, and "<unparseable>" means a document in the payload does not decode.
+    Audit surface and a binding point for the argocd-crd-scope test — the frozen
+    render's output is unknown until apply, so the property has to be asserted
+    here. Non-sensitive (kind names only).
+  EOT
+  value       = local.argocd_crd_kinds
+}
+
+output "argocd_day0_apply_crd_names" {
+  description = <<-EOT
+    Sorted metadata.names decoded from the same applied manifest, or [] when
+    deploy_argocd = false. Expected to be exactly the three ArgoCD CRDs
+    (applications, applicationsets, appprojects). Kinds alone cannot detect a
+    MISSING CRD — distinct() collapses one and three CRDs to the same value — so
+    this is the oracle that binds set completeness, alongside the plan-time
+    precondition on the frozen render. Non-sensitive (resource names only).
+  EOT
+  value       = local.argocd_crd_names
+}
+
 output "kubelet_serving_cert_rotation" {
   description = <<-EOT
     Whether the base kubelet serving-cert rotation patch
@@ -102,7 +129,7 @@ output "kubelet_serving_cert_rotation" {
 
 output "cert_approver_namespace_labels" {
   description = <<-EOT
-    Labels seeded onto the module-delivered kubelet-serving-cert-approver
+    Labels seeded onto the module-delivered kubelet-csr-approver
     namespace (PSA-restricted floor + the six recommended labels). Audit surface
     + the binding point for the composition test's PSA-restricted assertion.
     Non-sensitive (labels carry no secret).
@@ -137,18 +164,20 @@ output "cert_approver_approve_resource_names" {
     empty/absent). Parses the multi-doc vendored manifest and collects, across all
     ClusterRole docs, the resourceNames of every rule whose verbs include "approve".
     Binds the composition test to the RBAC SCOPE (H7) — a re-vendor that broadens
-    the signer scope or drops resourceNames changes this list and fails the test
-    (unlike a presence-only substring check, which the signer string survives in
-    the ClusterRole name / namespace / comments). Secret-free.
+    the signer scope, drops resourceNames, OR adds a SECOND unscoped approve rule
+    changes this list and fails the test. A rule granting `approve` with NO
+    resourceNames (= all signers in RBAC) maps to the literal "<UNSCOPED>" so it
+    can never flatten away invisibly. Scans EVERY doc (not only ClusterRole), so an
+    approve grant smuggled into another kind is still caught. Secret-free.
   EOT
   value = flatten([
-    for doc in split("---", file("${path.module}/manifests/cert-approver.yaml")) :
+    for doc in split("---", local.cert_approver_manifest) :
     [
       for rule in try(yamldecode(doc).rules, []) :
-      try(rule.resourceNames, [])
+      length(try(rule.resourceNames, [])) > 0 ? rule.resourceNames : ["<UNSCOPED>"]
       if contains(try(rule.verbs, []), "approve")
     ]
-    if try(yamldecode(doc).kind, "") == "ClusterRole"
+    if try(yamldecode(doc).kind, "") != ""
   ])
 }
 
@@ -162,13 +191,145 @@ output "cert_approver_seed_missing_labels" {
     re-vendor makes this list non-empty and fails the composition test. Secret-free.
   EOT
   value = flatten([
-    for doc in split("---", file("${path.module}/manifests/cert-approver.yaml")) :
+    for doc in split("---", local.cert_approver_manifest) :
     setsubtract(
       ["app.kubernetes.io/name", "app.kubernetes.io/instance", "app.kubernetes.io/version", "app.kubernetes.io/component", "app.kubernetes.io/part-of", "app.kubernetes.io/managed-by"],
       keys(try(yamldecode(doc).metadata.labels, {}))
     )
     if try(yamldecode(doc).kind, "") != ""
   ])
+}
+
+output "cert_approver_rbac_rules" {
+  description = <<-EOT
+    The decoded ClusterRole rule set of the rendered cert-approver seed (the raw
+    rule objects, for inspection). The ClusterRole is INVARIANT — always the three
+    cluster-scoped rules (certificatesigningrequests read, .../approval update,
+    signers approve scoped to kubernetes.io/kubelet-serving) regardless of replicas.
+    The RBAC-CLOSURE binding at test time is cert_approver_clusterrole_signature
+    (apiGroups+resources+verbs+resourceNames) plus cert_approver_clusterrolebinding_targets;
+    this output is the un-normalized companion. The leader-election leases/events
+    grant is NOT here — it is a namespaced Role (cert_approver_leaderelection_role_rules).
+    Secret-free.
+  EOT
+  value = flatten([
+    for doc in split("---", local.cert_approver_manifest) :
+    try(yamldecode(doc).rules, [])
+    if try(yamldecode(doc).kind, "") == "ClusterRole"
+  ])
+}
+
+output "cert_approver_clusterrole_signature" {
+  description = <<-EOT
+    Full normalized signature of every cluster-scoped ClusterRole rule —
+    apiGroups + resources + VERBS + resourceNames, each sorted, one string per
+    rule, the list sorted. Binds the WHOLE cluster-wide RBAC surface (not just
+    count + resources): a re-vendor adding a verb (e.g. `sign` on signers →
+    cert issuance), widening apiGroups, or dropping the signer resourceNames
+    changes a signature and fails the composition test. Secret-free.
+  EOT
+  value = sort(flatten([
+    for doc in split("---", local.cert_approver_manifest) :
+    [
+      for r in try(yamldecode(doc).rules, []) :
+      format("g=%s|r=%s|v=%s|n=%s",
+        join(",", sort(try(r.apiGroups, []))),
+        join(",", sort(try(r.resources, []))),
+        join(",", sort(try(r.verbs, []))),
+        join(",", sort(try(r.resourceNames, [])))
+      )
+    ]
+    if try(yamldecode(doc).kind, "") == "ClusterRole"
+  ]))
+}
+
+output "cert_approver_clusterrolebinding_targets" {
+  description = <<-EOT
+    Every ClusterRoleBinding in the seed as {role = roleRef.name, subjects =
+    ["<kind>/<namespace>/<name>", …]}. Binds the cluster-scoped binding surface:
+    a re-vendor adding a SECOND ClusterRoleBinding (e.g. the approver SA →
+    cluster-admin) or repointing roleRef changes this list and fails the test —
+    the closure the rule-signature alone cannot see. Secret-free.
+  EOT
+  value = [
+    for doc in split("---", local.cert_approver_manifest) :
+    {
+      role     = try(yamldecode(doc).roleRef.name, "")
+      subjects = [for s in try(yamldecode(doc).subjects, []) : "${try(s.kind, "")}/${try(s.namespace, "")}/${try(s.name, "")}"]
+    }
+    if try(yamldecode(doc).kind, "") == "ClusterRoleBinding"
+  ]
+}
+
+output "cert_approver_leaderelection_role_rules" {
+  description = <<-EOT
+    The decoded namespaced Role rule set for leader-election (coordination.k8s.io/
+    leases + events, in the approver's own namespace). EMPTY at the default
+    replicas:1 (no Role rendered — least privilege) and populated only when
+    replicas > 1. Binds the HA conditional AND the least-privilege default: the
+    composition test asserts it is empty at replicas:1 and carries leases at
+    replicas:2. Secret-free.
+  EOT
+  value = flatten([
+    for doc in split("---", local.cert_approver_manifest) :
+    try(yamldecode(doc).rules, [])
+    if try(yamldecode(doc).kind, "") == "Role"
+  ])
+}
+
+output "cert_approver_pod_security_context" {
+  description = <<-EOT
+    The decoded container securityContext of the rendered cert-approver Deployment
+    — binds the restricted-PSA hardening (runAsNonRoot, drop ALL,
+    readOnlyRootFilesystem, RuntimeDefault seccomp) at test time so a re-vendor
+    that drops a field fails the composition test rather than only being caught by
+    live PSA admission (which base CI never runs). Secret-free.
+  EOT
+  value = try([
+    for doc in split("---", local.cert_approver_manifest) :
+    yamldecode(doc).spec.template.spec.containers[0].securityContext
+    if try(yamldecode(doc).kind, "") == "Deployment"
+  ][0], {})
+}
+
+output "cert_approver_container_args" {
+  description = <<-EOT
+    The decoded container args of the rendered cert-approver Deployment. Binds the
+    HA conditional: `-leader-election` appears ONLY when replicas > 1. Secret-free.
+  EOT
+  value = try([
+    for doc in split("---", local.cert_approver_manifest) :
+    yamldecode(doc).spec.template.spec.containers[0].args
+    if try(yamldecode(doc).kind, "") == "Deployment"
+  ][0], [])
+}
+
+output "cert_approver_replicas" {
+  description = <<-EOT
+    The decoded replica count of the rendered cert-approver Deployment — binds the
+    consumer-settable replicas knob (default 1). Secret-free.
+  EOT
+  value = try([
+    for doc in split("---", local.cert_approver_manifest) :
+    yamldecode(doc).spec.replicas
+    if try(yamldecode(doc).kind, "") == "Deployment"
+  ][0], null)
+}
+
+output "cert_approver_env" {
+  description = <<-EOT
+    The decoded container environment of the rendered cert-approver Deployment as a
+    name→value map (PROVIDER_REGEX, PROVIDER_IP_PREFIXES, BYPASS_DNS_RESOLUTION).
+    Red-green binding for the per-cluster config injection: reverting the
+    templatefile wiring flips these. Secret-free (config, not keys).
+  EOT
+  value = try({
+    for e in [
+      for doc in split("---", local.cert_approver_manifest) :
+      yamldecode(doc).spec.template.spec.containers[0].env
+      if try(yamldecode(doc).kind, "") == "Deployment"
+    ][0] : e.name => e.value
+  }, {})
 }
 
 output "controlplane_base_is_prefix_of_final" {
@@ -186,4 +347,138 @@ output "controlplane_base_is_prefix_of_final" {
   value = slice(
     local.controlplane_machine_config_patches, 0, length(local.controlplane_base_patches)
   ) == local.controlplane_base_patches
+}
+
+output "cilium_self_management_app" {
+  description = <<-EOT
+    The opt-in emitted Cilium ArgoCD Application manifest (YAML string) — the
+    sole self-management deliverable a consumer commits into their own
+    app-of-apps repo. "" when cilium_self_management = false (default). NEVER
+    applied by the module (AGENTS.md §Hard Constraints — no kubectl apply of
+    ArgoCD-managed resources); the consumer's own GitOps is the single writer.
+    See knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
+  EOT
+  value       = local.cilium_self_management_app
+
+  precondition {
+    # Empty-render guard: the floor is always merged into cilium_effective_values,
+    # so valuesObject cannot legitimately be empty when the toggle is on. Belt-
+    # and-suspenders against a future refactor dropping the floor merge (a
+    # regression the offline test's floor-preservation asserts already fail on).
+    condition     = !var.cilium_self_management || local.cilium_self_management_app != ""
+    error_message = "cilium_self_management is true but the emitted Application rendered empty — refusing to emit a hollow Cilium Application. Check cilium-values.tf's cilium_self_management_app local."
+  }
+}
+
+output "cilium_seed_observability_markers" {
+  description = <<-EOT
+    Booleans decoded from the FROZEN bootstrap seed render
+    (terraform_data.cilium_render[0].output — NOT a second data.helm_template.cilium
+    read), filtered by kind=="ConfigMap" && metadata.name=="cilium-config". Marker
+    keys verified against the pinned chart (1.20.0) cilium-configmap.yaml template:
+    `agent_metrics` <- presence of "prometheus-serve-addr" (gated by
+    `{{- if .Values.prometheus.enabled }}`); `hubble` <- the "enable-hubble" value
+    (unconditionally rendered, reflects hubble.enabled directly); `hubble_metrics`
+    <- presence of "hubble-metrics-server" (gated by
+    `{{- if or .Values.hubble.metrics.enabled .Values.hubble.metrics.dynamic.enabled }}`,
+    itself nested under the outer `{{- if .Values.hubble.enabled }}` block).
+    `operator_metrics` <- presence of "operator-prometheus-serve-addr" — CAVEAT
+    (verified by rendering the pinned chart): the upstream chart's OWN default for
+    `operator.prometheus.enabled` is `true` (values.yaml), and neither the floor
+    nor this module's computed layer ever sets it false, so this key is present in
+    the rendered ConfigMap REGARDLESS of var.cilium_operator_metrics — it does NOT
+    discriminate the toggle at the render layer (a pre-existing chart-default fact,
+    not introduced by this change). The offline `cilium_effective_values.operator.
+    prometheus.enabled` assertion (tests/input-validation.tftest.hcl) is what
+    genuinely red-green-binds the operator-metrics leg of AC #1; this field is
+    audit-only for that leg. `agent_metric_overrides` <- presence of the "metrics"
+    key (gated by the same `{{- if .Values.prometheus.enabled }}` block, so it is
+    present only when the delta list actually reached the render).
+    `hubble_open_metrics` <- the "enable-hubble-open-metrics" VALUE, not its
+    presence. Measured: the key sits under the same
+    `{{- if or .Values.hubble.metrics.enabled … }}` gate as `hubble-metrics-server`,
+    so it is absent entirely when the metrics list is empty and present as "false"
+    when the list is non-empty and the flag is off — a presence check would
+    therefore report the metrics list, not the flag. The try() default reads an
+    absent key as off, which is correct in both directions.
+    {} when deploy_cilium = false
+    or the name-filtered ConfigMap list is empty (try()-wrapped, mirroring the
+    cert_approver_env precedent). Secret-free (booleans + one raw string value only).
+
+    SCOPE — this describes the SEED, not the running cluster. On a cluster that
+    has adopted the emitted self-management Application, the frozen seed can be an
+    entire chart minor behind what ArgoCD reconciles (ADR-0022, "§k gains a second
+    dimension"), so these booleans answer "what was baked in at bootstrap", never
+    "what is live now".
+  EOT
+  value = try(
+    [
+      # Split on the DOCUMENT boundary ("\n---\n"), not the bare literal. Several
+      # consumer-controlled strings reach this render — cilium_values_override
+      # above all, which is free-form YAML the module cannot introspect — and a
+      # "---" occurring mid-scalar (PEM material carries it too) would split a
+      # document in half. Both halves then fail yamldecode, the comprehension
+      # yields nothing, and the outer try() reports {} — "nothing enabled" rather
+      # than an error. An audit output that goes silent on malformed input is
+      # exactly the wrong failure direction.
+      for doc in split("\n---\n", try(terraform_data.cilium_render[0].output, "")) : {
+        agent_metrics          = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
+        agent_metric_overrides = contains(keys(yamldecode(doc).data), "metrics")
+        operator_metrics       = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")
+        hubble                 = try(yamldecode(doc).data["enable-hubble"], "false") == "true"
+        hubble_metrics         = contains(keys(yamldecode(doc).data), "hubble-metrics-server")
+        hubble_open_metrics    = try(yamldecode(doc).data["enable-hubble-open-metrics"], "false") == "true"
+      }
+      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
+    ][0],
+    {}
+  )
+}
+
+output "cilium_operator_replicas_effective" {
+  description = <<-EOT
+    The operator replica count this plan resolves, and WHICH of the three
+    mechanisms produced it: `pin` (cilium_operator_replicas), `node-count` (the
+    >= 2-node derivation), or `floor` (helm/cilium-values.yaml, the unpinned
+    single-node case). With deploy_cilium = false the count is null and the
+    source is `disabled` — the object's shape and types never vary.
+
+    Exists because the number alone does not answer the question an operator
+    debugging a Pending second operator pod actually has. Seeing `replicas: 2`
+    in the cluster and no `operator_replicas` in their cluster.yaml, they cannot
+    tell a module derivation from a chart default or a stale hand-edit without
+    reading module internals. Same role `cert_approver_replicas` plays for the
+    approver, and it is also the tests' direct binding point for all three arms.
+
+    Plan-time and non-sensitive (an integer and one of three literals). Describes
+    what THIS plan resolves, which on an already-bootstrapped cluster with
+    cilium_self_management = false is not what the cluster is running — the seed
+    is frozen (see UPGRADING).
+  EOT
+  # NOT `var.deploy_cilium ? {...} : {}`: HCL unifies the two arms of a
+  # conditional, and an empty map on one side collapses the object to
+  # map(string) — `count` would arrive as "2", not 2. A stable object with a
+  # fourth `source` literal keeps the shape and the types constant instead.
+  value = {
+    count = var.deploy_cilium ? (
+      local.cilium_operator_replicas != null ? local.cilium_operator_replicas : try(local.cilium_floor_values.operator.replicas, null)
+    ) : null
+    source = var.deploy_cilium ? (
+      var.cilium_operator_replicas != null ? "pin" :
+      local.cilium_operator_replicas != null ? "node-count" : "floor"
+    ) : "disabled"
+  }
+}
+
+output "node_apply_mode" {
+  description = <<-EOT
+    Per-node apply_mode the last apply was written with, keyed by node name.
+    The one piece of state that decides whether a node runs what the state file
+    says it runs: while a role sits at "staged" its nodes keep the previous
+    config until an out-of-band reboot, the cluster stays healthy on the old
+    config, and the next plan is clean — so this output is the only in-module
+    signal that a window is open. Mirrors node_schematic_hashes as an audit
+    surface; carries no secret material.
+  EOT
+  value       = local.node_apply_mode
 }

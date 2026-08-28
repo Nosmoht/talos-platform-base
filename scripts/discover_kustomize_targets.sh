@@ -37,10 +37,10 @@ append_targets_from_root() {
 }
 
 # Explicit base-component glob: matches one-level-deep kustomization.yaml in
-# `kubernetes/base/infrastructure/<comp>/`. Avoids surfacing nested helm
+# `kubernetes/substrate/<comp>/`. Avoids surfacing nested helm
 # chart-internal kustomizations under `charts/` or `templates/`.
 append_base_components() {
-  root="kubernetes/base/infrastructure"
+  root="kubernetes/substrate"
   if [ ! -d "$root" ]; then
     return
   fi

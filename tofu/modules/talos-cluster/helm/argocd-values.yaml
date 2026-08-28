@@ -2,10 +2,12 @@
 # (data.helm_template.argocd → cluster.inlineManifests, rendered locally).
 #
 # DELIBERATELY slim: only what ArgoCD needs at cluster bootstrap to come alive
-# and decrypt SOPS. The full configuration (cert-manager ClusterIssuer cert,
-# RBAC, OIDC/Dex) arrives in the steady state via ArgoCD self-management
-# (kubernetes/base/infrastructure/argocd). NO server.certificate here, because
-# the vault-internal ClusterIssuer does not exist yet at bootstrap.
+# and decrypt SOPS. The rest arrives later, and from two different places: the
+# steady-state component (kubernetes/substrate/argocd) carries the base
+# configuration via ArgoCD self-management, while SSO and RBAC are a CONSUMER
+# contract — patched onto the argocd-cm / argocd-rbac-cm ConfigMaps in the
+# consumer's own kustomize overlay, never set here. NO server.certificate
+# either, because the ClusterIssuer does not exist yet at bootstrap.
 #
 # A consumer can replace this wholesale via var.argocd_values_override.
 
@@ -24,12 +26,14 @@ server:
     type: ClusterIP
 
 # Substrate invariant: the bundled Dex server stays OFF here too, matching the
-# steady-state render. Consumers wire ArgoCD SSO via an external OIDC provider
-# (configs.cm `oidc.config`), so the chart-default dex-server is idle dead weight
-# — and even in the slim bootstrap seed it would bloat the Talos inlineManifest.
-# Mirrors kubernetes/base/infrastructure/argocd/values.yaml. The CI gate
-# scripts/check-argocd-substrate-invariants.sh asserts this across both paths;
-# see that component's README §Substrate invariants.
+# steady-state render. Consumers wire ArgoCD SSO against their own external OIDC
+# provider by patching the `oidc.config` key of the `argocd-cm` ConfigMap in a
+# kustomize overlay — NOT through these Helm values, which a consumer of the
+# published component never has. So the chart-default dex-server is a
+# connector-less idle workload — and even in the slim bootstrap seed it would
+# bloat the Talos inlineManifest. Mirrors kubernetes/substrate/argocd/values.yaml.
+# The CI gate scripts/check-argocd-substrate-invariants.sh asserts this across
+# both paths; see that component's README §Substrate invariants.
 dex:
   enabled: false
 
@@ -67,6 +71,16 @@ repoServer:
 configs:
   cm:
     kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
+    # Deliberately EMPTY, not unset: the chart derives configs.cm.url from
+    # global.domain, whose default is a placeholder hostname. ArgoCD documents
+    # `url` as required for SSO and derives the OIDC redirect URI from it, so a
+    # placeholder does not fail loudly — it fails at the IdP with a redirect-URI
+    # mismatch, long after the operator stopped looking. An empty string wins the
+    # chart's merge and drops the key from argocd-cm entirely, so an unconfigured
+    # cluster is visibly unconfigured. The consumer supplies the real value in
+    # their overlay. (`global.domain: ""` is NOT the lever: it yields a broken
+    # literal `https://` in argocd-cm AND argocd-notifications-cm.)
+    url: ""
   params:
     # Bootstrap-insecure (TLS via Gateway/cert-manager in the steady state).
     server.insecure: "true"

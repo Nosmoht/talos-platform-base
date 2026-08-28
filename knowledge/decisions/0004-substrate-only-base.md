@@ -2,20 +2,22 @@
 type: decision
 title: "ADR: Substrate-Only Base + Separate Apps Repository"
 description: "Reduces the base to substrate only (Talos + Cilium + ArgoCD + cert-approver glue); all other platform offerings move to the talos-platform-apps catalog or dissolve into apps-CI Conftest + consumer Kyverno."
-status: accepted
+status: stable
 id: base:substrate-only-base
-timestamp: 2026-05-27
+decided: "2026-05-27T00:00:00Z"
 history:
   - 2026-05-26 initial (proposed)
   - 2026-05-27 accepted
   - 2026-05-29 amended (realisability-validation note)
   - 2026-05-30 amended (apps built as catalog; Phase 1/2 superseded)
+  - 2026-07-29 amended (steady-state argocd relocated; infrastructure/ count invariant superseded by 0024)
 deciders:
   - platform-maintainer
 supersedes:
   - "/decisions/0001-multi-repo-platform-split.md §Component Classification — Consumer-in-Base / Backend-in-Overlay"
   - '/decisions/0001-multi-repo-platform-split.md §"Corollary on PNI itself"'
 related:
+  - base:argocd-substrate-relocation
   - base:multi-repo-platform-split
   - base:capability-producer-consumer-symmetry
   - base:two-layer-capability-architecture
@@ -331,18 +333,21 @@ The decision is **wrong** if any of the following surface within
   than two production-impacting failures → indicates the two-pin
   model needs replacement (e.g., Apps-pins-Base compatibility range).
 
-The mechanical check that confirms it stays correct: after v1.0.0
-lands, `find kubernetes/base/infrastructure -maxdepth 1 -mindepth 1
--type d | wc -l` returns **1** (only `argocd`). `cert-approver` was
-relocated (2026-06-30, adr-0013) from a `kubernetes/base/infrastructure/`
-component to a controlplane Talos `inlineManifest` seed in the
-`tofu/modules/talos-cluster` module — it remains substrate, delivered
-by the module rather than as a rendered infrastructure component, so it
-no longer appears under `infrastructure/`. The frozen
-`.ci-renderable-components.txt` list (now `argocd` only) + the
-`gitops-validate.yml` `cmp` gate enforce this count mechanically. If any
-directory other than `argocd` appears here, this ADR was violated by a
-later PR.
+The mechanical check that confirms it stays correct — **amended
+2026-07-29 by ADR-0024** (`/decisions/0024-argocd-substrate-relocation.md`):
+the steady-state argocd component relocated to `kubernetes/substrate/argocd/`
+and the then-empty `kubernetes/base/` tree was retired, so the original
+count-1 check (`find kubernetes/base/infrastructure … | wc -l == 1`) is
+superseded. The invariant is now tracked-tree-based:
+`git ls-files kubernetes/base/ | wc -l` returns **0**, and the rendered
+component set under `kubernetes/substrate/` equals the frozen
+`.ci-renderable-components.txt` list (still `argocd` only), enforced by the
+`gitops-validate.yml` `cmp` gate. Historical context: `cert-approver` was
+relocated (2026-06-30, adr-0013) from a rendered component to a controlplane
+Talos `inlineManifest` seed — it remains substrate, delivered by the module.
+If any tracked file reappears under `kubernetes/base/`, or a directory other
+than `argocd` appears under `kubernetes/substrate/`, this ADR was violated
+by a later PR.
 
 Re-review date: **2027-05-26** (12 months post-decision) or upon
 the next Talos major-version release, whichever is sooner.

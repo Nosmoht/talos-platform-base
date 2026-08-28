@@ -59,10 +59,10 @@ run "catalog_iommu_variants_carry_exactly_their_predicate_arg" {
   module { source = "./tests/fixtures/real-catalog" }
 
   variables {
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.10", role = "controlplane", image = "intel", hardware_capabilities = [] },
-      { hostname = "w-1", ip = "192.0.2.11", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.10", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.11", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
+    }
   }
 
   assert {
@@ -95,10 +95,10 @@ run "catalog_profiles_without_predicate_args_carry_none" {
   module { source = "./tests/fixtures/real-catalog" }
 
   variables {
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.10", role = "controlplane", image = "intel", hardware_capabilities = [] },
-      { hostname = "w-1", ip = "192.0.2.11", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
-    ]
+    nodes = {
+      cp-1 = { ip = "192.0.2.10", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-1  = { ip = "192.0.2.11", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
+    }
   }
 
   # nvidia-lts provides nothing (nvidia-gpu is NFD-detected) -> no predicate -> no args.
@@ -125,11 +125,11 @@ run "composed_node_kernel_args_carry_no_host_tuning" {
   module { source = "./tests/fixtures/real-catalog" }
 
   variables {
-    nodes = [
-      { hostname = "cp-1", ip = "192.0.2.10", role = "controlplane", image = "intel", hardware_capabilities = [] },
-      { hostname = "w-intel", ip = "192.0.2.11", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
-      { hostname = "w-amd", ip = "192.0.2.12", role = "worker", image = "amd", hardware_capabilities = ["virt"] },
-    ]
+    nodes = {
+      cp-1    = { ip = "192.0.2.10", role = "controlplane", image = "intel", hardware_capabilities = [] },
+      w-intel = { ip = "192.0.2.11", role = "worker", image = "intel", hardware_capabilities = ["virt"] },
+      w-amd   = { ip = "192.0.2.12", role = "worker", image = "amd", hardware_capabilities = ["virt"] },
+    }
   }
 
   assert {

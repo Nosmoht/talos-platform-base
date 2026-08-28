@@ -1,11 +1,11 @@
 ---
-okf_version: "0.1"
+okf_version: "0.2"
 ---
 
 # talos-platform-base — Knowledge Bundle
 
 Deep reference for the cluster-agnostic Talos + Cilium + ArgoCD substrate,
-as an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog) v0.1
+as an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog) v0.2
 bundle. Orientation and governance stay at the repository root (`README.md`,
 `ARCHITECTURE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`,
 `UPGRADING.md`, `MAINTAINERS.md`); everything deeper lives here.
@@ -20,8 +20,11 @@ path under `knowledge/`.
 those — `openknowledge` renders them into the `AGENTS.md` Open Knowledge
 Maintenance block. The criterion for admitting a file here is that the
 bundle's tooling consumes it and no release consumer parses it;
-`openknowledge.toml` has always met the same test. This is a narrow carve-out
-for tooling config, not a general licence to move contracts into the bundle.
+`.openknowledge.toml` has always met the same test, and as of the pinned
+0.12.0 the placement is mandatory rather than tidy: the CLI reads that file only from
+inside the bundle directory, and only under the dotfile name. This is a
+narrow carve-out for tooling config, not a general licence to move contracts
+into the bundle.
 
 ## Architecture
 
@@ -31,6 +34,7 @@ for tooling config, not a general licence to move contracts into the bundle.
 
 ## Reference
 
+- [ArgoCD SSO Wiring Contract](reference/argocd-sso-contract.md) - What a consumer cluster must supply to attach any external OIDC identity provider to the substrate's identity-free ArgoCD, and the mechanism that carries it across the base/consumer repo boundary.
 - [cluster.yaml — Declarative Cluster SoT](reference/cluster-yaml.md) - The two consumers of the declarative cluster.yaml Source-of-Truth, its secret-handling rules, and how CI wires the schema lint gate red-green.
 - [Manifest Pipeline](reference/manifest-pipeline.md) - How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 - [Task Runner Surface](reference/tasks.md) - Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
@@ -40,7 +44,7 @@ for tooling config, not a general licence to move contracts into the bundle.
 - [First Consumer Cluster](workflows/first-consumer-cluster.md) - End-to-end walk-through from verifying a published base release to a reconciling App-of-Apps root on a freshly provisioned Talos cluster.
 - [Issue Lifecycle](workflows/issue-lifecycle.md) - The GitHub issue state machine — status labels, guarded transitions via the issue-state script, and the session-start ritual that gates agent work.
 - [MCP Setup](workflows/mcp-setup.md) - Installing and verifying the three MCP servers, and the wrapper security model that keeps the GitHub token out of shell environments.
-- [Release Process](workflows/release-process.md) - How a release moves from conventional commit through the semantic-release approval gate to a signed OCI artifact on ghcr.io.
+- [Release Process](workflows/release-process.md) - How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 - [Spec-Driven Development (OpenSpec)](workflows/spec-driven-development.md) - How behavioral requirements are maintained in the OpenSpec surface — the change lifecycle, the scope demarcation against knowledge/, and the pinned-tool upgrade procedure.
 - [Verify a Base Release](workflows/verify-release.md) - Fail-closed verification of a published talos-platform-base OCI artifact — signature, provenance, SBOM attestation, and checksums — before vendoring.
 
@@ -63,12 +67,14 @@ for tooling config, not a general licence to move contracts into the bundle.
 
 - [Bundle Conventions](rules/talos-base-bundle.md) - Repo-specific OKF bundle conventions layered on top of the built-in maintenance rules, rendered into the AGENTS.md managed block.
 
-## Bundle conventions (repo convention on top of OKF v0.1)
+## Bundle conventions (repo convention on top of OKF v0.2)
 
-OKF v0.1 requires only `type` in concept frontmatter. The conventions this
+OKF v0.2 requires only `type` in concept frontmatter, and §4 tells consumers
+not to reject producer-defined keys. The conventions this
 bundle adds on top are **normatively stated in
 [Bundle Conventions](rules/talos-base-bundle.md)** — the closed `type`
-vocabulary, the `title`/`description`/`tags`/`timestamp`/`sources` field set,
+vocabulary, the `title`/`description`/`tags`/`generated`/`verified`/`sources`
+field set,
 the staleness contract, the link rule, and the `log.md` maintenance rule. That
 file is the source of truth, and `openknowledge` renders it into `AGENTS.md`
 so an agent reading only that file still sees the contract.
@@ -80,13 +86,28 @@ document wins:
 - Most of the contract is enforced by review discipline, NOT by
   `openknowledge validate`. A green validation run means links resolve and
   frontmatter parses; it is not evidence that a concept is still true.
-- `timestamp` is the date of the last *substantive verification*, not the last
-  typo fix. Bumping it for a wording change silently resets the staleness
-  clock, which is the failure this contract exists to prevent.
+- `generated.at` and `verified[].at` answer two different questions, and v0.1's
+  single `timestamp` could only answer one. `generated.at` is when the content
+  last meaningfully changed; a `verified` entry is when someone read the
+  content against its `sources` and confirmed it. Content can change without
+  re-confirmation and facts can be re-confirmed without an edit, so bumping
+  one never implies the other.
+- A `verified` entry is a machine-readable claim, not a note: any `human:<id>`
+  entry makes the concept `human-reviewed` to an OKF consumer. So an invented
+  entry is a false claim in machine-readable form, and certifying your own edit
+  is the easiest way to make one without noticing.
+- `verified` is a history, and an entry is never suppressed because content
+  changed afterwards. A reading that happened stays true; deleting it would
+  discard a fact and leave the concept reading `unverified`, which is a
+  different false claim. The freshness signal is the comparison itself —
+  measured, the CLI does not flag a `verified` older than `generated.at`, so
+  four concepts here carry an honest verification that is no longer current and
+  a reader has to look at the two dates rather than at the tier.
 - `sources` is what makes staleness checkable at all: it names the paths a
-  concept was derived from, so a reader can compare them against `timestamp`.
-  Nothing does this mechanically yet — it is a reading discipline.
+  concept was derived from, so a reader can compare them against the dates.
+  Nothing does this mechanically yet — it is a reading discipline; nothing
+  validates a `resource` path either, so a typo there is silently accepted.
 - `description` is reused verbatim as the link description in this index, so
   it is written as one self-contained sentence.
-- The link rule has teeth: `openknowledge.toml` raises `link-target` to error,
+- The link rule has teeth: `.openknowledge.toml` raises `link-target` to error,
   so a link escaping the bundle fails validation rather than rotting quietly.

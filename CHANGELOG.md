@@ -5,6 +5,590 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Pending release
+
+Entries awaiting the next tag. A by-hand release cut moves **this block only**
+under the new version heading; the historical backfill below it stays put.
+
+- **Added — the machine-config apply mode is selectable per role.**
+  `controlplane_apply_mode` and `worker_apply_mode` plumb the talos provider's
+  `apply_mode` to the per-node machine-config apply. Both default to `auto`, so a
+  consumer that sets neither keeps the previous behaviour exactly. Setting a role
+  to `staged` writes the configuration without rebooting, which turns a
+  reboot-bound change to a stateful role from an unsequenced parallel reboot of
+  that whole role into a deliberate operator roll: reboot out of band, one node at
+  a time, under whatever health gate the workload needs. Between the staged apply
+  and that reboot the state file and the node's effective configuration disagree
+  and a later plan is clean — closing the window is the operator's obligation.
+  `auto` stays the default because the same apply resource carries the Day-0
+  install. The keys are reachable from `cluster.yaml`
+  (`cluster.controlplane_apply_mode` / `cluster.worker_apply_mode`) and the
+  module exposes a `node_apply_mode` output, which is the only signal that a
+  window is open — it reports the configured mode, never what a node holds, and
+  health stays green and the next plan is clean while a window is open.
+  What the window obliges an operator to — the revert-last invariant, which roles
+  a change reaches, and the Talos 1.14 behaviour change — is the module README's
+  §"Staged machine-config roll (Day-2)"; the reboot sequence itself is a
+  consumer-side procedure, since rehearsing it needs a cluster. See
+  [`knowledge/decisions/0026-machine-config-apply-mode.md`](knowledge/decisions/0026-machine-config-apply-mode.md),
+  which also records why `staged_if_needing_reboot` is documented but
+  rejected — the module's validation refuses it, so setting it fails at plan
+  time rather than merely being discouraged.
+- **Fixed — the MAJOR-bump guard no longer blocks on files no consumer
+  receives.** Its surface set moved out of `.github/workflows/release.yml` into
+  `.ci-release-guard-pathspec.txt` (membership rule in that file's header), with
+  `schemas/fixtures/**` excluded. Three pushes to `main` were blocked for ten
+  days on a negative lint fixture and a schema description. The guard also stops
+  failing open: an empty `NEXT`, a `git diff` error, a shallow checkout and a
+  pathspec that matches nothing are now environment errors rather than a silent
+  pass.
+- **Changed — five published paths are newly guarded**, including
+  `tofu/modules/talos-cluster/helm/{argocd,cilium}-values.yaml`, the shipped base
+  Helm values. A change to any of them now needs a MAJOR bump or an
+  `Allow-Non-Major:` attestation. Contributor-visible: the attestation is read
+  from the merge commit **body**, is honoured only on a merge commit, and refuses
+  a placeholder reason.
+- **Changed — the release path now requires merge-commit-only**, with an empty
+  default merge body and a required `Commit Lint`. These are repository settings,
+  applied by the maintainer rather than by this change. `scripts/preflight-checks.sh`
+  reports them, but only for a run with admin credentials: measured, the default
+  CI token reads those fields back as `null`. The controls that hold regardless
+  are in the guard — an attestation counts only on a merge commit, and only with
+  maintainer prose above the trailer, which is what a PR-title-derived body
+  cannot contain. `AGENTS.md §Issue-Interface` `state:close` gains
+  the `--subject`/`--body` form — the bare `--merge` form cannot carry an
+  attestation.
+- **Added — a failed or blocked release now files a tracking issue**
+  (ADR-0020's listed follow-up), and a `release-guard-advisory` job tells a PR
+  author before merging whether their branch touches a guarded path.
+
+### Historical backfill
+
+> Every entry from `### Added` onward shipped in `v7.0.0` through `v9.0.0`:
+> those tags were cut without a CHANGELOG section, and nothing in this block is
+> awaiting release. `UPGRADING.md` headings already carry the tag each migration
+> shipped in, so the two files disagree until the backfill tracked in #233 lands.
+
+### Added
+
+- **`talos-cluster`: `register_with_fqdn` input (bool, default `false`).** Sets
+  `machine.kubelet.registerWithFQDN`. Talos splits a dotted hostname at the
+  first dot and registers only the SHORT hostname with Kubernetes by default, so
+  a dotted node name silently lost its domain part; the input makes FQDN node
+  names actually reach Kubernetes, and dotted node keys are rejected while it is
+  off. Default-off emits no machine-config change. See
+  [ADR-0023](knowledge/decisions/0023-node-identity-map-key.md).
+
+- **`talos-cluster`: two further typed Cilium observability inputs (default off).**
+  `cilium_agent_metric_overrides` (the chart's `prometheus.metrics` `+metric` /
+  `-metric` delta list against its default metric set) and
+  `cilium_hubble_open_metrics` (`hubble.metrics.enableOpenMetrics`). Both flow
+  through the same computed-values map the seed and the emitted self-management
+  Application already share, so they are reachable without
+  `cilium_values_override` — which the override-drop guard makes mutually
+  exclusive with `cilium_self_management`. Each warns (plan-time `check`, not a
+  rejection) when its prerequisite toggle is off, because a consumer may enable
+  that prerequisite through `cilium_values_override`, which the module cannot
+  introspect. `cilium_agent_metric_overrides` entries are format-validated: the
+  chart renders them raw into `cilium-config`, which is baked into the
+  controlplane machine config. **`cilium_hubble_open_metrics` changes only the
+  ConfigMap and does not roll the agents** — see UPGRADING for the required
+  rollout restart. Grafana dashboards stay deliberately untyped (apps-catalog
+  territory — the base cannot know the consumer's Grafana sidecar label or
+  namespace). See
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+- **`talos-cluster`: first-class Cilium observability inputs (default off).**
+  `cilium_agent_metrics`, `cilium_operator_metrics` (Cilium agent/operator
+  Prometheus metrics), `cilium_hubble_enabled` + `cilium_hubble_metrics`
+  (Hubble flow/metrics, metrics-only scope — no Relay/UI). Layered into the
+  same computed-values map the bootstrap seed has always used, so they flow
+  through the existing floor ⊕ computed ⊕ override Helm-deep-merge with no
+  new data-flow. `cilium_hubble_enabled=true` forces
+  `hubble.tls.enabled=false`; grounded via T1 Cilium docs that the Hubble
+  metrics scrape endpoint is independent of the observer-API TLS setting, so
+  this does not disable metrics export. See
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+- **`talos-cluster`: opt-in Cilium ArgoCD self-management delivery mode
+  (default off).** `cilium_self_management` emits a new
+  `cilium_self_management_app` output — a rendered Cilium ArgoCD
+  `Application` manifest — so a consumer's existing ArgoCD can adopt
+  steady-state Cilium management the same way it already can for ArgoCD
+  itself. The module only renders the manifest; it never applies it (no
+  `kubectl`, no live-apply resource — AGENTS.md §Hard Constraints). Requires
+  `deploy_argocd=true` AND `deploy_cilium=true`. **Hard-rejected at plan
+  time** while `cilium_values_override` is non-empty: the emitted manifest
+  does not inherit that override, so enabling self-management with a
+  seed-active datapath override (BGP/L2/bpf) would otherwise silently drop
+  it on adoption. `cilium_self_management_project` selects the target
+  `AppProject` (default `"default"`; a scoped project is recommended
+  hardening — see the module README). See
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
+### Changed — BREAKING
+
+- **`argocd`: the substrate ships no identity.** `configs.rbac.policy.csv` and
+  `configs.rbac.scopes` are removed from
+  `kubernetes/substrate/argocd/values.yaml`, and `configs.cm.url: ""` is added
+  to both render paths. The base carried a hardcoded `role:admin` binding for a
+  single named principal — an organisation-specific grant on a cluster-agnostic
+  floor — and a `url` derived from the chart's placeholder hostname, which fails
+  at the identity provider rather than in the cluster.
+
+  Reading the diff: the chart's `argocd-rbac-cm` template emits both RBAC keys
+  unconditionally, so the render now carries `policy.csv: ""` and the
+  chart-default `scopes: '[groups]'`. Removed here means empty-but-present
+  there. `policy.default: ''` stays.
+
+  **BREAKING — migration:** a consumer relying on the shipped binding loses
+  access at the next sync unless their overlay supplies **both** `policy.csv`
+  **and** the `scopes` value their subjects are written against, in the same
+  commit as the pin bump. Carrying only `policy.csv` is the lockout path — the
+  claim silently reverts to `groups`. Full procedure and recovery:
+  [`UPGRADING.md`](UPGRADING.md). The wiring contract for any external OIDC
+  provider is
+  [`knowledge/reference/argocd-sso-contract.md`](knowledge/reference/argocd-sso-contract.md),
+  with a worked overlay in `kubernetes/examples/argocd-consumer-sso/`.
+
+- **`talos-cluster`: the Day-0 ArgoCD `kubectl apply` delivers CRDs and nothing
+  else.** It previously applied the argo-cd chart's **full default render** —
+  twelve kinds, bundled Dex included — with
+  `kubectl apply --server-side --force-conflicts`, re-firing on every
+  `kubernetes_version` change. That contradicted substrate invariants I1/I2 at
+  runtime while CI reported green, overwrote the seed's own `server.insecure`
+  and `kustomize.buildOptions` with chart defaults, and reset `argocd-rbac-cm`
+  — which, with the identity removal above, is where a consumer's entire access
+  policy now lives.
+
+  The render is now projected to `CustomResourceDefinition` documents before
+  being frozen, applied under a dedicated `--field-manager` and **without**
+  `--force-conflicts`, and `kubernetes_version` leaves `triggers_replace` (the
+  CRD payload is byte-identical across Kubernetes versions — measured). ArgoCD
+  owns those CRDs from its first steady-state sync; the module seeds and steps
+  back. Not retroactive: an existing cluster keeps the `kubectl` field-manager
+  entries the old apply recorded. See
+  [ADR-0025](knowledge/decisions/0025-argocd-crd-apply-scope.md).
+
+- **`argocd`: `kustomization.yaml` now ships in the OCI artifact.** The
+  component's rendered manifests were consumable from a vendored tag; the file
+  that makes them a buildable unit was not.
+  `scripts/check-substrate-consumability.sh` now requires it for every
+  renderable component — and checks it against the resources the kustomization
+  actually names, rather than a hardcoded filename list, so a component whose
+  resource set changes cannot ship a kustomization pointing at a file the
+  artifact omits. Additive for consumers — no action required.
+
+### Added
+
+- **Substrate invariants I5 and P, and the consumer-overlay E-checks.** I5
+  asserts the steady-state `argocd-rbac-cm` ships no non-empty `policy.default`
+  — a key with a strictly wider blast radius than `policy.csv`, since it grants
+  its role to every authenticated principal with no subject at all, and the one
+  key of the pair that was previously ungated. P asserts the module's
+  `argocd_chart_version` default equals `chart.lock.yaml`'s version: formerly a
+  documented deferral, promoted to a gate because a pin divergence now fails
+  every consumer's next `tofu apply` rather than being force-resolved. The
+  E-checks build the worked consumer overlay against an unpatched control build,
+  so the documented SSO wiring cannot drift from what the component accepts.
+
+- **`talos-cluster`: `nodes` is a MAP keyed by node name, not a list.** The
+  per-node `hostname` field is removed — the key *is* the hostname, so a node is
+  declared exactly once and a duplicate node name is no longer expressible
+  rather than merely rejected. Every Talos-facing list
+  (`cluster_health.{control_plane_nodes, worker_nodes, endpoints}`, the
+  talosconfig `endpoints`/`nodes`, `output.controlplane_ips`) becomes a
+  projection of that map ordered by node name, so declaration order is not
+  observable anywhere. `schemas/cluster.schema.json` types `nodes` as an object
+  with a `propertyNames` pattern constraining the FORM of node keys (it does not
+  — and structurally cannot — detect a repeated YAML key, which the parser
+  collapses first; the module-side map type is what makes a duplicate node
+  unexpressible).
+  **BREAKING — migration:** `cluster.yaml` `nodes:` becomes a mapping and the
+  consumer shim maps it through; the mechanical recipe plus a
+  nothing-was-lost diff is in [`UPGRADING.md`](UPGRADING.md). Runtime-neutral:
+  the per-node apply resource keeps the same `for_each` keys, so an unchanged
+  node set must produce a **zero-diff plan** — a non-empty plan means the
+  conversion changed something and must not be applied. See
+  [ADR-0023](knowledge/decisions/0023-node-identity-map-key.md).
+- **`talos-cluster`: five new plan-time rejections on the node set.** Each closes
+  a failure mode the list model left silent: an EVEN controlplane count (etcd
+  quorum — an even membership tolerates no more failures than the odd count
+  below it); a node key that is not already a canonical Kubernetes node name
+  (Talos validates hostname LENGTH only, then silently rewrites the rest via
+  `nodename.FromHostname` — so `NODE_01` used to arrive as `node-01`, and two
+  keys could collapse onto one node); two node keys sharing a first label while
+  `register_with_fqdn` is off (Talos splits the hostname at the first dot, so
+  both kubelets would claim one Node object — permitted once FQDN registration
+  makes the full name the Kubernetes identity); a dotted node key while
+  `register_with_fqdn` is false (Kubernetes would only ever see the first
+  label); and a non-canonical `node.ip` (`192.0.2.011`, `::ffff:192.0.2.11` —
+  distinct strings naming one host, which used to slip past the ip-uniqueness
+  check and point two apply resources at one machine).
+  **BREAKING — migration:** a consumer running an even controlplane count, a
+  non-canonical node name or a non-canonical IP must fix it before planning.
+  Renaming a node is a real identity change — new state address, new Kubernetes
+  node. Note the odd-count rule also blocks *shrinking* a control plane to an
+  even count: replace a dead member's entry rather than deleting it.
+- **`talos-cluster`: OpenTofu floor raised to `>= 1.9`.** The new
+  cross-variable `validation` guards above require it. This applies to
+  **every** consumer of the module, not only those opting into
+  `cilium_self_management` — a consumer on OpenTofu `< 1.9` cannot
+  `plan`/`apply` this module version at all until upgrading their OpenTofu
+  binary. See [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+- **`schemas/cluster.schema.json`: `substrate.cilium` is now closed
+  (`additionalProperties: false`).** A consumer `cluster.yaml` with an
+  extra or misspelled key under `substrate.cilium` now fails
+  `check-jsonschema` at lint time instead of being silently dropped by the
+  `try()`-based shim. Fix by removing/correcting the offending key. See
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
+### Changed
+
+- **`talos-cluster`: `cilium_native_routing_cidr` is now format-validated.**
+  It must be empty (derive from `pod_cidr`, unchanged) or a well-formed CIDR.
+  The chart renders the value raw and unquoted into `cilium-config`, which the
+  module bakes into the create-only controlplane machine config, so a value
+  carrying a newline wrote arbitrary ConfigMap keys — the same corruption class
+  the two Cilium metric lists already guard against, on the third input
+  reaching the same document. The guard is a semantic CIDR predicate rather
+  than a lexical rule, so it also rejects an address with no prefix length. A
+  consumer passing a malformed value now fails at plan time (and at
+  `cluster.yaml` lint time, via the schema mirror) instead of shipping it into
+  the machine config.
+
+- **New CI fence `task tofu:check:shim-key-parity`.** The worked example's
+  shim reads `cluster.yaml` through `try()`, which is total: a substrate key
+  the shim never reads — or reads misspelled — silently resolves to the module
+  default while schema lint, `tofu validate`, `tofu plan` and the whole test
+  suite stay green, so the consumer's declared value never reaches the module.
+  The check asserts every key of every closed `substrate` object in
+  `schemas/cluster.schema.json` is read by the shim. Carried by `task tofu:ci`;
+  `.github/workflows/tofu-validate.yml` now also triggers on
+  `schemas/cluster.schema.json` so a schema-only widening still runs it.
+
+- **`kubernetes/bootstrap/cilium/values.yaml` is now gated against the pinned
+  chart's schema.** Nothing in CI ever rendered this file, so a value the chart had
+  REMOVED was dropped silently by Helm — exactly what happened to
+  `encryption.strictMode.*` at Cilium 1.20, leaving strict-mode encryption
+  unconfigured for anyone who copied it. `scripts/check-cilium-reference-values.py`
+  validates every value path against the chart's own `values.schema.json` and fails
+  naming each undeclared path. Wired into both `task gitops:validate` and the
+  `gitops-validate.yml` validate job — same script, same verdict. It reads the chart
+  version from `variables.tf`, so it cannot drift from what the module renders. Two
+  stated trade-offs: a chart-registry outage SKIPS loudly rather than failing (an
+  outage must not block unrelated merges, so during one a removed spelling can
+  merge), and a changed DEFAULT under a spelling that still parses stays
+  reviewer-enforced, since no values schema can express it. See #211.
+- **`talos-cluster`: the Cilium seed's rendered `cilium-config` surface is now
+  pinned.** The seed bypasses the kustomize/conftest render gate, and nothing
+  asserted a single key of it — so a chart bump could move a datapath- or
+  security-relevant default into the create-only machine config unnoticed. That is
+  what the 1.20 bump did with `bpf-lb-algorithm-annotation`. Two layers now bind
+  it: the full key set against `tests/fixtures/cilium-config-keys.txt`, and the
+  values of a curated set (`bpf-lb-algorithm-annotation`,
+  `kube-proxy-replacement`, `enable-host-firewall`, `enable-datapath-plugins`,
+  `gateway-api-use-remote-address`). Both are needed — the key set alone would not
+  have caught 1.20, since only the value moved. A future bump refreshes the fixture
+  deliberately and answers the consumer-facing question in
+  [UPGRADING.md](UPGRADING.md). See #212.
+- **`talos-cluster`: the summed inlineManifest payload is now bounded at plan
+  time.** Talos receives ONE controlplane document carrying every seed at once
+  (cilium + argocd + cert-approver), and an oversized document failed at APPLY
+  against real hardware after a clean plan. A precondition on
+  `data.talos_machine_configuration.controlplane` now rejects it at plan, naming
+  the summed byte count, the ceiling, and which seeds are enabled. The ceiling is
+  **sourced**: Talos' `GRPCMaxMessageSize = 32 * 1024 * 1024`
+  (`pkg/machinery/constants/constants.go` at `v1.11.0`), which caps the
+  `ApplyConfiguration` message, minus headroom for the generated base document and
+  the pass-2 per-node overlays. The previous `~66 KB` figure in `main.tf` had no
+  source and is three orders of magnitude off — removed. See #213.
+- **`talos-cluster`: the chart-version pin is now single-source, and a `null`
+  input selects the base's pin.** `cilium_chart_version` and `argocd_chart_version`
+  declare `nullable = false` beside their defaults, so a caller may pass `null`
+  and OpenTofu substitutes the module default. The example shim now passes
+  `try(local.<component>.chart_version, null)` and the shipped `cluster.yaml`
+  examples leave `chart_version` commented out, which means the version literal
+  exists in exactly one place per component (`variables.tf`) instead of three.
+  Why it matters: previously both consumer-facing copies passed the version
+  explicitly, so the module default was never consulted and a base chart bump
+  could not reach an existing consumer at all. **Non-breaking** — an explicit
+  value still wins; a consumer who omits the key moves from "whatever literal my
+  shim was copied with" to the base's pin. The contract is per-input, not
+  module-wide: no other input promises null-means-default, and passing `null` to
+  one without `nullable = false` yields `null`. Adoption steps in
+  [UPGRADING.md](UPGRADING.md). See #210.
+- **`talos-cluster`: Cilium chart pin `1.19.4` → `1.20.0`.** Cilium 1.20.0
+  (released 2026-07-29) is the base's new substrate CNI seed version. This is a
+  **SEED knob**: `terraform_data.cilium_render` carries `ignore_changes` and
+  Talos `inlineManifests` are create-only, so the bump does not upgrade a
+  running Cilium — it applies to fresh bootstraps, and to consumers who
+  deliberately sync the emitted self-management Application (whose
+  `targetRevision` tracks the pin). It also does not reach an existing consumer
+  by itself, because their own `cluster.yaml` and shim pin the chart and win over
+  the module default — see the chart-version single-source entry below for the two
+  ways to adopt it. Kubernetes is a **precondition, not a given**: the module
+  does not pin `kubernetes_version`, and Cilium 1.20 lists 1.33–1.36 as
+  e2e-tested, so a cluster on 1.32 or earlier needs a Kubernetes upgrade first or
+  should stay on Cilium 1.19. Re-verified at the new pin: seed render
+  determinism, the four
+  `cilium-config` observability marker keys, and the `hubble-metrics` `:9965`
+  Service all hold, and ADR-0022's `operator.prometheus.enabled` revisit
+  trigger did not fire — recorded as a dated addendum in
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+- **Newly tunable Gateway API knob, same behavior: `gatewayAPI.useRemoteAddress`.**
+  The Helm value does not exist in chart 1.19.4 and defaults to `true` in 1.20.0
+  (`gateway-api-use-remote-address: "true"` in `cilium-config`). The default
+  preserves 1.19 behavior — Cilium 1.19 hardcoded the same Envoy
+  `UseRemoteAddress: true` in its Gateway listener translation, and 1.20 keeps
+  that literal while making it overridable. `true` means the source IP comes from
+  the connection peer rather than a forwarded or proxy-protocol header, so a
+  client-supplied `X-Forwarded-For` is not authoritative; `false` is the setting
+  that makes a forwarded address authoritative and belongs only behind a trusted
+  proxy. No action required. See [UPGRADING.md](UPGRADING.md) §2.
+- **Datapath default flipped by Cilium 1.20 when Gateway API is enabled:
+  `bpf-lb-algorithm-annotation` `"false"` → `"true"`.** 1.20's ConfigMap template
+  forces this key on whenever `gatewayAPI.enabled`, which the base sets by
+  default. Consequence: a `service.cilium.io/lb-algorithm` annotation that was
+  inert now selects the per-Service load-balancing algorithm for real — audit any
+  existing annotation before a fresh bootstrap or self-management sync. Rendering
+  the base's default value set against both charts shows this as the **only**
+  changed `cilium-config` value. See [UPGRADING.md](UPGRADING.md) §2.
+- **Datapath behavior change inherited from Cilium 1.20: in-cluster NodePort
+  traffic is load-balanced at the client pod.** With kube-proxy replacement on
+  (the base default) and SocketLB disabled (the chart default the base does not
+  override), connections from regular pods to NodePort Services are now
+  load-balanced as traffic leaves the client pod instead of at the target node,
+  per Cilium's 1.20 release notes. Client NetworkPolicy must now allow egress to the Service's
+  backends, and backend NetworkPolicy must allow ingress from the client. No
+  base value changed; this is upstream behavior every consumer on default
+  settings inherits. See [UPGRADING.md](UPGRADING.md) §4.
+- **Gateway API CRD floor documentation: v1.4.1 → v1.6.1.** Cilium 1.20
+  requires Gateway API v1.6.1 at a minimum, because `TLSRoute` graduated from
+  `v1alpha2` to `v1`. `cilium_gateway_api_crds_url` still defaults to `""`
+  (CRDs remain a Day-1 GitOps concern), but its documented bundle URL and the
+  module README now point at v1.6.1. TLSRoute is in the **standard** channel as
+  of v1.6.1, so standard alone now satisfies the Gateway-API-only Hard
+  Constraint — the previous "use the experimental bundle for TLSRoute" guidance
+  is retired. Consumers carrying pre-existing `v1alpha2` TLSRoute objects must
+  still use the experimental bundle: standard v1.6.1 declares `v1alpha2` but
+  does not serve it. See [UPGRADING.md](UPGRADING.md).
+- **`kubernetes/bootstrap/cilium/values.yaml`: `encryption.strictMode.*`
+  migrated to the nested `egress.*` form.** Cilium 1.20 removed the flat
+  `strictMode.{enabled,cidr,allowRemoteNodeIdentities}` keys (deprecated in
+  1.19). Because Helm does not run `--strict`, the old spelling was **silently
+  dropped** on chart 1.20 — strict-mode encryption would not have been
+  configured, with no error. The new spelling renders identically on 1.19.x, so
+  it is safe for a consumer still pinning the previous minor. This file is
+  reference-only (not consumed by the seed render), but it is what a consumer
+  copies into a Day-2 self-managed Application.
+- **`kubernetes/bootstrap/cilium/values.yaml`: three inert keys removed.**
+  `policySecrets.enabled`, `encryption.wireguard.userspaceFallback` and
+  `loadBalancer.l2.enabled` are recognized by **neither** chart 1.19.4 nor
+  1.20.0 — no `values.yaml` entry and no template reference in either. Verified
+  inert by rendering the file against both charts before and after removal: the
+  output is byte-identical, so nothing a consumer copying this file relies on
+  changes. `loadBalancer.l2.enabled` was also redundant with the adjacent
+  `l2announcements.enabled`, which does render.
+
+### Fixed
+
+- **`talos-cluster`: the Day-0 ArgoCD apply no longer pushes chart defaults over
+  ArgoCD's own state.** `data.helm_template.argocd_crds` renders the chart with
+  no values block, and the module applied that entire render with
+  `kubectl apply --server-side --force-conflicts` — twelve kinds, not just the
+  CRDs. Every provisioned cluster therefore received a bundled `argocd-dex-server`
+  and `server.dex.server*` cmd-params (contradicting substrate invariants I1/I2
+  at runtime while CI stayed green), had the seed's `server.insecure` and
+  `kustomize.buildOptions` overwritten, and had `argocd-rbac-cm` reset to chart
+  defaults. Because the trigger set includes `kubernetes_version`, a routine
+  Kubernetes upgrade re-fired all of it. The render is now projected down to
+  `CustomResourceDefinition` documents before the freeze and applied without
+  `--force-conflicts`. **Existing clusters are not repaired retroactively** —
+  `kubectl` stays a recorded field manager on what it already touched; this stops
+  future applies from re-taking it. New: output `argocd_day0_apply_kinds`,
+  invariant **I3** (the seed's `argocd-cm` carries no placeholder `url`), and
+  `tests/argocd-crd-scope.tftest.hcl`. See
+  [ADR-0025](knowledge/decisions/0025-argocd-crd-apply-scope.md).
+
+- **Spec-staleness gate: syncing a branch with `main` no longer voids the
+  `Spec-Impact: none` escape.** The gate granted the escape only when EVERY
+  commit git lists for the violating file carried the trailer — and a base-sync
+  merge is listed for every file both sides touched. Branch protection requires
+  up-to-date branches, so that merge is forced on every PR, and the only
+  remedies left were rewriting history or editing a spec the change does not
+  affect. Attribution is now by CONTRIBUTION: a merge whose content for the file
+  equals what a mechanical 3-way merge of its parents yields introduced nothing
+  to certify and is skipped, while a hand-resolved conflict or an evil merge
+  stays a contributor and must carry the trailer itself. The obvious cheaper
+  test, `diff-tree --cc` emptiness, is unsound — `--cc` compresses per hunk, so
+  a clean auto-merge of two edits three lines apart still prints hunks — so the
+  gate re-runs the merge (`merge-tree --write-tree`, git >= 2.38) and compares
+  the recorded tree entry (mode, type and object id, not the object id alone: a
+  merge that flips an exec bit or turns the path into a symlink contributed
+  something even when the blob is unchanged, and two spec-owned primary sources
+  are shell scripts CI runs with no interpreter prefix). Anything the comparison
+  cannot decide counts as a contribution, and every git call now runs under
+  `GIT_LITERAL_PATHSPECS` so a source name git would otherwise read as pathspec
+  magic (a leading `:`, or `*?[`) is treated as the literal path it is. Both
+  failure directions are bound by `scripts/check-staleness-gate-bite.sh` from
+  `task spec:validate`.
+  `talos_cluster_kubeconfig.this` fetched the admin kubeconfig once at
+  bootstrap and never re-fetched it: its own arguments (`node`/`endpoint =
+  local.first_controlplane.ip`) are the Talos-API (talosclient, port 50000)
+  dial target used only to *fetch* the kubeconfig, not the emitted
+  Kubernetes `server:` — per the `siderolabs/talos` provider schema
+  (`tofu providers schema -json`, `registry.opentofu.org/siderolabs/talos`)
+  and the Terraform Registry docs for `talos_cluster_kubeconfig`. The
+  `server:` value is Talos-derived from `var.cluster_endpoint`, which is
+  baked into the machine config at `tofu/modules/talos-cluster/main.tf:674`
+  (controlplane) and `:684` (worker); a later `var.cluster_endpoint` change
+  (a VIP move, a DNS rename, or a control-plane node re-IP on a
+  single-control-plane cluster where `cluster_endpoint` is expressed as
+  that node's own IP — the seeder's `api_vip: ""` fallback is exactly this
+  case, and is the strongest evidence this fix closes the #168/#186
+  incident; on a VIP/DNS endpoint a plain node re-IP is correctly inert
+  and does not trigger regeneration) left the resource's own arguments
+  unchanged, so it
+  never re-read and the module kept emitting the stale `server:`. A new
+  `terraform_data.kubeconfig_endpoint_marker` (tracked `input =
+  var.cluster_endpoint`) now drives `lifecycle.replace_triggered_by` on
+  `talos_cluster_kubeconfig.this`, so a changed endpoint forces a re-fetch.
+  - **Non-breaking, no MAJOR bump**: the emitted `server:` value is
+    unchanged — it always tracked `var.cluster_endpoint` — and the trigger
+    is inert until the endpoint actually changes. Adding the marker to an
+    existing state (endpoint unchanged) only creates the marker; it does
+    **not** replace the existing kubeconfig, so there is no first-apply
+    churn on this version bump (reproduced offline with OpenTofu 1.11.8 —
+    a version-specific observation, not a semver-guaranteed provider
+    property).
+  - **Side effect on a genuine endpoint change**: the resource is
+    destroyed and recreated (state-only — it revokes nothing on the
+    cluster and does not touch `talos_machine_secrets`), which rotates the
+    embedded admin client certificate. The output still waits on the
+    existing health gate (`depends_on = data.talos_cluster_health`) before
+    emitting the refreshed kubeconfig, but that gate polls the
+    control-plane **node IPs**
+    (`tofu/modules/talos-cluster/main.tf:817-819`), not
+    `var.cluster_endpoint`. On a cluster whose endpoint is a VIP or DNS
+    name distinct from the node IPs, the gate does not verify the *new*
+    endpoint is reachable: a VIP moved to a wrong or unpropagated target
+    still reports healthy. The consumer is responsible for confirming the
+    new endpoint is correct and propagated before relying on the emitted
+    kubeconfig — this gate will not catch a wrong or unpropagated
+    VIP/DNS endpoint.
+  - Cosmetically different but equivalent endpoint strings (for example
+    a trailing slash or case difference) count as a change and trigger
+    regeneration too — no canonicalization is performed.
+  - A DNS-rename regeneration depends on Talos adding the new hostname to
+    the apiserver serving-cert SANs in the same apply; the apiserver
+    cert-SANs update alongside `var.cluster_endpoint` on a re-apply.
+
+## v9.1.0 — 2026-08-24
+
+### Added
+
+- **`talos-cluster`: `cilium_operator_replicas` input (number, default `null`).**
+  Pins the Cilium operator's replica count on **both** delivery paths — the
+  frozen seed and the emitted self-management Application — where
+  `cilium_values_override` reaches only the seed and is hard-rejected alongside
+  `cilium_self_management`. `null` derives the count from the node set; see the
+  matching entry under Changed for the derivation and its rationale. Paired with
+  a new `cilium_operator_replicas_effective` output reporting the resolved count
+  and which of the three mechanisms produced it.
+
+### Changed
+
+- **`talos-cluster`: the Cilium operator's replica count now follows the node
+  count, and is pinnable.** At two or more nodes the module emits
+  `operator.replicas: 2` — the Cilium chart's own default — into both the
+  bootstrap seed and the emitted self-management Application. At exactly one node
+  nothing is emitted and the shipped floor's `1` remains effective, because the
+  chart's operator `podAntiAffinity` is `requiredDuringScheduling` on
+  `kubernetes.io/hostname` and a second replica would stay Pending there forever.
+  The new `cilium_operator_replicas` input (`substrate.cilium.operator_replicas`)
+  pins the count instead; it is the only knob that pins on **both** delivery
+  paths, because `cilium_values_override` reaches the seed alone and is
+  hard-rejected alongside `cilium_self_management`. A count above the declared
+  node count is **rejected** at plan time — the surplus can never place against
+  the per-hostname anti-affinity, and the value lands in a create-only seed that
+  no later apply can walk back. The new `cilium_operator_replicas_effective`
+  output reports the resolved count together with its origin (pin, node-count, or
+  floor).
+
+  Why: `2` is the chart's own default, and the floor's `1` diverged from it on
+  every cluster shape while being correct on exactly one. Two consequences were
+  measured against the pinned chart 1.20.0. The rolling-update strategy varies
+  with the replica count — `maxUnavailable` is `100%` at one replica and `50%` at
+  two — so a rollout guarantees zero available operator pods at one replica and
+  one at two. And on a hard node failure a lone replica waits out the 300-second
+  `unreachable` eviction plus a reschedule and a cold start, where a second
+  replica is already running elsewhere.
+
+  Two things this release does **not** claim. How fast that second instance takes
+  the work over was not measured — the chart grants the leader-election lease
+  RBAC at one replica too and sets no leader-election flags, so the mode and the
+  timings are operator-binary behaviour. And none of this rescues a node that is
+  merely `NotReady` while its operator pod is alive and reaching the API: that is
+  not a failover event at all.
+
+  Note the resource footprint: the chart sets no `operator.resources`, so both
+  pods are **BestEffort**. See UPGRADING if that matters on your nodes.
+
+  **Impact on adoption:** a multi-node cluster taking this tag gets a second
+  `cilium-operator` pod. On an already-bootstrapped cluster the seed path does
+  **not** deliver it — `terraform_data.cilium_render` carries `ignore_changes`
+  and `inlineManifests` are create-only, so it takes a fresh bootstrap or a
+  deliberate `-replace`; a control-plane join does not deliver it either. A
+  self-managing consumer gets it on the next ArgoCD reconcile. See
+  [ADR-0022](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
+### Fixed
+
+- **`schemas/cluster.schema.json`: the `operator_replicas` description said the
+  node-count bound only warns.** It is a plan-time rejection. Description text
+  only — no validation behaviour changed.
+
+## v6.0.0 — 2026-07-20
+
+### Changed — BREAKING
+
+- **`talos-cluster`: the seeded kubelet-serving CSR approver is now
+  `postfinance/kubelet-csr-approver` (was
+  `alex1989hu/kubelet-serving-cert-approver`).** Same controlplane
+  `inlineManifest` seed, but the manifest is now chart-rendered and templated
+  with a small per-cluster config surface —
+  `substrate.cert_approver.{provider_regex, provider_ip_prefixes, replicas}` — so
+  the approver is **tunable** (two security knobs + a replica count) instead of
+  the previous fixed, zero-config seed. The image is digest-pinned to
+  `ghcr.io/postfinance/kubelet-csr-approver:v1.2.14`. postfinance adds an
+  **always-on per-node DNS-SAN binding** the old approver lacked — a CSR's DNS
+  SANs must be prefixed by the requesting node's hostname. The two knobs default
+  so every cluster still boots and approves out-of-the-box
+  (`provider_regex = ".*"`, `provider_ip_prefixes = ["0.0.0.0/0", "::/0"]` — the
+  safe floor; an empty list would deny every serving CSR); a consumer tightens
+  `provider_ip_prefixes` to its node subnets for an additional IP-SAN-to-subnet
+  binding, and `replicas > 1` opts into HA (auto leader-election + a namespaced
+  leases RBAC).
+  **Consumer impact:** the approver's identity, RBAC, and pod identity all change
+  — the namespace is renamed `kubelet-serving-cert-approver` →
+  `kubelet-csr-approver`, the metrics port moves `9090` → `8080`, the vendored
+  manifest is renamed `manifests/cert-approver.yaml` →
+  `manifests/kubelet-csr-approver.yaml`, and non-conforming CSRs are now **Denied
+  terminally** (a `Denied` condition) rather than left `Pending`. Anything scoped
+  to the old namespace (ServiceMonitor, alerts, RBAC) must be repointed.
+  **BREAKING — migration:** MAJOR OCI bump. The old approver was a create-only
+  seed Talos never deletes, so after the new seed is Running the old
+  `kubelet-serving-cert-approver` namespace + its cluster-scoped ClusterRoles
+  (`certificates:`/`events:kubelet-serving-cert-approver`) + ClusterRoleBinding +
+  a stray `events:` RoleBinding in the `default` namespace must be torn down by
+  hand; config changes do not propagate to a running cluster (create-only seed);
+  and a node-excluding `provider_*` value denies serving CSRs cluster-wide
+  (terminal). See UPGRADING.md for the full teardown, propagation, rollback, and
+  observability-migration steps. Decision:
+  [`knowledge/decisions/0019-postfinance-kubelet-csr-approver.md`](knowledge/decisions/0019-postfinance-kubelet-csr-approver.md)
+  (supersedes ADR-0013 §D2; ADR-0013 §D1 — rotation default-on — is unchanged).
+
+## v5.0.0 — 2026-07-15
+
 ### Changed — BREAKING
 
 - **`talos-cluster`: the `iommu` provisioning profile no longer bakes

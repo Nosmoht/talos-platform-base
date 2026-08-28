@@ -32,6 +32,20 @@ cluster:
   service_cidr: ["10.96.0.0/12"] # Talos serviceSubnets
   dual_stack: false # v4+v6: give pod_cidr/service_cidr each a v4 and a v6 entry
   allow_scheduling_on_controlplanes: false # true for single-node / edge clusters
+  # register_with_fqdn: false             # true only if your node keys are FQDNs
+  #   Talos splits a dotted hostname at the first dot and registers only the SHORT
+  #   hostname with Kubernetes, so a dotted node key below is rejected while this
+  #   is false. ALL-OR-NOTHING: one dotted key flips FQDN registration for every
+  #   node, including short-named ones — which changes their Kubernetes node name.
+  # controlplane_apply_mode: auto        # auto | reboot | no_reboot | staged
+  # worker_apply_mode: auto              # same set, per role
+  #   Leave at auto for Day-0: the first apply to a maintenance-mode node IS the
+  #   install, so a staging mode writes the config without installing.
+  #   `staged` opens a Day-2 window in which YOU reboot the nodes. Do not close
+  #   it until every node of the role has rebooted, and do not add a node while
+  #   it is open. What the window obliges you to:
+  #   tofu/modules/talos-cluster/README.md §Staged machine-config roll (Day-2).
+  #   The reboot sequence itself is yours to write and rehearse.
 
 repo:
   url: https://github.com/your-org/your-cluster-repo.git
@@ -67,13 +81,18 @@ images:
 hardware-capabilities: {} # e.g. { storage-replicated: { requires_features: [drbd-kernel-module], provisioning_profiles: [drbd], emits_label: platform.io/hardware-capability.storage-replicated } }
 
 # --- Nodes: bare-metal members (must be PXE-booted into Talos maintenance mode) ---
+# KEYED BY NODE NAME — one node, one definition place. The key IS the Talos
+# hostname and the Kubernetes node name, so it must already be canonical
+# (lowercase [a-z0-9-.], no leading/trailing '-' or '.'): Talos validates only
+# the hostname LENGTH and silently rewrites everything else, which would land
+# the node in the cluster under a different name than the one written here.
 # role is ONLY controlplane | worker. Hardware specialisation = image + the SET of
-# hardware_capabilities, not role.
+# hardware_capabilities, not role. The controlplane count must be ODD (etcd quorum).
 nodes:
-  - { hostname: cp-1, ip: 192.0.2.11, role: controlplane, image: standard, hardware_capabilities: [] }
-  - { hostname: w-1, ip: 192.0.2.21, role: worker, image: standard, hardware_capabilities: [] }
+  cp-1: { ip: 192.0.2.11, role: controlplane, image: standard, hardware_capabilities: [] }
+  w-1: { ip: 192.0.2.21, role: worker, image: standard, hardware_capabilities: [] }
   # Per-node patches (e.g. a NIC-specific bridge) are structured YAML maps:
-  # - hostname: gpu-1
+  # gpu-1:
   #   ip: 192.0.2.31
   #   role: worker
   #   image: standard
@@ -103,7 +122,10 @@ substrate:
   cilium:
     # namespace is fixed to kube-system by Talos convention (not a settable field).
     enabled: true # false keeps Talos-default Flannel (opt-out)
-    chart_version: "1.19.4" # SEED knob (install-time), not an upgrade knob
+    # chart_version: OMITTED ON PURPOSE — omitting it inherits the base's pinned
+    # chart, so vendoring a newer base tag moves the pin for you. Set it ONLY to
+    # pin against the base deliberately; a stale value here silently overrides
+    # every future bump. SEED knob either way (install-time, not an upgrade knob).
     # SECURITY: chart_repository + gateway_api_crds_url below are pulled WITHOUT a
     # digest pin and baked into the controlplane machine config — point ONLY at a
     # source you trust (a poisoned repo/URL injects arbitrary bootstrap manifests).
@@ -116,11 +138,30 @@ substrate:
     native_routing_cidr: "" # ipv4NativeRoutingCIDR for routing_mode: native ("" = derive from pod_cidr)
     encryption: { type: none } # none | wireguard | ipsec (ipsec needs cilium_ipsec_key via tfvar/env)
     values_override: "" # long tail: Hubble, L2/BGP, bpf, VLAN bypass (Helm values, merged on the floor)
+    agent_metrics: false # Cilium agent Prometheus metrics (prometheus.enabled)
+    operator_metrics: false # Cilium operator Prometheus metrics (operator.prometheus.enabled)
+    # operator_replicas: OMITTED ON PURPOSE — omitting it derives the count from
+    # your node set: 2 at two or more nodes (the chart's own default), and the
+    # shipped floor's 1 at exactly one, where the operator's per-hostname
+    # anti-affinity would leave a second replica Pending. Set it ONLY to pin the
+    # count deliberately — it is the only knob that pins on BOTH delivery paths
+    # (values_override reaches the seed alone and is rejected with self_management).
+    hubble_enabled: false # Hubble flow/metrics observability (forces hubble.tls.enabled=false — metrics-only scope)
+    hubble_metrics: [] # e.g. ["dns", "drop", "tcp"] — scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side
+    agent_metric_overrides: [] # e.g. ["+cilium_bpf_map_pressure"] — +add/-remove against the chart's DEFAULT metric set; needs agent_metrics
+    hubble_open_metrics: false # OpenMetrics exposition format; needs hubble_enabled + a rollout restart to take effect on a running cluster
+    self_management: false # opt-in: emit a Cilium ArgoCD Application output (module-emitted only, never applied). HARD-REJECTED with values_override non-empty
+    self_management_project: default # ArgoCD AppProject the emitted Application targets — scope to a dedicated project for hardening
   argocd:
     enabled: true # false opts out of ArgoCD delivery
-    chart_version: "9.4.5" # SEED knob (install-time), not an upgrade knob
+    # chart_version: omitted on purpose — see the cilium block above.
     namespace: argocd
     values_override: "" # consumer Helm values merged on the shipped slim values
+  cert_approver: # postfinance/kubelet-csr-approver — always seeded; these only TUNE it (cannot disable)
+    # Defaults boot + approve out-of-the-box AND carry the always-on per-node DNS-SAN bind.
+    provider_regex: ".*" # cluster-wide extra gate on SAN DNS names; tighten e.g. "^node-.*$" for your naming
+    provider_ip_prefixes: ["0.0.0.0/0", "::/0"] # SAN IP allow-set; MUST be non-empty (empty denies all IP-SAN CSRs). Tighten to your node subnets, e.g. ["<node-subnet>/24"]
+    replicas: 1 # raise to 2 for HA (auto-enables leader-election + leases RBAC)
 
 # --- Secrets (NEVER in this file — the schema has no slot for them) ---
 # sops_age_key     (ArgoCD ksops)         -> TF_VAR_sops_age_key / tfvars / SOPS

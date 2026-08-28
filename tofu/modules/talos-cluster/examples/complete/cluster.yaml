@@ -92,15 +92,17 @@ hardware-capabilities:
     provisioning_profiles: [nvidia-lts]
     emits_label: platform.io/hardware-capability.compute-gpu-nvidia
 
+# Keyed by node name: one node, one definition place. Three controlplanes —
+# the count must be ODD (etcd quorum).
 nodes:
-  - { hostname: node-cp-1, ip: 192.0.2.11, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
-  - { hostname: node-cp-2, ip: 192.0.2.12, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
-  - { hostname: node-cp-3, ip: 192.0.2.13, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
-  - { hostname: node-w-1, ip: 192.0.2.21, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
-  - { hostname: node-w-2, ip: 192.0.2.22, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
-  - { hostname: node-w-3, ip: 192.0.2.23, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
-  - { hostname: node-w-4, ip: 192.0.2.24, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
-  - hostname: node-gpu-1
+  node-cp-1: { ip: 192.0.2.11, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
+  node-cp-2: { ip: 192.0.2.12, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
+  node-cp-3: { ip: 192.0.2.13, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
+  node-w-1: { ip: 192.0.2.21, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  node-w-2: { ip: 192.0.2.22, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  node-w-3: { ip: 192.0.2.23, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  node-w-4: { ip: 192.0.2.24, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  node-gpu-1:
     ip: 192.0.2.31
     role: worker
     image: intel-gpu
@@ -108,7 +110,7 @@ nodes:
     config_patches:
       # per-node NIC binding (the value the old ${NIC_NAME} placeholder carried)
       - machine: { network: { interfaces: [{ interface: enp0s20f0u2, dhcp: true }] } }
-  - { hostname: node-pi-1, ip: 192.0.2.41, role: worker, image: rpi, hardware_capabilities: [] }
+  node-pi-1: { ip: 192.0.2.41, role: worker, image: rpi, hardware_capabilities: [] }
 
 # Cluster-wide patches the caller owns (NTP here; the module injects none).
 config_patches:
@@ -136,7 +138,10 @@ substrate:
   cilium:
     # namespace is fixed to kube-system by Talos convention (not a SoT-settable field)
     enabled: true # false keeps Talos-default Flannel (opt-out)
-    chart_version: "1.19.4" # SEED knob (install-time), not an upgrade knob
+    # chart_version: OMITTED ON PURPOSE — omitting it inherits the base's pinned
+    # chart, so vendoring a newer base tag moves the pin for you. Set it ONLY to
+    # pin against the base deliberately; a stale value here silently overrides
+    # every future bump. SEED knob either way (install-time, not an upgrade knob).
     chart_repository: https://helm.cilium.io # baked into machineConfig WITHOUT a digest pin — point ONLY at a trusted source
     routing_mode: tunnel # tunnel | native (native needs native_routing_cidr or pod_cidr)
     kube_proxy_replacement: true # Cilium replaces kube-proxy (Talos cluster.proxy.disabled)
@@ -146,8 +151,20 @@ substrate:
     native_routing_cidr: "" # ipv4NativeRoutingCIDR for routing_mode: native ("" = derive from pod_cidr)
     encryption: { type: none } # none | wireguard | ipsec (ipsec needs cilium_ipsec_key via tfvar/env)
     values_override: "" # long tail: Hubble, L2/BGP, bpf, VLAN bypass (Helm values, merged on the floor)
+    agent_metrics: false # Cilium agent Prometheus metrics (prometheus.enabled)
+    operator_metrics: false # Cilium operator Prometheus metrics (operator.prometheus.enabled)
+    hubble_enabled: false # Hubble flow/metrics observability (forces hubble.tls.enabled=false — metrics-only scope)
+    hubble_metrics: [] # e.g. ["dns", "drop", "tcp"] — scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side
+    agent_metric_overrides: [] # e.g. ["+cilium_bpf_map_pressure"] — +add/-remove against the chart's DEFAULT metric set; needs agent_metrics
+    hubble_open_metrics: false # OpenMetrics exposition format; needs hubble_enabled + a rollout restart to take effect on a running cluster
+    self_management: false # opt-in: emit a Cilium ArgoCD Application output (module-emitted only, never applied). HARD-REJECTED with values_override non-empty
+    self_management_project: default # ArgoCD AppProject the emitted Application targets — scope to a dedicated project for hardening
   argocd:
     enabled: true # false opts out of ArgoCD delivery (true REQUIRES sops_age_key via tfvar/env)
-    chart_version: "9.4.5" # SEED knob (install-time), not an upgrade knob
+    # chart_version: omitted on purpose — see the cilium block above.
     namespace: argocd
     values_override: "" # consumer Helm values merged on the shipped slim values
+  cert_approver: # postfinance/kubelet-csr-approver — always seeded; these only TUNE it
+    provider_regex: ".*" # cluster-wide extra gate on SAN DNS names ("^node-.*$" to tighten)
+    provider_ip_prefixes: ["0.0.0.0/0", "::/0"] # SAN IP allow-set; MUST be non-empty. Tighten to node subnets.
+    # replicas: 2 # opt into HA (auto-enables leader-election + leases RBAC); default 1

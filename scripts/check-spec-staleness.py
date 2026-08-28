@@ -23,9 +23,25 @@ Escape hatch for diffs that verifiably do not change described behavior
 (comment-only edits, refactors): the commit trailer line
 `Spec-Impact: none` — matched in the commit BODY only (never the subject)
 and scoped PER COMMIT: a violation is downgraded to a warning only when
-EVERY commit in the range that touched the violating file carries the
-trailer. The trailer is an auditable, reviewable claim — the PR reviewer
-judges it.
+EVERY commit in the range that CONTRIBUTED to the violating file carries
+the trailer. The trailer is an auditable, reviewable claim — the PR
+reviewer judges it.
+
+Contribution is what decides a merge commit's place in that set, not the
+fact that git lists it. A merge whose content for the file equals what a
+mechanical 3-way merge of its parents yields introduced nothing to certify
+and is skipped. This is load-bearing rather than cosmetic: branch protection
+here requires up-to-date branches, so a base-sync merge is FORCED on every
+PR, and git lists it for every file both sides touched — counting it would
+void an otherwise valid escape and leave history rewriting as the only
+remedy. A merge that INVENTED content (hand-resolved conflict, evil merge)
+stays in the set and must carry the trailer itself. Residual: when nothing is
+left to attribute the change to, the violation fails closed. That state is
+reachable, though not by the route it was first assumed to take — a merge whose
+result matches the base side is TREESAME to it, so the file drops out of the
+diff too and the gate never gets that far. It is reached instead when `git log`
+matches no commit for the path at all, which a pathspec-magic source name used
+to cause before GIT_LITERAL_PATHSPECS (see git()).
 
 Usage: check-spec-staleness.py --base <ref>   (e.g. origin/main)
 
@@ -45,8 +61,23 @@ TRAILER = "Spec-Impact: none"
 
 
 def git(*args, ok_codes=(0,)):
-    r = subprocess.run(["git", *args], capture_output=True, text=True)
-    if r.returncode not in ok_codes:
+    """Run git. `ok_codes=None` tolerates ANY exit code — for probes whose
+    failure is a meaningful answer (unsupported subcommand, absent path)
+    rather than a broken environment.
+
+    `GIT_LITERAL_PATHSPECS` because every pathspec this script passes is a
+    literal path read from a spec's `sources:` frontmatter, never a glob. Without
+    it git reads leading `:` / `!` and any `*?[` as pathspec MAGIC: a source
+    named `:x.sh` makes both `log -- <path>` and `ls-tree -- <path>` match
+    nothing and exit 0, so the file's whole attribution goes blind. Verified: the
+    gate then fails closed (empty contributing set → FAIL) rather than escaping,
+    but it fails for a reason no diagnostic explains. No source declared today
+    contains such a character, and the enumerated universe in
+    check-spec-partition.py bounds what may be declared, so this is robustness,
+    not a live hole."""
+    env = {**os.environ, "GIT_LITERAL_PATHSPECS": "1"}
+    r = subprocess.run(["git", *args], capture_output=True, text=True, env=env)
+    if ok_codes is not None and r.returncode not in ok_codes:
         print(f"ERROR: git {' '.join(args)}: {r.stderr.strip()}", file=sys.stderr)
         sys.exit(2)
     return r.returncode, r.stdout
@@ -64,6 +95,89 @@ def trailer_commits(base):
         if any(line.strip() == TRAILER for line in body_lines):
             shas.add(sha)
     return shas
+
+
+def merge_shas(base):
+    """Merge commit shas in base..HEAD."""
+    _, out = git("rev-list", "--merges", f"{base}..HEAD")
+    return set(out.split())
+
+
+GIT_ERROR = object()  # `ls-tree` refused to answer — never comparable
+
+
+def tree_entry(rev, path):
+    """`<mode> <type> <oid>` for `path` at `rev`; None if absent, GIT_ERROR on
+    a git failure — the two must not collapse, or an unanswerable path compares
+    EQUAL to itself and the merge is dropped from the certifying set. Every other
+    unresolvable state in this file fails closed; this keeps that polarity.
+    Defence in depth: no `ls-tree` failure mode is known to be reachable here
+    (the pathspec-magic case exits 0 with empty output, not non-zero, and is
+    handled by GIT_LITERAL_PATHSPECS in git()).
+
+    Mode and type are part of the identity, not just the object id. A merge that
+    flips the executable bit, or turns the path into a symlink (120000) or a
+    gitlink (160000), recorded something its parents did not supply even though
+    the blob id can be unchanged — and this is not academic here: two spec-owned
+    primary sources (scripts/lint-cluster-yaml.sh, scripts/lint-hardware-features.sh)
+    are invoked by CI with no interpreter prefix, so their mode IS behavior.
+    Comparing the blob id alone let such a merge pass as a non-contributor.
+    """
+    rc, out = git("ls-tree", "--full-tree", rev, "--", path, ok_codes=None)
+    if rc != 0:
+        return GIT_ERROR
+    if not out.strip():
+        return None
+    fields = out.split("\t", 1)[0].split()
+    return " ".join(fields[:3]) if len(fields) >= 3 else None
+
+
+def merge_invented_content(sha, path):
+    """True when merge `sha`'s `path` is not what a mechanical merge yields.
+
+    Re-runs git's own merge machinery over the two parents (`merge-tree
+    --write-tree`, git >= 2.38) and compares the resulting tree entry — mode,
+    type AND object id — against the one the merge actually recorded. Equal means
+    the merge only replayed what the 3-way merge produces unaided — nothing of
+    its own to certify. Everything else counts as a contribution, so the probe
+    fails CLOSED: a hand-resolved conflict (the mechanical merge exits non-zero),
+    an evil merge, an octopus merge, an unanswerable `ls-tree`, or a git too old
+    for `--write-tree`.
+
+    Deliberately NOT `diff-tree --cc` emptiness, the obvious cheaper test:
+    `--cc` compresses per HUNK, so a clean auto-merge of two edits close enough
+    to share a hunk still prints hunks and would be misread as an invention.
+    Scenario B of scripts/check-staleness-gate-bite.sh exists to hold that line.
+
+    `--write-tree` deposits loose objects in the local object store; they are
+    unreferenced and `git gc` collects them.
+
+    Disclosed assumption, now measured: "mechanical" means git's DEFAULT merge
+    machinery, and `merge-tree` honours a `.gitattributes` `merge=` driver when
+    one is DEFINED where it runs. So the same history verdicts differently across
+    machines — with the driver defined the recorded merge matches the mechanical
+    one and is skipped; without it (a CI runner that lacks the driver config)
+    `merge-tree` conflicts, the entries differ, and the merge is counted as a
+    contributor. The disagreement fails CLOSED: CI is the strict side, so the
+    symptom is a local pass followed by an unexplainable CI failure, never a leak.
+
+    Latent, not live: the repo ships no `.gitattributes`
+    (`find . -name .gitattributes` outside `.git/` is empty), so no path is
+    redirected to a driver. Adding one on a spec-owned `primary` source makes the
+    above real — either define the driver in CI too, or expect that failure.
+    """
+    _, out = git("rev-list", "--parents", "-n", "1", sha)
+    parents = out.split()[1:]
+    if len(parents) != 2:
+        return True
+    rc, tree_out = git("merge-tree", "--write-tree", *parents, ok_codes=None)
+    if rc != 0 or not tree_out.strip():
+        return True
+    tree = tree_out.splitlines()[0].strip()
+    mechanical, recorded = tree_entry(tree, path), tree_entry(sha, path)
+    if mechanical is GIT_ERROR or recorded is GIT_ERROR:
+        return True
+    return mechanical != recorded
 
 
 def fragment_range(head_lines, frag):
@@ -158,16 +272,24 @@ def main():
         return 0
 
     escaped_shas = trailer_commits(args.base)
+    merges = merge_shas(args.base)
     fail = 0
     for f, spec in violations:
         _, log_out = git("log", "--no-renames", "--format=%H",
                          f"{args.base}..HEAD", "--", f)
-        touching = log_out.split()
-        # Escaped only when every commit touching THIS file carries the
-        # trailer (per-commit scope; an unrelated commit's trailer never
-        # suppresses another commit's violation). No touching commit means
-        # the change is uncommitted — never escapable.
-        if touching and all(sha in escaped_shas for sha in touching):
+        # Only commits that CONTRIBUTED content for this file can certify it.
+        # A merge that merely replayed its parents' variants is dropped —
+        # branch protection forces a base-sync merge on every PR, so counting
+        # it would void the escape for any file both sides touched. A merge
+        # that invented content is kept and must carry the trailer itself.
+        contributing = [sha for sha in log_out.split()
+                        if sha not in merges or merge_invented_content(sha, f)]
+        # Escaped only when every contributing commit carries the trailer
+        # (per-commit scope; an unrelated commit's trailer never suppresses
+        # another commit's violation). An empty set means the change is
+        # uncommitted, or attributable only to dropped merges — fail closed
+        # either way, since there is no claim to judge.
+        if contributing and all(sha in escaped_shas for sha in contributing):
             print(f"WARN stale spec (escaped per-commit via '{TRAILER}'): "
                   f"{f} changed but owning {spec} did not — reviewer judges "
                   f"the no-behavior-change claim")

@@ -2,9 +2,9 @@
 type: decision
 title: "ADR: Ship tool-generated AI artifacts in the base"
 description: "The base commits tool-generated, regenerable AI-tool artifacts (OpenSpec skill/command trees); hand-authored harness primitives remain external."
-status: accepted
+status: stable
 id: base:ship-ai-tool-artifacts
-timestamp: 2026-07-13
+decided: "2026-07-13T00:00:00Z"
 deciders:
   - repo owner
 consulted: []
@@ -22,8 +22,9 @@ tags: [adr, governance, ai-tooling]
 
 Until this decision the base documented a strict policy: it ships no
 `.claude/` tree and no Claude-Code-specific primitives (`CLAUDE.md`
-§Claude-Code-Specific Additions, the `.gitignore` blanket ignore, and
-`AGENTS.md` §Domain Rules). Adopting OpenSpec (`base:openspec-adoption`)
+§Claude-Code Delta, the `.gitignore` blanket ignore, and
+`AGENTS.md` §Tool Notes — both renamed 2026-08-28 from
+§Claude-Code-Specific Additions and §Domain Rules). Adopting OpenSpec (`base:openspec-adoption`)
 surfaces a conflict: `openspec init` generates editor integrations — skill
 and command trees for Claude Code and Codex — that every contributor needs
 for the `/opsx:*` spec-driven workflow. Keeping them uncommitted forces
@@ -108,5 +109,5 @@ keeps every AI-tool tree out of the published artifact.
 ## Links
 
 - `base:openspec-adoption` (ADR-0015) — the adoption this reversal enables
-- `CLAUDE.md` §Claude-Code-Specific Additions, `AGENTS.md` §Domain Rules —
+- `CLAUDE.md` §Claude-Code Delta, `AGENTS.md` §Tool Notes —
   rewritten by this decision

@@ -8,7 +8,9 @@ For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 - This file documents **cumulative migration steps** for each MAJOR
   bump and any MINOR that requires a manual action.
 - Read every section between the version you currently pin and the
-  version you want to adopt. Apply in order.
+  version you want to adopt, oldest tag first. Sections are not stored in
+  version order and one tag may own more than one of them — locate every
+  section carrying a tag in your range by its heading, not by position.
 - Always verify the new artifact (cosign + provenance) before vendoring
   — see [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
 
@@ -27,18 +29,1386 @@ cosign verify \
 #     catalog as of v2.0.0 — run its scan against your manifests there, not
 #     against the substrate base.)
 
-# 3. Render diff between current and target
-kubectl kustomize --enable-helm vendor/base/kubernetes/base/infrastructure/ \
-  > /tmp/before.yaml
+# 3. Render diff between current and target (steady-state argocd is the only
+#    rendered component the artifact ships; compare its published render).
+#    NOTE: `oras pull` deposits the tarball layer — it does NOT extract it;
+#    the tar -xzf step is mandatory (consumer repos typically wrap this as
+#    `task supply-chain:pull-base-oci` — prefer that where it exists).
+cp vendor/base/kubernetes/substrate/argocd/_rendered/manifests.yaml /tmp/before.yaml
 echo "${TAG}" > .base-version
-rm -rf vendor/base && oras pull "ghcr.io/${OWNER}/talos-platform-base:${TAG}" --output vendor/base
-kubectl kustomize --enable-helm vendor/base/kubernetes/base/infrastructure/ \
-  > /tmp/after.yaml
-diff -u /tmp/before.yaml /tmp/after.yaml | less
+rm -rf /tmp/base-pull && oras pull "ghcr.io/${OWNER}/talos-platform-base:${TAG}" --output /tmp/base-pull
+rm -rf vendor/base && mkdir -p vendor/base
+tar -xzf /tmp/base-pull/talos-platform-base-${TAG}.tar.gz -C vendor/base
+diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manifests.yaml | less
 
 # 4. Apply consumer-overlay patches for any MAJOR-listed breaking change below.
 # 5. Commit, open PR, let ArgoCD reconcile after merge.
 ```
+
+---
+
+## `v9.0.0` — the substrate ships no ArgoCD identity (MAJOR — action required for EVERY consumer using the shipped RBAC binding)
+
+**Type:** MAJOR. The base stops shipping an access policy and a base URL for
+ArgoCD, and the Day-0 `kubectl apply` stops converging the application. Read
+§1 before bumping the pin: the migration and the pin bump must land in the
+**same commit**, or the cluster loses its access policy at the next sync.
+
+Decisions: [ADR-0025](knowledge/decisions/0025-argocd-crd-apply-scope.md).
+Contract: [`knowledge/reference/argocd-sso-contract.md`](knowledge/reference/argocd-sso-contract.md).
+
+### 1. Carry BOTH `policy.csv` and `scopes` into your overlay — REQUIRED
+
+`kubernetes/substrate/argocd/values.yaml` no longer sets
+`configs.rbac.policy.csv` or `configs.rbac.scopes`. Previous releases shipped:
+
+```yaml
+configs:
+  rbac:
+    policy.csv: |
+      g, <a single hardcoded principal>, role:admin
+    scopes: '[preferred_username]'
+```
+
+Both are now yours. In your overlay over the component:
+
+```yaml
+# argocd-rbac-cm.yaml — strategic merge, so base-shipped keys survive
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.csv: |
+    g, <your-subject>, role:admin
+  scopes: '[preferred_username]'
+```
+
+**Carrying only `policy.csv` fails in one of two directions, and the second is
+the dangerous one.** Without `scopes`, the chart default `'[groups]'` applies and
+your policy is matched against a claim it was never written for.
+
+*Lockout* is the usual outcome: every subject stops matching, `policy.default: ''`
+grants nothing, and only the local `admin` account still works.
+
+*Accidental grant* is the other, because Casbin subjects share one flat,
+unprefixed namespace — a username and a group value are indistinguishable. If
+your policy binds `g, <username>, role:admin` and your IdP emits a group whose
+value happens to equal that username, the binding now matches **everyone in that
+group**. Per-user groups are a common pattern in several IdPs, so this is not
+exotic. Note that `argocd account can-i` below cannot detect it: it confirms the
+intended principal *has* access, never that an unintended one does not.
+
+Changing your subjects over to immutable group IDs and `'[groups]'` is a sound
+follow-up — do it as a **separate, verified change**, not inside this migration.
+
+**Verify before merging**, in an SSO session, not as `admin` — `can-i` answers
+for whatever session your CLI currently holds, so an admin session returns `yes`
+and proves nothing:
+
+```bash
+argocd logout <argocd-host>
+argocd login <argocd-host> --sso
+argocd account get-user-info                      # confirm WHICH principal
+argocd account can-i update applications '*/*'    # expect: yes
+```
+
+A successful **login** is not evidence either: an unmatched principal
+authenticates fine and can do nothing.
+
+### 2. Supply `configs.cm.url`
+
+Both render paths now set `configs.cm.url: ""`, so the rendered `argocd-cm`
+carries no `url` key at all (previously: the chart's placeholder hostname,
+derived from `global.domain`). ArgoCD derives the OIDC redirect URI from it, so
+SSO does not work until you set your own:
+
+```yaml
+# argocd-cm.yaml
+data:
+  url: https://argocd.<your-domain>
+```
+
+If you were already patching `url` in your overlay, nothing changes for you —
+your patch now supplies a key instead of overriding a placeholder.
+
+`argocd-notifications-cm`'s `argocdUrl` keeps the placeholder. That is a
+structurally forced residual (Helm's `default` treats `""` as unset), it feeds
+notification links only, and it never reaches the SSO redirect.
+
+### 3. Day-0 apply: expect a one-time plan diff, then quieter plans
+
+`terraform_data.argocd_crds_render` gains a projection discriminator in
+`triggers_replace`, so the **first** `tofu plan` after the bump replaces it once
+and re-applies the CRDs — now CRD-only, under
+`--field-manager=talos-platform-base-day0`, without `--force-conflicts`. That is
+expected and is what re-captures the stale twelve-kind payload.
+
+`kubernetes_version` leaves the trigger set, so a routine Kubernetes upgrade no
+longer re-fires the apply.
+
+**Not retroactive.** Your cluster keeps the `kubectl` field-manager entries the
+old force-apply recorded on `argocd-cm` / `argocd-rbac-cm`. Nothing further
+re-takes them. If you bootstrapped with the shipped root Application — which sets
+`ServerSideApply=true` — `argocd-controller` applies server-side, negotiates
+ownership with that stale manager and takes the contested fields, so the entry
+decays into bookkeeping. You can drop it from `metadata.managedFields` if you
+want it gone. If you deliberately sync the argocd component client-side, confirm
+the hand-over on your own cluster. Reasoned from apply semantics, not observed —
+this repository has no cluster.
+
+**If the CRD apply hits a conflict.** Without `--force-conflicts` the `kubectl`
+step exits non-zero, the provisioner fails, and the whole `tofu apply` fails —
+including applies whose real purpose was unrelated, because the resource sits in
+the same graph behind the health gate. Triage, read-only first:
+
+```bash
+# What the apply would do, without doing it
+kubectl apply --server-side --dry-run=server \
+  --field-manager=talos-platform-base-day0 -f <the module's .tmp/*-argocd-crds.yaml>
+
+# Who owns the contested CRDs
+kubectl get crd applications.argoproj.io \
+  -o jsonpath='{range .metadata.managedFields[*]}{.manager}{"\n"}{end}'
+```
+
+If `argocd-controller` is an owner and your steady-state component is at or ahead
+of `argocd_chart_version`, the Day-0 apply is redundant — ArgoCD already delivers
+those CRDs. Unblock the pipeline by dropping the seed apply from state:
+
+```bash
+tofu state rm 'module.<name>.null_resource.argocd_crds[0]'
+```
+
+Do **not** re-add `--force-conflicts`: that rolls a GitOps-managed CRD schema
+back to the seed's pin, which is the failure this release removes. If instead the
+seed is ahead, bump the steady-state `chart.lock.yaml` to match and let ArgoCD
+converge; CI now asserts the two pins agree.
+
+### Back-out
+
+**Reverting the pin is not safe on its own.** The previous base tag restores
+`kubernetes_version` in `triggers_replace` *and* `--force-conflicts` over the
+unprojected render — so the first apply after the revert re-captures the
+twelve-kind payload and force-resets `argocd-cm` and `argocd-rbac-cm` to chart
+defaults. Before this release that wiped a base placeholder; after it, it wipes
+**your access policy**.
+
+The revert is therefore paired, never partial:
+
+1. Confirm your `argocd-cm` / `argocd-rbac-cm` overlay is committed and
+   reconciling — after the revert it is the only thing restoring those values.
+2. Remove the seed apply from state first, so the reverted module cannot re-fire
+   it: `tofu state rm 'module.<name>.null_resource.argocd_crds[0]' 'module.<name>.terraform_data.argocd_crds_render[0]'`.
+3. Then revert the pin.
+
+If you only need to undo the substrate-values half, revert
+`kubernetes/substrate/argocd/values.yaml` in your own overlay and keep the module
+pin forward — that combination is safe and is the smaller move.
+
+### Recovery — if you lose access
+
+1. **Fix it in git.** Correct the overlay and let self-heal reconcile. This is
+   the supported path.
+2. **Break glass**, if you cannot wait. Suspend automation FIRST — the shipped
+   root Application runs `selfHeal: true`, so an unsuspended patch is reverted
+   before you can finish using it:
+
+   ```bash
+   kubectl -n argocd patch app root --type merge \
+     -p '{"spec":{"syncPolicy":{"automated":null}}}'
+   kubectl -n argocd patch cm argocd-rbac-cm --type merge \
+     -p '{"data":{"policy.csv":"g, <subject>, role:admin\n","scopes":"[preferred_username]"}}'
+   ```
+
+   Then fix git, and **re-enable** automation — a suspended root Application is
+   its own outage in waiting:
+
+   ```bash
+   kubectl -n argocd patch app root --type merge \
+     -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
+   ```
+
+   (`root` is the shipped Application name; use yours if you renamed it.) This is
+   a deliberate exception to the "never `kubectl apply` ArgoCD-managed resources"
+   constraint.
+3. **Re-enabling `admin`** takes two objects, not one: `admin.enabled: "true"` in
+   `argocd-cm`, *and* a bcrypt password in `argocd-secret` — `admin.enabled`
+   alone does not restore a cleared password. Consult the Argo CD
+   user-management docs for the exact field set your version expects (some
+   versions require a companion password-mtime field alongside the hash); patch
+   only those keys with a `stringData` merge so `server.secretkey` is untouched.
+   This is the documented exception to the contract's "do not patch
+   `argocd-secret`" rule, which is about *declaratively owning* the object, not
+   about break-glass.
+
+**One caveat that outlives the break-glass window.** The substrate runs
+`argocd-server` with `server.insecure: true`: it serves plaintext at the pod and
+you terminate TLS at your gateway. Everything on that gateway→pod hop is
+cleartext — the break-glass admin credential, but equally the OIDC authorization
+code and every SSO session token afterwards. Rotate the admin credential
+promptly and keep the admin window short, and treat the hop itself as a standing
+decision: terminate TLS as close to the pod as you can, enable Cilium transparent
+encryption, or set `server.insecure: false` with a pod-level certificate (the
+component's `values.yaml` documents that opt-out).
+
+---
+
+## `v9.1.0` — Cilium operator replicas follow the node count, and become pinnable (MINOR — default change affecting every multi-node consumer without an override)
+
+**Type:** MINOR. A new optional input (`substrate.cilium.operator_replicas`) plus
+a default change for consumers who do not set it. A single-node cluster is
+unaffected. Every consumer who already pins `operator.replicas` through
+`values_override` is unaffected on the seed path — that layer still wins.
+
+### 1. What changes
+
+The shipped floor pinned `operator.replicas: 1`. That is the single-node boundary
+condition, not a cluster-wide default: the chart's operator `podAntiAffinity` is
+`requiredDuringScheduling` on `kubernetes.io/hostname`, so a second replica on a
+one-node cluster stays Pending. The module now emits `operator.replicas: 2` — the
+chart's own default — once the node set holds two or more nodes, and
+`substrate.cilium.operator_replicas` pins the count outright when you set it.
+
+**Why `2`, stated at the strength it was measured.** The primary reason is
+de-divergence: `2` is what the chart ships, and the floor's `1` differed from it
+on every cluster shape while being right on exactly one. Two consequences were
+measured against the pinned chart 1.20.0:
+
+- **Rollout availability.** The operator's rolling-update strategy varies with
+  the replica count: `maxUnavailable` is `100%` at one replica and `50%` at two
+  (`maxSurge` stays `25%`). Resolved, that is *zero* operator pods guaranteed
+  available during a rollout versus *one*. It is not a claim that the incumbent
+  always goes down first — `25%` of 1 rounds up to one surge pod, so at a single
+  replica the controller may place the replacement first if a node is free. The
+  guarantee is what changes.
+- **Hard node failure.** A node whose kubelet stops reporting goes
+  `Ready=Unknown`, which is the `node.kubernetes.io/unreachable` taint. The
+  operator does **not** tolerate it, so the standard 300-second eviction applies:
+  a lone replica is gone for that timer plus a reschedule and a cold start. With
+  two replicas a second instance is already running on another node.
+
+  How fast that second instance picks the work up is **not** something this
+  release measured. The chart grants `coordination.k8s.io/leases` under a comment
+  about HA leader election, but it grants it at one replica too and sets no
+  leader-election flags, so both the mode and the lease timings are
+  operator-binary behaviour. Read the bullet as meaning a warm instance
+  exists, not as a quantified failover time.
+
+**What this does not do.** It does not rescue a node that is merely `NotReady`
+(`Ready=False`) while its operator pod is alive and still reaching the API. The
+operator *does* tolerate `node.kubernetes.io/not-ready` with no
+`tolerationSeconds` — which suppresses the eviction Kubernetes would otherwise
+add — but a pod that keeps renewing its lease stays the leader, and the standby
+stays passive. The second replica helps when the incumbent stops, not when a node
+is labelled unhealthy.
+
+### 2. Budget one more pod on every multi-node cluster
+
+The visible effect is a second `cilium-operator` pod. It is `hostNetwork`, and
+it carries **no resource requests or limits at all** — the chart's
+`operator.resources` default is empty and neither the base floor nor the computed
+layer sets it, so the rendered container has no `resources` block. Both operator
+pods are therefore **BestEffort**, the QoS class the kubelet evicts first under
+node memory pressure. If that matters to you, set `operator.resources` yourself:
+through `values_override` on the seed path, or in your own Cilium Application
+under self-management.
+
+To keep one replica — or any other count — set it directly:
+
+```yaml
+substrate:
+  cilium:
+    operator_replicas: 1
+```
+
+This is the knob to reach for, and it is new. It pins the count on **both**
+delivery paths. `values_override` still works on the seed path, but it is not an
+option under self-management: the emitted Application's `valuesObject` is
+floor ⊕ computed with no override term, and the module hard-rejects
+`self_management: true` while `values_override` is non-empty (the override-drop
+guard, v7.0.0 §4). Before this input, a self-managing consumer had no per-cluster
+opt-out at all.
+
+Setting it **above** your declared node count is rejected at plan time, not
+warned about. The operator's anti-affinity is per-hostname, so the surplus can
+never place — and the value is baked into a create-only `inlineManifest`, so the
+bootstrap that carries it cannot be walked back by a later apply.
+
+### 3. On an existing cluster this does not arrive on its own
+
+Same seed-freeze mechanics as the metric inputs below. The rendered seed is
+frozen at first capture (`terraform_data.cilium_render` carries `ignore_changes`,
+and `inlineManifests` are create-only), so on an already-bootstrapped cluster
+with `self_management: false` the change alters the plan and nothing else. It
+arrives:
+
+- via the emitted self-management `Application` (`self_management: true`) on the
+  next ArgoCD reconcile;
+- at the next fresh bootstrap;
+- after a deliberate `tofu apply -replace=terraform_data.cilium_render[0]` — with
+  the seed/live skew caveats in §1 of the Cilium 1.20 section.
+
+A **control-plane join does not deliver it**: `inlineManifests` are applied at
+node creation and overwrite nothing that already exists in the cluster. The shape
+that most needs the change — a cluster bootstrapped at one node and grown since —
+is therefore also the shape the seed path cannot reach. Use
+`operator_replicas` plus self-management, or a `-replace`.
+
+**The same asymmetry runs the other way, and it is the sharper edge.** A cluster
+bootstrapped with two or more nodes baked `operator.replicas: 2` into its seed.
+If you later decommission a node and drop it from `cluster.yaml`, the plan
+resolves back to the floor's `1` — but nothing delivers that either, and because
+the seed is frozen, `tofu plan` reports **no drift at all**. The live Deployment
+stays at 2 with one pod Pending against the per-hostname anti-affinity. On the
+default path there is no ArgoCD `cilium` Application, so nothing reports Degraded
+and the only symptom is the Pending pod itself:
+
+```bash
+kubectl -n kube-system get pods -l io.cilium/app=operator
+```
+
+Walk it back by hand with `kubectl -n kube-system scale deploy/cilium-operator
+--replicas=1`. The live count then diverges permanently from the frozen seed;
+that is expected on this path, and a future re-bootstrap resolves it correctly
+from the smaller node set.
+
+### 4. The predicate is node COUNT, not schedulable-node count
+
+The module does not model schedulability. The second replica will not place if
+your second node is cordoned (transient), **carries any `NoSchedule` taint
+outside the operator's five tolerated keys** — `control-plane`, `master`,
+`not-ready`, `uninitialized`, `agent-not-ready`; a dedicated storage, GPU or edge
+node is the ordinary case — or is still declared in `cluster.yaml` after being
+decommissioned. The last two are not transient: the operator's `podAntiAffinity`
+is `requiredDuringScheduling` on hostname, so the pod cannot fall back to
+co-location and stays Pending.
+
+Watch for the symptom, because it is louder than an idle pod: a Deployment held
+below its replica target trips `ProgressDeadlineExceeded`, and ArgoCD renders
+that as **Degraded** on the `cilium` Application. Your data plane is fine; your
+dashboard is not. If your node set contains long-lived unschedulable nodes, set
+`operator_replicas` to what will actually place.
+
+Setting it ABOVE your node count IS rejected at plan time — that is the one case
+the module can decide with certainty from its own declared state, and the
+consequence (a permanently Pending replica in a create-only seed) is not
+recoverable by a later apply. Cordons and taints are the cases it cannot see.
+
+**At exactly two nodes, expect a transient version of this during every Talos
+node upgrade.** With `replicas: 2` and a per-hostname anti-affinity a two-node
+cluster has zero spare placement, so draining one node leaves the operator at 1/2
+for the image pull plus reboot. The Deployment sets no `progressDeadlineSeconds`,
+so the Kubernetes default of 600 seconds applies: a drain longer than ten minutes
+trips `ProgressDeadlineExceeded`, and a self-managing consumer sees the `cilium`
+Application go Degraded. It self-clears on uncordon. If you would rather your
+`cilium` Application stayed quiet through upgrades, `operator_replicas: 1` is the
+supported way to say so.
+
+### Validation steps after upgrade
+
+**Read §3 before running these.** What to expect depends entirely on your
+delivery path, and on an existing cluster with `self_management: false` the
+correct answer is *the value you already had* — the frozen seed does not deliver
+this change. Reading `1` there is not a failed upgrade, and it is **not** a
+reason to `-replace` the render on a live cluster.
+
+```bash
+# self_management: true, or a fresh bootstrap: expect 2 on a multi-node cluster,
+# 1 on a single-node one — or whatever operator_replicas pins.
+# self_management: false on an EXISTING cluster: expect no change at all (§3).
+kubectl -n kube-system get deploy cilium-operator -o jsonpath='{.spec.replicas}{"\n"}'
+
+# Where the module thinks the number came from — pin, node-count, or floor.
+# This describes THIS PLAN, not the running cluster; comparing the two is how
+# you see the seed-freeze skew §3 describes.
+tofu output cilium_operator_replicas_effective
+
+# Both replicas placed on DIFFERENT nodes (the anti-affinity working).
+kubectl -n kube-system get pods -l io.cilium/app=operator \
+  -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,STATUS:.status.phase
+```
+
+A `Pending` second operator pod on a cluster whose nodes are all cordoned or
+tainted beyond the operator's toleration set is §4, not a defect in the rollout.
+
+## `v9.0.0` — two further typed Cilium metric inputs (additive, default off)
+
+**Type:** MINOR (additive). `substrate.cilium.agent_metric_overrides` and
+`substrate.cilium.hubble_open_metrics` are new, both default off. Nothing
+changes for a consumer who sets neither: the rendered seed and the emitted
+self-management `Application` are byte-identical to the previous tag.
+
+### 1. These keys do not reach you until your own shim passes them
+
+`tofu/modules/talos-cluster/examples/complete/main.tf` is a worked example you
+**copied** into a root module you own. Adding the keys to `cluster.yaml` is not
+enough — your copy must map them, exactly as it already maps `agent_metrics`.
+Without the two lines below the value passes `check-jsonschema`, passes
+`tofu plan`, and silently never reaches the module. This is the same trap the
+`chart_version` note in the `v8.2.0` section describes.
+
+```hcl
+  cilium_agent_metric_overrides  = try(local.cilium.agent_metric_overrides, [])
+  cilium_hubble_open_metrics     = try(local.cilium.hubble_open_metrics, false)
+```
+
+### 2. On an existing cluster, neither input reaches the cluster on its own
+
+Both are layered into the seed **and** into the emitted self-management
+Application — but the seed render is frozen at first capture
+(`terraform_data.cilium_render` carries `ignore_changes`, and `inlineManifests`
+are create-only). So on an already-bootstrapped cluster with
+`substrate.cilium.self_management: false`, setting either key changes the plan
+and nothing else. Three ways it actually arrives:
+
+- via the emitted Application (`self_management: true` — note the override-drop
+  guard applies, see the v7.0.0 §4 migration);
+- at the next fresh bootstrap;
+- after a deliberate `tofu apply -replace=terraform_data.cilium_render[0]`, with
+  the seed/live skew caveats in §1 of the Cilium 1.20 section.
+
+This is the seed-freeze architecture working as designed, not a defect — but
+"both engines" in the input documentation describes the data flow, not the
+delivery timing.
+
+### 3. `hubble_open_metrics` needs a manual rollout restart to take effect
+
+Unlike `hubble_enabled`, this input does **not** roll the agents. Verified
+against the pinned chart: the `cilium` DaemonSet pod template is byte-identical
+with the flag on and off, and the chart emits no config-checksum annotation.
+Only the `cilium-config` ConfigMap changes
+(`enable-hubble-open-metrics: "false" → "true"`).
+
+The consequence is a delayed-action change: ArgoCD reports Synced/Healthy, the
+running agents keep serving the previous exposition format, and the switch lands
+whenever the agents next restart for an unrelated reason — a Prometheus scrape
+format changing at an unpredictable time, which reads as a monitoring fault
+rather than a config change. Finish the change deliberately:
+
+```bash
+kubectl -n kube-system rollout restart ds/cilium
+```
+
+### 4. `agent_metric_overrides` entries are format-validated
+
+Each entry must match `^[+-][a-zA-Z_][a-zA-Z0-9_]*$`. This is not a style rule:
+the chart renders the list raw and unquoted into `cilium-config`, and that
+ConfigMap is baked into the create-only controlplane machine config, so an entry
+carrying a newline, a space or `---` corrupts that document. A rejected entry
+fails at plan time with the offending value named.
+
+Note the semantics: the list is a **delta** against the chart's default metric
+set (`+name` adds, `-name` removes), not a replacement for it, and it is
+unrelated to `values_override` despite the similar name.
+
+### 5. Inert inputs warn, they do not fail
+
+Setting either input while it cannot take effect produces a plan-time
+**warning**, not a rejection — deliberately, because you may enable the
+prerequisite through `values_override`, which the module cannot introspect. If
+that is your setup, the Hubble/agent half of the warning is expected and safe to
+disregard.
+
+The effectiveness conditions are wider than they look:
+
+- `agent_metric_overrides` needs `enabled: true` (Cilium delivered at all) **and**
+  `agent_metrics: true`.
+- `hubble_open_metrics` needs `enabled: true`, `hubble_enabled: true`, **and a
+  non-empty `hubble_metrics`**. That last one is not obvious: the chart gates the
+  OpenMetrics key on the metrics list, so with an empty list it would change the
+  exposition format of an endpoint that exports nothing. `hubble_enabled: true`
+  with an empty `hubble_metrics` remains a supported half-on state on its own —
+  it is only the OpenMetrics flag on top of it that is inert.
+
+### 6. Grafana dashboards are not included
+
+Cilium's chart can also emit Grafana dashboard ConfigMaps. Those stay out of the
+base on purpose: their `namespace` and sidecar `label` decide whether anything
+reads them, and a cluster-agnostic base cannot know either. Apply them from the
+Grafana `Application` that owns the sidecar, where both are known.
+
+### Validation steps after upgrade
+
+```bash
+task tofu:ci                      # offline; includes the new input-validation legs
+task tofu:test                    # NETWORKED — the only gate that renders the chart
+```
+
+On a cluster where you enabled either input:
+
+```bash
+kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.metrics}'
+kubectl -n kube-system get cm cilium-config -o jsonpath='{.data.enable-hubble-open-metrics}'
+```
+
+Then confirm the agents actually serve it — the ConfigMap changing is not proof
+the running pods picked it up (see §2):
+
+```bash
+kubectl -n kube-system rollout status ds/cilium
+```
+
+---
+
+## `v8.1.0` — steady-state ArgoCD relocated to `kubernetes/substrate/` and published in the OCI artifact (additive — manual action for argocd-overlay consumers)
+
+**Type:** additive for consumers, and it shipped in `v8.1.0`, a MINOR. The
+breaking ArgoCD change is the identity removal, which landed later in `v9.0.0`
+and has its own section. Decision: ADR-0024
+(`knowledge/decisions/0024-argocd-substrate-relocation.md`, issue #156,
+Option 3). Two changes land together:
+
+1. The steady-state ArgoCD component moved from
+   `kubernetes/base/infrastructure/argocd/` to `kubernetes/substrate/argocd/`;
+   the now-empty `kubernetes/base/` tree is retired.
+2. The component's consumable files are now **in the OCI artifact** —
+   `kubernetes/substrate/argocd/{namespace.yaml,_rendered/manifests.yaml,_rendered/crds.yaml}`
+   were added to `.ci-oci-tarball-include.txt`. Before this release the
+   steady-state tree existed only in git and was unconsumable at every
+   published tag (the gap #156 documents; tracked downstream as the
+   consumer's render-reproducibility issue).
+
+   `kubernetes/substrate/argocd/kustomization.yaml` followed in `v9.0.0`, not
+   here. Until that tag a vendoring consumer received the resources but not the
+   file that assembles them and had to reconstruct the resource list by hand;
+   from `v9.0.0` on, `kustomize build vendor/base/kubernetes/substrate/argocd/`
+   works directly. Purely additive — nothing that worked before stops working.
+
+This is NOT a breaking change for OCI consumers: the old path was never
+present in any published artifact, so no consumer overlay that rendered
+successfully from a published tag can break. Consumers whose argocd overlay
+referenced the old path (and therefore only rendered against a stale
+hand-pulled `vendor/base/`) update their `resources:` entries:
+
+```yaml
+# BEFORE (never satisfiable from a published artifact)
+resources:
+  - ../../../../../../vendor/base/kubernetes/base/infrastructure/argocd/namespace.yaml
+  - ../../../../../../vendor/base/kubernetes/base/infrastructure/argocd/_rendered/manifests.yaml
+  - ../../../../../../vendor/base/kubernetes/base/infrastructure/argocd/_rendered/crds.yaml
+
+# AFTER
+resources:
+  - ../../../../../../vendor/base/kubernetes/substrate/argocd/namespace.yaml
+  - ../../../../../../vendor/base/kubernetes/substrate/argocd/_rendered/manifests.yaml
+  - ../../../../../../vendor/base/kubernetes/substrate/argocd/_rendered/crds.yaml
+```
+
+The `resources:` edit is the load-bearing change but NOT the whole
+migration: grep your consumer tree for
+`vendor/base/kubernetes/base/infrastructure/argocd` and update **every**
+hit — incident runbooks (for example a self-cutover recovery step that
+`kubectl apply`s the vendored render) and render scripts carry the same
+path, and because the puller wipes `vendor/base/` on every pull, a stale
+runbook path is discovered mid-incident, not at migration time. Then
+re-pull the artifact and verify render-equivalence against your
+previously committed consumer render (kustomize-patched values like
+`argocd-cm.url` ride on top unchanged).
+
+**Back-out:** the revert is paired, never partial. Rolling the base pin
+back to a pre-relocation tag restores a tarball WITHOUT
+`kubernetes/substrate/argocd/**`, so the pin revert and the consumer-side
+path revert (the `resources:` lines and every grep hit above) must land
+together — reverting only one half leaves kustomize pointing at paths no
+artifact satisfies. `vendor/base/` does not preserve old files across
+pulls.
+
+Adjacency note: #105 (deliver ArgoCD CRDs without imperative `kubectl
+apply`) governs the same `crds.yaml` payload the artifact now ships; its
+outcome may reshape how the *bootstrap seed* delivers CRDs but does not
+change this steady-state publication path.
+
+---
+
+## `v8.2.0` — Cilium chart `1.19.4` → `1.20.0` (additive by interface — action required for EVERY consumer)
+
+**Type:** MINOR by interface (no input renamed, no input removed, no schema
+change) — but **not** low-effort to adopt, and the SemVer label is the wrong
+signal to plan from. Read §1–§5 before adopting: §4 requires a NetworkPolicy
+audit from every consumer on default settings, §3 requires policy edits before
+upgrading, §2 requires a Gateway API CRD move first, and §1 changes how you
+treat controlplane add/replace.
+Cilium 1.20.0 was released 2026-07-29 and becomes the base's substrate CNI seed
+version. Re-verification at the new pin is recorded as a dated addendum in
+[`knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md`](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
+**Before anything else: nothing below reaches you until the pin your own files
+pass actually moves.** A consumer created from an earlier tag pins the chart
+twice in files they own — `substrate.cilium.chart_version` in `cluster.yaml`, and
+the `try(local.cilium.chart_version, "<literal>")` fallback in the copied shim —
+and both win over the module default. So vendoring this tag alone keeps rendering
+1.19.4: no 1.20 render, no self-management move, and §2–§5 not yet in effect.
+
+Pick one:
+
+1. **Stop pinning, inherit the base — needs a base at `v9.0.0` or newer.**
+   Delete `substrate.cilium.chart_version` from your `cluster.yaml` and change
+   the shim fallback to `try(local.cilium.chart_version, null)`, so this bump
+   and every future one reach you by vendoring alone. Read the `nullable` note
+   below before taking this route: at this tag the shipped example still carries
+   the literal `"1.20.0"` and switches to `null` only at `v9.0.0`.
+2. **Keep pinning deliberately.** Set `substrate.cilium.chart_version: "1.20.0"`
+   in your `cluster.yaml` and bump the shim's literal too if it still reads
+   `1.19.4`. You keep control and keep the maintenance.
+
+Option 1 relies on `nullable = false`, which reached the chart-version inputs in
+`v9.0.0`, not in this one — before that tag a passed `null` stays `null` rather
+than falling back to the base pin, so Option 2 is the route from here. A fresh
+bootstrap from this tag's `cluster.yaml.example` needs neither edit: it pins
+`1.20.0` outright. That pin does not follow a later base bump — omitting the key
+to inherit becomes possible at `v9.0.0`.
+
+### 1. Running clusters are NOT upgraded by this bump — but the frozen seed goes stale (affects anyone who adds or replaces a controlplane)
+
+`cilium_chart_version` is a **seed knob**. `terraform_data.cilium_render` carries
+`ignore_changes = [input]` and Talos `inlineManifests` are create-only, so
+adopting a base tag that pins Cilium 1.20.0 does **not** upgrade Cilium on an
+already-bootstrapped cluster. The new pin applies to fresh bootstraps, and to a
+deliberate `tofu apply -replace=terraform_data.cilium_render[0]`.
+
+What the bump *does* do on an existing consumer who moved the pin:
+`data.helm_template.cilium` is re-read on every `tofu plan`, so your next plan
+pulls chart 1.20.0 and re-renders in memory. **Your plan should still show no
+machine-config change.**
+`ignore_changes = [input]` means the re-render never reaches the frozen output,
+so the controlplane patch — and therefore the machine configuration — is
+unchanged; that is the contract in
+`openspec/specs/cilium-cni-delivery/spec.md` ("Render drift does not churn
+machine config"). If your plan *does* want to change machine config here, treat
+it as this repo treats any unexpected plan: **stop and investigate**, do not
+apply.
+
+What the re-read *can* do is fail: the data source carries a postcondition
+rejecting an empty render, and `helm template` errors on a malformed or
+type-invalid value. A key that 1.20 merely **removed** does not error — Helm
+runs without `--strict`, so it is dropped silently (that is the whole point of
+§3). So a clean plan is **not** evidence that your `cilium_values_override`
+survived; audit it against §3 by hand.
+
+**Check your Kubernetes version first — the base does not pin it.**
+`kubernetes_version` is a required module input with no default (its only
+constraint is a v-prefixed-semver validation), so the version in play is whatever
+your `cluster.yaml` sets. The `v1.35.0` in `cluster.yaml.example` is an example
+value, not a pin. Cilium 1.20 lists Kubernetes **1.33–1.36** as e2e-tested
+(`Documentation/network/kubernetes/requirements.rst` at tag `v1.20.0`), against
+1.31–1.34 for Cilium 1.19 — the overlap is 1.33 and 1.34. Below 1.33 the
+combination is outside the tested set: the agent still starts, since Cilium's
+coded floor is 1.21 (`pkg/k8s/version/version.go`, `MinimalVersionConstraint`,
+unchanged between the two versions), but upstream does not test it. If your
+cluster runs 1.32 or earlier, raise Kubernetes to at least 1.33 before moving the
+pin, or stay on Cilium 1.19 for now. No Talos bump is required either way.
+
+**The flip side — a stale seed outlives the pin, and this bump is the first time
+the gap is a whole minor.** `ignore_changes = [input]` freezes the render in
+state *for the life of that state*, and `local.cilium_controlplane_patch` feeds
+that one frozen value into **every** controlplane machine config — including the
+config generated for a controlplane you add or replace later. So on a cluster
+that was bootstrapped at the old pin and has since been moved to 1.20.0 through
+the emitted self-management Application, a controlplane join re-seeds *1.19.4*
+Cilium objects into a cluster running 1.20.0. ADR-0022 already recognizes this
+class of stale-seed skew for the `cilium_values_override` dimension
+(§k and the bootstrap-window datapath gap section, whose advice is to hold node
+reboots/replacements until ArgoCD's adoption sync is confirmed); the chart
+version is a second dimension of the same gap.
+
+The conservative response, and the only one this base can recommend without
+qualification: **treat controlplane add/replace on such a cluster as a planned
+operation** — know that the joining node is seeded at the old chart version, and
+verify the running Cilium version on it after ArgoCD reconciles, rather than
+assuming the join produced a 1.20.0 node.
+
+`tofu apply -replace=terraform_data.cilium_render[0]` is the only mechanism that
+re-captures the render, but it is **not** a drop-in "make them agree" step and
+this base does not recommend it blind. At minimum it rewrites the controlplane
+patch, so machine config re-pushes to **every** controlplane — the churn and
+single-node-controlplane self-eviction hazard the seed floor's own header
+documents. Beyond that, two things are unverified here and you must establish
+them for your own cluster before running it: whether Talos' manifest reconcile
+*updates* Cilium objects it already created or only creates missing ones (a
+create-only reconcile yields a mixed-version install, not agreement), and
+whether the objects it would create are already owned by your self-management
+`Application` (two writers on the same cluster-scoped resources — the ownership
+problem v3.0.0 §3 and v7.0.0 §6 both treat as needing deliberate orphaning).
+Dry-run it with `tofu plan` and inspect the `talos_machine_configuration_apply`
+diff before deciding.
+
+### 2. Gateway API must reach v1.6.1 BEFORE Cilium 1.20 (affects every Gateway-API consumer)
+
+Cilium 1.20 requires **Gateway API v1.6.1 at a minimum**, because `TLSRoute`
+graduated from `v1alpha2` to `v1`. The base previously documented v1.4.1.
+
+- **Fresh clusters, or clusters with no `TLSRoute` objects:** seed or apply the
+  **standard** channel bundle. `TLSRoute` is in the standard channel as of
+  v1.6.1 (served at `v1`), so standard alone satisfies the Gateway-API-only Hard
+  Constraint. The previous "use the experimental bundle for TLSRoute" guidance is
+  retired.
+
+  ```text
+  https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml
+  ```
+
+- **Clusters carrying pre-existing `v1alpha2` TLSRoute objects:** use the
+  **experimental** bundle instead. The served flags were verified: in standard
+  v1.6.1 `TLSRoute` serves only `v1` (`v1alpha2` and `v1alpha3` are declared with
+  `served: false`), while experimental v1.6.1 serves all three. Upstream's own
+  warning is that with the standard bundle existing `TLSRoute` objects "will not
+  be able to be read by the apiserver from etcd, and will effectively disappear
+  from your cluster" — that consequence is upstream's claim, not something this
+  base has reproduced, but the served flags are consistent with it and the
+  downside of being wrong is losing route objects. Back up your `TLSRoute`
+  resources first regardless, upgrade Gateway API to v1.6.1, then move Cilium.
+
+- **Clusters that followed the base's PREVIOUS guidance** ("use the experimental
+  bundle for TLSRoute") already have the **experimental** bundle installed. Do
+  not read bullet one as "switch to standard": applying `standard-install.yaml`
+  over an experimental installation replaces the shared CRDs, drops served
+  `v1alpha2` from `TLSRoute`, and leaves the experimental-only CRDs
+  (`TCPRoute`, `UDPRoute`, …) orphaned at stale versions rather than removing
+  them. Stay on experimental v1.6.1 unless you deliberately plan that migration.
+
+**Which knob:** if you opted into bootstrap seeding, the CRD bundle URL lives in
+`cluster.yaml` at `substrate.cilium.gateway_api_crds_url` (module input
+`cilium_gateway_api_crds_url`). Editing it changes what Talos fetches via
+`cluster.extraManifests` — but Talos' manifest handling is create-oriented, so
+do **not** assume editing the URL upgrades CRDs Talos already created. Verify the
+CRDs' actual `bundle-version` annotation in-cluster after applying (command in
+§Validation), and if they did not move, apply the new bundle through your normal
+Day-1 GitOps path instead. Consumers who left the input empty (the default) apply
+CRDs via GitOps already and simply point that at v1.6.1.
+
+Order matters: Gateway API first, Cilium second.
+
+**Also newly tunable, but NOT a behavior change: `gatewayAPI.useRemoteAddress`.**
+This Helm value does not exist in chart 1.19.4 and defaults to **`true`** in
+1.20.0, rendering `gateway-api-use-remote-address: "true"` in `cilium-config`.
+The default **preserves** 1.19 behavior instead of changing it: Cilium 1.19
+already hardcoded the same Envoy setting in its Gateway listener translation
+(`operator/pkg/model/translation/envoy_http_connection_manager.go` at tag
+`v1.19.4` sets `UseRemoteAddress: true` alongside `SkipXffAppend: false`), and
+1.20 keeps that same literal while adding a mutator that lets the config override
+it (`envoy_listener.go`, `withUseRemoteAddress`). What 1.20 adds is the knob, not
+a new posture — so no action is required unless you deliberately want the
+non-default value.
+
+Get the direction right before touching it. Per the chart's own description of
+the value, enabling it means the source IP is determined from the client's remote
+address instead of the proxy-protocol header. So `true` trusts the connection
+peer, and a client-supplied `X-Forwarded-For` is not what the Gateway treats as
+the client address; `false` is the setting that makes a forwarded address
+authoritative, which is safe only where a trusted proxy is the sole path to the
+Gateway. Setting `false` does not return you to 1.19 — it departs from 1.19.
+Change it, or `xffNumTrustedHops` (present in both versions), only for a
+deliberate trusted-proxy topology, and check the combination against Envoy's
+`use_remote_address` and X-Forwarded-For documentation for that topology.
+
+**Enabling Gateway API in 1.20 also forces two datapath keys on.** The base sets
+`cilium_gateway_api = true` by default, so this applies unless you turned it off.
+Rendering the base's own default value set (floor ⊕ computed) against both charts
+produces exactly one changed `cilium-config` value, plus one newly emitted key:
+
+| `cilium-config` key | 1.19.4 | 1.20.0 | Why |
+|---|---|---|---|
+| `bpf-lb-algorithm-annotation` | `"false"` | `"true"` | 1.20's ConfigMap template forces it `"true"` whenever `gatewayAPI.enabled`, so per-backend weights on TCPRoute/UDPRoute take effect. |
+| `bpf-lb-sock-hostns-only` | not emitted | `"true"` | Same forcing branch. 1.19.4 emits this key only when `socketLB.hostNamespaceOnly` is set, and neither the chart nor the base sets it. |
+
+The first one needs an audit. `bpf-lb-algorithm-annotation` gates whether the
+`service.cilium.io/lb-algorithm` annotation is honored per Service. While it was
+`"false"`, any such annotation already on your Services was **inert**; once it is
+`"true"` those annotations start selecting the load-balancing algorithm for real.
+Before a fresh 1.20 bootstrap or a self-management sync, find them and confirm
+each value is one you want in effect — your GitOps repo is the authoritative
+place to look:
+
+```shell
+git grep -n "service.cilium.io/lb-algorithm"
+```
+
+For anything applied outside GitOps, the same grep over
+`kubectl get svc -A -o yaml` gives a coarse cluster-side listing.
+
+### 3. Removed Helm values — audit your `cilium_values_override` (affects consumers who set encryption strict mode, or any removed key)
+
+Cilium 1.20 **removed** the flat `encryption.strictMode.{enabled,cidr,
+allowRemoteNodeIdentities}` values (deprecated in 1.19). Helm does not run
+`--strict`, so a removed key is **silently dropped** — strict-mode encryption
+would simply not be configured, with no error at plan, render, or apply time.
+
+The base's reference file `kubernetes/bootstrap/cilium/values.yaml` is migrated
+for you. If your own `cilium_values_override` sets the flat form, migrate it:
+
+```yaml
+# BEFORE (silently ignored on Cilium 1.20)
+encryption:
+  strictMode:
+    enabled: true
+    cidr: "10.244.0.0/16"
+    allowRemoteNodeIdentities: true
+
+# AFTER (also renders correctly on 1.19.x)
+encryption:
+  strictMode:
+    egress:
+      enabled: true
+      cidr: "10.244.0.0/16"
+      allowRemoteNodeIdentities: true
+```
+
+Other **Helm values** removed in 1.20 that an override might carry:
+`clustermesh.enableMCSAPISupport` (use `clustermesh.mcsapi.enabled`),
+`encryption.ipsec.interface`, `encryption.ipsec.encryptedOverlay`,
+`encryption.strictMode.{enabled,cidr,allowRemoteNodeIdentities}` (above),
+`hubble.redact.kafka.apiKey`, and `preflight.tofqdnsPreCache`.
+`hubble.preferIpv6` is deprecated in favor of the top-level `preferIpv6`.
+
+Upstream also removes the `--node-port-algorithm` and `--node-port-mode` **agent
+flags** in favor of `--bpf-lb-algorithm` / `--bpf-lb-mode`. Those are flag
+spellings, not Helm keys, so grepping your override for them finds nothing even
+when you are affected: the Helm surface is `loadBalancer.algorithm` and
+`loadBalancer.mode`. Audit the Helm keys, not the flags.
+
+`CiliumNodeConfig` resources must be `cilium.io/v2` (`v2alpha1` is removed).
+
+Kafka-aware network policies and Envoy Go extensions (proxylib) are removed
+outright. Upstream's instruction is to remove the `rules` section from any
+`CiliumNetworkPolicy` / `CiliumClusterwideNetworkPolicy` carrying `kafka`, `l7`
+or `l7proto` **before** upgrading — but do not apply it mechanically:
+
+> ⚠️ Those rules live under `.spec.{ingress,egress}[].toPorts[].rules`. Deleting
+> the `rules` block while leaving its `toPorts` entry in place converts "allow
+> only these L7 requests on this port" into **"allow all traffic on this
+> port"** — a silent policy widening, done as an upgrade prerequisite. If the L7
+> restriction was load-bearing, remove or tighten the whole `toPorts` entry
+> instead, or replace the L7 constraint with an equivalent the 1.20 proxy still
+> supports. Diff your effective policy set before and after.
+
+### 4. NodePort traffic is now load-balanced at the CLIENT pod — audit NetworkPolicy (affects EVERY consumer on default settings)
+
+This is a **datapath behavior change**, not a config change, and the base's
+defaults put every consumer in its scope: `cilium_kube_proxy_replacement`
+defaults to `true`, and the base does not set `socketLB`, so the chart default
+`socketLB.enabled: false` applies.
+
+Upstream's 1.20 release notes state it directly: with `KubeProxyReplacement` for
+Service load-balancing and SocketLB either **disabled** or configured with
+`socketLB.hostNamespaceOnly=true`, in-cluster connections to NodePort Services by
+regular pods are now immediately load-balanced when network traffic leaves the
+client pod, and not at the targeted node — matching the behavior when SocketLB
+is enabled. The base meets the first trigger condition on its defaults, and — via
+`cilium_gateway_api = true` — the second as well, since the chart forces
+`bpf-lb-sock-hostns-only: "true"` whenever Gateway API is enabled. Note that key
+is forced for Maglev per-backend-weight reasons, so treat it as a config
+observation, **not** as proof of this behavior change; the release notes are the
+basis for the claim.
+
+Consequence: the client pod's NetworkPolicy must allow **egress to the
+Service's backend pods**, and each backend's NetworkPolicy must allow **ingress
+from the client pod**. A policy that previously only allowed egress to the node
+IP / NodePort will now drop the connection. Audit any `CiliumNetworkPolicy`,
+`CiliumClusterwideNetworkPolicy` or Kubernetes `NetworkPolicy` governing
+in-cluster NodePort access before a fresh 1.20 bootstrap or a self-management
+sync.
+
+### 5. Self-management consumers get Cilium 1.20 on next sync (affects `cilium_self_management = true`)
+
+The emitted Application's `spec.source.targetRevision` tracks
+`cilium_chart_version`, so once you move the pin (see the note above §1) your
+self-managed Cilium goes to 1.20.0 the next time ArgoCD syncs that Application.
+Vendoring this base tag alone does not do it — the pin your shim passes is the
+one that lands in `targetRevision`. The module emits no
+`syncPolicy` — sync timing is yours. Read the upstream 1.20 upgrade notes and
+§2/§3 above before syncing, and note that traffic through user-space proxies
+(L7 policy, Gateway API) is disrupted during the agent roll.
+
+One new failure mode if you copied this base's reference values
+(`kubernetes/bootstrap/cilium/values.yaml`) with Hubble Relay/UI enabled: that
+file sets `hubble.tls.auto.method: cronJob`, and Cilium 1.20 makes certgen
+**hard-fail** when the CA chain is not valid for the entire leaf-certificate
+duration (new `certgen.enforceCAValidityThroughoutLeavesDuration`, default
+enabled).
+
+State the trigger as a relation, not a date: the rotation CronJob now errors
+whenever the CA's **remaining** validity is shorter than the leaf validity it
+is being asked to issue. Leaf validity is
+`hubble.tls.auto.certValidityDuration`, which defaults to **365** days in both
+1.19.4 and 1.20.0; the reference file does not pin it, and the chart exposes no
+CA-duration knob (`certgen.generateCA: true` uses certgen's own default), so the
+margin is whatever your CA was created with. Consequence: this can fire on a
+routine rotation well before the CA itself expires, not only when the CA is
+nearly dead — and regenerating the CA buys only (CA duration − leaf duration)
+before it recurs. Either set `certgen.enforceCAValidityThroughoutLeavesDuration=false`
+to keep the old silently-over-long-leaf behavior, or pin
+`hubble.tls.auto.certValidityDuration` short enough to stay inside your CA's
+remaining life. The failure is quiet: a failing CronJob emits no readiness
+signal and Relay/UI keep serving the existing leaf, so without alerting on
+CronJob failures you learn about it at leaf expiry.
+
+This does not affect the bootstrap seed (Hubble is off in the floor) or the
+module's `cilium_hubble_enabled` observability path, which forces
+`hubble.tls.enabled=false` — metrics-only, no certgen.
+
+**Back-out:** the two delivery paths roll back differently and must not be
+confused. For the **seed**, `ignore_changes = [input]` blocks re-capture in
+**both** directions, so which action reverts it depends on how you adopted it:
+
+- If you never re-froze, re-pinning an earlier base tag is enough and touches
+  nothing running — the frozen render is still the old one, so no machine config
+  changes and no node is disturbed.
+- If you adopted the new pin via `tofu apply -replace=terraform_data.cilium_render[0]`
+  (the path §1 recommends), re-pinning the tag alone does **not** revert the
+  seed — the 1.20.0 render stays frozen in state and the next controlplane join
+  would seed it into a cluster you believe is rolled back. Run a second
+  `-replace` at the earlier pin and confirm the plan's machine-config diff shows
+  the 1.19.4 render. Land that paired revert **before** any controlplane
+  add/replace, not after.
+
+For **self-management**, a rollback is a real running downgrade of the CNI: pin
+the previous
+`cilium_chart_version` and re-sync. Cilium supports rollback only between
+consecutive minors, and only before new-minor features have been consumed — so
+roll back promptly if at all, and consult the upstream version notes first if
+any 1.20-only feature (for example `encryption.strictMode.ingress`,
+`bpf.datapathMode=auto`) was enabled in the interim.
+
+Reverting §2 needs care — leaving the CRDs untouched is **not** safe. Cilium
+1.19 documents support for Gateway API v1.4.1 and expects `TLSRoute` at
+`v1alpha2`, which the v1.6.1 **standard** bundle declares but does not serve —
+so a Cilium downgrade to 1.19 while standard v1.6.1 is installed leaves 1.19
+unable to read `TLSRoute`. If you use `TLSRoute` and must roll Cilium back,
+install the v1.6.1 **experimental** bundle (it serves `v1alpha2`) before
+downgrading, or plan a coordinated CRD downgrade. Consumers with no `TLSRoute`
+objects are unaffected: HTTPRoute/Gateway/GatewayClass are `v1` in both
+bundles.
+
+### Validation steps after upgrade
+
+1. `task tofu:ci` in the base (or your vendored copy) — offline gates.
+2. `task tofu:test` — **networked**; the only gate that actually pulls chart
+   1.20.0 and re-binds the seed-render assertions. Not run by `tofu:ci`.
+3. `tofu plan` in your consumer root — the Cilium re-render must produce **no**
+   machine-config change and no chart error (§1). A machine-config diff here is a
+   signal to stop and investigate, not something to apply.
+4. `task gitops:validate` in your consumer repo.
+5. Confirm Gateway API actually reached v1.6.1 **before** syncing Cilium — this
+   is also the check for whether editing `gateway_api_crds_url` updated
+   already-created CRDs (§2):
+
+   ```shell
+   kubectl get crd tlsroutes.gateway.networking.k8s.io \
+     -o jsonpath='{.metadata.annotations.gateway\.networking\.k8s\.io/bundle-version}{"\n"}'
+   kubectl get crd tlsroutes.gateway.networking.k8s.io \
+     -o jsonpath='{range .spec.versions[*]}{.name}{" served="}{.served}{"\n"}{end}'
+   ```
+
+   The second command tells you which `TLSRoute` versions are actually served —
+   the standard-vs-experimental distinction §2 turns on.
+6. If you have `TLSRoute` objects, confirm they still list after the CRD move:
+   `kubectl get tlsroutes.gateway.networking.k8s.io -A`.
+
+---
+
+## `v8.0.0` — `nodes` is keyed by node name (MAJOR — consumer-facing)
+
+**Type:** MAJOR (input-shape breaking, runtime-neutral). `var.nodes` /
+`cluster.yaml` `nodes:` change from a LIST of node objects to a MAP keyed by the
+node's name. The per-node `hostname` field is removed — the key *is* the
+hostname. See [ADR-0023](knowledge/decisions/0023-node-identity-map-key.md).
+
+Nothing about a running cluster changes: the per-node apply resource is still
+`for_each`-keyed by the same hostname strings, so state addresses are stable and
+an unchanged node set must produce a **zero-diff plan**. If your plan is not
+empty after the conversion, stop and investigate — do not apply.
+
+### 1. Convert `cluster.yaml` `nodes:` to a mapping (required)
+
+```yaml
+# BEFORE (v7)
+nodes:
+  - hostname: node-01
+    ip: 192.0.2.11
+    role: controlplane
+    image: intel
+
+# AFTER (v8) — the key is the hostname; the field is gone
+nodes:
+  node-01:
+    ip: 192.0.2.11
+    role: controlplane
+    image: intel
+```
+
+Mechanically, with `yq` (mikefarah, v4). **Run the duplicate check first** — the
+conversion cannot detect a hostname declared twice, and a collapsed node silently
+leaves `for_each`, which drops it from state and from every future config
+rollout while the machine keeps running:
+
+```bash
+cp cluster.yaml cluster.yaml.orig                 # the verification below needs it
+
+# Refuse to convert a file that already carries the defect this change removes.
+test "$(yq '[.nodes[].hostname] | length' cluster.yaml.orig)" \
+   = "$(yq '[.nodes[].hostname] | unique | length' cluster.yaml.orig)" \
+  || { echo "duplicate hostname in cluster.yaml — resolve it before converting"; exit 1; }
+
+yq -i '.nodes |= ([.[] | {"key": .hostname, "value": (del(.hostname))}] | from_entries)' cluster.yaml
+```
+
+Then verify nothing was lost. Both sides re-attach the hostname and normalise
+key order, so a correct conversion prints nothing and any real loss shows up:
+
+```bash
+diff <(yq -o=json '[.nodes[]]                                    | sort_by(.hostname) | sort_keys(..)' cluster.yaml.orig) \
+     <(yq -o=json '[.nodes | to_entries[] | .value * {"hostname": .key}] | sort_by(.hostname) | sort_keys(..)' cluster.yaml) \
+  && echo "conversion lost nothing"
+```
+
+> `yq -i` re-serialises the WHOLE document, not just `.nodes`. If your
+> `config_patches` use literal block scalars (`|`), check `git diff cluster.yaml`
+> for restyling outside `.nodes` before committing: a re-styled patch string is a
+> changed value in `talos_machine_configuration_apply`, which would re-push
+> machine config to those nodes and break the zero-diff expectation below.
+
+### 2. Update your consumer shim (required)
+
+```hcl
+# BEFORE
+nodes = [for n in local.cfg.nodes : {
+  hostname              = n.hostname
+  ip                    = n.ip
+  role                  = n.role
+  image                 = n.image
+  hardware_capabilities = try(n.hardware_capabilities, [])
+  config_patches        = [for p in try(n.config_patches, []) : yamlencode(p)]
+}]
+
+# AFTER — every field except hostname carries over unchanged
+nodes = { for name, n in local.cfg.nodes : name => {
+  ip                    = n.ip
+  role                  = n.role
+  image                 = n.image
+  hardware_capabilities = try(n.hardware_capabilities, [])
+  config_patches        = [for p in try(n.config_patches, []) : yamlencode(p)]
+} }
+```
+
+Do not shorten the field list while converting: `hardware_capabilities` and
+`config_patches` are `optional(..., [])`, so dropping them is **silent** — the
+node loses its capability composition and its per-node patches, and the plan
+that rewrites its machine config looks entirely valid.
+
+Any `for n in local.cfg.nodes : n.hostname => …` comprehension elsewhere in your
+root becomes `for name, n in local.cfg.nodes : name => …`.
+
+### 3. Update tooling that looked a node up by field (required if you have any)
+
+`yq` selectors keyed on the hostname field must become key lookups:
+
+```bash
+# BEFORE
+yq -r '.nodes[] | select(.hostname == "node-01") | .ip' cluster.yaml
+# AFTER
+yq -r '.nodes["node-01"].ip' cluster.yaml
+```
+
+Role filters (`.nodes[] | select(.role == "controlplane") | .ip`) keep working
+unchanged — `yq`'s `.nodes[]` iterates a mapping's values.
+
+### 4. New rejections — these may fail your first plan
+
+Six rules the list model could not express are now enforced at plan time. Each
+one names a real, previously silent failure mode:
+
+- **The controlplane count must be ODD.** An even etcd membership tolerates no
+  more failures than the odd count below it. Two consequences to plan around:
+  growing 3 → 5 must be declared in one step, and a dead control-plane node
+  cannot be *removed* to leave 2 — **replace its entry** (same key, new IP /
+  hardware) instead of deleting it. The rule lives on `var.nodes`, so while it
+  fails, nothing else in your root plans either.
+- **Node keys must already be canonical Kubernetes node names** — lowercase
+  `[a-z0-9-.]`, no leading/trailing `-` or `.`, ≤63 per label, ≤253 total.
+  Talos validates hostname LENGTH only and then silently rewrites the rest
+  (`nodename.FromHostname`: lowercase, `_` → `-`, other characters dropped), so
+  a key like `NODE_01` would have arrived in Kubernetes as `node-01` — a
+  different name than the one you declared, and one that two different keys can
+  collide onto.
+- **First labels must be unique while `register_with_fqdn` is false.** Talos
+  splits the hostname at the first dot and registers the SHORT hostname, so
+  `node-a.site1.example.org` and `node-a.site2.example.org` would put two
+  kubelets on one Node object. With `register_with_fqdn = true` the full name is
+  the Kubernetes identity and the pair is allowed — the two machines then share
+  an OS hostname, which is yours to live with.
+- **A dotted node key requires `register_with_fqdn = true`** (new input, default
+  `false` → `machine.kubelet.registerWithFQDN`, settable as
+  `cluster.register_with_fqdn` in `cluster.yaml`). Without it Kubernetes only
+  ever sees the first label and the domain part silently disappears. It is
+  **all-or-nothing**: one dotted key flips FQDN registration for every node,
+  including short-named ones, which changes their Kubernetes node name.
+- **`node.ip` must be a canonical single address.** `192.0.2.011` and
+  `::ffff:192.0.2.11` are distinct strings naming one host, so they used to slip
+  past the ip-uniqueness check and point two apply resources at one machine.
+- **Node roles must be `controlplane` or `worker`** and at least one controlplane
+  must exist (both pre-existing, now covered by tests).
+
+If your existing node names trip the canonicality rule, renaming a node is a
+genuine identity change: new state address, new Kubernetes node. Plan it as a
+node replacement, not as an edit.
+
+### 5. Two plan diffs that are EXPECTED (not conversion errors)
+
+The zero-diff expectation covers the machine config. Two things can legitimately
+show up anyway:
+
+- **Reordered outputs / talosconfig, if your old `nodes:` list was not already in
+  node-name order.** The derived lists are now name-ordered; previously they
+  followed declaration order. You will see `Changes to Outputs` for
+  `controlplane_ips` and a changed talosconfig. Nothing about the cluster
+  changes — only the order of an emitted list. Confirm the SET is identical and
+  proceed.
+- **Growing a control plane can move the bootstrap target.** The bootstrap node
+  is the lowest-named controlplane. Adding a controlplane whose name sorts BELOW
+  the incumbent repoints `talos_machine_bootstrap`. On an already-bootstrapped
+  cluster that resource must not be re-created — if your plan shows
+  `talos_machine_bootstrap` being replaced, stop: name the new nodes so they sort
+  above the incumbent, or `tofu state mv` deliberately. This hazard predates v8;
+  the odd-count rule makes multi-node additions more common, so it is worth
+  stating.
+
+### Validation steps after upgrade
+
+```bash
+scripts/lint-cluster-yaml.sh cluster.yaml   # or your repo's equivalent
+tofu validate
+tofu plan                                   # empty for an unchanged node set,
+                                            # except for the two cases in §5
+```
+
+---
+
+## `v6.0.0` — kubelet-serving CSR approver replaced with `postfinance/kubelet-csr-approver` (MAJOR — consumer-facing)
+
+**Type:** MAJOR (consumer-runtime breaking). The seeded kubelet-serving CSR
+approver changes from `alex1989hu/kubelet-serving-cert-approver` to
+`postfinance/kubelet-csr-approver` (digest-pinned `v1.2.14`), delivered as the
+same controlplane `inlineManifest` seed but now chart-rendered and templated with
+a per-cluster config surface. Decision:
+[`knowledge/decisions/0019-postfinance-kubelet-csr-approver.md`](knowledge/decisions/0019-postfinance-kubelet-csr-approver.md)
+(supersedes ADR-0013 §D2; ADR-0013 §D1 — rotation default-on — is unchanged).
+
+New `cluster.yaml` surface under `substrate.cert_approver` (all defaulted — every
+cluster still boots and approves out-of-the-box):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `provider_regex` | `".*"` | node-name regex the approver accepts |
+| `provider_ip_prefixes` | `["0.0.0.0/0", "::/0"]` | CIDRs a CSR's IP SANs must fall within — the **safe floor**; **never `[]`** (an empty list denies every serving CSR) |
+| `replicas` | `1` | `> 1` opts into HA — auto leader-election + a namespaced leases RBAC |
+
+postfinance adds an **always-on per-node DNS-SAN binding** the old approver
+lacked (a CSR's DNS SANs must be prefixed by the requesting node's hostname).
+Tightening `provider_ip_prefixes` to your node subnets adds an IP-SAN-to-subnet
+binding on top. Two honest limits (source-verified): the DNS binding is a
+hostname *prefix* match, not exact (`node-1` also matches `node-10`), and an
+IP-only CSR (no DNS SAN) is bounded only by `provider_ip_prefixes`.
+
+### 1. Tear down the OLD approver (required — it does not self-remove)
+
+The prior tag seeded alex1989hu as a **create-only** `inlineManifest`; Talos
+never deletes a resource it created, and the namespace rename means the new seed
+lands in a **different** namespace. So after adopting this tag **two
+cluster-scoped approvers coexist** — the old permissive one keeps approving what a
+tightened new one would Deny.
+
+Sequence (do NOT reverse):
+
+1. Confirm the new approver is up: the `kubelet-csr-approver` Deployment is
+   Running and `kubectl get csr` shows `kubernetes.io/kubelet-serving` CSRs
+   `Approved,Issued` on controlplane AND worker nodes.
+2. THEN delete the old objects in full:
+
+   ```bash
+   kubectl delete namespace kubelet-serving-cert-approver
+   kubectl delete clusterrole certificates:kubelet-serving-cert-approver \
+                              events:kubelet-serving-cert-approver
+   # the ClusterRoleBinding(s) that referenced those roles — discover the exact
+   # name(s) rather than assuming, then delete:
+   kubectl get clusterrolebinding -o json \
+     | jq -r '.items[]
+              | select(.roleRef.name | test("kubelet-serving-cert-approver"))
+              | .metadata.name'
+   # upstream also plants an events: RoleBinding in the `default` namespace —
+   # neither the namespace delete nor the cluster-scoped deletes reap it:
+   kubectl -n default delete rolebinding events:kubelet-serving-cert-approver
+   ```
+
+   Confirm the exact old binding names against your cluster before deleting.
+
+If you are **also tightening `provider_ip_prefixes`** in the same bump, sequence
+it AFTER the old approver is gone — during the coexistence window the old
+permissive approver races and can approve a CSR the new one would Deny (terminal,
+one-way).
+
+### 2. Config changes do NOT propagate on a running cluster
+
+The seed is **create-only**: `tofu apply` re-renders the machine config, but Talos
+does not update a Deployment it already created. Editing
+`substrate.cert_approver.*` in `cluster.yaml` and re-applying therefore hardens
+**new** clusters only. To change `provider_*` on a live cluster, patch the running
+Deployment directly (`kubectl set env`) or re-seed. Do not assume a `cluster.yaml`
+edit tightened a running cluster — it did not.
+
+### 3. Rollback / bad-config recovery
+
+postfinance **denies terminally**. A `provider_ip_prefixes` / `provider_regex`
+that excludes your real nodes → **every** kubelet-serving CSR is Denied (a terminal
+`Denied` condition, not `Pending`) → serving certs stop issuing → metrics-server,
+`kubectl logs|exec|top` break cluster-wide. Immediate rollback on the live
+Deployment (namespace `kubelet-csr-approver`):
+
+```bash
+kubectl -n kubelet-csr-approver set env deployment/kubelet-csr-approver \
+  PROVIDER_IP_PREFIXES=0.0.0.0/0,::/0 PROVIDER_REGEX='.*'
+```
+
+`.*` + all-IPs is the safe floor — restore it first, then re-tighten
+deliberately. A Denied CSR is terminal, so affected nodes recover once the kubelet
+issues a fresh CSR (its next rotation attempt) and the restored approver accepts
+it.
+
+### 4. Observability migration
+
+- **Metrics port `9090` → `8080`.** Repoint any ServiceMonitor / scrape config
+  (health probe is on `8081`).
+- **Namespace selector** → `kubelet-csr-approver` (was
+  `kubelet-serving-cert-approver`).
+- **Metric names differ.** postfinance does not expose the same series as
+  alex1989hu — rebuild dashboards/alerts against postfinance's metric set.
+- **Add a denied-CSR alert.** Because denies are now terminal, a rising count of
+  `Denied` `kubernetes.io/kubelet-serving` CSRs is the signal that a `provider_*`
+  value is excluding real nodes (see step 3) — alert on it.
+- **Also alert on signer failures.** The approver only checks what its controller
+  inspects (username, CN, SAN presence, IP-prefix, DNS-prefix, expiration).
+  Constraints it does **not** check — Subject `Organization`, email/URI SANs, key
+  usages — are enforced by the built-in `kubernetes.io/kubelet-serving` signer,
+  which marks such a CSR `Failed` (`SignerValidationFailure`): Approved by the
+  approver, then never Issued — **not** `Denied`. A `Denied`-only alert misses
+  this; alert on `Failed` kubelet-serving CSRs too.
+- **Single-replica availability (unchanged default).** The approver still runs
+  `replicas: 1` and (absent worker scheduling) on a control-plane node; a rolling
+  OS upgrade / CP-node reboot (`talosctl upgrade`) evicts it, and any kubelet
+  serving-cert rotation during that window stalls until it reschedules and is
+  Ready. Set `substrate.cert_approver.replicas: 2` for HA on new clusters, or
+  `kubectl scale` an existing one (2 replicas approve idempotently even without
+  leader-election). Time mass-rotation-affecting upgrades accordingly.
+
+---
+
+## `v7.0.0` — Cilium observability inputs + opt-in ArgoCD self-management (MAJOR — consumer-facing)
+
+**Type:** MAJOR (bundles two independent compatibility breaks). Adds
+first-class default-off Cilium observability inputs and an opt-in
+emitted-Application ArgoCD self-management delivery mode for Cilium. Decision:
+[`knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md`](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md).
+
+### 1. OpenTofu floor raised to `>= 1.9` (affects EVERY consumer)
+
+The new cross-variable `validation` guards on `cilium_self_management`
+require OpenTofu >= 1.9. This is not opt-in: **every** consumer of
+`tofu/modules/talos-cluster`, whether or not they use the new Cilium
+features, must run OpenTofu >= 1.9 to `plan`/`apply` this module version.
+Upgrade your OpenTofu binary before adopting this tag.
+
+### 2. `substrate.cilium` schema is now CLOSED (affects consumers with extra/typo'd keys)
+
+`schemas/cluster.schema.json`'s `substrate.cilium` object now sets
+`additionalProperties: false` with the full enumerated key set. Audit your
+`cluster.yaml`'s `substrate.cilium` block: any key that isn't one of the
+documented `cilium_*` names (see the module README Inputs table) now fails
+`check-jsonschema` at lint time instead of being silently dropped by the
+`try()`-based shim in `examples/complete/main.tf`. Fix by removing or
+correcting the offending key before adopting this tag.
+
+### 3. New opt-in surface (default off — no action if you set nothing)
+
+- `substrate.cilium.agent_metrics` / `operator_metrics` — Cilium
+  agent/operator Prometheus metrics. Wire your own `ServiceMonitor` /
+  `PodMonitor` to scrape them; none is shipped by the base.
+- `substrate.cilium.hubble_enabled` + `hubble_metrics` — Hubble
+  flow/metrics observability, metrics-only scope (`hubble.tls.enabled` is
+  forced `false`; this does not disable the metrics endpoint, only the
+  unused observer-API TLS — see the ADR). **Enabling Hubble triggers a
+  graceful-restart-gated Cilium agent DaemonSet roll** — expect a rolling
+  agent restart across your nodes when you first turn this on (or change
+  the metrics set thereafter).
+- `substrate.cilium.self_management` + `self_management_project` — opt-in:
+  the module emits a new `cilium_self_management_app` output (a rendered
+  ArgoCD `Application` manifest). The module never applies it. Consumer
+  action to adopt: write a one-line `local_file` resource in your own root
+  against the output, commit it to your GitOps repo, let your existing
+  ArgoCD sync it. You must own **exactly one** Cilium `Application` —
+  ensure you are not already running a separate hand-authored one.
+
+### 4. Override-drop hazard — REQUIRED reading before enabling self-management
+
+If you set `substrate.cilium.values_override` (BGP control-plane, L2
+announcements, bpf tuning, or any other datapath-critical Helm value), the
+module **hard-rejects** `cilium_self_management=true` at plan time while
+that override is non-empty. This is intentional: the emitted
+`Application`'s values do **not** inherit `cilium_values_override`, so
+enabling self-management with it still set would have your datapath config
+silently **DROPPED** the moment ArgoCD adopts Cilium. To migrate safely:
+
+1. Re-add the equivalent Helm values in your own Cilium `Application`
+   (the one the emitted manifest becomes, once you adopt it).
+2. Only THEN empty `substrate.cilium.values_override` in `cluster.yaml`.
+3. Only THEN set `substrate.cilium.self_management = true`.
+
+Reversing this order (emptying the override before your own `Application`
+carries the equivalent values) creates a window where your datapath config
+exists nowhere. Plan the migration as one atomic cutover, not two separate
+commits.
+
+### 5. Bootstrap-window datapath gap (accepted trade-off — plan around it on BGP/L2 clusters)
+
+The seed is create-only, so the guard above and a future fresh
+bootstrap/`-replace` interact in tension: (a) while `values_override` stays
+set, you cannot enable self-management at all; (b) once you empty it to
+enable self-management, a **future** fresh bootstrap or node replacement
+brings that node up with plain-floor Cilium (no BGP/L2/bpf) until ArgoCD's
+first sync re-applies your override via the self-managed `Application` — a
+bootstrap-window datapath gap. If you depend on BGP/L2 for cluster
+connectivity, hold new-node bootstraps/replacements until you have confirmed
+ArgoCD's adoption sync completed, or accept the gap window.
+
+### 6. ArgoCD-adoption runtime caveat
+
+The first ArgoCD sync that adopts the seed-created Cilium resources into the
+emitted `Application` may trigger managed-fields reconciliation and an agent
+restart. This is expected seed-to-GitOps takeover behavior, not a failure —
+do not intervene on your own before confirming the sync completed.
+
+### 7. `spec.project` hardening (recommended, not required)
+
+`cilium_self_management_project` defaults to `"default"` so the feature
+works out of the box. For hardening, create a scoped `AppProject` granting
+destination namespace `kube-system` at `https://kubernetes.default.svc`
+plus Cilium's cluster-scoped resources (CRDs, ClusterRoles,
+ClusterRoleBindings) in `clusterResourceWhitelist`, then point
+`self_management_project` at it. Without that whitelist, a scoped project
+leaves the adopted `Application` inert/degraded.
+
+### Validation steps after upgrade
+
+1. `tofu fmt -check` + `tofu validate` (module + your root) — confirms your
+   OpenTofu binary meets the new `>= 1.9` floor.
+2. `check-jsonschema --schemafile <base-checkout>/schemas/cluster.schema.json
+   --default-filetype yaml cluster.yaml` — confirms no stray key under
+   `substrate.cilium`. The schema is **not** an OCI tarball member, so it is not
+   under `vendor/base/`; run this from the base checkout at the tag you pinned,
+   the same checkout steps 3 and 5 of the first-consumer workflow already use.
+3. If adopting `self_management`: confirm `tofu plan` succeeds (the guard
+   would otherwise hard-reject it) and review the emitted
+   `cilium_self_management_app` output before committing it to GitOps.
 
 ---
 
@@ -499,7 +1869,7 @@ behaviour. No spec change.
 
 ---
 
-## `v0.6.0` (forthcoming) — 5-axis cutover (MAJOR / breaking)
+## `v0.6.0` (2026-05-28) — 5-axis cutover (MAJOR / breaking)
 
 > **Superseded by the OpenTofu cluster-lifecycle cutover** (see the section
 > below). The 5-axis `cluster.yaml` schema this checklist migrates *to* has

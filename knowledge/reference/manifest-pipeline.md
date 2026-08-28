@@ -3,21 +3,21 @@ type: reference
 title: Manifest Pipeline
 description: How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 tags: [rendered-manifests, validation, ci, conftest]
-timestamp: 2026-07-15
+generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
-  - scripts/render-component.sh
-  - scripts/verify-rendered.sh
-  - scripts/render_kustomize_safe.sh
-  - scripts/discover_kustomize_targets.sh
-  - scripts/verify_sops_files.sh
-  - scripts/run_conftest.sh
-  - scripts/check-argocd-substrate-invariants.sh
-  - scripts/render-component-readmes.sh
-  - scripts/lint-cluster-yaml.sh
-  - policies/conftest/k8s.rego
-  - policies/conftest/argocd.rego
-  - Taskfile.yml
-  - .github/workflows/gitops-validate.yml
+  - resource: scripts/render-component.sh
+  - resource: scripts/verify-rendered.sh
+  - resource: scripts/render_kustomize_safe.sh
+  - resource: scripts/discover_kustomize_targets.sh
+  - resource: scripts/verify_sops_files.sh
+  - resource: scripts/run_conftest.sh
+  - resource: scripts/check-argocd-substrate-invariants.sh
+  - resource: scripts/render-component-readmes.sh
+  - resource: scripts/lint-cluster-yaml.sh
+  - resource: policies/conftest/k8s.rego
+  - resource: policies/conftest/argocd.rego
+  - resource: Taskfile.yml
+  - resource: .github/workflows/gitops-validate.yml
 ---
 
 # Manifest Pipeline
@@ -25,7 +25,7 @@ sources:
 The base ships Helm-based infrastructure components as **rendered, committed
 YAML** (the Rendered Manifests Pattern): the render happens at authoring time
 from a pinned, checksum-verified chart, the output lands in git under
-`kubernetes/base/infrastructure/<component>/_rendered/`, and CI proves the
+`kubernetes/substrate/<component>/_rendered/`, and CI proves the
 committed output is byte-reproducible from its inputs. What consumers and
 ArgoCD see is plain reviewable YAML — no chart is templated at sync time, and
 a hand-edit to committed output cannot ship silently because the drift gate
@@ -81,7 +81,7 @@ Per-component layout (tracked vs intermediate, per the render script and
 `.gitignore`):
 
 ```text
-kubernetes/base/infrastructure/<component>/
+kubernetes/substrate/<component>/
 ├── chart.lock.yaml        # pin spec (committed)
 ├── values.yaml            # Stage-1 input: repo-wide defaults (committed)
 ├── kustomization.yaml     # validation entry point (committed)
@@ -131,7 +131,7 @@ The aggregate validation task chains five scripts plus kubeconform
 1. **Discovery** — `scripts/discover_kustomize_targets.sh` finds
    kustomization directories under `kubernetes/overlays/`,
    `kubernetes/bootstrap/`, and one-level-deep component dirs in
-   `kubernetes/base/infrastructure/` (avoiding chart-internal
+   `kubernetes/substrate/` (avoiding chart-internal
    kustomizations), excluding `.git/`, `knowledge/`, `vendor/`,
    `third_party/`, generated Talos output, and `resources/` subpaths. Output:
    `.work/kustomize-targets.txt`.
@@ -184,13 +184,14 @@ The aggregate validation task chains five scripts plus kubeconform
 
 ### ArgoCD substrate invariants
 
-`scripts/check-argocd-substrate-invariants.sh` guards the shared ArgoCD
-invariants across **both** render paths — the Day-0 bootstrap seed values
+`scripts/check-argocd-substrate-invariants.sh` guards the ArgoCD invariants
+across the two render paths — the Day-0 bootstrap seed values
 (`tofu/modules/talos-cluster/helm/argocd-values.yaml`) and the steady-state
-self-management values (`kubernetes/base/infrastructure/argocd/values.yaml`)
+self-management values (`kubernetes/substrate/argocd/values.yaml`)
 — by rendering each fresh with the single pinned chart from the argocd
 component's `chart.lock.yaml` (tarball sha256-verified, same posture as the
-component render):
+component render). I1–I3 are asserted against both paths; I4 is
+steady-state-only:
 
 - **I1** — no bundled-Dex resource: no rendered document carries the label
   `app.kubernetes.io/component=dex-server` nor the name
@@ -198,6 +199,31 @@ component render):
 - **I2** — no ConfigMap has a `.data` key prefixed `server.dex.server`
   (every ConfigMap is scanned, not just `argocd-cmd-params-cm` by name, so a
   chart rename cannot make the check pass vacuously).
+- **I3** — the `argocd-cm` ConfigMap has no `url` key. Scoped
+  by ConfigMap name rather than by a blanket key sweep, because `url` is generic
+  enough that other ConfigMaps carry it legitimately. `argocd-notifications-cm`'s
+  `argocdUrl` is an accepted residual the chart's `default` function makes
+  unclearable.
+- **I4** (steady-state only) — `argocd-rbac-cm` carries no non-empty
+  `policy.csv`: the substrate ships no identity. Steady-state-only by
+  construction — the published component is what a consumer's overlay merges
+  onto, so a principal shipped there becomes a standing grant in every consuming
+  cluster. Asserted on emptiness rather than absence, because the chart emits
+  the key unconditionally.
+
+The name-scoped invariants (I3, I4) each run behind a **presence anchor**: a
+negative assertion selecting a ConfigMap by name passes vacuously if the chart
+renames or drops it, so the gate first requires exactly one such ConfigMap and
+exits with a distinct render-shape code when that fails. I1/I2 need no anchor —
+they sweep every document.
+
+Beyond the shipped-values invariants, the gate also builds the worked consumer
+overlay `kubernetes/examples/argocd-consumer-sso/` against an **unpatched
+control build** and asserts the documented SSO wiring still applies: a merged
+`url`, a parseable `oidc.config`, a non-empty `policy.csv`, no base-shipped
+`.data` key lost to the patch, and `kubeconform -strict` on the result. The
+control is what makes those assertions evidence rather than restatements. See
+[argocd-sso-contract](argocd-sso-contract.md).
 
 Consumer `argocd_values_override` input is out of scope — base CI cannot gate
 what a consumer boots; consumer-cluster admission policy owns that.

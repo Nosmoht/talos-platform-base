@@ -31,13 +31,17 @@ __pycache__/
 .mcp.json.bak-*
 
 # Kustomize-extracted Helm charts (rendered at build time, not stored in repo)
-kubernetes/base/infrastructure/*/charts/
+kubernetes/substrate/*/charts/
 
 # Rendered Manifests Pipeline (Phase B):
 # .render-stage1/ holds Stage-1 (helm template) output; intermediate, never committed.
 # .helm-cache/ holds pulled chart tarballs; deterministic by chart.lock.yaml.tgz_sha256.
 # _rendered/ IS committed (Stage-2 output, OCI-payload).
-kubernetes/base/infrastructure/*/.render-stage1/
+# Unanchored on purpose: a component-anchored pattern leaves Stage-1 output
+# untracked AND unignored anywhere the tree is reorganised, so a `git add -A`
+# would commit render intermediates to this PUBLIC repo. Match the directory
+# name wherever it appears instead of where the pipeline writes it today.
+**/.render-stage1/
 .helm-cache/
 
 # Auto Claude data directory

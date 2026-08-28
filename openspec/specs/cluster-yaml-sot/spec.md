@@ -3,6 +3,7 @@ sources:
   primary:
     - schemas/cluster.schema.json
     - scripts/lint-cluster-yaml.sh
+    - scripts/check-shim-key-parity.sh
 references:
   - knowledge/decisions/0007-cluster-yaml-sot.md
 ---
@@ -73,6 +74,23 @@ demands of it is another.
 - **WHEN** `cluster.endpoint` does not begin with `https://`
 - **THEN** schema validation fails on the `cluster.endpoint` pattern
 
+### Requirement: Apply mode in the closed cluster object
+
+The closed `cluster` object SHALL carry `controlplane_apply_mode` and
+`worker_apply_mode`, each constrained to the same enum the module's inputs
+accept, so the Day-2 window a consumer opens lives in the committed
+Source-of-Truth rather than in a transient apply-time override. A window held
+only in an override is discharged by the next apply that omits it — which
+re-applies still-staged configurations in `auto` mode and reboots exactly the
+nodes not yet gated.
+
+#### Scenario: A mode outside the enum is rejected at lint time
+
+- **WHEN** `cluster.worker_apply_mode` carries a value the module does not
+  accept — including a mode a newer provider supports but the module's declared
+  provider floor does not
+- **THEN** the schema lint fails, naming the accepted values
+
 ### Requirement: Version pinning
 
 The schema SHALL require `talos.version` and `kubernetes.version` to be
@@ -136,17 +154,30 @@ mirroring the module's `var.images` validations for the declarative path.
 
 ### Requirement: Node entries
 
-The schema SHALL require at least one entry under `nodes` and SHALL require
-each node to declare `hostname`, `ip`, `role` (one of `controlplane`,
-`worker`), and `image` (documented as a key of the `images` catalog), with
+`nodes` SHALL be a MAPPING keyed by node name, not a sequence — a node is
+declared exactly once, at exactly one place, and the key is the node's name
+rather than a field of the entry. The schema SHALL require at least one entry
+and SHALL require each node to declare `ip`, `role` (one of `controlplane`,
+`worker`) and `image` (documented as a key of the `images` catalog), with
 optional `hardware_capabilities` (a string array of capability ids) and
 per-node `config_patches`.
+
+The schema SHALL constrain node keys to canonical Kubernetes node names —
+lowercase `[a-z0-9-.]`, starting and ending alphanumeric, at most 253
+characters. The per-label 63-character bound is not expressible in JSON Schema
+without a lookahead and is enforced by the module instead.
 
 #### Scenario: Node with undeclared role is rejected
 
 - **WHEN** a node declares a `role` outside `controlplane` and `worker`, or
-  omits any of the four required fields
+  omits any of the three required fields
 - **THEN** schema validation fails on that node entry
+
+#### Scenario: Non-canonical node key is rejected
+
+- **WHEN** a node key carries uppercase or an underscore (values Talos itself
+  would accept and silently rewrite)
+- **THEN** schema validation fails on `nodes`, naming the offending key
 
 ### Requirement: Composite capability entries
 
@@ -166,17 +197,75 @@ SHALL admit the optional `requires_features` (Layer-C atom ids) and
 The schema SHALL admit `config_patches`, `controlplane_config_patches`,
 `worker_config_patches`, and per-node `config_patches` as arrays of
 free-form YAML maps without content validation, SHALL close the `substrate`
-section to exactly the `cilium` and `argocd` keys (each a loosely typed
-object), and SHALL provide no field for secret material — neither
-`sops_age_key` nor `cilium_ipsec_key` has a schema slot (normative:
-knowledge/decisions/0007-cluster-yaml-sot.md).
+section to exactly the `cilium`, `argocd`, and `cert_approver` keys, and
+SHALL provide no field for secret material — neither `sops_age_key` nor
+`cilium_ipsec_key` has a schema slot (normative:
+knowledge/decisions/0007-cluster-yaml-sot.md). `substrate.argocd` stays a
+loosely typed object. `substrate.cert_approver` is closed
+(`additionalProperties: false`) and admits only `provider_regex` (string),
+`provider_ip_prefixes` (a string array with `minItems: 1`), and `replicas`
+(integer, `minimum: 1`) — it tunes the always-on cert-approver seed's
+SAN-to-node binding and replica count but cannot disable the seed.
+`substrate.cilium` is likewise closed (`additionalProperties: false`) and
+admits the pre-existing seed-configuration keys (`enabled`, `chart_version`,
+`chart_repository`, `routing_mode`, `kube_proxy_replacement`, `gateway_api`,
+`gateway_api_crds_url`, `mtu`, `native_routing_cidr`, `encryption`,
+`values_override`) plus eight observability + self-management keys:
+`agent_metrics` and `operator_metrics` (booleans, default `false`),
+`hubble_enabled` (boolean, default `false`), `hubble_metrics` (a string
+array, default `[]`, whose entries carry the same raw-render exclusion rule
+as `agent_metric_overrides` in a form that admits Hubble's context syntax),
+`agent_metric_overrides` (a string array, default `[]`, whose entries the
+module additionally format-validates because the chart renders them raw into
+the machine configuration),
+`hubble_open_metrics` (boolean, default `false`), `self_management`
+(boolean, default `false`), and `self_management_project` (string, default
+`"default"`) — a typo'd key in any of these three closed substrate objects
+fails lint rather than being silently dropped.
+
+`native_routing_cidr` is in the same raw-render class as the two metric lists
+and SHALL carry a shape mirror of the module's guard: the CIDR form or the
+empty string, with the newline and document-separator exclusion the engine
+divergence between the two validators requires.
+
+Adding a key to a closed object is additive for consumers, but reaching the
+module still requires the consumer-owned shim to map it: the schema widening
+and the shipped example shim SHALL land together, or a consumer writing the
+new key passes lint and plan while the value silently never arrives. Because
+the shim reads `cluster.yaml` through `try()` — a total function that answers a
+mistyped key with the default rather than an error — this obligation SHALL be
+mechanically gated rather than left to review: a repository check SHALL assert
+that every key of every CLOSED substrate object is read by the shipped shim,
+and it SHALL run on a diff that touches the schema alone.
 
 #### Scenario: Mistyped substrate key is rejected
 
 - **WHEN** a `cluster.yaml` declares a `substrate` child key other than
-  `cilium` or `argocd`
+  `cilium`, `argocd`, or `cert_approver`
 - **THEN** schema validation reports the additional property instead of the
   key being silently dropped downstream
+
+#### Scenario: Mistyped cilium key is rejected
+
+- **WHEN** a `cluster.yaml` declares a `substrate.cilium` child key outside
+  the enumerated seed-configuration and observability/self-management keys
+- **THEN** schema validation reports the additional property instead of the
+  key being silently dropped downstream
+
+#### Scenario: A closed substrate key the shim never reads fails the gate
+
+- **WHEN** a closed substrate object declares a key that the shipped example
+  shim does not read, whether because the schema widened without the shim or
+  because the shim's read is misspelled
+- **THEN** the repository check fails and names the unmapped key, rather than
+  the consumer's declared value silently resolving to the module default
+
+#### Scenario: Empty cert-approver IP-prefix list is rejected
+
+- **WHEN** a `cluster.yaml` sets `substrate.cert_approver.provider_ip_prefixes`
+  to an empty array
+- **THEN** schema validation fails on the `minItems: 1` constraint — an empty
+  set would deny every kubelet-serving CSR carrying an IP SAN
 
 #### Scenario: Free-form patch content passes the schema
 
@@ -203,3 +292,23 @@ violation, and `2` on an environment or argument error.
 - **WHEN** the target file or the schema file does not exist, or neither
   `check-jsonschema` nor `uvx` is on `PATH`
 - **THEN** the script exits `2` with an error on stderr
+
+### Requirement: Operator replica count in the closed Cilium object
+
+The closed `substrate.cilium` object SHALL additionally admit
+`operator_replicas` (integer, `minimum: 1`). Omitting it derives the count
+from the node set; setting it pins the count on both delivery paths.
+
+The `minimum` mirrors the module's own validation so the declarative path
+rejects a zero at lint time rather than only at plan time, following the
+convention `substrate.cert_approver.replicas` established. The schema does not
+mirror the module's node-count bound: the schema validates one document in
+isolation and the bound is relational, so that conjunct stays a plan-time
+rejection.
+
+#### Scenario: A zero or fractional replica count fails lint
+
+- **WHEN** `substrate.cilium.operator_replicas` is below 1, or not an integer
+- **THEN** schema validation reports the violation for that path, with each
+  of the two constraints separately observable so neither can be relaxed
+  unnoticed

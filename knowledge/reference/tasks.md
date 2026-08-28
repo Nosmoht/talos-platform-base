@@ -3,10 +3,11 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-timestamp: 2026-07-15
+generated: { by: human:nosmoht, at: "2026-08-23T00:00:00Z" }
 sources:
-  - Taskfile.yml
-  - Makefile
+  - resource: Taskfile.yml
+  - resource: Makefile
+  - resource: package.json
 ---
 
 # Task Runner Surface
@@ -26,11 +27,11 @@ Conventions declared in `Taskfile.yml`:
   `task bootstrap:argocd ENV=other.yaml`.
 - MCP server versions are pinned as Taskfile vars
   (`MCP_GITHUB_VERSION: 0.33.0`, `MCP_K8S_VERSION: 0.0.60`,
-  `MCP_TALOS_VERSION: 1.1.0`).
-- Knowledge-bundle tool pins (`OPENKNOWLEDGE_VERSION: 0.5.0`,
-  `LYCHEE_VERSION: 0.24.2`) plus their per-platform sha256 checksums are
-  Taskfile vars, kept in sync with `.tool-versions` by
-  `task dev:verify-pins`. The npm-distributed pins (`openspec`,
+  `MCP_TALOS_VERSION: 1.1.0`). Unlike the pins below these are asserted
+  against nothing, so the values are restated here.
+- Knowledge-bundle tool pins (`OPENKNOWLEDGE_VERSION`, `LYCHEE_VERSION`) plus
+  their per-platform sha256 checksums are Taskfile vars, kept in sync with
+  `.tool-versions` by `task dev:verify-pins`. The npm-distributed pins (`openspec`,
   `markdownlint-cli`) live in `package.json` + `package-lock.json`
   (integrity-hashed) instead of Taskfile vars.
 
@@ -43,11 +44,15 @@ Conventions declared in `Taskfile.yml`:
 | `tofu:validate` | `tofu init -backend=false` + `tofu validate` per tofu dir (modules + examples). |
 | `tofu:lint` | `tflint --chdir=.` per tofu dir (modules + examples). |
 | `tofu:docs` | Regenerate a module README's terraform-docs block — **refuses today**: no module README carries `BEGIN_TF_DOCS` markers, so their Inputs/Outputs tables are hand-maintained and must be edited by hand. Running `terraform-docs --output-mode inject` against a marker-less README appends a second, competing generated table set instead of updating one (verified, terraform-docs v0.22.0; [ADR-0015](../decisions/0015-openspec-adoption.md) correction). |
+| `tofu:check:readme-parity` | CI fence: every `variables.tf` variable and `outputs.tf` output of a module appears in that module's hand-maintained README table (see `tofu:docs` for why those tables are hand-maintained). Scope limit: name-level parity in the `.tf` → README direction only — a README row for a deleted declaration, or stale prose on a surviving row, is not caught. Runs `scripts/check-module-readme-parity.sh`. |
 | `tofu:lint:yaml` | yamllint (relaxed) + markdownlint over `tofu/` — advisory (`\|\| true`). |
 | `tofu:check:render-determinism` | CI fence: Cilium/ArgoCD/CRD helm renders must use frozen `terraform_data` (`ignore_changes`), not live `data.helm_template`. Runs `scripts/check-render-determinism.sh`. |
+| `tofu:check:kubeconfig-endpoint-regen` | CI fence: `talos_cluster_kubeconfig.this` keeps its `replace_triggered_by` wiring to the `terraform_data.kubeconfig_endpoint_marker` resource (whose `input` is `var.cluster_endpoint`), so a changed endpoint still forces kubeconfig regeneration (issue #186). Static, resource-scoped grep — no provider, no network. Runs `scripts/check-kubeconfig-endpoint-regen.sh`. |
+| `tofu:check:node-projection-wiring` | CI fence: the five Talos boundary arguments (`talos_client_configuration.{endpoints,nodes}`, `talos_cluster_health.{control_plane_nodes,worker_nodes,endpoints}`) stay bound to their intended `nodes.tf` projections, and `talos_machine_configuration_apply` keeps iterating `local.nodes_checked` so the duplicate-IP guard stays in the dependency chain (issue #204). The offline fixture omits `main.tf`, so no `tofu test` can see this wiring. Static, block-scoped, awk+POSIX-grep — no provider, no network, no GNU-grep dependency. Runs `scripts/check-node-projection-wiring.sh`. |
+| `tofu:check:shim-key-parity` | CI fence: every key of every CLOSED `substrate` object in `schemas/cluster.schema.json` is actually read by the worked example's shim (`tofu/modules/talos-cluster/examples/complete/main.tf`). The shim reads `cluster.yaml` through `try()`, which is total — a key it never reads, or reads misspelled, silently resolves to the module default while lint, `validate`, `plan` and the whole test suite stay green. Scope limit: closed objects only (`substrate.argocd` declares no key set; sections outside `substrate` restructure their data in the shim). Requires `jq`. Runs `scripts/check-shim-key-parity.sh`. |
 | `tofu:test` | `tofu test` — the full suite, including the node-capability composition regression tests. **Network-dependent** (resolves the live Image Factory), so deliberately NOT part of `tofu:ci`. Superset of `tofu:test:offline`. |
-| `tofu:test:offline` | The offline subset of `tofu:test`: the predicate-only catalog contract, the conflict guards, input validation, and the consumer image-kernel-arg oracles (schematic re-image / no-re-image, issue #169). Each points at a `tests/fixtures/*` stand-in module that symlinks the real code under test and declares no providers — a pure plan over `terraform_data`, so no network. Part of `tofu:ci`. |
-| `tofu:ci` | Aggregate: `fmt:check` + `validate` + `lint` + `check:render-determinism` + `test:offline` — mirrors CI, stays offline. |
+| `tofu:test:offline` | The offline subset of `tofu:test`: the predicate-only catalog contract, the conflict guards, input validation, the consumer image-kernel-arg oracles (schematic re-image / no-re-image, issue #169), and the kubeconfig-endpoint-marker regression (issue #186 — the `terraform_data` marker tracks `var.cluster_endpoint`). Each points at a `tests/fixtures/*` stand-in module that symlinks the real code under test and declares no providers — a pure plan over `terraform_data`, so no network. Part of `tofu:ci`. |
+| `tofu:ci` | Aggregate: `fmt:check` + `validate` + `lint` + `check:render-determinism` + `check:readme-parity` + `check:kubeconfig-endpoint-regen` + `check:node-projection-wiring` + `check:shim-key-parity` + `test:offline` — mirrors CI, stays offline. |
 
 Both `tofu:validate` and `tofu:lint` exclude `tests/fixtures/**`: those are
 test inputs exercised via `tofu test` (`run { module }`), partial stand-in
@@ -57,9 +62,9 @@ modules rather than standalone modules.
 
 | Task | Purpose |
 | --- | --- |
-| `gitops:validate` | Full pipeline: kustomize-target discovery → safe render → SOPS check → conftest → kubeconform → ArgoCD substrate invariants. Stage detail in [manifest pipeline](manifest-pipeline.md). |
+| `gitops:validate` | Full pipeline: kustomize-target discovery → safe render → SOPS check → conftest → kubeconform → conftest bite-check → ArgoCD substrate invariants → `scripts/check-bootstrap-render.sh`. Stage detail in [manifest pipeline](manifest-pipeline.md). |
 | `gitops:render-component` | Stage-1 (helm template) + Stage-2 (kustomize build) render of one component. Usage: `task gitops:render-component COMPONENT=<name>`; fails with usage text when `COMPONENT` is unset. |
-| `gitops:render-all` | Render every component under `kubernetes/base/infrastructure/` that has a `chart.lock.yaml`; exits 0 with a notice when none exist. |
+| `gitops:render-all` | Render every component under `kubernetes/substrate/` that has a `chart.lock.yaml`; exits 0 with a notice when none exist. |
 | `gitops:verify-rendered` | Re-render all components and fail if the committed `_rendered/` tree drifts (`scripts/verify-rendered.sh`). |
 
 Precondition: the safe-render stage requires ripgrep (`rg`) on PATH for
@@ -76,12 +81,15 @@ tasks. `bootstrap:argocd` only seeds the consumer-identity App-of-Apps root
 
 | Task | Purpose |
 | --- | --- |
+| `bootstrap:render-root` | Render the App-of-Apps root manifests (root-project + root-application) from `cluster.yaml` into `kubernetes/bootstrap/argocd/_out/`, with no cluster contact — a cluster-free dry-run. Usage: `task bootstrap:render-root [ENV=cluster.yaml]`. Field-level contract (which fields, the `main` default, the value guards) is normative in `openspec/specs/argocd-day-zero-bootstrap/`, asserted by `task bootstrap:check-render`. |
 | `bootstrap:argocd` | Render the root templates from `cluster.yaml`, wait for the Application/AppProject CRDs to exist and become `Established` and for `deployment/argocd-server` to be available, then `kubectl apply` root-project and root-application. Usage: `task bootstrap:argocd [ENV=cluster.yaml]`. |
+| `bootstrap:check-render` | CI gate: assert `bootstrap:render-root`'s output satisfies the `argocd-day-zero-bootstrap` spec scenarios, offline (`yq` + `envsubst` only, no cluster contact). Contract: `openspec/specs/argocd-day-zero-bootstrap/`. |
 | `bootstrap:argocd-password` | Print the initial ArgoCD admin password from the `argocd-initial-admin-secret` Secret (rotate after first login). |
 
-Details of `bootstrap:argocd`:
+Details of the render → apply path (`bootstrap:render-root`, `bootstrap:check-render`, `bootstrap:argocd`):
 
-- **Preconditions:** `deploy_argocd=true` and a completed `tofu apply` (the
+- **Preconditions (`bootstrap:argocd` only — the render and check tasks need
+  no cluster):** `deploy_argocd=true` and a completed `tofu apply` (the
   module seeds ArgoCD and applies its CRDs server-side), plus a working
   `kubectl` context. A persistent CRD `NotFound` means the apply did not
   finish its CRD step; recovery command:
@@ -101,20 +109,21 @@ Details of `bootstrap:argocd`:
 | --- | --- |
 | `cluster:init-yaml` | Copy `cluster.yaml.example` to `cluster.yaml` (gitignored declarative SoT) if absent; no-op when the file already exists. |
 
-## `supply-chain:*` — OCI artifact verification
+## `supply-chain:*` — OCI artifact + release-gate verification
 
 | Task | Purpose |
 | --- | --- |
 | `supply-chain:oci-allowlist` | Build the OCI tarball locally from `.ci-oci-tarball-include.txt` and diff its sorted contents against `.ci-oci-tarball-expected.txt` (fail-closed allowlist). Run before pushing a tag to confirm the fixture matches actual contents. |
+| `supply-chain:check-release-guard` | Two halves, neither substitutable. `scripts/check-release-guard-coverage.sh` is the EXTERNAL anchor: it walks `.ci-oci-tarball-expected.txt` and fails unless every published path is matched by `.ci-release-guard-pathspec.txt` or listed in `.ci-release-guard-exempt.txt` with a non-placeholder reason, and it refuses a stale exemption, either shipped Helm-value floor being exempted, a guard invocation carrying `--base`/`--advisory`, and a pathspec literal reappearing in `release.yml`. `scripts/check-release-guard-gate-bites.sh` proves the guard bites, over a throwaway git repo; its scenarios are generated from the guard's own data files, so it aborts first unless those files equal their committed `.expected.txt` fixtures — otherwise a removed entry would remove its own test. The target asserts the bite-check's completion marker, not just its exit code. Run verbatim by `docs-lint.yml`. |
 
 ## `knowledge:*` — OKF knowledge bundle authoring + validation
 
 | Task | Purpose |
 | --- | --- |
-| `knowledge:validate` | Validate the `knowledge/` OKF bundle: `openknowledge validate` (with the binding `link-target = "error"` and `rule-catalog = "error"` rules from `knowledge/openknowledge.toml`) plus an offline intra-repo link-resolution pass (`lychee --offline`) over the bundle, root Markdown files, `contracts/`, and the two `tofu/modules/talos-cluster` READMEs. Invoked directly by `docs-lint.yml`. |
-| `knowledge:rules-apply` | Regenerate the Open Knowledge Maintenance block in `AGENTS.md` from `knowledge/rules/` via `openknowledge rules apply`. The block is a managed region between `openknowledge:rules` markers; run this after changing a rule document rather than hand-editing `AGENTS.md`. |
+| `knowledge:validate` | Validate the `knowledge/` OKF bundle. Three gates, each preceded by its own bite check so a silent detector cannot pass for a verdict: `scripts/check-bundle-policy.sh` asserts the four raised rules in `knowledge/.openknowledge.toml` are the policy actually in effect and that the config raises nothing the caller fails to demand; `scripts/check-knowledge-frontmatter.sh` asserts the six frontmatter invariants `openknowledge` provably does not check (its header enumerates them, `resource` paths and `decided` values among them); and `openknowledge validate --spec 0.2` enforces the OKF v0.2 field contract. `--spec` is pinned to `OKF_SPEC` rather than left at the CLI default of `latest`, so the gate's meaning is a property of this repo rather than of the installed binary. Finally an offline intra-repo link-resolution pass (`lychee --offline`) over the bundle, root Markdown files, `contracts/`, and the two `tofu/modules/talos-cluster` READMEs. Invoked directly by `docs-lint.yml`. Precondition: `openknowledge` must report exactly the pinned version — the target refuses to run otherwise (`task knowledge:install-cli`). |
+| `knowledge:rules-apply` | Regenerate the Open Knowledge Maintenance block in `AGENTS.md` from `knowledge/rules/` via `openknowledge prompt rules apply`. The block is a managed region between `openknowledge:rules` markers; run this after changing a rule document rather than hand-editing `AGENTS.md`. |
 | `knowledge:rules-check` | Fail if the `AGENTS.md` managed block drifted from what `knowledge/rules/` currently renders — hand-edited, stale, or missing a configured rule. Asserts every rule in `OK_RULES` reached the block, so a rule that silently fails to render is caught rather than passing as a smaller-but-consistent block. Invoked by `docs-lint.yml`. |
-| `knowledge:new` | Scaffold a new concept file with the bundle's frontmatter convention (usage: `task knowledge:new FILE=reference/foo.md TYPE=reference`). |
+| `knowledge:new` | Scaffold a new concept file with the bundle's OKF v0.2 frontmatter (usage: `task knowledge:new FILE=reference/foo.md TYPE=reference`). `TYPE` is an enum and deliberately excludes `decision`: an ADR carries `decided` and neither `generated` nor `sources`, so copy `knowledge/decisions/template.md` instead. |
 | `knowledge:install-cli` | Download the pinned, checksum-verified `openknowledge` + `lychee` release binaries for the host platform into `~/.local/bin`. |
 
 ## `spec:*` — OpenSpec behavioral specs
@@ -125,10 +134,10 @@ bundle. See `knowledge/workflows/spec-driven-development.md`.
 
 | Task | Purpose |
 | --- | --- |
-| `spec:validate` | Strict `openspec validate` over `openspec/`, a bite-check (a committed malformed fixture must fail validation, run against a temp copy), the source-ownership partition assert (`scripts/check-spec-partition.py`: exclusivity + completeness over the enumerated universe per ADR-0015), and an offline `lychee` pass. Run verbatim by `docs-lint.yml`. Precondition: `task spec:install-cli` + `task knowledge:install-cli` (lychee). |
-| `spec:check-regen` | Regeneration parity: whole-tree delta after `openspec update --force` must be empty — the committed tool trees equal the pinned generator's output (parity only, not benignity). Run verbatim by `docs-lint.yml`. Overwrites uncommitted edits inside the generated trees. |
+| `spec:validate` | Strict `openspec validate` over `openspec/`, a bite-check (a committed malformed fixture must fail validation, run against a temp copy), the `spec_lib` parser self-test (`scripts/test/test_spec_lib.py`), the staleness-gate merge-attribution bite-check (`scripts/check-staleness-gate-bite.sh`: six scenarios over a throwaway fixture repo, controls first; skips loudly on git < 2.38), the source-ownership partition assert (`scripts/check-spec-partition.py`: exclusivity + completeness over the enumerated universe per ADR-0015), and an offline `lychee` pass. Run verbatim by `docs-lint.yml`. Precondition: `task spec:install-cli` + `task knowledge:install-cli` (lychee). |
 | `spec:install-cli` | Install the lockfile-pinned `openspec` CLI: shared `npm ci --ignore-scripts` (integrity-verified via `package-lock.json`) + `~/.local/bin` symlink. Precondition: `npm`. |
-| `spec:check-staleness` | Staleness gate: fail when the diff against `BASE` (default `origin/main`) touches a spec's `primary` source without touching the owning spec (`scripts/check-spec-staleness.py`; fragment-keyed sources fire at fragment granularity, fail-closed on unresolvable fragments). Escape for verified no-behavior-change diffs: `Spec-Impact: none` trailer in the BODY of every commit touching the file (per-commit scope). Run by `docs-lint.yml` on PRs. |
+| `spec:check-regen` | Regeneration parity: whole-tree delta after `openspec update --force` must be empty — the committed tool trees equal the pinned generator's output (parity only, not benignity). Run verbatim by `docs-lint.yml`. Overwrites uncommitted edits inside the generated trees. |
+| `spec:check-staleness` | Staleness gate: fail when the diff against `BASE` (default `origin/main`) touches a spec's `primary` source without touching the owning spec (`scripts/check-spec-staleness.py`; fragment-keyed sources fire at fragment granularity, fail-closed on unresolvable fragments). Escape for verified no-behavior-change diffs: `Spec-Impact: none` trailer in the BODY of every commit that CONTRIBUTED to the file — a base-sync merge does not count as one; attribution rule and its two failure directions: [spec-driven-development](../workflows/spec-driven-development.md). Run by `docs-lint.yml` on PRs. |
 | `spec:update` | Regenerate the committed OpenSpec tool integrations (`.claude/`, `.codex/`) after a CLI upgrade; fails when the regeneration emitted paths `.gitignore` still ignores (delta-based gate). Regenerated diffs are security-relevant review surface (ADR-0014). |
 
 ## `docs:*` — repo-wide markdown lint
@@ -158,7 +167,9 @@ the pinned Taskfile vars above. See the MCP setup workflow
 | --- | --- |
 | `dev:install-pre-commit` | `uvx pre-commit install` + one advisory run across the repo. |
 | `dev:verify-tools` | Confirm installed binaries match the `.tool-versions` pins (`scripts/verify-tools.sh`). |
-| `dev:verify-pins` | Assert the Taskfile `vars:` pins (openknowledge, lychee) and the `package.json` pins (openspec, markdownlint-cli) agree with `.tool-versions`. Run verbatim by `docs-lint.yml`. |
+| `dev:verify-pins` | Assert the Taskfile `vars:` pins (openknowledge, lychee) and the `package.json` pins (openspec, markdownlint-cli) agree with `.tool-versions`, and that every `package-lock.json`-resolved package points at the official `registry.npmjs.org` (supply-chain provenance guard). Run verbatim by `docs-lint.yml`. |
+
+Deliberately absent from this table: `dev:npm-ci`, declared `internal: true` in `Taskfile.yml` and therefore hidden from `task --list` — the live inventory this page mirrors. It is the shared `npm ci --ignore-scripts` step that `docs:install-cli` and `spec:install-cli` both declare as a dependency (`deps: [dev:npm-ci]`). `Deliberately absent from this table:` is a fixed lead-in marker: the planned inventory-parity fence (issue #200) will read a table's exemption list from a note carrying this exact lead-in, naming the exempt tasks as the backticked task names that follow it in the same paragraph.
 
 ## Makefile deprecation stub
 

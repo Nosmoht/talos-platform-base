@@ -1,0 +1,5 @@
+[validation.rules]
+link-target = "error"
+rule-catalog = "error"
+"okf-0.2-metadata" = "error"
+okf-version = "error"

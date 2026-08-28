@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  # Casbin subjects share ONE flat, unprefixed namespace: a username and a group
+  # value are indistinguishable here. Binding against an immutable group ID
+  # (rather than a display name) avoids both the collision and a silent re-grant
+  # when the group is renamed upstream.
+  policy.csv: |
+    g, platform-admins, role:admin
+
+  # Which claim the subjects above are read from. Pinned explicitly even though
+  # it matches the chart default: `policy.csv` and `scopes` are a PAIR, and
+  # carrying one without the other is the documented lockout path — the policy
+  # would be matched against a claim it was never written for.
+  scopes: '[groups]'
