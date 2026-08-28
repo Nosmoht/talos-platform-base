@@ -24,12 +24,16 @@ under the new version heading; the historical backfill below it stays put.
   install. The keys are reachable from `cluster.yaml`
   (`cluster.controlplane_apply_mode` / `cluster.worker_apply_mode`) and the
   module exposes a `node_apply_mode` output, which is the only signal that a
-  window is open — health stays green and the next plan is clean while it is.
-  The procedure and its two traps (revert to `auto` LAST; do not add nodes
-  during a window) are in the module README; see
+  window is open — it reports the configured mode, never what a node holds, and
+  health stays green and the next plan is clean while a window is open.
+  What the window obliges an operator to — the revert-last invariant, which roles
+  a change reaches, and the Talos 1.14 behaviour change — is the module README's
+  §"Staged machine-config roll (Day-2)"; the reboot sequence itself is a
+  consumer-side procedure, since rehearsing it needs a cluster. See
   [`knowledge/decisions/0026-machine-config-apply-mode.md`](knowledge/decisions/0026-machine-config-apply-mode.md),
-  which also records why `staged_if_needing_reboot` is documented but not
-  recommended.
+  which also records why `staged_if_needing_reboot` is documented but
+  rejected — the module's validation refuses it, so setting it fails at plan
+  time rather than merely being discouraged.
 - **Fixed — the MAJOR-bump guard no longer blocks on files no consumer
   receives.** Its surface set moved out of `.github/workflows/release.yml` into
   `.ci-release-guard-pathspec.txt` (membership rule in that file's header), with
