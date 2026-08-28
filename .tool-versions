@@ -40,7 +40,7 @@
 # backstop, not the review. The telemetry one earns its place because the
 # switch is an env var the CLI reads as ENABLED whenever it does not recognise
 # the value, so a rename lands on the permissive side without an error.
-helm 3.20.2
+helm 4.2.4
 kustomize 5.8.1
 oras 1.3.4
 cosign 3.1.3
