@@ -12,9 +12,9 @@ name: Preflight
 
 on:
   workflow_dispatch:
-  # No branches:/paths: filter on the PR trigger. A required check that a PR
-  # never starts stays "Expected" forever, so a PR based on anything but main
-  # would be unmergeable rather than gated.
+  # No branches: filter — preflight is a required check on main, and retargeting
+  # a PR onto main fires pull_request: edited, not a default activity type.
+  # Under a base filter that PR produces no run and stays "Expected".
   pull_request:
   push:
     branches:

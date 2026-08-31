@@ -2,10 +2,10 @@ name: Hard Constraints Check
 
 # Enforces cluster-wide invariants from AGENTS.md §Hard Constraints.
 # Runs on PR diffs only — does not scan the entire repo history.
-# The required branch-protection context on main is the check-run name
-# "Hard Constraints" — jobs.hard-constraints.name below. Renaming that job
-# drops the gate silently: the protection setting keeps waiting for a context
-# no run produces, so update both together.
+# The required branch-protection context on main is the bare check-run name
+# "Hard Constraints" — jobs.hard-constraints.name below. The same string is
+# hard-coded in scripts/preflight-checks.sh Check 1, so a rename has three
+# sites: that job name, the protection setting, and that script.
 
 on:
   pull_request:
