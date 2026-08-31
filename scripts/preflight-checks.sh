@@ -48,6 +48,12 @@ gh_api_or_empty() {
   case "$out" in
     *'"message":"Not Found"'*) ;;
     *'"message":"Resource not accessible'*) ;;
+    # A scope refusal is "could not read", not "read an empty answer". Without
+    # this arm the body is returned, every jq lookup yields empty, and a check
+    # reports the setting as absent when it was never visible -- which is how
+    # Check 3 came to claim tag immutability was off under a token lacking
+    # read:packages.
+    *'"status":"403"'*) ;;
     *) printf '%s' "$out" ;;
   esac
   return 0
@@ -173,7 +179,7 @@ if [ -z "$PKG_JSON" ]; then
 fi
 
 if [ -z "$PKG_JSON" ]; then
-  warn_annot "Check 3 SKIP — package ghcr.io/${OWNER}/${PKG_NAME} not found (likely no release yet) — verify after first publish."
+  warn_annot "Check 3 SKIP — could not read package ghcr.io/${OWNER}/${PKG_NAME}: it does not exist yet, or the token lacks read:packages. This is NOT evidence that tag immutability is off — check the package settings page directly."
 else
   IMMUTABLE="$(printf '%s' "$PKG_JSON" | jq -r '.tag_immutability // .visibility_settings.tag_immutability // empty')"
   case "$IMMUTABLE" in
