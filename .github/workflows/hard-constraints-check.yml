@@ -2,8 +2,10 @@ name: Hard Constraints Check
 
 # Enforces cluster-wide invariants from AGENTS.md §Hard Constraints.
 # Runs on PR diffs only — does not scan the entire repo history.
-# Must be added as a required status check in Branch Protection Rules.
-# Settings → Branches → main → Require status checks → "Hard Constraints Check / hard-constraints"
+# The required branch-protection context on main is the check-run name
+# "Hard Constraints" — jobs.hard-constraints.name below. Renaming that job
+# drops the gate silently: the protection setting keeps waiting for a context
+# no run produces, so update both together.
 
 on:
   pull_request:
