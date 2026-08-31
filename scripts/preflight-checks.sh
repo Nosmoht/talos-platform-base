@@ -211,8 +211,15 @@ else
   # is the PR title -- contributor-authored text in the exact field the guard
   # parses, on a two-parent commit where its merge-commit rule cannot
   # discriminate. BLANK removes that channel rather than filtering it.
+  #
+  # merge_commit_title=PR_TITLE, not MERGE_MESSAGE: GitHub accepts only three
+  # title/message combinations -- PR_TITLE+PR_BODY, PR_TITLE+BLANK,
+  # MERGE_MESSAGE+PR_TITLE -- and rejects MERGE_MESSAGE+BLANK with
+  # invalid_merge_commit_setting_combo. PR_TITLE+BLANK is the only accepted pair
+  # that leaves the body empty, and the subject it uses is itself constrained by
+  # the required lint-pr-title check.
   for pair in "allow_squash_merge|false" "allow_rebase_merge|false" \
-              "merge_commit_message|BLANK" "merge_commit_title|MERGE_MESSAGE"; do
+              "merge_commit_message|BLANK" "merge_commit_title|PR_TITLE"; do
     key="${pair%|*}"; want="${pair#*|}"
     got="$(printf '%s' "$REPO_JSON" | jq -r ".${key}")"
     if [ "$got" = "$want" ]; then

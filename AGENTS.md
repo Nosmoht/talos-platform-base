@@ -229,6 +229,8 @@ blocks again. See
 | AWS/GitHub tokens in any file | pre-commit `gitleaks` hook | Credential-leak prevention at authoring time |
 | `git commit --no-verify` bypass | CI `gitleaks` in `gitops-validate.yml` `secret-scan`, required PR check | Last backstop — blocks the merge even when the local hook was skipped |
 | Forbidden Kubernetes kinds (Ingress, Endpoints) | CI `hard-constraints-check.yml`, required context `Hard Constraints` | Server-side enforcement of §Hard Constraints |
+| Non-Conventional PR title reaching the merge subject | CI `commitlint.yml`, required context `lint-pr-title` | `merge_commit_title=PR_TITLE` makes the PR title the merge subject, and `release.yml` derives the version bump from it |
+| Contributor-authored text in the merge-commit body | Repo setting `merge_commit_message=BLANK`, squash and rebase merges disabled | The release guard's `Allow-Non-Major:` attestation is only maintainer-owned while the body cannot carry contributor text — asserted by `scripts/preflight-checks.sh` Check 4 |
 | SOPS plaintext leak (consumer-side) | pre-commit plus a PreToolUse hook, both in the consumer repo | Plaintext secrets must never reach git; this base ships no SOPS gate because it holds no SOPS material |
 
 ## ADR Coverage
