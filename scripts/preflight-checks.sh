@@ -12,11 +12,19 @@
 # Run in CI:          via .github/workflows/preflight.yml
 #
 # Requires: gh (authenticated), jq.
+#
+# Runs from .github/workflows/policy-audit.yml with a GitHub App token holding
+# Administration:read, and locally with admin gh auth. It is deliberately NOT
+# attached to pull requests: it asserts account policy rather than the diff, and
+# the default GITHUB_TOKEN cannot read a single one of the four settings below —
+# a PR-attached run reported success without having looked at anything.
+#
+# Because every caller is supposed to be able to read, an unreadable setting is
+# a failure here, not a warning. A green run means verified.
 set -eu
 
 REPO="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
 OWNER="${REPO%/*}"
-PKG_NAME="talos-platform-base"
 
 red() { printf '\033[31m%s\033[0m\n' "$1" >&2; }
 green() { printf '\033[32m%s\033[0m\n' "$1"; }
@@ -48,6 +56,12 @@ gh_api_or_empty() {
   case "$out" in
     *'"message":"Not Found"'*) ;;
     *'"message":"Resource not accessible'*) ;;
+    # A scope refusal is "could not read", not "read an empty answer". Without
+    # this arm the body is returned, every jq lookup yields empty, and a check
+    # reports the setting as absent when it was never visible -- which is how
+    # Check 3 came to claim tag immutability was off under a token lacking
+    # read:packages.
+    *'"status":"403"'*) ;;
     *) printf '%s' "$out" ;;
   esac
   return 0
@@ -80,7 +94,8 @@ if [ -z "$PROTECTION_JSON" ]; then
   # not exposable via workflow `permissions`). Treat as WARN in CI; a
   # repo admin running the script locally will get a definitive
   # answer.
-  warn_annot "Check 1 SKIP — could not read branch protection on ${REPO}/main. Token may lack admin scope (default in CI) OR branch protection is not configured. Run locally with admin gh auth for a definitive answer; configure at https://github.com/${REPO}/settings/branches"
+  err "Check 1 — could not read branch protection on ${REPO}/main. The App token needs Administration:read, or branch protection is not configured."
+  FAIL=1
 else
   CONTEXTS="$(printf '%s' "$PROTECTION_JSON" | jq -r '.required_status_checks.contexts[]? // empty')"
   # POSIX-sh: a while-pipe runs in a subshell and cannot mutate FAIL in
@@ -89,7 +104,6 @@ else
   for line in "Hard Constraints Check / Hard Constraints|Hard Constraints" \
               "GitOps Validate / validate|validate" \
               "GitOps Validate / Secret Scan (gitleaks)|Secret Scan (gitleaks)" \
-              "Preflight / preflight|preflight" \
               "docs-lint / docs-lint|docs-lint" \
               "Commit Lint / lint-pr-title|lint-pr-title"; do
     qualified="${line%|*}"
@@ -121,7 +135,8 @@ if [ -z "$PERMS_JSON" ]; then
 fi
 
 if [ -z "$PERMS_JSON" ]; then
-  warn_annot "Check 2 SKIP — cannot query actions permissions for ${OWNER} (insufficient API permissions; CI GITHUB_TOKEN lacks admin scope). Verify allow-list manually before next release."
+  err "Check 2 — cannot read the Actions permissions for ${OWNER}. The App token needs Administration:read."
+  FAIL=1
 else
   ALLOWED="$(printf '%s' "$PERMS_JSON" | jq -r '.allowed_actions // empty')"
   case "$ALLOWED" in
@@ -158,35 +173,33 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Check 3: GHCR tag immutability for the published package.
-# Note: tag_immutability is a per-package setting only configurable via
-# the package's settings page on github.com (no public REST API as of
-# 2026-Q1). When the API does not surface the field, downgrade to a
-# WARNING so this script does not block routine pushes. The check still
-# emits an actionable hint pointing at the settings URL.
+# Check 3: repository release immutability.
+#
+# This check used to assert a per-package "tag immutability" setting on the
+# GHCR package. No such setting exists -- it is absent from the package
+# settings page and from the API -- so the check could never pass, and read it
+# as disabled. What GitHub does offer is release immutability: a published
+# release and its git tag cannot be replaced or deleted.
+#
+# Scope, stated plainly: this protects the release object, NOT the container
+# image. A `v*` tag in GHCR can still be moved onto a different image, so
+# consumers pin the digest, per knowledge/workflows/verify-release.md.
 # ---------------------------------------------------------------------------
-printf '\n=== Check 3: GHCR tag immutability ===\n'
+printf '\n=== Check 3: release immutability ===\n'
 
-PKG_JSON="$(gh_api_or_empty "orgs/${OWNER}/packages/container/${PKG_NAME}")"
-if [ -z "$PKG_JSON" ]; then
-  PKG_JSON="$(gh_api_or_empty "users/${OWNER}/packages/container/${PKG_NAME}")"
-fi
-
-if [ -z "$PKG_JSON" ]; then
-  warn_annot "Check 3 SKIP — package ghcr.io/${OWNER}/${PKG_NAME} not found (likely no release yet) — verify after first publish."
+IMM_JSON="$(gh_api_or_empty "repos/${REPO}/immutable-releases")"
+if [ -z "$IMM_JSON" ]; then
+  err "Check 3 — could not read release immutability for ${REPO}. The App token needs Administration:read."
+  FAIL=1
 else
-  IMMUTABLE="$(printf '%s' "$PKG_JSON" | jq -r '.tag_immutability // .visibility_settings.tag_immutability // empty')"
-  case "$IMMUTABLE" in
-    true)
-      green "  OK: tag_immutability=true"
-      ;;
-    false|'')
-      warn_annot "GHCR tag immutability is not yet enabled for ghcr.io/${OWNER}/${PKG_NAME}. Enable at https://github.com/${OWNER}/${REPO#*/}/pkgs/container/${PKG_NAME}/settings (Tag Immutability) before the next signed release. Without it, cosign signatures can be undermined by tag overwrite."
-      ;;
-    *)
-      yellow "  WARN: unexpected tag_immutability value: ${IMMUTABLE}"
-      ;;
-  esac
+  IMMUTABLE="$(printf '%s' "$IMM_JSON" | jq -r '.enabled')"
+  if [ "$IMMUTABLE" = "true" ]; then
+    green "  OK: release immutability is enabled"
+  else
+    err "release immutability is disabled — a published release and its tag can be replaced, so a signed release can be swapped after the fact"
+    yellow "  Hint: gh api -X PUT repos/${REPO}/immutable-releases"
+    FAIL=1
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -205,20 +218,28 @@ printf '\n=== Check 4: merge methods (release-guard attestation premise) ===\n'
 
 REPO_JSON="$(gh_api_or_empty "repos/${REPO}")"
 if [ -z "$REPO_JSON" ]; then
-  warn_annot "Check 4 SKIP — could not read the repository object for ${REPO}."
+  err "Check 4 — could not read the repository object for ${REPO}."
+  FAIL=1
 else
   # merge_commit_message=BLANK, not PR_TITLE: with PR_TITLE the merge commit BODY
   # is the PR title -- contributor-authored text in the exact field the guard
   # parses, on a two-parent commit where its merge-commit rule cannot
   # discriminate. BLANK removes that channel rather than filtering it.
+  #
+  # merge_commit_title=PR_TITLE, not MERGE_MESSAGE: GitHub accepts only three
+  # title/message combinations -- PR_TITLE+PR_BODY, PR_TITLE+BLANK,
+  # MERGE_MESSAGE+PR_TITLE -- and rejects MERGE_MESSAGE+BLANK with
+  # invalid_merge_commit_setting_combo. PR_TITLE+BLANK is the only accepted pair
+  # that leaves the body empty, and the subject it uses is itself constrained by
+  # the required lint-pr-title check.
   for pair in "allow_squash_merge|false" "allow_rebase_merge|false" \
-              "merge_commit_message|BLANK" "merge_commit_title|MERGE_MESSAGE"; do
+              "merge_commit_message|BLANK" "merge_commit_title|PR_TITLE"; do
     key="${pair%|*}"; want="${pair#*|}"
     got="$(printf '%s' "$REPO_JSON" | jq -r ".${key}")"
     if [ "$got" = "$want" ]; then
       green "  OK: ${key}=${got}"
     elif [ "$got" = "null" ]; then
-      warn_annot "Check 4 SKIP for ${key} — the token cannot read it (needs admin/push scope; the default CI token cannot). Run locally with admin gh auth for a definitive answer."
+      err "Check 4 — cannot read ${key}. The App token needs Administration:read."; FAIL=1
     else
       err "${key} is '${got}', expected '${want}' — the Allow-Non-Major attestation is only maintainer-owned under merge-commit-only"
       yellow "  Hint: https://github.com/${REPO}/settings — Pull Requests, merge button options"

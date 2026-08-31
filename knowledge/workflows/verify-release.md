@@ -3,7 +3,7 @@ type: workflow
 title: Verify a Base Release
 description: Fail-closed verification of a published talos-platform-base OCI artifact — signature, provenance, SBOM attestation, and checksums — before vendoring.
 tags: [supply-chain, cosign, verification]
-generated: { by: human:nosmoht, at: "2026-07-11T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-08-31T00:00:00Z" }
 sources:
   - resource: .github/workflows/oci-publish.yml
   - resource: .ci-oci-tarball-include.txt
@@ -166,9 +166,12 @@ Fail-closed, every step:
 - SBOM attestation missing → do not vendor.
 - `sha256sum -c` mismatch → do not vendor.
 
-Pin `vendor/base/` consumption to the verified `<tag>` (or better, the pinned
-`@<digest>`); GHCR tag immutability plus digest pinning prevents tag
-reassignment from silently changing what you vendor.
+Pin `vendor/base/` consumption to the pinned `@<digest>`, not the `<tag>`.
+The digest is the only thing that prevents tag reassignment from silently
+changing what you vendor: the GitHub Container registry offers no immutable-tag
+setting, so a `v*` tag there can be moved onto a different image. Repository
+releases are immutable (the git tag and its release assets cannot be replaced),
+which covers the release object but not the published image.
 
 ## Related
 

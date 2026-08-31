@@ -21,7 +21,10 @@ name: docs-lint
 # can run. Its honest scope is this file against .tool-versions — it does not
 # observe the installed binary, and it does not reach tofu-validate.yml's pins.
 on:
+  # `edited` for the same reason as hard-constraints-check.yml: spec:check-staleness
+  # below runs against origin/$BASE_REF, and a base retarget fires no other event.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 

@@ -1,0 +1,41 @@
+name: Policy Audit
+
+# Runs scripts/preflight-checks.sh with a GitHub App token that can read branch
+# protection and repository settings. The PR-attached `preflight` job runs the
+# same script with the default GITHUB_TOKEN, which cannot read those and skips
+# the checks that depend on them -- it reports success without having looked.
+# This workflow is where Check 1 and Check 4 are enforcing.
+#
+# Deliberately not PR-attached: the script asserts account policy, never the
+# diff, and a PR job checks out the pull request's own tree. An App token has no
+# business in a job that runs code from a pull request.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  policy-audit:
+    name: policy-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        id: app-token
+        with:
+          # App ID is stored as a secret rather than a variable here; it is not
+          # sensitive, but the pairing with the key is what matters.
+          app-id: ${{ secrets.PREFLIGHT_APP_ID }}
+          private-key: ${{ secrets.PREFLIGHT_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Run preflight checks
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash scripts/preflight-checks.sh

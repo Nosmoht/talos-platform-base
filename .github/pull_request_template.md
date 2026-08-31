@@ -43,13 +43,15 @@ These run automatically; PR is blocked until all are green.
 - [ ] `hard-constraints-check` — no `Ingress`, no `Endpoints`, no SecureBoot installer, no `debugfs=off`
 - [ ] `secret-scan` (gitleaks) — last backstop on bypassed pre-commit
 - [ ] `docs-lint` — markdownlint + OKF bundle validation + offline link gate + AGENTS.md managed-block drift + the release-guard coverage/bite checks
-- [ ] `preflight` — release-time org-policy preconditions (branch protection,
-      Actions allowlist, GHCR tag immutability, merge methods)
+- [ ] `lint-pr-title` — Conventional-Commit PR title; it becomes the merge
+      subject, which `release.yml` reads
 
-`Commit Lint` (Conventional-Commit PR title) becomes required once the
-merge-method settings land; until then it runs and is worth reading, but does
-not block. `scripts/preflight-checks.sh` Check 1 is the source of truth for the
-required set — this list is a convenience copy.
+Account policy (branch protection, Actions allowlist, release immutability,
+merge methods) is not checked here: the default token cannot read any of it, so
+a PR-attached check could only report success without looking. It runs weekly
+in `policy-audit.yml` with an App token instead. `scripts/preflight-checks.sh`
+Check 1 is the source of truth for the required set — this list is a
+convenience copy.
 
 Not merge-blocking, but run on every PR and worth reading:
 `hardware-features-check`, `OCI Allowlist Check`, `tofu-validate`,

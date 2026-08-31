@@ -705,6 +705,22 @@ collisions only:
   regenerated tool trees as security-relevant review surface; CI
   regeneration-parity gate documented.
 
+## 2026-08-31
+
+- `decisions/0020-automated-release-no-approval-gate.md`: amendment recording
+  that the merge-method settings landed, that `merge_commit_title` is
+  `PR_TITLE`, and that Check 4 now runs in CI under an App token.
+- `project/openssf-self-assessment.md`: new dated verification of the required
+  contexts — `lint-pr-title` added, `preflight` removed with its workflow.
+- `workflows/release-process.md`: the title lint is required; the merge subject
+  is the PR title.
+- `decisions/0015-openspec-adoption.md`: the repo-internal CI list names
+  `policy-audit` where it named the deleted `preflight`.
+- `workflows/verify-release.md`: the tag-reassignment paragraph no longer
+  credits a GHCR tag-immutability setting, which does not exist. Digest pinning
+  is named as the only protection for the image; repository release
+  immutability is described for what it does cover.
+
 ## 2026-07-11
 
 - Initial OKF v0.1 bundle. Replaces the retired `docs/` tree: architecture,
