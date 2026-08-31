@@ -1,4 +1,3 @@
-# SPDX-License-Identifier: MIT
 name: Policy Audit
 
 # Runs scripts/preflight-checks.sh with a GitHub App token that can read branch
