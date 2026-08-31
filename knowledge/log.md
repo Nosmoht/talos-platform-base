@@ -707,6 +707,9 @@ collisions only:
 
 ## 2026-08-31
 
+- `decisions/0020-automated-release-no-approval-gate.md`: second amendment —
+  the merge settings are unreadable under the audit App token, so Check 4 falls
+  back to checking the merge effect on `main`.
 - `decisions/0020-automated-release-no-approval-gate.md`: amendment recording
   that the merge-method settings landed, that `merge_commit_title` is
   `PR_TITLE`, and that Check 4 now runs in CI under an App token.
