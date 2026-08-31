@@ -213,3 +213,26 @@ PR-attached `preflight` workflow that could not read any of these fields is
 deleted: it reported success without looking, which is worse than no check. An
 unreadable setting is now a failure rather than a warning, so a green run means
 the setting was read.
+
+## Amendment (2026-08-31, second)
+
+**Correction to the amendment above: the merge settings are not readable from
+CI at all.** That entry said Check 4 now runs in CI under an App token with
+`Administration:read`. Measured on two `policy-audit.yml` runs, it does not:
+`allow_squash_merge`, `allow_rebase_merge`, `merge_commit_message` and
+`merge_commit_title` come back `null` under `Administration:read`, and adding
+`Contents:read` changed nothing. Only an admin-scoped credential fills them in.
+Checks 1 to 3 do work under that App token.
+
+Rather than give a read-only audit token write permission on repository
+administration, Check 4 falls back to the **effect** when the settings are
+unreadable: the newest commit on `main` must have two parents. Squash and
+rebase both leave a single-parent tip, so a one-parent newest commit means one
+of them is enabled again — which is the half of the setting the attack needs,
+since squash is what concatenates a contributor's commit body into the tip the
+guard parses. The body itself is deliberately not checked: a maintainer-typed
+body is legitimate, it is where `Allow-Non-Major:` goes.
+
+Cost, stated rather than hidden: the effect check trails by one merge. It
+notices a reverted setting only after a merge has happened under it. The direct
+reading stays the primary path on a local admin run.

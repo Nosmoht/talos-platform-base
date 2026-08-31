@@ -25,6 +25,7 @@ set -eu
 
 REPO="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
 OWNER="${REPO%/*}"
+DEFAULT_BRANCH="main"
 
 red() { printf '\033[31m%s\033[0m\n' "$1" >&2; }
 green() { printf '\033[32m%s\033[0m\n' "$1"; }
@@ -209,10 +210,21 @@ fi
 # it; rebase-merge makes the tip an author-authored commit. Either one makes the
 # attestation forgeable by any contributor.
 #
-# Measured: the default CI token reads these fields back as null, so this SKIPs
-# in CI and is a local-admin gate. The control that holds without it lives in the
-# guard, which refuses a trailer that is not preceded by maintainer prose on a
-# two-parent commit. ADR-0020 §Amendment records the dependency.
+# Two ways to check it, because the settings are not readable from CI. Measured
+# 2026-08-31: neither the default GITHUB_TOKEN nor an App token with
+# Administration:read + Contents:read gets these fields — they come back null,
+# and only an admin-scoped credential fills them in.
+#
+# So: read the settings when the credential can (local admin run), and otherwise
+# check the EFFECT on main — the newest merge commit must have two parents.
+# Squash and rebase both produce a single-parent tip, so a one-parent newest
+# merge means one of them was re-enabled. That is the half of the setting the
+# attack actually needs: squash concatenates contributor commit bodies into the
+# tip the guard parses. The body itself is not checkable this way, because a
+# maintainer-typed body is legitimate — it is where Allow-Non-Major goes.
+#
+# The effect check is one merge behind by construction: it sees a reverted
+# setting only after a merge happened under it.
 # ---------------------------------------------------------------------------
 printf '\n=== Check 4: merge methods (release-guard attestation premise) ===\n'
 
@@ -239,13 +251,32 @@ else
     if [ "$got" = "$want" ]; then
       green "  OK: ${key}=${got}"
     elif [ "$got" = "null" ]; then
-      err "Check 4 — cannot read ${key}. The App token needs Administration:read."; FAIL=1
+      UNREADABLE=1
     else
       err "${key} is '${got}', expected '${want}' — the Allow-Non-Major attestation is only maintainer-owned under merge-commit-only"
       yellow "  Hint: https://github.com/${REPO}/settings — Pull Requests, merge button options"
       FAIL=1
     fi
   done
+
+  if [ "${UNREADABLE:-0}" = "1" ]; then
+    yellow "  NOTE: merge settings not readable with this credential — checking the effect on the default branch instead."
+    HEAD_JSON="$(gh_api_or_empty "repos/${REPO}/commits/${DEFAULT_BRANCH}")"
+    if [ -z "$HEAD_JSON" ]; then
+      err "Check 4 — could not read ${DEFAULT_BRANCH} to check the merge effect."
+      FAIL=1
+    else
+      PARENTS="$(printf '%s' "$HEAD_JSON" | jq -r '.parents | length')"
+      SUBJECT="$(printf '%s' "$HEAD_JSON" | jq -r '.commit.message' | head -1)"
+      if [ "$PARENTS" -ge 2 ]; then
+        green "  OK: newest commit on ${DEFAULT_BRANCH} is a merge commit (${PARENTS} parents): ${SUBJECT}"
+      else
+        err "newest commit on ${DEFAULT_BRANCH} has ${PARENTS} parent — squash or rebase merging is enabled again, which lets a contributor's commit body reach the tip the release guard parses"
+        yellow "  Hint: https://github.com/${REPO}/settings — Pull Requests, merge button options"
+        FAIL=1
+      fi
+    fi
+  fi
 fi
 
 printf '\n'
