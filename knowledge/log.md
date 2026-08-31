@@ -705,6 +705,13 @@ collisions only:
   regenerated tool trees as security-relevant review surface; CI
   regeneration-parity gate documented.
 
+## 2026-08-31
+
+- `workflows/verify-release.md`: the tag-reassignment paragraph no longer
+  credits a GHCR tag-immutability setting, which does not exist. Digest pinning
+  is named as the only protection for the image; repository release
+  immutability is described for what it does cover.
+
 ## 2026-07-11
 
 - Initial OKF v0.1 bundle. Replaces the retired `docs/` tree: architecture,

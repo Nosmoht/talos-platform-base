@@ -16,7 +16,6 @@ set -eu
 
 REPO="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
 OWNER="${REPO%/*}"
-PKG_NAME="talos-platform-base"
 
 red() { printf '\033[31m%s\033[0m\n' "$1" >&2; }
 green() { printf '\033[32m%s\033[0m\n' "$1"; }
@@ -164,35 +163,32 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Check 3: GHCR tag immutability for the published package.
-# Note: tag_immutability is a per-package setting only configurable via
-# the package's settings page on github.com (no public REST API as of
-# 2026-Q1). When the API does not surface the field, downgrade to a
-# WARNING so this script does not block routine pushes. The check still
-# emits an actionable hint pointing at the settings URL.
+# Check 3: repository release immutability.
+#
+# This check used to assert a per-package "tag immutability" setting on the
+# GHCR package. No such setting exists -- it is absent from the package
+# settings page and from the API -- so the check could never pass, and read it
+# as disabled. What GitHub does offer is release immutability: a published
+# release and its git tag cannot be replaced or deleted.
+#
+# Scope, stated plainly: this protects the release object, NOT the container
+# image. A `v*` tag in GHCR can still be moved onto a different image, so
+# consumers pin the digest, per knowledge/workflows/verify-release.md.
 # ---------------------------------------------------------------------------
-printf '\n=== Check 3: GHCR tag immutability ===\n'
+printf '\n=== Check 3: release immutability ===\n'
 
-PKG_JSON="$(gh_api_or_empty "orgs/${OWNER}/packages/container/${PKG_NAME}")"
-if [ -z "$PKG_JSON" ]; then
-  PKG_JSON="$(gh_api_or_empty "users/${OWNER}/packages/container/${PKG_NAME}")"
-fi
-
-if [ -z "$PKG_JSON" ]; then
-  warn_annot "Check 3 SKIP — could not read package ghcr.io/${OWNER}/${PKG_NAME}: it does not exist yet, or the token lacks read:packages. This is NOT evidence that tag immutability is off — check the package settings page directly."
+IMM_JSON="$(gh_api_or_empty "repos/${REPO}/immutable-releases")"
+if [ -z "$IMM_JSON" ]; then
+  warn_annot "Check 3 SKIP — could not read release immutability for ${REPO} (the token may lack the required scope). This is NOT evidence that it is off."
 else
-  IMMUTABLE="$(printf '%s' "$PKG_JSON" | jq -r '.tag_immutability // .visibility_settings.tag_immutability // empty')"
-  case "$IMMUTABLE" in
-    true)
-      green "  OK: tag_immutability=true"
-      ;;
-    false|'')
-      warn_annot "GHCR tag immutability is not yet enabled for ghcr.io/${OWNER}/${PKG_NAME}. Enable at https://github.com/${OWNER}/${REPO#*/}/pkgs/container/${PKG_NAME}/settings (Tag Immutability) before the next signed release. Without it, cosign signatures can be undermined by tag overwrite."
-      ;;
-    *)
-      yellow "  WARN: unexpected tag_immutability value: ${IMMUTABLE}"
-      ;;
-  esac
+  IMMUTABLE="$(printf '%s' "$IMM_JSON" | jq -r '.enabled')"
+  if [ "$IMMUTABLE" = "true" ]; then
+    green "  OK: release immutability is enabled"
+  else
+    err "release immutability is disabled — a published release and its tag can be replaced, so a signed release can be swapped after the fact"
+    yellow "  Hint: gh api -X PUT repos/${REPO}/immutable-releases"
+    FAIL=1
+  fi
 fi
 
 # ---------------------------------------------------------------------------
