@@ -12,6 +12,15 @@
 # Run in CI:          via .github/workflows/preflight.yml
 #
 # Requires: gh (authenticated), jq.
+#
+# Runs from .github/workflows/policy-audit.yml with a GitHub App token holding
+# Administration:read, and locally with admin gh auth. It is deliberately NOT
+# attached to pull requests: it asserts account policy rather than the diff, and
+# the default GITHUB_TOKEN cannot read a single one of the four settings below —
+# a PR-attached run reported success without having looked at anything.
+#
+# Because every caller is supposed to be able to read, an unreadable setting is
+# a failure here, not a warning. A green run means verified.
 set -eu
 
 REPO="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
@@ -85,7 +94,8 @@ if [ -z "$PROTECTION_JSON" ]; then
   # not exposable via workflow `permissions`). Treat as WARN in CI; a
   # repo admin running the script locally will get a definitive
   # answer.
-  warn_annot "Check 1 SKIP — could not read branch protection on ${REPO}/main. Token may lack admin scope (default in CI) OR branch protection is not configured. Run locally with admin gh auth for a definitive answer; configure at https://github.com/${REPO}/settings/branches"
+  err "Check 1 — could not read branch protection on ${REPO}/main. The App token needs Administration:read, or branch protection is not configured."
+  FAIL=1
 else
   CONTEXTS="$(printf '%s' "$PROTECTION_JSON" | jq -r '.required_status_checks.contexts[]? // empty')"
   # POSIX-sh: a while-pipe runs in a subshell and cannot mutate FAIL in
@@ -94,7 +104,6 @@ else
   for line in "Hard Constraints Check / Hard Constraints|Hard Constraints" \
               "GitOps Validate / validate|validate" \
               "GitOps Validate / Secret Scan (gitleaks)|Secret Scan (gitleaks)" \
-              "Preflight / preflight|preflight" \
               "docs-lint / docs-lint|docs-lint" \
               "Commit Lint / lint-pr-title|lint-pr-title"; do
     qualified="${line%|*}"
@@ -126,7 +135,8 @@ if [ -z "$PERMS_JSON" ]; then
 fi
 
 if [ -z "$PERMS_JSON" ]; then
-  warn_annot "Check 2 SKIP — cannot query actions permissions for ${OWNER} (insufficient API permissions; CI GITHUB_TOKEN lacks admin scope). Verify allow-list manually before next release."
+  err "Check 2 — cannot read the Actions permissions for ${OWNER}. The App token needs Administration:read."
+  FAIL=1
 else
   ALLOWED="$(printf '%s' "$PERMS_JSON" | jq -r '.allowed_actions // empty')"
   case "$ALLOWED" in
@@ -179,7 +189,8 @@ printf '\n=== Check 3: release immutability ===\n'
 
 IMM_JSON="$(gh_api_or_empty "repos/${REPO}/immutable-releases")"
 if [ -z "$IMM_JSON" ]; then
-  warn_annot "Check 3 SKIP — could not read release immutability for ${REPO} (the token may lack the required scope). This is NOT evidence that it is off."
+  err "Check 3 — could not read release immutability for ${REPO}. The App token needs Administration:read."
+  FAIL=1
 else
   IMMUTABLE="$(printf '%s' "$IMM_JSON" | jq -r '.enabled')"
   if [ "$IMMUTABLE" = "true" ]; then
@@ -207,7 +218,8 @@ printf '\n=== Check 4: merge methods (release-guard attestation premise) ===\n'
 
 REPO_JSON="$(gh_api_or_empty "repos/${REPO}")"
 if [ -z "$REPO_JSON" ]; then
-  warn_annot "Check 4 SKIP — could not read the repository object for ${REPO}."
+  err "Check 4 — could not read the repository object for ${REPO}."
+  FAIL=1
 else
   # merge_commit_message=BLANK, not PR_TITLE: with PR_TITLE the merge commit BODY
   # is the PR title -- contributor-authored text in the exact field the guard
@@ -227,7 +239,7 @@ else
     if [ "$got" = "$want" ]; then
       green "  OK: ${key}=${got}"
     elif [ "$got" = "null" ]; then
-      warn_annot "Check 4 SKIP for ${key} — the token cannot read it (needs admin/push scope; the default CI token cannot). Run locally with admin gh auth for a definitive answer."
+      err "Check 4 — cannot read ${key}. The App token needs Administration:read."; FAIL=1
     else
       err "${key} is '${got}', expected '${want}' — the Allow-Non-Major attestation is only maintainer-owned under merge-commit-only"
       yellow "  Hint: https://github.com/${REPO}/settings — Pull Requests, merge button options"

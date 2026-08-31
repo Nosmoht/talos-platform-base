@@ -74,7 +74,7 @@ accepted and mitigated (see below), not ignored.
 platform delivers to consumers. Excluded is repo-internal QA whose only
 consumer is this repo's CI — the demarcation is the consumer, not the
 file type: `oci-publish.yml` produces a consumer-facing artifact contract
-(spec'd, producer side only); gitleaks/scorecard/preflight/docs-lint/
+(spec'd, producer side only); gitleaks/scorecard/policy-audit/docs-lint/
 REUSE/shellcheck/commitlint/release-automation, the render/validate
 pipelines, and MCP wiring gate this repo (not spec'd; documented in
 `knowledge/`). Consumer-side verification how-to stays in

@@ -192,3 +192,24 @@ attested change — the guard reports a prior attestation it finds in the range 
 names the re-attest command, but does not honour it. `Commit Lint`'s presence in
 the required-context list is asserted only by Check 1, which degrades to a
 warning in CI because the default token cannot read branch protection.
+
+## Amendment (2026-08-31)
+
+**The settings §Amendment (2026-08-25) recorded as outstanding are applied.**
+`allow_squash_merge` and `allow_rebase_merge` are off, `merge_commit_message` is
+`BLANK`, and `lint-pr-title` is a required context. `scripts/preflight-checks.sh`
+Check 4 passes against an admin token.
+
+Two corrections to that record. `merge_commit_title` is `PR_TITLE`, not
+`MERGE_MESSAGE`: GitHub accepts only `PR_TITLE`+`PR_BODY`, `PR_TITLE`+`BLANK`
+and `MERGE_MESSAGE`+`PR_TITLE`, so the combination the check demanded does not
+exist, and `PR_TITLE`+`BLANK` is the only accepted pair that empties the body.
+The merge subject is therefore contributor-supplied, which is why the title lint
+is required rather than merely advisory.
+
+And Check 4 is no longer "a local-admin gate, not a CI gate". It runs weekly in
+`policy-audit.yml` under a GitHub App token with `Administration:read`. The
+PR-attached `preflight` workflow that could not read any of these fields is
+deleted: it reported success without looking, which is worse than no check. An
+unreadable setting is now a failure rather than a warning, so a green run means
+the setting was read.

@@ -3,7 +3,7 @@ type: workflow
 title: Release Process
 description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-generated: { by: human:nosmoht, at: "2026-08-27T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-08-31T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
   - resource: scripts/release-major-bump-guard.sh
@@ -36,14 +36,13 @@ every release) is **not** replaced; automated releases are unattended.
 
 `.github/workflows/commitlint.yml` (job `lint-pr-title`, action
 `amannn/action-semantic-pull-request` v5) lints the **PR title**, not the
-individual commits. It is **not yet** a required status check — adding
-`Commit Lint / lint-pr-title` to branch protection is one of the settings
-ADR-0020 §Amendment records as outstanding, and `scripts/preflight-checks.sh`
-Check 1 fails until it is applied.
+individual commits. It **is** a required status check as of 2026-08-31,
+together with the merge-method settings ADR-0020 §Amendment recorded as
+outstanding.
 
 The release type does *not* come from the title. `merge_commit_title` is
-`MERGE_MESSAGE`, so the merge subject on `main` reads
-`Merge pull request #N from …`; semantic-release computes the bump from the
+`PR_TITLE`, so the merge subject on `main` is the PR title — which is why the
+title lint is required; semantic-release computes the bump from the
 branch commits preserved in the range. What the title lint buys is narrower and
 load-bearing: `merge_commit_message` is `PR_TITLE`, so the title becomes the
 merge commit **body** — the line the MAJOR-bump guard reads. The closed type list
@@ -190,7 +189,7 @@ says so, but does not honour it — re-attest on the new tip.
 
 **Recovery latency is bounded by the required checks**, not by the guard: the
 recovery PR clears `validate`, `Secret Scan (gitleaks)`, `docs-lint`,
-`Hard Constraints`, `preflight` and `Commit Lint` like any other.
+`Hard Constraints` and `lint-pr-title` like any other.
 
 If the block is not what you expected — a path you believe should not be guarded
 at all — the supported route is to **move** it into
