@@ -236,4 +236,3 @@ body is legitimate, it is where `Allow-Non-Major:` goes.
 Cost, stated rather than hidden: the effect check trails by one merge. It
 notices a reverted setting only after a merge has happened under it. The direct
 reading stays the primary path on a local admin run.
-
