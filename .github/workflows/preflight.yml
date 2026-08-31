@@ -12,9 +12,10 @@ name: Preflight
 
 on:
   workflow_dispatch:
+  # No branches:/paths: filter on the PR trigger. A required check that a PR
+  # never starts stays "Expected" forever, so a PR based on anything but main
+  # would be unmergeable rather than gated.
   pull_request:
-    branches:
-      - main
   push:
     branches:
       - main
