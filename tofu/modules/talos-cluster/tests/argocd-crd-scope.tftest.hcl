@@ -30,8 +30,8 @@ provider "helm" {}
 variables {
   cluster_name       = "test"
   cluster_endpoint   = "https://192.0.2.1:6443"
-  talos_version      = "v1.12.6"
-  kubernetes_version = "v1.35.0"
+  talos_version      = "v1.13.9"
+  kubernetes_version = "v1.36.3"
   deploy_argocd      = true
   deploy_cilium      = false
   sops_age_key       = "AGE-SECRET-KEY-1TESTONLYPLACEHOLDERNOTAREALKEY00000000000000000000000000000"

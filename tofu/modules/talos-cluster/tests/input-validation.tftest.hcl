@@ -16,8 +16,8 @@
 variables {
   cluster_name       = "test"
   cluster_endpoint   = "https://192.0.2.1:6443"
-  talos_version      = "v1.12.6"
-  kubernetes_version = "v1.35.0"
+  talos_version      = "v1.13.9"
+  kubernetes_version = "v1.36.3"
 
   images = {
     intel = { architecture = "amd64", cpu_vendor = "intel", extensions = [] }
@@ -32,7 +32,7 @@ run "talos_version_rejects_trailing_garbage" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }
   variables {
-    talos_version = "v1.12.6.4"
+    talos_version = "v1.13.9.4"
   }
   expect_failures = [var.talos_version]
 }
@@ -41,7 +41,7 @@ run "talos_install_version_rejects_trailing_garbage" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }
   variables {
-    talos_install_version = "v1.12.7garbage"
+    talos_install_version = "v1.13.9garbage"
   }
   expect_failures = [var.talos_install_version]
 }
@@ -50,7 +50,7 @@ run "kubernetes_version_rejects_trailing_garbage" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }
   variables {
-    kubernetes_version = "v1.35.0.1"
+    kubernetes_version = "v1.36.3.1"
   }
   expect_failures = [var.kubernetes_version]
 }
@@ -59,8 +59,8 @@ run "prerelease_suffix_is_accepted" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }
   variables {
-    talos_version         = "v1.13.0-beta.1"
-    talos_install_version = "v1.13.0-beta.1"
+    talos_version         = "v1.14.0-beta.1"
+    talos_install_version = "v1.14.0-beta.1"
   }
 }
 

@@ -223,8 +223,8 @@ module "complete" {
   source = "git::https://github.com/Nosmoht/talos-platform-base.git//tofu/modules/talos-cluster?ref=<tag>"
 
   cluster_name       = "example-cluster"
-  talos_version      = "v1.12.6"
-  kubernetes_version = "v1.35.0"
+  talos_version      = "v1.13.9"
+  kubernetes_version = "v1.36.3"
   cluster_endpoint   = "https://api.example:6443"
 
   images = {

@@ -61,6 +61,14 @@ under the new version heading; the historical backfill below it stays put.
 - **Added — a failed or blocked release now files a tracking issue**
   (ADR-0020's listed follow-up), and a `release-guard-advisory` job tells a PR
   author before merging whether their branch touches a guarded path.
+- **Changed — the example and fixture versions now track Talos v1.13.9 /
+  Kubernetes v1.36.3** (was v1.12.6 / v1.35.0). The base pins neither:
+  `talos_version` and `kubernetes_version` are required module inputs whose
+  only constraint is a version-agnostic semver regex, so this moves the values
+  a consumer copies when standing up a new cluster and nothing else. Every
+  extension and overlay the repo names resolves at v1.13.9 against the Image
+  Factory. Existing clusters are unaffected — an OS upgrade still means
+  bumping `talos_install_version`, never the bootstrap-fixed `talos_version`.
 
 ### Historical backfill
 

@@ -18,8 +18,8 @@ provider "helm" {}
 variables {
   cluster_name       = "test"
   cluster_endpoint   = "https://192.0.2.1:6443"
-  talos_version      = "v1.12.6"
-  kubernetes_version = "v1.35.0"
+  talos_version      = "v1.13.9"
+  kubernetes_version = "v1.36.3"
   deploy_argocd      = false
   deploy_cilium      = false
 

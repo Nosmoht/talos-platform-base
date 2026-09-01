@@ -27,10 +27,10 @@ repo:
   url: https://github.com/your-org/your-cluster-repo.git
 
 talos:
-  version: v1.12.6 # schema pin (fixed at bootstrap)
-  install_version: v1.12.7 # installer tag bumped for an OS upgrade (exercises the split)
+  version: v1.13.8 # schema pin (fixed at bootstrap)
+  install_version: v1.13.9 # installer tag bumped for an OS upgrade (exercises the split)
 kubernetes:
-  version: v1.35.0
+  version: v1.36.3
 
 # Base images — the non-composable axis: arch + CPU vendor + BASELINE extensions
 # baked on every node of the image regardless of capabilities (CPU microcode,

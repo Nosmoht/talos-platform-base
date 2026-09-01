@@ -6,7 +6,7 @@
 #   0. nodes key CP_2 — uppercase + underscore; a name Talos ACCEPTS and then
 #      silently rewrites, so the schema rejects what the platform would rewrite.
 #   1. node role: master — violates the node.role enum (controlplane | worker).
-#   2. talos.install_version: v1.12.6.4 — trailing garbage after the PATCH
+#   2. talos.install_version: v1.13.9.4 — trailing garbage after the PATCH
 #      segment; violates the fully anchored version pattern (the former
 #      start-anchored pattern accepted this value).
 #   3. images.bad-karg-whitespace.extra_kernel_args[0] — a space smuggles a
@@ -43,10 +43,10 @@ cluster:
 repo:
   url: https://github.com/example/bad-cluster.git
 talos:
-  version: v1.12.6
-  install_version: v1.12.6.4 # INVALID: trailing garbage after the PATCH segment
+  version: v1.13.9
+  install_version: v1.13.9.4 # INVALID: trailing garbage after the PATCH segment
 kubernetes:
-  version: v1.35.0
+  version: v1.36.3
 images:
   standard:
     architecture: amd64
