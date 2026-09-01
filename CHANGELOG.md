@@ -69,6 +69,16 @@ under the new version heading; the historical backfill below it stays put.
   extension and overlay the repo names resolves at v1.13.9 against the Image
   Factory. Existing clusters are unaffected — an OS upgrade still means
   bumping `talos_install_version`, never the bootstrap-fixed `talos_version`.
+- **Changed — the worked example is a composition-coverage matrix**, not a
+  deployment. `tofu/modules/talos-cluster/examples/complete/cluster.yaml` now
+  carries one node per distinct composition path (6 nodes, 3 images) instead
+  of a specific eight-node hardware inventory, and its images are named for
+  what distinguishes them (`amd64`, `amd64-hugepages`, `arm64-sbc`). The GPU
+  node now shares the plain `amd64` image and still resolves to its own
+  schematic, because `nvidia-lts` contributes the extensions from the profile
+  catalog — which is what ADR-0009 says should happen. Coverage is unchanged:
+  mixed amd64/arm64, an SBC overlay, per-image kernel args, per-node patches,
+  both role-tier patch lists, and a node holding a set of two capabilities.
 
 ### Historical backfill
 
