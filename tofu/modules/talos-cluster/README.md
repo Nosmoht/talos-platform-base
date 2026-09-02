@@ -308,8 +308,8 @@ provider "talos" {}
 | `dual_stack` | bool | `false` | IPv4/IPv6 dual-stack (enables Cilium `ipv6`). |
 | `allow_scheduling_on_controlplanes` | bool | `false` | remove the control-plane taint (single-node / edge). |
 | `deploy_cilium` | bool | `true` | deliver Cilium as a controlplane `inlineManifest` seed AND disable the Talos default CNI (`cni.name: none`) + kube-proxy. Opt-out keeps Flannel / a caller-supplied CNI. |
-| `cilium_chart_version` | string | `"1.20.0"` | cilium Helm chart version. **SEED knob** (inlineManifests are create-only), not an upgrade knob. |
-| `cilium_chart_repository` | string | `"https://helm.cilium.io"` | Helm repo for the cilium chart (override for a private mirror / air-gap). |
+| `cilium_chart_version` | string | `"1.20.0"` | Base-verified Cilium seed version. Only the declared base pin is accepted; `null` selects that default. |
+| `cilium_chart_repository` | string | `"https://helm.cilium.io"` | HTTP Helm repository for the Cilium archive. A private mirror may be used only when it serves bytes matching the base-owned SHA-256. |
 | `cilium_namespace` | string | `"kube-system"` | namespace Cilium renders into. |
 | `cilium_values_override` | string | `""` | consumer Helm values merged on the floor + computed values (long tail: Hubble, L2/BGP, bpf). |
 | `cilium_routing_mode` | string | `"tunnel"` | `tunnel` / `native`. Install-time-fixed. |
@@ -332,7 +332,7 @@ provider "talos" {}
 | `deploy_argocd` | bool | `true` | deliver ArgoCD as a controlplane `inlineManifest`. Requires `sops_age_key` when true. |
 | `sops_age_key` | string (sensitive) | `""` | age private key (`keys.txt`) for the ArgoCD **ksops** repoServer, seeded as the `sops-age-key` Secret. **Required** when `deploy_argocd = true`. Lands in (encrypted) state. |
 | `argocd_namespace` | string | `"argocd"` | namespace for the bootstrap ArgoCD install |
-| `argocd_chart_version` | string | `"10.6.0"` | `argo-cd` Helm chart version (argoproj.github.io/argo-helm) |
+| `argocd_chart_version` | string | `"10.6.0"` | Base-verified `argo-cd` seed version. Only the declared base pin is accepted; `null` selects that default. |
 | `argocd_values_override` | string | `""` | full replacement of the bootstrap Helm values (YAML). Empty = the shipped `helm/argocd-values.yaml` (slim, ksops). |
 | `cert_approver_provider_regex` | string | `".*"` | `postfinance/kubelet-csr-approver` `PROVIDER_REGEX` — regex every kubelet-serving CSR's **SAN DNS name** must additionally match. Match the **full DNS SAN string**, which may be an FQDN (e.g. `node-1.internal.example.com`), not just the bare node name — a pattern too restrictive to match the actual SAN (e.g. `^node-[0-9]+$` against an FQDN SAN) denies those CSRs. `^node-.*$` is a safe permissive form. **SEED knob** (create-only). The always-on per-node DNS-SAN hostname-prefix binding applies regardless. Validated: non-empty/non-whitespace (empty crashes the approver; whitespace-only denies all), compiles, no `---`, no newline (protects the split-based audit outputs). |
 | `cert_approver_provider_ip_prefixes` | list(string) | `["0.0.0.0/0", "::/0"]` | `PROVIDER_IP_PREFIXES` — CIDRs a CSR's IP SANs must fall within. Default is the **safe floor** (all IPs); **never `[]`** (an empty set denies every serving CSR). Tighten to node subnets for an IP-SAN-to-subnet binding. **SEED knob.** Every entry must be a valid CIDR. |
@@ -423,6 +423,25 @@ runs `talosctl upgrade --image …:<version>` idempotently per node, and finally
 `tofu apply` updates state. Tofu owns the declarative state; the consumer
 Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
 
+## Seed chart download integrity
+
+The module does **not** ship Helm chart archives. Before rendering the Day-0
+ArgoCD and Cilium seeds, it downloads the public archive into
+`.terraform/talos-platform-base/charts/`, compares its SHA-256 with the digest
+declared by the base, and stops the plan/apply when the bytes differ. Both
+ArgoCD renders use the same verified local archive, and CI requires the ArgoCD
+seed digest to equal the steady-state `chart.lock.yaml` digest.
+
+Every apply host therefore needs `curl` and either `sha256sum` (Linux) or
+`shasum` (macOS), in addition to the existing `kubectl` requirement. A Cilium
+HTTP mirror remains supported, but it must serve the exact pinned archive.
+Chart-version overrides for which the base declares no digest are rejected at
+plan time; changing a pin is a base release, not a consumer override.
+
+This check covers the downloaded **Day-0 chart archives** only. It does not pin
+container images or the optional Cilium self-management Application's repeated
+Day-2 fetch; those remain separate supply-chain surfaces.
+
 ## ArgoCD delivery + health gate
 
 ArgoCD is **Layer-1 substrate** in the platform's C4 layer model, not a Day-2
@@ -450,9 +469,10 @@ supplied by this module at all.
 `argocd_values_override` is **merged** on top of the shipped values (not a
 wholesale replace) and is **seed-only** — the steady-state render does not read
 it, so anything it sets that the steady state also declares is overwritten on
-the first sync. `argocd_chart_version` is likewise a **seed-only** knob — bumping it
-after bootstrap only re-renders the machine config, it does not upgrade a
-running ArgoCD (that is the self-management's job).
+the first sync. `argocd_chart_version` identifies the base-verified
+**seed-only** pin. A consumer cannot select an unverified version; a future base
+bump still does not upgrade a running ArgoCD (that is the self-management's
+job).
 
 **CRDs are NOT in the inlineManifest.** The three ArgoCD CRDs
 (Application/ApplicationSet/AppProject) render to ~1.8 MB — far over the Talos

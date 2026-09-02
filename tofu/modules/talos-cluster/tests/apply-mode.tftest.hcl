@@ -23,6 +23,13 @@ mock_provider "talos" {}
 mock_provider "helm" {}
 mock_provider "local" {}
 mock_provider "null" {}
+mock_provider "external" {
+  mock_data "external" {
+    defaults = {
+      result = { verified = "true" }
+    }
+  }
+}
 
 variables {
   cluster_name       = "test"

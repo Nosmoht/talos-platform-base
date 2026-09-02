@@ -199,23 +199,15 @@ cleanly). Decisions 2 and 4 are the correction.
   (d) Module preconditions are **plan-time**, so the validate-only CI gate
   (`task tofu:ci`) does not exercise them — they protect `tofu plan`/`apply`, not
   `tofu validate` (a property shared by all of the module's preconditions).
-- **Deferred — chart/CRD integrity pinning (a delivery-mechanism change, not a
-  precondition).** Verified 2026-06: the Helm provider's `data.helm_template`
-  exposes only `verify`/`keyring` (GPG provenance via `.prov` files), no
-  sha256/digest argument; SHA256 digest pinning is OCI-registry-only and
-  unavailable for a classic HTTP repo like `helm.cilium.io`. And `helm.cilium.io`
-  publishes no provenance files (`cilium-1.19.4.prov` → HTTP 404; re-verified
-  2026-08-12 at the 1.20.0 bump — `cilium-1.20.0.prov` is likewise HTTP 404), so
-  even GPG `verify` is blocked at the source. Pinning chart integrity therefore requires
-  consuming the chart from an OCI registry by digest (or self-mirroring with
-  provenance) — beyond a module precondition. The building blocks already exist
-  in-repo: `cilium_chart_repository` accepts a private OCI mirror, and the
-  `oci-publish.yml` pipeline already captures, cosign-signs, and SLSA-attests the
-  base artifact *by digest* — so the deferred work is "mirror the chart into an OCI
-  registry and reference it by digest", not net-new infrastructure.
-  `cilium_gateway_api_crds_url` is likewise an unpinned URL fetched by Talos
-  `extraManifests` (no checksum verification in Talos). Both stay "point only at a
-  trusted source" until a digest-capable delivery path is adopted.
+
+> **Partially superseded 2026-09-02:** [ADR-0027](./0027-verified-public-seed-charts.md)
+> closes the ArgoCD/Cilium chart-archive part with a verified public download;
+> the Gateway API `extraManifests` URL remains outside that mechanism.
+
+- **Deferred — Gateway API CRD integrity.** `cilium_gateway_api_crds_url` remains
+  an unpinned URL fetched by Talos `extraManifests`, which has no checksum input.
+  It stays "point only at a trusted source" until a digest-capable delivery path
+  is adopted. ArgoCD and Cilium chart archives are covered by ADR-0027.
 
 ## Links
 

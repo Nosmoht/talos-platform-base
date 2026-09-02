@@ -94,6 +94,14 @@ while IFS= read -r module_file; do
   fi
 done < <(git ls-files tofu/modules/talos-cluster/)
 
+# Root .tf completeness is not enough: chart-integrity.tf executes this
+# module-local runtime helper at consumer plan/apply time.
+runtime_helper="tofu/modules/talos-cluster/scripts/fetch-verified-chart.sh"
+if ! grep -qx "$runtime_helper" .ci-oci-tarball-include.txt; then
+  echo "FAIL: $runtime_helper is required by chart-integrity.tf but is absent from .ci-oci-tarball-include.txt" >&2
+  fail=1
+fi
+
 if [ "${fail}" -eq 0 ]; then
   echo "OK: the artifact carries every talos-cluster module file and every renderable substrate component; kubernetes/base/ stays retired."
 fi

@@ -5,6 +5,7 @@ sources:
     - tofu/modules/talos-cluster/outputs.tf
     - tofu/modules/talos-cluster/versions.tf
     - tofu/modules/talos-cluster/nodes.tf
+    - tofu/modules/talos-cluster/chart-integrity.tf
 ---
 
 # module-interface-contract
@@ -631,3 +632,15 @@ what was baked in, this reports which rule decided it.
 - **THEN** the audit output carries the resolved count together with one of
   the three origins — pin, node-count derivation, or floor — and its shape
   and value types do not vary with the delivery toggle
+
+### Requirement: Seed chart versions require base digest pins
+
+The `argocd_chart_version` and `cilium_chart_version` inputs SHALL accept the
+base-pinned versions, including `null` resolving to each declared default, and
+SHALL reject any other version for which the base declares no SHA-256 digest.
+
+#### Scenario: Consumer selects an unpinned chart version
+
+- **WHEN** either chart-version input names a version other than its base pin
+- **THEN** the plan fails on that input and states that no verified digest is
+  declared for the requested version

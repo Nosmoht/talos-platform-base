@@ -29,6 +29,11 @@ terraform {
       source  = "hashicorp/helm"
       version = ">= 2.12, < 3.0.0"
     }
+    # Runs the module-shipped downloader before Helm renders each public chart.
+    external = {
+      source  = "hashicorp/external"
+      version = ">= 2.3, < 3.0.0"
+    }
     # local + null ONLY for the ArgoCD-CRD kubectl-server-side apply (the CRDs are
     # too large for the inlineManifest). Both only instantiate when deploy_argocd.
     local = {

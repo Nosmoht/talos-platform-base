@@ -233,8 +233,8 @@ steady-state-only; P compares the two pins:
   documented callers. `scripts/check-argocd-network-policy-gate-bites.sh`
   mutates the committed render and proves empty/wrong selectors, unsafe ingress
   drift and a missing policy are rejected.
-- **P** — the module's Day-0 `argocd_chart_version` default equals the
-  steady-state `chart.lock.yaml` version.
+- **P** — the module's Day-0 ArgoCD chart version and SHA-256 equal the
+  steady-state `chart.lock.yaml` version and digest.
 
 The name-scoped invariants (I3–I5) each run behind a **presence anchor**: a
 negative assertion selecting a ConfigMap by name passes vacuously if the chart

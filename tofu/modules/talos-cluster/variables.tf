@@ -480,12 +480,12 @@ variable "argocd_namespace" {
 
 variable "argocd_chart_version" {
   description = <<-EOT
-    Version of the argo-cd Helm chart (argoproj.github.io/argo-helm). This is a
-    SEED knob, not an upgrade knob: Talos applies inlineManifests once at
+    Base-verified version of the argo-cd Helm chart. This is a SEED pin, not an
+    upgrade knob: Talos applies inlineManifests once at
     bootstrap and never re-runs them, so bumping this after bootstrap only
     re-renders the machine config — it does NOT upgrade a running ArgoCD. Steady-
     state version is owned by ArgoCD self-management (the app reconciles itself
-    from git). VERIFY the exact current chart version at push.
+    from git). Versions without a base-owned SHA-256 digest are rejected.
 
     As with `cilium_chart_version`, this default is the single source of truth
     and `nullable = false` lets a caller pass `null` to mean "take the base's
@@ -494,6 +494,11 @@ variable "argocd_chart_version" {
   type        = string
   default     = "10.6.0"
   nullable    = false
+
+  validation {
+    condition     = var.argocd_chart_version == "10.6.0"
+    error_message = "argocd_chart_version must remain 10.6.0: the base does not declare a verified digest for any other argo-cd chart version."
+  }
 }
 
 variable "argocd_values_override" {
@@ -609,10 +614,11 @@ variable "deploy_cilium" {
 
 variable "cilium_chart_version" {
   description = <<-EOT
-    Version of the cilium Helm chart (helm.cilium.io). SEED knob, not an upgrade
+    Base-verified version of the cilium Helm chart. SEED pin, not an upgrade
     knob: Talos applies inlineManifests once at bootstrap and never re-runs them,
     so bumping this after bootstrap only re-renders the machine config — it does
-    NOT upgrade a running Cilium. VERIFY the exact current chart version at push.
+    NOT upgrade a running Cilium. Versions without a base-owned SHA-256 digest
+    are rejected.
 
     This default is the SINGLE source of truth for the pinned chart version.
     `nullable = false` is what makes that true: a caller may pass `null` to mean
@@ -625,15 +631,18 @@ variable "cilium_chart_version" {
   type        = string
   default     = "1.20.0"
   nullable    = false
+
+  validation {
+    condition     = var.cilium_chart_version == "1.20.0"
+    error_message = "cilium_chart_version must remain 1.20.0: the base does not declare a verified digest for any other Cilium chart version."
+  }
 }
 
 variable "cilium_chart_repository" {
   description = <<-EOT
-    Helm repository for the cilium chart. Override for a private mirror /
-    air-gapped registry. NOTE: the chart is pulled by tag with no digest/cosign
-    pin, and its render is baked into the controlplane inlineManifest seed — point
-    this only at a repository you trust (a poisoned repo injects arbitrary
-    bootstrap manifests). Integrity pinning is a tracked follow-on.
+    HTTP Helm repository for the cilium chart. Override for a private mirror /
+    air-gapped server. The downloaded archive must match the base-owned SHA-256
+    digest before it is rendered into the controlplane inlineManifest seed.
   EOT
   type        = string
   default     = "https://helm.cilium.io"

@@ -16,6 +16,8 @@
 # reason: ADR-0020 §Consequences — module interface, reviewer judgment.
 tofu/modules/talos-cluster/README.md
 # reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/chart-integrity.tf
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
 tofu/modules/talos-cluster/cilium-values.tf
 # reason: ADR-0020 §Consequences — module interface, reviewer judgment.
 tofu/modules/talos-cluster/composition.tf
@@ -31,6 +33,8 @@ tofu/modules/talos-cluster/nodes.tf
 tofu/modules/talos-cluster/outputs.tf
 # reason: ADR-0020 §Consequences — module interface, reviewer judgment.
 tofu/modules/talos-cluster/profiles.tf
+# reason: ADR-0020 §Consequences — module runtime, reviewer judgment.
+tofu/modules/talos-cluster/scripts/fetch-verified-chart.sh
 # reason: ADR-0020 §Consequences — module interface, reviewer judgment.
 tofu/modules/talos-cluster/test/README.md
 # reason: ADR-0020 §Consequences — module interface, reviewer judgment.

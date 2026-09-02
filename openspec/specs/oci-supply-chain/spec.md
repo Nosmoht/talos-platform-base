@@ -179,10 +179,9 @@ authoritative, signed consumption path.
 ### Requirement: Complete vendored Talos cluster module
 
 The release tarball SHALL contain every tracked root-level `.tf` file in
-`tofu/modules/talos-cluster/` together with the module-local runtime files those
-files read. The extracted module SHALL initialize without a backend and pass
-`tofu validate`, so a consumer can use the signed artifact without obtaining
-missing module implementation from the Git checkout.
+`tofu/modules/talos-cluster/` together with all module-local runtime files those
+files execute or read, including the Day-0 chart verification helper. The
+extracted module SHALL initialize without a backend and pass `tofu validate`.
 
 #### Scenario: Every module implementation file ships
 
@@ -198,3 +197,9 @@ missing module implementation from the Git checkout.
   are available
 - **THEN** `tofu init -backend=false` and `tofu validate` succeed in the
   extracted `tofu/modules/talos-cluster/` directory
+
+#### Scenario: Chart verifier ships with the module
+
+- **WHEN** the published tarball is listed
+- **THEN** the chart integrity declarations and executable verification helper
+  are both present alongside the module
