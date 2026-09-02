@@ -61,6 +61,24 @@ under the new version heading; the historical backfill below it stays put.
 - **Added — a failed or blocked release now files a tracking issue**
   (ADR-0020's listed follow-up), and a `release-guard-advisory` job tells a PR
   author before merging whether their branch touches a guarded path.
+- **Changed — the example and fixture versions now track Talos v1.13.9 /
+  Kubernetes v1.36.3** (was v1.12.6 / v1.35.0). The base pins neither:
+  `talos_version` and `kubernetes_version` are required module inputs whose
+  only constraint is a version-agnostic semver regex, so this moves the values
+  a consumer copies when standing up a new cluster and nothing else. Every
+  extension and overlay the repo names resolves at v1.13.9 against the Image
+  Factory. Existing clusters are unaffected — an OS upgrade still means
+  bumping `talos_install_version`, never the bootstrap-fixed `talos_version`.
+- **Changed — the worked example is a composition-coverage matrix**, not a
+  deployment. `tofu/modules/talos-cluster/examples/complete/cluster.yaml` now
+  carries one node per distinct composition path (6 nodes, 3 images) instead
+  of a specific eight-node hardware inventory, and its images are named for
+  what distinguishes them (`amd64`, `amd64-hugepages`, `arm64-sbc`). The GPU
+  node now shares the plain `amd64` image and still resolves to its own
+  schematic, because `nvidia-lts` contributes the extensions from the profile
+  catalog — which is what ADR-0009 says should happen. Coverage is unchanged:
+  mixed amd64/arm64, an SBC overlay, per-image kernel args, per-node patches,
+  both role-tier patch lists, and a node holding a set of two capabilities.
 
 ### Historical backfill
 

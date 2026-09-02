@@ -991,8 +991,8 @@ locals {
 # `.Values.crds.{install,keep,annotations,additionalLabels}` and nothing else —
 # no `.Capabilities`, no `.Release`. (The many `KubeVersion` strings in the files
 # are prose inside the CRDs' own schema descriptions, not template references.)
-# The measurement agrees: byte-identical render under --kube-version 1.31.0 and
-# 1.35.0.
+# The measurement agrees: byte-identical render under --kube-version 1.31.0,
+# 1.35.0 and 1.36.3 (chart 9.4.5).
 #
 # What binds it going forward is the STRUCTURAL half only:
 # tests/argocd-crd-scope.tftest.hcl asserts the payload is the same three CRDs

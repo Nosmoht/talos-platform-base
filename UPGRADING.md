@@ -690,8 +690,8 @@ survived; audit it against §3 by hand.
 **Check your Kubernetes version first — the base does not pin it.**
 `kubernetes_version` is a required module input with no default (its only
 constraint is a v-prefixed-semver validation), so the version in play is whatever
-your `cluster.yaml` sets. The `v1.35.0` in `cluster.yaml.example` is an example
-value, not a pin. Cilium 1.20 lists Kubernetes **1.33–1.36** as e2e-tested
+your `cluster.yaml` sets. Whatever `cluster.yaml.example` currently shows is an
+example value, not a pin. Cilium 1.20 lists Kubernetes **1.33–1.36** as e2e-tested
 (`Documentation/network/kubernetes/requirements.rst` at tag `v1.20.0`), against
 1.31–1.34 for Cilium 1.19 — the overlap is 1.33 and 1.34. Below 1.33 the
 combination is outside the tested set: the agent still starts, since Cilium's

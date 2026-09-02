@@ -223,13 +223,13 @@ module "complete" {
   source = "git::https://github.com/Nosmoht/talos-platform-base.git//tofu/modules/talos-cluster?ref=<tag>"
 
   cluster_name       = "example-cluster"
-  talos_version      = "v1.12.6"
-  kubernetes_version = "v1.35.0"
+  talos_version      = "v1.13.9"
+  kubernetes_version = "v1.36.3"
   cluster_endpoint   = "https://api.example:6443"
 
   images = {
-    intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucode", "siderolabs/nvme-cli"] } # baseline (every node of the image)
-    pi    = { architecture = "arm64", cpu_vendor = "arm", extensions = [], overlay = { name = "rpi_generic", image = "siderolabs/sbc-raspberrypi" } }
+    amd64     = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucode", "siderolabs/nvme-cli"] } # baseline (every node of the image)
+    arm64-sbc = { architecture = "arm64", cpu_vendor = "arm", extensions = [], overlay = { name = "rpi_generic", image = "siderolabs/sbc-raspberrypi" } }
   }
 
   # Consumer composites (tool-agnostic). requires_features (scheduling/labels) and
@@ -251,10 +251,10 @@ module "complete" {
   # Keyed by node name — the key IS the Talos hostname / Kubernetes node name.
   # One node, one definition place. The controlplane count must be ODD.
   nodes = {
-    node-cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["storage-replicated"] }
-    node-gpu-1 = { ip = "192.0.2.31", role = "worker", image = "intel", hardware_capabilities = ["storage-replicated", "compute-gpu-nvidia"],
-    config_patches = [file("${path.module}/patches/gpu-nic.yaml")] } # per-node NIC binding
-    node-pi-1 = { ip = "192.0.2.41", role = "worker", image = "pi", hardware_capabilities = [] } # arm64
+    node-cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "amd64", hardware_capabilities = ["storage-replicated"] }
+    node-gpu-1 = { ip = "192.0.2.31", role = "worker", image = "amd64", hardware_capabilities = ["storage-replicated", "compute-gpu-nvidia"],
+    config_patches = [file("${path.module}/patches/gpu-nic.yaml")] } # per-node NIC binding — shares the amd64 image yet gets its own schematic, because nvidia-lts bakes the driver extensions
+    node-sbc-1 = { ip = "192.0.2.41", role = "worker", image = "arm64-sbc", hardware_capabilities = [] } # arm64
   }
 
   # Cluster-wide patches the caller owns (NTP, registry mirrors, install disk).
@@ -262,8 +262,9 @@ module "complete" {
 }
 ```
 
-A runnable-shaped `tofu validate` fixture covering this exact topology lives in
-[`examples/complete/`](examples/complete).
+A runnable-shaped `tofu validate` fixture lives in
+[`examples/complete/`](examples/complete) — the same composition paths plus an
+odd controlplane count and a per-image `extra_kernel_args`.
 
 The caller owns the `provider "talos" {}` block and the (encrypted) backend.
 Example root `versions.tf`:
