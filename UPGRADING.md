@@ -137,7 +137,7 @@ to report it.
 
 **On an existing cluster this arrives unattended.** The seed path is inert for
 you (§4), so the policies come exclusively through Argo CD self-management of the
-steady-state component — i.e. at whatever moment that Application next syncs,
+steady-state component — that is, at whatever moment that Application next syncs,
 into live traffic, with no operator present if auto-sync is on. Kubernetes emits
 no event for a policy-dropped connection, and the base ships Hubble off, so the
 first signal is usually an Argo CD `ComparisonError` / `context deadline
@@ -223,7 +223,7 @@ Two of those need saying against *this* base rather than in general:
   reachable exclusively over an in-cluster path.
 - **The impersonation change does not apply on base defaults.** Upstream extends
   impersonation from sync to *all* API-server operations — but only "when
-  impersonation is enabled", i.e. through an AppProject's
+  impersonation is enabled", meaning through an AppProject's
   `destinationServiceAccounts`. The base's shipped `argocd-cm` pins
   `application.sync.impersonation.enabled: "false"`, so a consumer who has not
   turned it on is unaffected. If you *have* turned it on, the service accounts
