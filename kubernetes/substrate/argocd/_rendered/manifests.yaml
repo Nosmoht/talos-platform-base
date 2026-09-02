@@ -8,8 +8,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-application-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-application-controller
   namespace: argocd
 ---
@@ -23,8 +23,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-applicationset-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-applicationset-controller
   namespace: argocd
 ---
@@ -38,8 +38,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-notifications-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-notifications-controller
   namespace: argocd
 ---
@@ -56,8 +56,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-redis-secret-init
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-redis-secret-init
   namespace: argocd
 ---
@@ -71,8 +71,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-repo-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-repo-server
   namespace: argocd
 ---
@@ -86,8 +86,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-server
   namespace: argocd
 ---
@@ -100,8 +100,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-application-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-application-controller
   namespace: argocd
 rules:
@@ -153,8 +153,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-applicationset-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-applicationset-controller
   namespace: argocd
 rules:
@@ -253,8 +253,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-notifications-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-notifications-controller
   namespace: argocd
 rules:
@@ -306,8 +306,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-redis-secret-init
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-redis-secret-init
   namespace: argocd
 rules:
@@ -335,8 +335,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-repo-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-repo-server
   namespace: argocd
 rules: null
@@ -350,8 +350,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-server
   namespace: argocd
 rules:
@@ -399,8 +399,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-application-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-application-controller
 rules:
   - apiGroups:
@@ -423,8 +423,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-notifications-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-notifications-controller
 rules:
   - apiGroups:
@@ -472,8 +472,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-server
 rules:
   - apiGroups:
@@ -530,8 +530,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-application-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-application-controller
   namespace: argocd
 roleRef:
@@ -552,8 +552,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-applicationset-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-applicationset-controller
   namespace: argocd
 roleRef:
@@ -574,8 +574,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-notifications-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-notifications-controller
   namespace: argocd
 roleRef:
@@ -599,8 +599,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-redis-secret-init
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-redis-secret-init
   namespace: argocd
 roleRef:
@@ -610,6 +610,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: argocd-redis-secret-init
+    namespace: argocd
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -620,8 +621,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-repo-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-repo-server
   namespace: argocd
 roleRef:
@@ -642,8 +643,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-server
   namespace: argocd
 roleRef:
@@ -664,8 +665,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-application-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-application-controller
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -685,8 +686,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-notifications-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-notifications-controller
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -706,8 +707,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-server
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -777,7 +778,8 @@ data:
         - "*"
   statusbadge.enabled: "false"
   timeout.hard.reconciliation: 0s
-  timeout.reconciliation: 180s
+  timeout.reconciliation: 120s
+  timeout.reconciliation.jitter: 60s
 kind: ConfigMap
 metadata:
   labels:
@@ -786,8 +788,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-cm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-cm
   namespace: argocd
 ---
@@ -820,8 +822,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-cmd-params-cm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-cmd-params-cm
   namespace: argocd
 ---
@@ -833,8 +835,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-gpg-keys-cm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-gpg-keys-cm
   namespace: argocd
 ---
@@ -850,8 +852,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-notifications-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-notifications-cm
   namespace: argocd
 ---
@@ -869,8 +871,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-rbac-cm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-rbac-cm
   namespace: argocd
 ---
@@ -910,8 +912,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-redis
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-redis-health-configmap
   namespace: argocd
 ---
@@ -939,8 +941,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-ssh-known-hosts-cm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-ssh-known-hosts-cm
   namespace: argocd
 ---
@@ -952,8 +954,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-tls-certs-cm
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-tls-certs-cm
   namespace: argocd
 ---
@@ -966,8 +968,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-notifications-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-notifications-secret
   namespace: argocd
 stringData: null
@@ -982,8 +984,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-secret
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-secret
   namespace: argocd
 type: Opaque
@@ -997,8 +999,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-applicationset-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-applicationset-controller
   namespace: argocd
 spec:
@@ -1020,8 +1022,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-redis
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-redis
   namespace: argocd
 spec:
@@ -1042,8 +1044,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-repo-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-repo-server
   namespace: argocd
 spec:
@@ -1065,8 +1067,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-server
   namespace: argocd
 spec:
@@ -1095,8 +1097,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-applicationset-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-applicationset-controller
   namespace: argocd
 spec:
@@ -1109,15 +1111,15 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cmd-params: b1932f83f9390d8c495af6745b32e8aa92e1ff2a6f07dc7fbbed614017f2eb6c
+        checksum/cmd-params: 3f8806727b0930f528ca695385dbfbeca65f028caab13372cf4581ff8c56f4f8
       labels:
         app.kubernetes.io/component: applicationset-controller
         app.kubernetes.io/instance: argocd
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: argocd-applicationset-controller
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: v3.3.2
-        helm.sh/chart: argo-cd-9.4.5
+        app.kubernetes.io/version: v3.5.2
+        helm.sh/chart: argo-cd-10.6.0
     spec:
       affinity:
         podAntiAffinity:
@@ -1302,7 +1304,7 @@ spec:
                   key: applicationsetcontroller.status.max.resources.count
                   name: argocd-cmd-params-cm
                   optional: true
-          image: quay.io/argoproj/argocd:v3.3.2
+          image: quay.io/argoproj/argocd:v3.5.2
           imagePullPolicy: IfNotPresent
           name: applicationset-controller
           ports:
@@ -1387,8 +1389,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-notifications-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-notifications-controller
   namespace: argocd
 spec:
@@ -1403,15 +1405,15 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cmd-params: b1932f83f9390d8c495af6745b32e8aa92e1ff2a6f07dc7fbbed614017f2eb6c
+        checksum/cmd-params: 3f8806727b0930f528ca695385dbfbeca65f028caab13372cf4581ff8c56f4f8
       labels:
         app.kubernetes.io/component: notifications-controller
         app.kubernetes.io/instance: argocd
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: argocd-notifications-controller
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: v3.3.2
-        helm.sh/chart: argo-cd-9.4.5
+        app.kubernetes.io/version: v3.5.2
+        helm.sh/chart: argo-cd-10.6.0
     spec:
       affinity:
         podAntiAffinity:
@@ -1467,7 +1469,7 @@ spec:
                   key: notificationscontroller.repo.server.plaintext
                   name: argocd-cmd-params-cm
                   optional: true
-          image: quay.io/argoproj/argocd:v3.3.2
+          image: quay.io/argoproj/argocd:v3.5.2
           imagePullPolicy: IfNotPresent
           name: notifications-controller
           ports:
@@ -1520,8 +1522,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-redis
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-redis
   namespace: argocd
 spec:
@@ -1538,8 +1540,8 @@ spec:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: argocd-redis
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: v3.3.2
-        helm.sh/chart: argo-cd-9.4.5
+        app.kubernetes.io/version: v3.5.2
+        helm.sh/chart: argo-cd-10.6.0
     spec:
       affinity:
         podAntiAffinity:
@@ -1564,7 +1566,7 @@ spec:
                 secretKeyRef:
                   key: auth
                   name: argocd-redis
-          image: ecr-public.aws.com/docker/library/redis:8.2.3-alpine
+          image: ecr-public.aws.com/docker/library/redis:8.6.4-alpine
           imagePullPolicy: IfNotPresent
           name: redis
           ports:
@@ -1606,8 +1608,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-repo-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-repo-server
   namespace: argocd
 spec:
@@ -1620,16 +1622,16 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cm: c995c00fca6055fe7e031e7df080d5de224858a42b66f6b25ea0fc222ac4d64e
-        checksum/cmd-params: b1932f83f9390d8c495af6745b32e8aa92e1ff2a6f07dc7fbbed614017f2eb6c
+        checksum/cm: de1dcfc2c5441557f451c0ae61fa5adb3ab0adf10935488244c7316ea33040db
+        checksum/cmd-params: 3f8806727b0930f528ca695385dbfbeca65f028caab13372cf4581ff8c56f4f8
       labels:
         app.kubernetes.io/component: repo-server
         app.kubernetes.io/instance: argocd
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: argocd-repo-server
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: v3.3.2
-        helm.sh/chart: argo-cd-9.4.5
+        app.kubernetes.io/version: v3.5.2
+        helm.sh/chart: argo-cd-10.6.0
     spec:
       affinity:
         podAntiAffinity:
@@ -1909,7 +1911,7 @@ spec:
               value: /helm-working-dir
             - name: HELM_DATA_HOME
               value: /helm-working-dir
-          image: quay.io/argoproj/argocd:v3.3.2
+          image: quay.io/argoproj/argocd:v3.5.2
           imagePullPolicy: IfNotPresent
           livenessProbe:
             failureThreshold: 3
@@ -1977,7 +1979,7 @@ spec:
           command:
             - sh
             - -c
-          image: quay.io/argoproj/argocd:v3.3.2
+          image: quay.io/argoproj/argocd:v3.5.2
           imagePullPolicy: IfNotPresent
           name: copyutil
           resources: {}
@@ -2053,8 +2055,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-server
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-server
   namespace: argocd
 spec:
@@ -2067,16 +2069,16 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cm: c995c00fca6055fe7e031e7df080d5de224858a42b66f6b25ea0fc222ac4d64e
-        checksum/cmd-params: b1932f83f9390d8c495af6745b32e8aa92e1ff2a6f07dc7fbbed614017f2eb6c
+        checksum/cm: de1dcfc2c5441557f451c0ae61fa5adb3ab0adf10935488244c7316ea33040db
+        checksum/cmd-params: 3f8806727b0930f528ca695385dbfbeca65f028caab13372cf4581ff8c56f4f8
       labels:
         app.kubernetes.io/component: server
         app.kubernetes.io/instance: argocd
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: argocd-server
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: v3.3.2
-        helm.sh/chart: argo-cd-9.4.5
+        app.kubernetes.io/version: v3.5.2
+        helm.sh/chart: argo-cd-10.6.0
     spec:
       affinity:
         podAntiAffinity:
@@ -2402,7 +2404,7 @@ spec:
                   key: server.sync.replace.allowed
                   name: argocd-cmd-params-cm
                   optional: true
-          image: quay.io/argoproj/argocd:v3.3.2
+          image: quay.io/argoproj/argocd:v3.5.2
           imagePullPolicy: IfNotPresent
           livenessProbe:
             failureThreshold: 3
@@ -2514,8 +2516,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-application-controller
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-application-controller
   namespace: argocd
 spec:
@@ -2529,16 +2531,16 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/cm: c995c00fca6055fe7e031e7df080d5de224858a42b66f6b25ea0fc222ac4d64e
-        checksum/cmd-params: b1932f83f9390d8c495af6745b32e8aa92e1ff2a6f07dc7fbbed614017f2eb6c
+        checksum/cm: de1dcfc2c5441557f451c0ae61fa5adb3ab0adf10935488244c7316ea33040db
+        checksum/cmd-params: 3f8806727b0930f528ca695385dbfbeca65f028caab13372cf4581ff8c56f4f8
       labels:
         app.kubernetes.io/component: application-controller
         app.kubernetes.io/instance: argocd
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: argocd-application-controller
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: v3.3.2
-        helm.sh/chart: argo-cd-9.4.5
+        app.kubernetes.io/version: v3.5.2
+        helm.sh/chart: argo-cd-10.6.0
     spec:
       affinity:
         podAntiAffinity:
@@ -2837,7 +2839,7 @@ spec:
                   optional: true
             - name: KUBECACHEDIR
               value: /tmp/kubecache
-          image: quay.io/argoproj/argocd:v3.3.2
+          image: quay.io/argoproj/argocd:v3.5.2
           imagePullPolicy: IfNotPresent
           name: application-controller
           ports:
@@ -2914,8 +2916,8 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: argocd-redis-secret-init
     app.kubernetes.io/part-of: argocd
-    app.kubernetes.io/version: v3.3.2
-    helm.sh/chart: argo-cd-9.4.5
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
   name: argocd-redis-secret-init
   namespace: argocd
 spec:
@@ -2927,8 +2929,8 @@ spec:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: argocd-redis-secret-init
         app.kubernetes.io/part-of: argocd
-        app.kubernetes.io/version: v3.3.2
-        helm.sh/chart: argo-cd-9.4.5
+        app.kubernetes.io/version: v3.5.2
+        helm.sh/chart: argo-cd-10.6.0
     spec:
       affinity:
         podAntiAffinity:
@@ -2944,7 +2946,7 @@ spec:
             - argocd
             - admin
             - redis-initial-password
-          image: quay.io/argoproj/argocd:v3.3.2
+          image: quay.io/argoproj/argocd:v3.5.2
           imagePullPolicy: IfNotPresent
           name: secret-init
           resources: {}
@@ -2957,8 +2959,168 @@ spec:
             runAsNonRoot: true
             seccompProfile:
               type: RuntimeDefault
+      dnsPolicy: ClusterFirst
       nodeSelector:
         kubernetes.io/os: linux
       restartPolicy: OnFailure
       serviceAccountName: argocd-redis-secret-init
   ttlSecondsAfterFinished: 60
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/component: application-controller
+    app.kubernetes.io/instance: argocd
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: argocd-application-controller
+    app.kubernetes.io/part-of: argocd
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
+  name: argocd-application-controller
+  namespace: argocd
+spec:
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - port: metrics
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: argocd
+      app.kubernetes.io/name: argocd-application-controller
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/component: notifications-controller
+    app.kubernetes.io/instance: argocd
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: argocd-notifications-controller
+    app.kubernetes.io/part-of: argocd
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
+  name: argocd-notifications-controller
+  namespace: argocd
+spec:
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - port: metrics
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: argocd
+      app.kubernetes.io/name: argocd-notifications-controller
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/instance: argocd
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: argocd-redis
+    app.kubernetes.io/part-of: argocd
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
+  name: argocd-redis
+  namespace: argocd
+spec:
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: argocd
+              app.kubernetes.io/name: argocd-server
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: argocd
+              app.kubernetes.io/name: argocd-repo-server
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: argocd
+              app.kubernetes.io/name: argocd-application-controller
+      ports:
+        - port: redis
+          protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: argocd
+      app.kubernetes.io/name: argocd-redis
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/component: repo-server
+    app.kubernetes.io/instance: argocd
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: argocd-repo-server
+    app.kubernetes.io/part-of: argocd
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: argocd
+              app.kubernetes.io/name: argocd-server
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: argocd
+              app.kubernetes.io/name: argocd-application-controller
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: argocd
+              app.kubernetes.io/name: argocd-notifications-controller
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: argocd
+              app.kubernetes.io/name: argocd-applicationset-controller
+      ports:
+        - port: repo-server
+          protocol: TCP
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - port: metrics
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: argocd
+      app.kubernetes.io/name: argocd-repo-server
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: argocd
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: argocd-server
+    app.kubernetes.io/part-of: argocd
+    app.kubernetes.io/version: v3.5.2
+    helm.sh/chart: argo-cd-10.6.0
+  name: argocd-server
+  namespace: argocd
+spec:
+  ingress:
+    - {}
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: argocd
+      app.kubernetes.io/name: argocd-server
+  policyTypes:
+    - Ingress

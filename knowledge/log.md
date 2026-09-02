@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-02
+
+- `decisions/0025-argocd-crd-apply-scope.md`: addendum — the revisit trigger the
+  record sets was discharged at argo-cd chart `10.6.0`; the CRD templates' directive
+  list and the byte-identical cross-`--kube-version` render both still hold.
+
 ## 2026-08-28
 
 - `workflows/issue-lifecycle.md`: `generated.at 2026-08-28`. The session-start

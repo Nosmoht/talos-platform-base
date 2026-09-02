@@ -235,3 +235,14 @@ the `--force-conflicts` apply described above has been a co-owner of exactly
 those keys since the module gained it. The conclusion adr-0024 drew from the
 driver — do not fold the steady-state layer into the create-only seed — is
 unaffected and stands; only its stated evidence was wrong.
+
+## Addendum — revisit trigger discharged at chart 10.6.0 (2026-09-02)
+
+The revisit trigger this record sets — re-check the CRD templates' directive
+list at every `argocd_chart_version` bump — was run for `9.4.5` → `10.6.0`. It
+holds: every Go-template directive in the three `templates/crds/` files still
+interpolates `.Values.crds.{install,keep,annotations,additionalLabels}` and
+nothing else, with no `.Capabilities` and no `.Release`, and the render is
+byte-identical under `--kube-version` 1.31.0, 1.35.0 and 1.36.3. The decision
+and its residual are unchanged; only the version the measurement was taken at
+moves, and the trigger stands for the next bump.

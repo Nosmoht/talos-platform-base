@@ -2,6 +2,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
+    argocd.argoproj.io/sync-options: ServerSideApply=true
     helm.sh/resource-policy: keep
   labels:
     app.kubernetes.io/name: applications.argoproj.io
@@ -353,10 +354,10 @@ spec:
                               description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                               type: boolean
                             namePrefix:
-                              description: NamePrefix is a prefix appended to resources for Kustomize apps
+                              description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                               type: string
                             nameSuffix:
-                              description: NameSuffix is a suffix appended to resources for Kustomize apps
+                              description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                               type: string
                             namespace:
                               description: Namespace sets the namespace that Kustomize adds to all resources
@@ -468,6 +469,13 @@ spec:
                           type: string
                         repoURL:
                           description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
+                          type: string
+                        tagPrefix:
+                          description: |-
+                            TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                            The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                            For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                            "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
                           type: string
                         targetRevision:
                           description: |-
@@ -678,10 +686,10 @@ spec:
                                 description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                 type: boolean
                               namePrefix:
-                                description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                 type: string
                               nameSuffix:
-                                description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                 type: string
                               namespace:
                                 description: Namespace sets the namespace that Kustomize adds to all resources
@@ -793,6 +801,13 @@ spec:
                             type: string
                           repoURL:
                             description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
+                            type: string
+                          tagPrefix:
+                            description: |-
+                              TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                              The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                              For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                              "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
                             type: string
                           targetRevision:
                             description: |-
@@ -1108,10 +1123,10 @@ spec:
                           description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                           type: boolean
                         namePrefix:
-                          description: NamePrefix is a prefix appended to resources for Kustomize apps
+                          description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                           type: string
                         nameSuffix:
-                          description: NameSuffix is a suffix appended to resources for Kustomize apps
+                          description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                           type: string
                         namespace:
                           description: Namespace sets the namespace that Kustomize adds to all resources
@@ -1223,6 +1238,13 @@ spec:
                       type: string
                     repoURL:
                       description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
+                      type: string
+                    tagPrefix:
+                      description: |-
+                        TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                        The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                        For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                        "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
                       type: string
                     targetRevision:
                       description: |-
@@ -1429,10 +1451,10 @@ spec:
                               description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                               type: boolean
                             namePrefix:
-                              description: NamePrefix is a prefix appended to resources for Kustomize apps
+                              description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                               type: string
                             nameSuffix:
-                              description: NameSuffix is a suffix appended to resources for Kustomize apps
+                              description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                               type: string
                             namespace:
                               description: Namespace sets the namespace that Kustomize adds to all resources
@@ -1568,6 +1590,11 @@ spec:
                             hydrated manifests will be synced.
                           minLength: 1
                           pattern: ^.{2,}|[^./]$
+                          type: string
+                        repoURL:
+                          description: |-
+                            RepoURL is the URL to the git repository that contains the hydrated manifests. If not set, defaults to
+                            the DrySource.RepoURL.
                           type: string
                         targetBranch:
                           description: |-
@@ -1780,10 +1807,10 @@ spec:
                             description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                             type: boolean
                           namePrefix:
-                            description: NamePrefix is a prefix appended to resources for Kustomize apps
+                            description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                             type: string
                           nameSuffix:
-                            description: NameSuffix is a suffix appended to resources for Kustomize apps
+                            description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                             type: string
                           namespace:
                             description: Namespace sets the namespace that Kustomize adds to all resources
@@ -1895,6 +1922,13 @@ spec:
                         type: string
                       repoURL:
                         description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
+                        type: string
+                      tagPrefix:
+                        description: |-
+                          TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                          The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                          For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                          "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
                         type: string
                       targetRevision:
                         description: |-
@@ -2246,10 +2280,10 @@ spec:
                                 description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                 type: boolean
                               namePrefix:
-                                description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                 type: string
                               nameSuffix:
-                                description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                 type: string
                               namespace:
                                 description: Namespace sets the namespace that Kustomize adds to all resources
@@ -2361,6 +2395,13 @@ spec:
                             type: string
                           repoURL:
                             description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
+                            type: string
+                          tagPrefix:
+                            description: |-
+                              TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                              The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                              For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                              "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
                             type: string
                           targetRevision:
                             description: |-
@@ -2569,10 +2610,10 @@ spec:
                                   description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                   type: boolean
                                 namePrefix:
-                                  description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                  description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                   type: string
                                 nameSuffix:
-                                  description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                  description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                   type: string
                                 namespace:
                                   description: Namespace sets the namespace that Kustomize adds to all resources
@@ -2685,6 +2726,13 @@ spec:
                             repoURL:
                               description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
                               type: string
+                            tagPrefix:
+                              description: |-
+                                TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                                The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                                For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                                "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
+                              type: string
                             targetRevision:
                               description: |-
                                 TargetRevision defines the revision of the source to sync the application to.
@@ -2703,6 +2751,7 @@ spec:
                 observedAt:
                   description: |-
                     ObservedAt indicates when the application state was updated without querying latest git state
+
                     Deprecated: controller no longer updates ObservedAt field
                   format: date-time
                   type: string
@@ -3013,10 +3062,10 @@ spec:
                                       description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                       type: boolean
                                     namePrefix:
-                                      description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                      description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                       type: string
                                     nameSuffix:
-                                      description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                      description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                       type: string
                                     namespace:
                                       description: Namespace sets the namespace that Kustomize adds to all resources
@@ -3128,6 +3177,13 @@ spec:
                                   type: string
                                 repoURL:
                                   description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
+                                  type: string
+                                tagPrefix:
+                                  description: |-
+                                    TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                                    The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                                    For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                                    "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
                                   type: string
                                 targetRevision:
                                   description: |-
@@ -3338,10 +3394,10 @@ spec:
                                         description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                         type: boolean
                                       namePrefix:
-                                        description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                        description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                         type: string
                                       nameSuffix:
-                                        description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                        description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                         type: string
                                       namespace:
                                         description: Namespace sets the namespace that Kustomize adds to all resources
@@ -3453,6 +3509,13 @@ spec:
                                     type: string
                                   repoURL:
                                     description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
+                                    type: string
+                                  tagPrefix:
+                                    description: |-
+                                      TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                                      The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                                      For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                                      "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
                                     type: string
                                   targetRevision:
                                     description: |-
@@ -3775,10 +3838,10 @@ spec:
                                   description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                   type: boolean
                                 namePrefix:
-                                  description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                  description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                   type: string
                                 nameSuffix:
-                                  description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                  description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                   type: string
                                 namespace:
                                   description: Namespace sets the namespace that Kustomize adds to all resources
@@ -3890,6 +3953,13 @@ spec:
                               type: string
                             repoURL:
                               description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
+                              type: string
+                            tagPrefix:
+                              description: |-
+                                TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                                The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                                For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                                "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
                               type: string
                             targetRevision:
                               description: |-
@@ -4098,10 +4168,10 @@ spec:
                                     description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                     type: boolean
                                   namePrefix:
-                                    description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                    description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                     type: string
                                   nameSuffix:
-                                    description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                    description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                     type: string
                                   namespace:
                                     description: Namespace sets the namespace that Kustomize adds to all resources
@@ -4213,6 +4283,13 @@ spec:
                                 type: string
                               repoURL:
                                 description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
+                                type: string
+                              tagPrefix:
+                                description: |-
+                                  TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                                  The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                                  For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                                  "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
                                 type: string
                               targetRevision:
                                 description: |-
@@ -4518,10 +4595,10 @@ spec:
                                       description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                       type: boolean
                                     namePrefix:
-                                      description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                      description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                       type: string
                                     nameSuffix:
-                                      description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                      description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                       type: string
                                     namespace:
                                       description: Namespace sets the namespace that Kustomize adds to all resources
@@ -4658,6 +4735,11 @@ spec:
                                   minLength: 1
                                   pattern: ^.{2,}|[^./]$
                                   type: string
+                                repoURL:
+                                  description: |-
+                                    RepoURL is the URL to the git repository that contains the hydrated manifests. If not set, defaults to
+                                    the DrySource.RepoURL.
+                                  type: string
                                 targetBranch:
                                   description: |-
                                     TargetBranch is the branch from which hydrated manifests will be synced.
@@ -4679,6 +4761,11 @@ spec:
                         - message
                         - phase
                       type: object
+                    lastComparedDryRevision:
+                      description: |-
+                        LastComparedDryRevision holds the resolved revision from the most recent dry source comparison.
+                        This is updated on every evaluation, even when hydration is skipped due to no changes.
+                      type: string
                     lastSuccessfulOperation:
                       description: LastSuccessfulOperation holds info about the most recent successful hydration
                       properties:
@@ -4884,10 +4971,10 @@ spec:
                                       description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                       type: boolean
                                     namePrefix:
-                                      description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                      description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                       type: string
                                     nameSuffix:
-                                      description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                      description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                       type: string
                                     namespace:
                                       description: Namespace sets the namespace that Kustomize adds to all resources
@@ -5024,6 +5111,11 @@ spec:
                                   minLength: 1
                                   pattern: ^.{2,}|[^./]$
                                   type: string
+                                repoURL:
+                                  description: |-
+                                    RepoURL is the URL to the git repository that contains the hydrated manifests. If not set, defaults to
+                                    the DrySource.RepoURL.
+                                  type: string
                                 targetBranch:
                                   description: |-
                                     TargetBranch is the branch from which hydrated manifests will be synced.
@@ -5061,6 +5153,9 @@ spec:
                       items:
                         type: string
                       type: array
+                    isAppOfApps:
+                      description: IsAppOfApps holds true if the application has any application for child resource.
+                      type: boolean
                   type: object
                 sync:
                   description: Sync contains information about the application's current sync status
@@ -5311,10 +5406,10 @@ spec:
                                   description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                   type: boolean
                                 namePrefix:
-                                  description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                  description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                   type: string
                                 nameSuffix:
-                                  description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                  description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                   type: string
                                 namespace:
                                   description: Namespace sets the namespace that Kustomize adds to all resources
@@ -5426,6 +5521,13 @@ spec:
                               type: string
                             repoURL:
                               description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
+                              type: string
+                            tagPrefix:
+                              description: |-
+                                TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                                The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                                For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                                "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
                               type: string
                             targetRevision:
                               description: |-
@@ -5634,10 +5736,10 @@ spec:
                                     description: LabelWithoutSelector specifies whether to apply common labels to resource selectors or not
                                     type: boolean
                                   namePrefix:
-                                    description: NamePrefix is a prefix appended to resources for Kustomize apps
+                                    description: NamePrefix overrides the namePrefix in the kustomization.yaml for Kustomize apps
                                     type: string
                                   nameSuffix:
-                                    description: NameSuffix is a suffix appended to resources for Kustomize apps
+                                    description: NameSuffix overrides the nameSuffix in the kustomization.yaml for Kustomize apps
                                     type: string
                                   namespace:
                                     description: Namespace sets the namespace that Kustomize adds to all resources
@@ -5750,6 +5852,13 @@ spec:
                               repoURL:
                                 description: RepoURL is the URL to the repository (Git or Helm) that contains the application manifests
                                 type: string
+                              tagPrefix:
+                                description: |-
+                                  TagPrefix filters git tags to only those with this prefix before evaluating targetRevision as a semver constraint.
+                                  The prefix is stripped from tag names before comparison and re-added to the resolved version.
+                                  For example, with tagPrefix "component-b/" and targetRevision "1.0.*", tags like "component-b/1.0.0" and
+                                  "component-b/1.0.1" are candidates, and the constraint resolves to "component-b/1.0.1".
+                                type: string
                               targetRevision:
                                 description: |-
                                   TargetRevision defines the revision of the source to sync the application to.
@@ -5790,6 +5899,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
+    argocd.argoproj.io/sync-options: ServerSideApply=true
     helm.sh/resource-policy: keep
   labels:
     app.kubernetes.io/name: applicationsets.argoproj.io
@@ -6169,6 +6279,8 @@ spec:
                                         type: string
                                       repoURL:
                                         type: string
+                                      tagPrefix:
+                                        type: string
                                       targetRevision:
                                         type: string
                                     required:
@@ -6424,6 +6536,8 @@ spec:
                                             minLength: 1
                                             pattern: ^.{2,}|[^./]$
                                             type: string
+                                          repoURL:
+                                            type: string
                                           targetBranch:
                                             type: string
                                         required:
@@ -6668,6 +6782,8 @@ spec:
                                         ref:
                                           type: string
                                         repoURL:
+                                          type: string
+                                        tagPrefix:
                                           type: string
                                         targetRevision:
                                           type: string
@@ -7077,6 +7193,8 @@ spec:
                                         type: string
                                       repoURL:
                                         type: string
+                                      tagPrefix:
+                                        type: string
                                       targetRevision:
                                         type: string
                                     required:
@@ -7332,6 +7450,8 @@ spec:
                                             minLength: 1
                                             pattern: ^.{2,}|[^./]$
                                             type: string
+                                          repoURL:
+                                            type: string
                                           targetBranch:
                                             type: string
                                         required:
@@ -7576,6 +7696,8 @@ spec:
                                         ref:
                                           type: string
                                         repoURL:
+                                          type: string
+                                        tagPrefix:
                                           type: string
                                         targetRevision:
                                           type: string
@@ -7986,6 +8108,8 @@ spec:
                                         type: string
                                       repoURL:
                                         type: string
+                                      tagPrefix:
+                                        type: string
                                       targetRevision:
                                         type: string
                                     required:
@@ -8241,6 +8365,8 @@ spec:
                                             minLength: 1
                                             pattern: ^.{2,}|[^./]$
                                             type: string
+                                          repoURL:
+                                            type: string
                                           targetBranch:
                                             type: string
                                         required:
@@ -8485,6 +8611,8 @@ spec:
                                         ref:
                                           type: string
                                         repoURL:
+                                          type: string
+                                        tagPrefix:
                                           type: string
                                         targetRevision:
                                           type: string
@@ -8873,6 +9001,8 @@ spec:
                                         type: string
                                       repoURL:
                                         type: string
+                                      tagPrefix:
+                                        type: string
                                       targetRevision:
                                         type: string
                                     required:
@@ -9128,6 +9258,8 @@ spec:
                                             minLength: 1
                                             pattern: ^.{2,}|[^./]$
                                             type: string
+                                          repoURL:
+                                            type: string
                                           targetBranch:
                                             type: string
                                         required:
@@ -9372,6 +9504,8 @@ spec:
                                         ref:
                                           type: string
                                         repoURL:
+                                          type: string
+                                        tagPrefix:
                                           type: string
                                         targetRevision:
                                           type: string
@@ -9785,6 +9919,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -10040,6 +10176,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -10284,6 +10422,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -10693,6 +10833,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -10948,6 +11090,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -11192,6 +11336,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -11602,6 +11748,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -11857,6 +12005,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -12101,6 +12251,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -12489,6 +12641,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -12744,6 +12898,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -12988,6 +13144,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -13384,6 +13542,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -13639,6 +13799,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -13883,6 +14045,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -14506,6 +14670,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -14761,6 +14927,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -15006,6 +15174,8 @@ spec:
                                                     type: string
                                                   repoURL:
                                                     type: string
+                                                  tagPrefix:
+                                                    type: string
                                                   targetRevision:
                                                     type: string
                                                 required:
@@ -15226,6 +15396,8 @@ spec:
                                           type: boolean
                                         api:
                                           type: string
+                                        excludeArchivedRepos:
+                                          type: boolean
                                         insecure:
                                           type: boolean
                                         owner:
@@ -15252,6 +15424,8 @@ spec:
                                           type: string
                                         appSecretName:
                                           type: string
+                                        excludeArchivedRepos:
+                                          type: boolean
                                         organization:
                                           type: string
                                         tokenRef:
@@ -15285,6 +15459,8 @@ spec:
                                           type: object
                                         group:
                                           type: string
+                                        includeArchivedRepos:
+                                          type: boolean
                                         includeSharedProjects:
                                           type: boolean
                                         includeSubgroups:
@@ -15619,6 +15795,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -15874,6 +16052,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -16118,6 +16298,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -16523,6 +16705,8 @@ spec:
                                         type: string
                                       repoURL:
                                         type: string
+                                      tagPrefix:
+                                        type: string
                                       targetRevision:
                                         type: string
                                     required:
@@ -16778,6 +16962,8 @@ spec:
                                             minLength: 1
                                             pattern: ^.{2,}|[^./]$
                                             type: string
+                                          repoURL:
+                                            type: string
                                           targetBranch:
                                             type: string
                                         required:
@@ -17022,6 +17208,8 @@ spec:
                                         ref:
                                           type: string
                                         repoURL:
+                                          type: string
+                                        tagPrefix:
                                           type: string
                                         targetRevision:
                                           type: string
@@ -17437,6 +17625,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -17692,6 +17882,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -17936,6 +18128,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -18345,6 +18539,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -18600,6 +18796,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -18844,6 +19042,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -19254,6 +19454,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -19509,6 +19711,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -19753,6 +19957,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -20141,6 +20347,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -20396,6 +20604,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -20640,6 +20850,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -21036,6 +21248,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -21291,6 +21505,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -21535,6 +21751,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -22158,6 +22376,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -22413,6 +22633,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -22658,6 +22880,8 @@ spec:
                                                     type: string
                                                   repoURL:
                                                     type: string
+                                                  tagPrefix:
+                                                    type: string
                                                   targetRevision:
                                                     type: string
                                                 required:
@@ -22878,6 +23102,8 @@ spec:
                                           type: boolean
                                         api:
                                           type: string
+                                        excludeArchivedRepos:
+                                          type: boolean
                                         insecure:
                                           type: boolean
                                         owner:
@@ -22904,6 +23130,8 @@ spec:
                                           type: string
                                         appSecretName:
                                           type: string
+                                        excludeArchivedRepos:
+                                          type: boolean
                                         organization:
                                           type: string
                                         tokenRef:
@@ -22937,6 +23165,8 @@ spec:
                                           type: object
                                         group:
                                           type: string
+                                        includeArchivedRepos:
+                                          type: boolean
                                         includeSharedProjects:
                                           type: boolean
                                         includeSubgroups:
@@ -23271,6 +23501,8 @@ spec:
                                                   type: string
                                                 repoURL:
                                                   type: string
+                                                tagPrefix:
+                                                  type: string
                                                 targetRevision:
                                                   type: string
                                               required:
@@ -23526,6 +23758,8 @@ spec:
                                                       minLength: 1
                                                       pattern: ^.{2,}|[^./]$
                                                       type: string
+                                                    repoURL:
+                                                      type: string
                                                     targetBranch:
                                                       type: string
                                                   required:
@@ -23770,6 +24004,8 @@ spec:
                                                   ref:
                                                     type: string
                                                   repoURL:
+                                                    type: string
+                                                  tagPrefix:
                                                     type: string
                                                   targetRevision:
                                                     type: string
@@ -24179,6 +24415,8 @@ spec:
                                         type: string
                                       repoURL:
                                         type: string
+                                      tagPrefix:
+                                        type: string
                                       targetRevision:
                                         type: string
                                     required:
@@ -24434,6 +24672,8 @@ spec:
                                             minLength: 1
                                             pattern: ^.{2,}|[^./]$
                                             type: string
+                                          repoURL:
+                                            type: string
                                           targetBranch:
                                             type: string
                                         required:
@@ -24678,6 +24918,8 @@ spec:
                                         ref:
                                           type: string
                                         repoURL:
+                                          type: string
+                                        tagPrefix:
                                           type: string
                                         targetRevision:
                                           type: string
@@ -25073,6 +25315,8 @@ spec:
                                         type: string
                                       repoURL:
                                         type: string
+                                      tagPrefix:
+                                        type: string
                                       targetRevision:
                                         type: string
                                     required:
@@ -25328,6 +25572,8 @@ spec:
                                             minLength: 1
                                             pattern: ^.{2,}|[^./]$
                                             type: string
+                                          repoURL:
+                                            type: string
                                           targetBranch:
                                             type: string
                                         required:
@@ -25572,6 +25818,8 @@ spec:
                                         ref:
                                           type: string
                                         repoURL:
+                                          type: string
+                                        tagPrefix:
                                           type: string
                                         targetRevision:
                                           type: string
@@ -26195,6 +26443,8 @@ spec:
                                         type: string
                                       repoURL:
                                         type: string
+                                      tagPrefix:
+                                        type: string
                                       targetRevision:
                                         type: string
                                     required:
@@ -26450,6 +26700,8 @@ spec:
                                             minLength: 1
                                             pattern: ^.{2,}|[^./]$
                                             type: string
+                                          repoURL:
+                                            type: string
                                           targetBranch:
                                             type: string
                                         required:
@@ -26695,6 +26947,8 @@ spec:
                                           type: string
                                         repoURL:
                                           type: string
+                                        tagPrefix:
+                                          type: string
                                         targetRevision:
                                           type: string
                                       required:
@@ -26915,6 +27169,8 @@ spec:
                                 type: boolean
                               api:
                                 type: string
+                              excludeArchivedRepos:
+                                type: boolean
                               insecure:
                                 type: boolean
                               owner:
@@ -26941,6 +27197,8 @@ spec:
                                 type: string
                               appSecretName:
                                 type: string
+                              excludeArchivedRepos:
+                                type: boolean
                               organization:
                                 type: string
                               tokenRef:
@@ -26974,6 +27232,8 @@ spec:
                                 type: object
                               group:
                                 type: string
+                              includeArchivedRepos:
+                                type: boolean
                               includeSharedProjects:
                                 type: boolean
                               includeSubgroups:
@@ -27308,6 +27568,8 @@ spec:
                                         type: string
                                       repoURL:
                                         type: string
+                                      tagPrefix:
+                                        type: string
                                       targetRevision:
                                         type: string
                                     required:
@@ -27563,6 +27825,8 @@ spec:
                                             minLength: 1
                                             pattern: ^.{2,}|[^./]$
                                             type: string
+                                          repoURL:
+                                            type: string
                                           targetBranch:
                                             type: string
                                         required:
@@ -27807,6 +28071,8 @@ spec:
                                         ref:
                                           type: string
                                         repoURL:
+                                          type: string
+                                        tagPrefix:
                                           type: string
                                         targetRevision:
                                           type: string
@@ -28289,6 +28555,8 @@ spec:
                               type: string
                             repoURL:
                               type: string
+                            tagPrefix:
+                              type: string
                             targetRevision:
                               type: string
                           required:
@@ -28544,6 +28812,8 @@ spec:
                                   minLength: 1
                                   pattern: ^.{2,}|[^./]$
                                   type: string
+                                repoURL:
+                                  type: string
                                 targetBranch:
                                   type: string
                               required:
@@ -28789,6 +29059,8 @@ spec:
                                 type: string
                               repoURL:
                                 type: string
+                              tagPrefix:
+                                type: string
                               targetRevision:
                                 type: string
                             required:
@@ -28905,6 +29177,16 @@ spec:
                       - type
                     type: object
                   type: array
+                health:
+                  properties:
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
+                    message:
+                      type: string
+                    status:
+                      type: string
+                  type: object
                 resources:
                   items:
                     properties:
@@ -28958,6 +29240,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
+    argocd.argoproj.io/sync-options: ServerSideApply=true
     helm.sh/resource-policy: keep
   labels:
     app.kubernetes.io/name: appprojects.argoproj.io
@@ -29183,9 +29466,15 @@ spec:
                     type: object
                   type: array
                 signatureKeys:
-                  description: SignatureKeys contains a list of PGP key IDs that commits in Git must be signed with in order to be allowed for sync
+                  description: |-
+                    SignatureKeys contains a list of PGP key IDs that commits in Git must be signed with in order to be allowed for sync
+
+                    Deprecated: Use SourceIntegrity instead. SignatureKeys will be removed with the next major version.
                   items:
-                    description: SignatureKey is the specification of a key required to verify commit signatures with
+                    description: |-
+                      SignatureKey is the specification of a key required to verify commit signatures with
+
+                      Deprecated: Use SourceIntegrity instead. SignatureKeys will be removed with the next major version.
                     properties:
                       keyID:
                         description: The ID of the key in hexadecimal notation
@@ -29194,6 +29483,53 @@ spec:
                       - keyID
                     type: object
                   type: array
+                sourceIntegrity:
+                  description: |-
+                    SourceIntegrity represents a constraint on manifest sources integrity to be met before they can be used.
+                    Do not access directly, use EffectiveSourceIntegrity() for correct backwards compatibility handling.
+                  properties:
+                    git:
+                      description: Git - policies for git source verification
+                      properties:
+                        policies:
+                          items:
+                            properties:
+                              gpg:
+                                description: Verify GPG commit/tag signatures
+                                properties:
+                                  keys:
+                                    description: List of key IDs to trust. The keys need to be in the repository server keyring.
+                                    items:
+                                      type: string
+                                    type: array
+                                  mode:
+                                    type: string
+                                required:
+                                  - keys
+                                  - mode
+                                type: object
+                              repos:
+                                description: List of repository criteria restricting repositories the policy will apply to
+                                items:
+                                  properties:
+                                    url:
+                                      description: URL specifier, glob.
+                                      type: string
+                                  required:
+                                    - url
+                                  type: object
+                                type: array
+                            required:
+                              - gpg
+                              - repos
+                            type: object
+                          type: array
+                      required:
+                        - policies
+                      type: object
+                  required:
+                    - git
+                  type: object
                 sourceNamespaces:
                   description: SourceNamespaces defines the namespaces application resources are allowed to be created in
                   items:
@@ -29242,6 +29578,12 @@ spec:
                       schedule:
                         description: Schedule is the time the window will begin, specified in cron format
                         type: string
+                      syncOverrun:
+                        description: |-
+                          SyncOverrun allows ongoing syncs to continue in two scenarios:
+                          For deny windows: allows syncs that started before the deny window became active to continue running
+                          For allow windows: allows syncs that started during the allow window to continue after the window ends
+                        type: boolean
                       timeZone:
                         description: TimeZone of the sync that will be applied to the schedule
                         type: string
