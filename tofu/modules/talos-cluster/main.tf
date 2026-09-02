@@ -986,13 +986,13 @@ locals {
 # Why the payload does not depend on it, stated as the mechanism actually is:
 # this chart does NOT use Helm's un-templated `crds/` directory. Its three CRDs
 # live in `templates/crds/` and ARE rendered as templates (verified against the
-# pinned 9.4.5 tarball). What makes them version-independent is narrower and
+# pinned 10.6.0 tarball). What makes them version-independent is narrower and
 # checkable: every Go-template directive in those three files interpolates
 # `.Values.crds.{install,keep,annotations,additionalLabels}` and nothing else —
 # no `.Capabilities`, no `.Release`. (The many `KubeVersion` strings in the files
 # are prose inside the CRDs' own schema descriptions, not template references.)
 # The measurement agrees: byte-identical render under --kube-version 1.31.0,
-# 1.35.0 and 1.36.3 (chart 9.4.5).
+# 1.35.0 and 1.36.3 (chart 10.6.0).
 #
 # What binds it going forward is the STRUCTURAL half only:
 # tests/argocd-crd-scope.tftest.hcl asserts the payload is the same three CRDs
