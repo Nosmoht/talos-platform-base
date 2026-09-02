@@ -23,8 +23,8 @@
 #       blast radius than I4, hence its own assertion.
 #   I6  Both paths carry the exact five-policy NetworkPolicy posture: component
 #       selectors, ingress peers/ports and policyTypes (shared across both).
-#   P   The module's argocd_chart_version default equals chart.lock.yaml's
-#       version. Load-bearing since the Day-0 apply stopped forcing conflicts.
+#   P   The module's ArgoCD chart version and SHA-256 equal chart.lock.yaml's
+#       version and digest.
 #   E0-E5  The worked consumer-SSO overlay still wires the component, asserted
 #       against an UNPATCHED control build of the same component.
 #
@@ -267,20 +267,29 @@ check_no_default_role "steady-state" "$tmp/steady.yaml"
 # FAILS `tofu apply` — for every consumer, on an unrelated apply. So the pin the
 # safety argument silently assumes is now asserted.
 #
-# Version-string parity only. A same-version upstream republish (changed
-# tgz_sha256) still slips through; the tarball digest check above covers the
-# steady-state side of that, the module side is unpinned by design.
+# Version and digest parity. Both render paths must accept the same chart bytes.
 MODULE_VARS="${ROOT}/tofu/modules/talos-cluster/variables.tf"
-if [ -f "$MODULE_VARS" ]; then
-  seed_version="$(awk '/^variable "argocd_chart_version"/ {inb=1} inb && /^[[:space:]]*default[[:space:]]*=/ {gsub(/.*=[[:space:]]*"/, ""); gsub(/".*/, ""); print; exit}' "$MODULE_VARS")"
-  if [ -z "$seed_version" ]; then
-    echo "::error::[chart-pin parity] could not read the default of variable \"argocd_chart_version\" from ${MODULE_VARS#"${ROOT}/"} — the parity check cannot run; re-point it." >&2
-    exit 2
-  fi
-  if [ "$seed_version" != "$version" ]; then
-    echo "::error::[chart-pin parity] the Day-0 seed renders argo-cd ${seed_version} (variables.tf argocd_chart_version) while the steady-state component pins ${version} (chart.lock.yaml). ArgoCD owns those CRDs after the first sync, and the Day-0 apply no longer forces conflicts — so a schema divergence fails every consumer's next \`tofu apply\`, not just the one that bumped. Bump both pins together." >&2
-    violations=1
-  fi
+MODULE_PINS="${ROOT}/tofu/modules/talos-cluster/chart-integrity.tf"
+for f in "$MODULE_VARS" "$MODULE_PINS"; do
+  [ -f "$f" ] || { echo "::error::[chart-pin parity] required pin source missing: ${f#"${ROOT}/"}" >&2; exit 2; }
+done
+seed_version="$(awk '/^variable "argocd_chart_version"/ {inb=1} inb && /^[[:space:]]*default[[:space:]]*=/ {gsub(/.*=[[:space:]]*"/, ""); gsub(/".*/, ""); print; exit}' "$MODULE_VARS")"
+if [ -z "$seed_version" ]; then
+  echo "::error::[chart-pin parity] could not read the default of variable \"argocd_chart_version\" from ${MODULE_VARS#"${ROOT}/"} — the parity check cannot run; re-point it." >&2
+  exit 2
+fi
+if [ "$seed_version" != "$version" ]; then
+  echo "::error::[chart-pin parity] the Day-0 seed renders argo-cd ${seed_version} (variables.tf argocd_chart_version) while the steady-state component pins ${version} (chart.lock.yaml). ArgoCD owns those CRDs after the first sync, and the Day-0 apply no longer forces conflicts — so a schema divergence fails every consumer's next \`tofu apply\`, not just the one that bumped. Bump both pins together." >&2
+  violations=1
+fi
+seed_sha="$(awk '/^[[:space:]]*argocd_chart_sha256[[:space:]]*=/ {gsub(/.*=[[:space:]]*"/, ""); gsub(/".*/, ""); print; exit}' "$MODULE_PINS")"
+if [ -z "$seed_sha" ]; then
+  echo "::error::[chart-pin parity] could not read argocd_chart_sha256 from ${MODULE_PINS#"${ROOT}/"}" >&2
+  exit 2
+fi
+if [ "$seed_sha" != "$expected_sha" ]; then
+  echo "::error::[chart-pin parity] the Day-0 seed digest ${seed_sha} differs from chart.lock.yaml ${expected_sha}; both ArgoCD paths must consume identical chart bytes" >&2
+  violations=1
 fi
 
 # --- E: the worked consumer-SSO overlay actually wires what the contract claims.

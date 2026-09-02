@@ -47,6 +47,33 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
+## `v12.0.0` — verify Day-0 chart downloads before rendering (MAJOR — apply-host and chart-version action)
+
+**Type:** MAJOR. ArgoCD and Cilium chart archives remain publicly hosted and are
+not added to the base artifact. The module now downloads each archive into the
+consumer root's `.terraform/talos-platform-base/charts/` cache, verifies the
+base-owned SHA-256, and renders that verified local file. A changed upstream
+archive or altered cache fails the plan/apply before its manifests enter a Talos
+machine configuration.
+
+Before adopting this release:
+
+1. Ensure every OpenTofu apply host has `curl` and either `sha256sum` (Linux) or
+   `shasum` (macOS). This includes a Crossplane provider runner when used.
+2. Remove custom `argocd_chart_version` and `cilium_chart_version` values, or set
+   them to this release's exact base pins. A version for which the base declares
+   no digest is rejected at plan time.
+3. A custom `cilium_chart_repository` may remain when it is an HTTP mirror that
+   serves the exact pinned archive. A mirror that repackages the chart fails the
+   digest check even when its content would render equivalently.
+
+The new check runs on the next plan even for an existing cluster whose seed
+render is frozen. It should produce no resource change. It verifies chart
+archives only; container images and the optional Cilium self-management
+Application's repeated Day-2 chart fetch are unchanged.
+
+---
+
 ## `v10.0.0` — argo-cd chart `9.4.5` → `10.6.0`, Argo CD `v3.3.2` → `v3.5.2` (MAJOR — action required for consumers reaching repo-server or redis from outside Argo CD)
 
 **Type:** MAJOR. The chart's own major moved, and with it a default the base

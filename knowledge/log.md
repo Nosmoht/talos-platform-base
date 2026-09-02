@@ -2,6 +2,15 @@
 
 ## 2026-09-02
 
+- `decisions/0027-verified-public-seed-charts.md`: new. Records the minimal
+  verified-public-download path for ArgoCD and Cilium Day-0 chart archives.
+- `decisions/0007-cluster-yaml-sot.md`: mark its deferred chart-integrity
+  paragraph partially superseded by ADR-0027; the Gateway API URL residual
+  remains.
+- `architecture/day-zero-bootstrap.md`: document the verified chart download,
+  cache, apply-host requirements, and remaining supply-chain boundaries.
+- `reference/manifest-pipeline.md`: extend ArgoCD pin parity from version-only
+  to version plus chart-archive digest.
 - `architecture/substrate.md`, `workflows/first-consumer-cluster.md`: the OCI
   payload now carries every root-level talos-cluster implementation file; the
   checkout-only authoring and bootstrap helpers are identified explicitly.

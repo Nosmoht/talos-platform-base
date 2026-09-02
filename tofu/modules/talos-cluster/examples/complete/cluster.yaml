@@ -138,7 +138,7 @@ substrate:
     # chart, so vendoring a newer base tag moves the pin for you. Set it ONLY to
     # pin against the base deliberately; a stale value here silently overrides
     # every future bump. SEED knob either way (install-time, not an upgrade knob).
-    chart_repository: https://helm.cilium.io # baked into machineConfig WITHOUT a digest pin — point ONLY at a trusted source
+    chart_repository: https://helm.cilium.io # an HTTP mirror is allowed only when its chart bytes match the base-owned SHA-256
     routing_mode: tunnel # tunnel | native (native needs native_routing_cidr or pod_cidr)
     kube_proxy_replacement: true # Cilium replaces kube-proxy (Talos cluster.proxy.disabled)
     gateway_api: true # Hard Constraint: Gateway API only — no Ingress

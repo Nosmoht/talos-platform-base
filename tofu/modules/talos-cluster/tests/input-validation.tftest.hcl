@@ -1341,6 +1341,27 @@ run "null_chart_version_falls_back_to_the_declared_default" {
   }
 }
 
+# Seed chart digests are owned by the base. A caller cannot select another
+# version without also bypassing that base-owned integrity decision, so an
+# unpinned version is refused instead of downloaded without verification.
+run "unpinned_cilium_chart_version_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_chart_version = "1.20.1"
+  }
+  expect_failures = [var.cilium_chart_version]
+}
+
+run "unpinned_argocd_chart_version_is_rejected" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    argocd_chart_version = "10.6.1"
+  }
+  expect_failures = [var.argocd_chart_version]
+}
+
 # AC #3 guard leg A — deploy-prereq guard fires when deploy_argocd is false.
 # Red-green: deleting the deploy-prereq validation block in variables.tf turns
 # this run's expect_failures into "Missing expected failure".

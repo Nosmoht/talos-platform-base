@@ -203,6 +203,10 @@ tasks:
     desc: "CI fence: Cilium/ArgoCD/CRD helm renders must use frozen terraform_data (ignore_changes), not live data.helm_template"
     cmd: scripts/check-render-determinism.sh
 
+  tofu:check:chart-integrity-fetch:
+    desc: "Offline regression test: the Day-0 chart downloader accepts matching SHA-256 and rejects changed bytes"
+    cmd: scripts/check-fetch-verified-chart.sh
+
   tofu:check:argocd-day0-apply-shape:
     # #218 — full rationale in scripts/check-argocd-day0-apply-shape.sh. The
     # provisioner's command string is not observable from a `tofu test`, and the
@@ -292,6 +296,7 @@ tasks:
       - task: supply-chain:oci-module-validate
       - task: tofu:lint
       - task: tofu:check:render-determinism
+      - task: tofu:check:chart-integrity-fetch
       - task: tofu:check:argocd-day0-apply-shape
       - task: tofu:check:argocd-gate-bites
       - task: tofu:check:readme-parity

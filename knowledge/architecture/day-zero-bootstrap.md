@@ -9,6 +9,8 @@ verified:
   - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
 sources:
   - resource: tofu/modules/talos-cluster/main.tf
+  - resource: tofu/modules/talos-cluster/chart-integrity.tf
+  - resource: tofu/modules/talos-cluster/scripts/fetch-verified-chart.sh
   - resource: tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
   - resource: kubernetes/bootstrap/argocd/root-application.yaml.tmpl
   - resource: kubernetes/bootstrap/argocd/root-project.yaml.tmpl
@@ -82,14 +84,21 @@ controlplane machine config (workers carry none):
 
 Two supporting mechanics:
 
+- **Verified chart downloads** — the ArgoCD and Cilium archives stay on their
+  public servers. Before either chart is rendered, the module downloads it into
+  the consumer root's `.terraform` cache and verifies the base-owned SHA-256.
+  Helm receives only that verified local file. A mismatched download or altered
+  cache fails the plan/apply; the ArgoCD digest is also required to equal the
+  steady-state `chart.lock.yaml` digest. Apply hosts need `curl` and
+  `sha256sum` or `shasum`. Unpinned chart versions are rejected.
 - **Frozen renders** — each helm render is captured once in a
   `terraform_data` resource with `ignore_changes`, because the helm provider
   does not render byte-stable manifests and a live render would churn the
   machine config on every plan. Plan-time postconditions refuse to freeze an
   empty render (which would otherwise bootstrap a CNI-less or ArgoCD-less
   cluster and never self-heal). Deliberate re-seed requires `-replace`.
-  Consequence: `cilium_chart_version` / `argocd_chart_version` are **seed
-  knobs, not upgrade knobs**.
+  Consequence: `cilium_chart_version` / `argocd_chart_version` identify
+  base-verified **seed pins, not upgrade knobs**.
 - **Optional Gateway API CRD boot-seed** — when `cilium_gateway_api_crds_url`
   is set, the CRDs are fetched at boot via `cluster.extraManifests`. Default
   is empty: CRDs arrive via Day-1 GitOps from the apps catalog, which is
@@ -251,8 +260,8 @@ and CI):
   component NetworkPolicies, including their selectors, ingress callers and
   ports. The server stays reachable from a consumer gateway while redis and
   repo-server remain restricted to their chart-documented callers.
-- **P** (cross-path) — the module's Day-0 chart-version default equals the
-  steady-state `chart.lock.yaml` version.
+- **P** (cross-path) — the module's Day-0 chart version and SHA-256 equal the
+  steady-state `chart.lock.yaml` version and digest.
 
 Both paths render from the same chart tarball, pinned and sha256-verified
 against `kubernetes/substrate/argocd/chart.lock.yaml`. Consumer

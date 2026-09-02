@@ -10,6 +10,15 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Fixed (BREAKING) — Day-0 ArgoCD and Cilium chart downloads are now verified
+  before rendering.** The public archives remain external; the module downloads
+  them into the caller's `.terraform` cache, rejects a SHA-256 mismatch, and
+  renders only the verified local file. The ArgoCD seed digest is mechanically
+  bound to the steady-state `chart.lock.yaml` digest. Consumer chart-version
+  overrides without a base-owned digest are now rejected, and apply hosts need
+  `curl` plus `sha256sum` or `shasum`. Container-image pins and the optional
+  Cilium self-management Application's repeated fetch remain out of scope.
+  Fixes #249.
 - **Fixed (BREAKING) — the OCI artifact now contains the complete runtime
   `talos-cluster` module.** The allowlist adds `cilium-values.tf`,
   `composition.tf`, `kubeconfig-refresh.tf`, `nodes.tf`, and `profiles.tf`, so a

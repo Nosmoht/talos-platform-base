@@ -51,11 +51,11 @@ locals {
 data "helm_template" "argocd" {
   count = var.deploy_argocd ? 1 : 0
 
+  depends_on = [data.external.argocd_chart]
+
   name         = "argocd"
   namespace    = var.argocd_namespace
-  repository   = "https://argoproj.github.io/argo-helm"
-  chart        = "argo-cd"
-  version      = var.argocd_chart_version
+  chart        = local.argocd_chart_archive
   kube_version = var.kubernetes_version
   # CRDs are NOT in the inlineManifest (too large for Talos, ~1.8 MB) — applied
   # separately via kubectl server-side (null_resource.argocd_crds below).
@@ -88,7 +88,7 @@ data "helm_template" "argocd" {
       # (recovery needs -replace). Fail at plan time instead of bootstrapping an
       # ArgoCD-less seed. Refs #123.
       condition     = self.manifest != ""
-      error_message = "data.helm_template.argocd rendered an EMPTY manifest — refusing to freeze an empty ArgoCD seed. Check argocd_chart_version / repository / argocd_values_override."
+      error_message = "data.helm_template.argocd rendered an EMPTY manifest — refusing to freeze an empty ArgoCD seed. Check the verified chart archive and argocd_values_override."
     }
   }
 }
@@ -359,11 +359,11 @@ locals {
 data "helm_template" "cilium" {
   count = var.deploy_cilium ? 1 : 0
 
+  depends_on = [data.external.cilium_chart]
+
   name         = "cilium"
   namespace    = var.cilium_namespace
-  repository   = var.cilium_chart_repository
-  chart        = "cilium"
-  version      = var.cilium_chart_version
+  chart        = local.cilium_chart_archive
   kube_version = var.kubernetes_version
   # Cilium ships no CRDs that need the separate large-CRD treatment ArgoCD needs,
   # so its own CRDs render inline. The payload is bounded where it belongs — on the
@@ -869,11 +869,11 @@ data "talos_cluster_health" "this" {
 data "helm_template" "argocd_crds" {
   count = var.deploy_argocd ? 1 : 0
 
+  depends_on = [data.external.argocd_chart]
+
   name         = "argocd"
   namespace    = var.argocd_namespace
-  repository   = "https://argoproj.github.io/argo-helm"
-  chart        = "argo-cd"
-  version      = var.argocd_chart_version
+  chart        = local.argocd_chart_archive
   kube_version = var.kubernetes_version
   include_crds = true
   set {
@@ -886,7 +886,7 @@ data "helm_template" "argocd_crds" {
       # Frozen by terraform_data.argocd_crds_render — an empty CRD render would be
       # kubectl-applied as nothing and frozen until -replace. Fail at plan time. #123.
       condition     = self.manifest != ""
-      error_message = "data.helm_template.argocd_crds rendered an EMPTY manifest — refusing to freeze empty ArgoCD CRDs. Check argocd_chart_version / repository."
+      error_message = "data.helm_template.argocd_crds rendered an EMPTY manifest — refusing to freeze empty ArgoCD CRDs. Check the verified chart archive."
     }
   }
 }
