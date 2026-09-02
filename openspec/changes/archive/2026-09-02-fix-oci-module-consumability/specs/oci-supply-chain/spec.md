@@ -18,7 +18,7 @@ missing module implementation from the Git checkout.
 
 #### Scenario: Extracted module validates
 
-- **WHEN** the allowlist-built tarball is extracted and the provider registry is
-  available
+- **WHEN** the allowlist-built tarball is extracted and compatible providers
+  are available
 - **THEN** `tofu init -backend=false` and `tofu validate` succeed in the
   extracted `tofu/modules/talos-cluster/` directory

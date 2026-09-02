@@ -619,7 +619,15 @@ tasks:
       [ -d "$module" ] || { echo "ERROR: vendored talos-cluster module missing" >&2; exit 1; }
       (
         cd "$module"
-        tofu init -backend=false -input=false >/dev/null
+        # tofu:ci runs this after tofu:validate. Reuse that verified provider
+        # set instead of making a second registry request; a standalone run
+        # still resolves providers normally.
+        provider_dir="{{.ROOT_DIR}}/tofu/modules/talos-cluster/.terraform/providers"
+        if [ -d "$provider_dir" ]; then
+          tofu init -backend=false -input=false -plugin-dir="$provider_dir" >/dev/null
+        else
+          tofu init -backend=false -input=false >/dev/null
+        fi
         tofu validate
       )
 

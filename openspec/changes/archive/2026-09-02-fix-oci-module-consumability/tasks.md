@@ -1,8 +1,8 @@
 ## 1. Artifact Contract
 
-- [ ] 1.1 Add every tracked root-level `talos-cluster` `.tf` file to the OCI
+- [x] 1.1 Add every tracked root-level `talos-cluster` `.tf` file to the OCI
   allowlist and expected fixture; verify the tar listing matches exactly.
-- [ ] 1.2 Extend the consumability gate to reject an omitted module `.tf` file;
+- [x] 1.2 Extend the consumability gate to reject an omitted module `.tf` file;
   verify it fails on the old allowlist and passes on the complete allowlist.
 
 ## 2. Executable Validation
@@ -10,14 +10,14 @@
 - [ ] 2.1 Add an extracted-artifact `tofu init -backend=false` and
   `tofu validate` target to `tofu:ci`; verify it succeeds against the packaged
   module.
-- [ ] 2.2 Update release-guard coverage and its lock; verify
+- [x] 2.2 Update release-guard coverage and its lock; verify
   `task supply-chain:check-release-guard` succeeds.
 
 ## 3. Consumer Contract and Documentation
 
-- [ ] 3.1 Add and archive the `oci-supply-chain` delta; verify
+- [x] 3.1 Add and archive the `oci-supply-chain` delta; verify
   `task spec:validate` and `task spec:check-regen` succeed.
-- [ ] 3.2 Correct README and knowledge descriptions of artifact versus git-only
+- [x] 3.2 Correct README and knowledge descriptions of artifact versus git-only
   content; verify `task knowledge:validate` and documentation lint succeed.
 
 ## 4. Final Verification
