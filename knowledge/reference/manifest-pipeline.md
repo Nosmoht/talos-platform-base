@@ -57,6 +57,30 @@ upstream republished the same version (a security event) or the lock needs a
 deliberate update. When the digest is absent, the script writes the observed
 digest back into the lock, so the pin self-establishes on first render.
 
+### What a chart bump obliges
+
+Two review obligations attach to moving a pin. Neither is mechanically gated —
+they are repo-internal QA, which is why they live here rather than in
+`openspec/`; the observable half is a requirement of the
+`module-interface-contract` spec.
+
+- **`Spec-Impact: none` is not available for the variables file.** For a
+  component the `talos-cluster` module also seeds, the module's declared default
+  is the single source of truth for the pin, and the shipped examples leave the
+  key unset — so moving the default changes what a fresh bootstrap seeds and what
+  the steady-state render delivers. The escape is scoped to verified
+  no-behaviour-change diffs, and the staleness gate cannot reach the render-side
+  spec on its own, because the file describing the seed's contents is not the file
+  a version bump touches. The delta belongs on the render or seed capability.
+- **Re-verify what the module cannot check at plan time, and record it where an
+  adopting consumer reads it.** The Kubernetes version range the new upstream
+  version supports — `kubernetes_version` is a required module input the module
+  never validates against the chart — and the upstream project's own upgrade
+  notes for every version crossed. Same form and same reason as the Gateway-API
+  CRD floor the module-interface spec attaches to `cilium_chart_version`: no gate
+  compares a chart pin against an upstream support matrix, and a mechanical
+  coupling remains desirable and unbuilt.
+
 ## Render stages (`task gitops:render-component COMPONENT=<name>`)
 
 `scripts/render-component.sh <component>` runs per component:

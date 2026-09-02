@@ -2,25 +2,21 @@
 
 ## 2026-09-02
 
-- `reference/manifest-pipeline.md`: the I6 entry records that the steady-state
-  assertion also runs on the kustomize-built component, and that a non-matching
-  policy set is a violation rather than a render-shape error.
-- `reference/argocd-sso-contract.md`: the cited invariant range is I1-I6.
-- `reference/manifest-pipeline.md`: the I6 entry records the apiVersion/namespace
-  and named-port bindings, the foreign-policy-kind rejection, the corrected reason
-  the steady-state assertion runs on the kustomize build, and that
-  `argocd-applicationset-controller` is deliberately unpoliced.
+- `reference/manifest-pipeline.md`: the ArgoCD substrate-invariant inventory is
+  refreshed through I6/P; the I6 entry records the apiVersion/namespace and
+  named-port bindings, the foreign-policy-kind rejection, why the steady-state
+  assertion also runs on the kustomize build, that a non-matching policy set is a
+  violation rather than a render-shape error, and that
+  `argocd-applicationset-controller` is deliberately unpoliced. §Chart pin gains
+  what a chart bump obliges of a reviewer.
+- `reference/argocd-sso-contract.md`: the identity-enforcement range stays I1-I5,
+  with I6 named separately as the NetworkPolicy-posture invariant it is.
 - `decisions/0025-argocd-crd-apply-scope.md`: addendum — the revisit trigger the
-  record sets was discharged at argo-cd chart `10.6.0`; the CRD templates' directive
-  list and the byte-identical cross-`--kube-version` render both still hold.
-- `reference/manifest-pipeline.md`: refresh the ArgoCD substrate-invariant
-  inventory through I6/P and record the NetworkPolicy posture bite-check.
-- `architecture/day-zero-bootstrap.md`: refresh the two-render-path invariant
-  inventory through I6/P after the NetworkPolicy gate was strengthened.
-- `reference/argocd-sso-contract.md`: include the `policy.default` I5 guard in
-  the identity-free substrate invariant range.
-- `reference/tasks.md`: refresh the local `gitops:validate` sequence with the
-  NetworkPolicy bite-check and the existing bootstrap/Cilium tail checks.
+  record sets was discharged at argo-cd chart `10.6.0`; the CRD templates'
+  directive list and the byte-identical cross-`--kube-version` render both still
+  hold.
+- `architecture/day-zero-bootstrap.md`, `reference/tasks.md`: the NetworkPolicy
+  posture gate and its bite-check join the ArgoCD seed and task inventories.
 
 ## 2026-08-28
 

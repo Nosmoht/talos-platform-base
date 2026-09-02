@@ -33,14 +33,16 @@ input it cannot validate against the chart.
 
 ## What Changes
 
-- `module-interface-contract`: one new requirement fixing what a chart-version
-  default bump obliges — that it is a consumer-visible change, that
-  `Spec-Impact: none` is not available for it, that the render-side capability
-  describing what the pin delivers carries the delta, and that the upstream
-  Kubernetes floor and upgrade notes are re-verified at the bump. The
-  new requirement cites the existing `cilium_chart_version` Gateway-API clause as
-  the precedent for the reviewer-enforced form rather than rewriting it, so that
-  clause keeps its component-specific detail.
+- `module-interface-contract`: one new requirement fixing the observable half —
+  that moving a chart-version default is a consumer-visible change, exactly which
+  paths it reaches given that the seed renders are frozen, and that the delta
+  belongs on the capability describing what the pin renders or seeds.
+- The review obligations it implies — that `Spec-Impact: none` is not available
+  for the variables file, and that the upstream Kubernetes support window and
+  upgrade notes are re-verified and recorded for the adopting consumer — are
+  repo-internal QA, which `AGENTS.md` §Spec-Driven Development keeps out of
+  `openspec/`. They land in `knowledge/reference/manifest-pipeline.md`
+  §Chart pin instead, alongside the pin mechanics they attach to.
 
 ## Capabilities
 
@@ -55,9 +57,10 @@ None.
 ## Impact
 
 - Specs: `module-interface-contract`.
-- Code: none. This records an obligation on a review step that already exists;
-  no mechanical gate is added, and the requirement says so rather than implying
-  one.
+- Code: none. No mechanical gate is added.
+- Knowledge: `reference/manifest-pipeline.md` §Chart pin gains the review
+  obligations, which are not observable module behaviour and therefore not
+  spec material.
 - Consumers: none directly — it constrains how the base makes a bump, which is
   what reaches them.
 - Decision record: none. This does not choose between options the base owns; it

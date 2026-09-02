@@ -57,11 +57,15 @@ enforces them. No base input was renamed or removed; what changed is what the
 render contains and what the cluster then permits. Argo CD itself moves two
 minors, `v3.3.2` → `v3.5.2`, and the bundled redis image `8.2.3` → `8.6.4` —
 in full, `ecr-public.aws.com/docker/library/redis:8.6.4-alpine`, tag-pinned and
-not digest-pinned, and the only image in the render that is not
-`quay.io/argoproj/argocd`. If you run a mirror, a pull-through cache or a
-registry allowlist, mirror that reference before the sync **and** before any
-fresh bootstrap: in the Day-0 seed a redis pull failure happens before Argo CD
-exists to report it.
+not digest-pinned. If you run a mirror, a pull-through cache or a registry
+allowlist, mirror it before the sync **and** before any fresh bootstrap: in the
+Day-0 seed a redis pull failure happens before Argo CD exists to report it.
+
+For that audit the render pulls from three places, not one — the chart images are
+`quay.io/argoproj/argocd:v3.5.2` and the redis reference above, and the base's own
+values add `viaductoss/ksops:v4.3.2` as the repo-server init container on both
+paths. Only the redis tag moves in this bump; the list is here because an
+allowlist built from "the argo images" leaves repo-server unable to start.
 
 The chart-emitted `argocd-cm` also changes the reconciliation timer from a
 fixed `180s` to a `120s` base plus up to `60s` jitter; the maximum interval is
@@ -88,14 +92,20 @@ selects.
 | `argocd-notifications-controller` | the `metrics` port from any namespace |
 
 **Five policies, six workloads.** `argocd-applicationset-controller` is not in
-the table because the chart does not emit a policy for it unless one of
+the table: the chart emits a policy for it only when one of
 `applicationSet.{metrics,ingress,httproute}` is enabled, and the base enables
-none — an emitted policy would carry an empty ingress list, which is a default
-deny on the pod that receives SCM webhooks. So that pod stays **unrestricted**:
-its `webhook` (:7000), `metrics` (:8080) and `probe` (:8081) ports remain
-reachable from every pod in every namespace. If your threat model does not accept
-that, add your own policy for it — the base cannot, without breaking the webhook
-path it cannot see.
+none. So that pod is selected by no policy and therefore stays
+**unrestricted** — its `webhook` (:7000), `metrics` (:8080) and `probe` (:8081)
+ports remain reachable from every pod in every namespace. If your threat model
+does not accept that, write your own policy for it.
+
+Do **not** reach for `applicationSet.metrics.enabled` to get one. The chart's
+template emits the metrics rule unconditionally and the webhook rule only under
+`ingress.enabled` or `httproute.enabled`, so enabling metrics alone yields an
+`Ingress`-type policy permitting metrics and nothing else — which
+**default-denies the webhook port** on the pod that receives SCM webhooks. If you
+want the chart's policy, enable it alongside `ingress` or `httproute`; otherwise
+supply your own rule for the webhook path.
 
 `argocd-server` stays open on purpose and I6 asserts it: the base runs it with
 `server.insecure` and expects a consumer gateway in front, whose pod labels and
@@ -132,13 +142,25 @@ into live traffic, with no operator present if auto-sync is on. Kubernetes emits
 no event for a policy-dropped connection, and the base ships Hubble off, so the
 first signal is usually an Argo CD `ComparisonError` / `context deadline
 exceeded` or a metric that stopped arriving — both of which read as an Argo CD
-problem rather than a network one. If you cannot audit ahead of time, either
-disable auto-sync on the argocd Application for this bump, or turn Hubble on
-first (`substrate.cilium.hubble_enabled`) so a drop is attributable:
+problem rather than a network one. If you cannot audit ahead of time, disable
+auto-sync on the argocd Application for this bump — that is the lever that always
+works.
+
+Turning Hubble on first is the other option, but on an existing cluster it is not
+a one-line change: `substrate.cilium.hubble_enabled` feeds the Cilium seed,
+`terraform_data.cilium_render` is frozen, and `cilium_self_management` defaults to
+false — so setting it changes the plan and not the running cluster. You need
+Cilium self-management, or another live path that updates the running Cilium
+release, before Hubble can carry this audit.
+
+Without Hubble, ask the agent directly. Talos nodes have no shell, so the
+diagnostic runs inside the Cilium pod on the node hosting the suspect client:
 
 ```bash
-# On the node hosting the suspect client pod
-cilium-dbg monitor --type drop
+POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
+  --field-selector "spec.nodeName=<node>" -o name | head -1)
+kubectl -n kube-system exec -it "$POD" -c cilium-agent -- \
+  cilium-dbg monitor --type drop
 ```
 
 Break-risk is confined to traffic *into* `argocd-repo-server` or `argocd-redis`
@@ -233,20 +255,25 @@ Reach for the smallest move first.
    `$patch: delete` the offending NetworkPolicy in your overlay (§2). Nothing
    else in the bump has to move, and this is the only lever that reaches a
    running cluster.
-2. **Reverting the pin needs the CRD apply out of the way first.** Moving
+2. **Do not revert the chart pin to undo the policies.** Moving
    `argocd_chart_version` back puts `9.4.5` in `triggers_replace`, so the next
    `tofu apply` re-applies `9.4.5` CRDs against schemas `argocd-controller` owns
-   at `10.6.0` — the conflict of §4, in the other direction. Drop the seed apply
-   from state before reverting, as §`v9.0.0` §Back-out sequences it:
+   at `10.6.0` — the conflict of §4, in the other direction, and a CRD *schema*
+   downgrade against live `Application` objects besides.
 
-   ```bash
-   tofu state rm 'module.<name>.null_resource.argocd_crds[0]'                  'module.<name>.terraform_data.argocd_crds_render[0]'
-   ```
+   `tofu state rm` does **not** avoid it. Both resources stay declared in
+   `main.tf` behind `count = var.deploy_argocd ? 1 : 0`, so forgetting them makes
+   the next apply *recreate* them and run the `9.4.5` apply anyway. The only
+   configuration-level lever is `deploy_argocd = false`, which drops the whole
+   ArgoCD seed — namespace, age-key Secret and render — and is not a rollback of
+   this bump.
 
-   Do **not** re-add `--force-conflicts` to get past it. A CRD *schema*
-   downgrade against live `Application` objects is not something this base
-   recommends running: prefer step 1, or pin the steady-state component back and
-   leave the CRDs where they are.
+   So: use step 1 for the policies. If you must go back to the `9.4.5` chart, pin
+   the **steady-state** component back and leave the CRDs at `10.6.0` — nothing
+   was removed from the three schemas in this range, so a `10.6.0` CRD serves a
+   `9.4.5` control plane. §`v9.0.0` §3 covers the apply if it fires anyway. Do
+   not re-add `--force-conflicts`.
+
 3. **The redis image and the `argocd-cm` reconciliation defaults ride the chart
    pin** and roll back with it — they are not separately settable in the base.
 
