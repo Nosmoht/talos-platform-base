@@ -3,7 +3,7 @@ type: reference
 title: Manifest Pipeline
 description: How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 tags: [rendered-manifests, validation, ci, conftest]
-generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-02T00:00:00Z" }
 sources:
   - resource: scripts/render-component.sh
   - resource: scripts/verify-rendered.sh
@@ -12,6 +12,8 @@ sources:
   - resource: scripts/verify_sops_files.sh
   - resource: scripts/run_conftest.sh
   - resource: scripts/check-argocd-substrate-invariants.sh
+  - resource: scripts/check-argocd-network-policy-invariants.sh
+  - resource: scripts/check-argocd-network-policy-gate-bites.sh
   - resource: scripts/render-component-readmes.sh
   - resource: scripts/lint-cluster-yaml.sh
   - resource: policies/conftest/k8s.rego
@@ -125,7 +127,7 @@ mode that fails on drift.
 
 ## `task gitops:validate` — stage by stage
 
-The aggregate validation task chains five scripts plus kubeconform
+The aggregate validation task chains the following gates
 (`Taskfile.yml`, `gitops:validate`):
 
 1. **Discovery** — `scripts/discover_kustomize_targets.sh` finds
@@ -163,8 +165,19 @@ The aggregate validation task chains five scripts plus kubeconform
      Tracked as a follow-up to wire a producer for the list.
 5. **Kubeconform** — `kubeconform -strict -ignore-missing-schemas` over every
    rendered file.
-6. **ArgoCD substrate invariants** —
+6. **Conftest bite-check** — the committed invalid Application fixture must
+   trigger all three expected source-classification and pinning denials.
+7. **ArgoCD substrate invariants** —
    `scripts/check-argocd-substrate-invariants.sh` (below).
+8. **NetworkPolicy gate bite-check** —
+   `scripts/check-argocd-network-policy-gate-bites.sh` mutates copies of the
+   committed render and requires the exact-posture gate to reject selector,
+   ingress, port, `policyTypes`, and policy-set drift.
+9. **Bootstrap render contract** — `scripts/check-bootstrap-render.sh` binds
+   the consumer bootstrap render to its OpenSpec scenarios.
+10. **Cilium reference values** — `scripts/check-cilium-reference-values.py`
+   checks the shipped Day-2 values against the pinned chart schema; an
+   unreachable registry skips loudly rather than blocking unrelated work.
 
 ### Conftest policy content
 
@@ -190,8 +203,8 @@ across the two render paths — the Day-0 bootstrap seed values
 self-management values (`kubernetes/substrate/argocd/values.yaml`)
 — by rendering each fresh with the single pinned chart from the argocd
 component's `chart.lock.yaml` (tarball sha256-verified, same posture as the
-component render). I1–I3 are asserted against both paths; I4 is
-steady-state-only:
+component render). I1–I3 and I6 are asserted against both paths; I4 and I5 are
+steady-state-only; P compares the two pins:
 
 - **I1** — no bundled-Dex resource: no rendered document carries the label
   `app.kubernetes.io/component=dex-server` nor the name
@@ -210,8 +223,20 @@ steady-state-only:
   onto, so a principal shipped there becomes a standing grant in every consuming
   cluster. Asserted on emptiness rather than absence, because the chart emits
   the key unconditionally.
+- **I5** (steady-state only) — `argocd-rbac-cm` carries no non-empty
+  `policy.default`; unlike I4's named-subject policy, this would grant a role to
+  every authenticated principal.
+- **I6** — both renders carry the exact five-policy NetworkPolicy posture.
+  `scripts/check-argocd-network-policy-invariants.sh` binds each component's
+  selector, ingress peers and ports, and `policyTypes`; the server remains open
+  for a consumer gateway while redis and repo-server remain restricted to their
+  documented callers. `scripts/check-argocd-network-policy-gate-bites.sh`
+  mutates the committed render and proves empty/wrong selectors, unsafe ingress
+  drift and a missing policy are rejected.
+- **P** — the module's Day-0 `argocd_chart_version` default equals the
+  steady-state `chart.lock.yaml` version.
 
-The name-scoped invariants (I3, I4) each run behind a **presence anchor**: a
+The name-scoped invariants (I3–I5) each run behind a **presence anchor**: a
 negative assertion selecting a ConfigMap by name passes vacuously if the chart
 renames or drops it, so the gate first requires exactly one such ConfigMap and
 exits with a distinct render-shape code when that fails. I1/I2 need no anchor —
@@ -234,7 +259,7 @@ The workflow runs on every PR and on pushes to `main`, with these jobs:
 
 | Job | What it runs |
 | --- | --- |
-| `validate` | Tool-version drift check (workflow env vs `.tool-versions` for kustomize, conftest, kubeconform, helm, yq) → pinned tool installs → `verify-rendered.sh` (drift gate) → `check-argocd-substrate-invariants.sh` → discovery → safe render → **renderable-set fence** (rendered base-component set must equal the frozen `.ci-renderable-components.txt`) → kubeconform → `run_conftest.sh`; uploads `.work/` diagnostics on failure. |
+| `validate` | Tool-version drift check (workflow env vs `.tool-versions` for kustomize, conftest, kubeconform, helm, yq) → pinned tool installs → `verify-rendered.sh` (drift gate) → `check-argocd-substrate-invariants.sh` → NetworkPolicy gate bite-check → Cilium reference-values schema check → discovery → safe render → **renderable-set fence** (rendered base-component set must equal the frozen `.ci-renderable-components.txt`) → kubeconform → `run_conftest.sh`; uploads `.work/` diagnostics on failure. |
 | `hardware-features-check` | Layer-C registry schema lint (`scripts/lint-hardware-features.sh`), provisioning-catalog reference check, **cluster.yaml schema lint** (`scripts/lint-cluster-yaml.sh` against `schemas/cluster.schema.json`, targeting `cluster.yaml.example` and the module's worked example `tofu/modules/talos-cluster/examples/complete/cluster.yaml`), and a **red-green fixture step**: `schemas/fixtures/cluster.invalid.yaml` must be rejected with exit 1 specifically — exit 0 (fixture passed) and exit 2 (toolchain error, no schema verdict) both fail, so a broken linter cannot pass vacuously. |
 | `reuse-compliance` | REUSE 3.3 lint — every file carries SPDX metadata; `_rendered/` upstream-chart output is marked `LicenseRef-UpstreamHelm`. |
 | `secret-scan` | gitleaks over the full history with the pinned shared `.gitleaks.toml` — the server-side backstop against local `--no-verify` bypass. |
@@ -250,9 +275,10 @@ composition:
 - The SOPS negative gate (`scripts/verify_sops_files.sh`) runs ONLY in the
   local task — no CI step invokes it (consistent with the base shipping no
   `*.sops.yaml`; the consumer-side gate is where it bites).
-- Ordering differs without behavioral effect: CI runs kubeconform before
-  conftest and the substrate-invariants check before discovery, while the
-  local task runs conftest first and the invariants check last.
+- Ordering differs without behavioral effect: CI runs the substrate invariants,
+  NetworkPolicy bite-check and Cilium reference-values check before discovery,
+  then kubeconform before conftest. The local task renders first, runs conftest
+  before kubeconform, and puts those three checks after both validators.
 
 ## Related concepts
 

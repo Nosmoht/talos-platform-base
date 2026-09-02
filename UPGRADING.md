@@ -47,6 +47,119 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
+## `v10.0.0` — argo-cd chart `9.4.5` → `10.6.0`, Argo CD `v3.3.2` → `v3.5.2` (MAJOR — action required for consumers reaching repo-server or redis from outside Argo CD)
+
+**Type:** MAJOR. The chart's own major moved, and with it a default the base
+does not override: `global.networkPolicy.create` flipped from `false` to `true`
+in argo-cd `10.0.0`. Both base render paths therefore ship five
+`networking.k8s.io/v1` NetworkPolicies, and Cilium — the substrate CNI —
+enforces them. No base input was renamed or removed; what changed is what the
+render contains and what the cluster then permits. Argo CD itself moves two
+minors, `v3.3.2` → `v3.5.2`, and the bundled redis image `8.2.3` → `8.6.4`.
+The chart-emitted `argocd-cm` also changes the reconciliation timer from a
+fixed `180s` to a `120s` base plus up to `60s` jitter; the maximum interval is
+unchanged, while individual reconciliations may happen sooner.
+
+Substrate invariant **I6** now asserts the complete selector and ingress posture
+in both paths, backed by mutation-based bite tests — see
+[`kubernetes/substrate/argocd/README.md`](kubernetes/substrate/argocd/README.md)
+§Substrate invariants.
+
+### 1. What the policies actually permit (read before auditing)
+
+The set is per-component allow-rules, **not** a namespace default-deny: no
+policy carries an empty `podSelector`, so a workload of yours living in the
+`argocd` namespace is unaffected — a NetworkPolicy only restricts the pods it
+selects.
+
+| Policy | Ingress permitted |
+|---|---|
+| `argocd-server` | **everything** — `ingress: [{}]` |
+| `argocd-redis` | the `argocd-server`, `argocd-repo-server` and `argocd-application-controller` pods, on the `redis` port |
+| `argocd-repo-server` | the server, application-controller, notifications-controller and applicationset-controller pods on the `repo-server` port; the `metrics` port from any namespace |
+| `argocd-application-controller` | the `metrics` port from any namespace |
+| `argocd-notifications-controller` | the `metrics` port from any namespace |
+
+`argocd-server` stays open on purpose and I6 asserts it: the base runs it with
+`server.insecure` and expects a consumer gateway in front, whose pod labels and
+namespace a cluster-agnostic floor cannot know. **A Gateway API HTTPRoute to
+argocd-server keeps working with no action.** Prometheus scraping of any
+component keeps working from any namespace.
+
+### 2. Audit anything that reaches repo-server or redis directly
+
+Break-risk is confined to traffic *into* `argocd-repo-server` or `argocd-redis`
+from a pod that is not one of the Argo CD components named above. In-pod
+sidecars (a CMP container, the ksops init container the base ships) are
+unaffected — they are not network ingress. Check for:
+
+- a Config Management Plugin running as its **own Deployment** rather than as a
+  repo-server sidecar,
+- anything speaking to `argocd-redis` outside Argo CD (an external cache reader,
+  a debugging tool left wired in),
+- a mesh or probe reaching those services on a port the policies do not list.
+
+If you find one, add your own NetworkPolicy allowing it — additive policies
+union, so a second policy selecting the same pods widens access rather than
+replacing the base rule. To opt out of a base policy entirely, patch it away in
+your overlay (`$patch: delete` on the named NetworkPolicy) for the steady state,
+or set `global.networkPolicy.create: false` via `argocd_values_override` for the
+Day-0 seed.
+
+### 3. Argo CD `v3.3.2` → `v3.5.2` — upstream's own notes apply
+
+Two upstream upgrade documents cover this range and the base does not restate
+them; read both against your own manifests before adopting:
+
+- 3.3 → 3.4: cluster versions become `vMajor.Minor.Patch` (ApplicationSet
+  Cluster Generator version comparisons must be updated); an Application reports
+  `Missing` health only when **all** its resources are absent; the gRPC service
+  config DNS TXT lookup defaults off.
+- 3.4 → 3.5: Helm inside Argo CD moves to `4.2.0`, so a plain-HTTP OCI
+  repository now needs `--insecure-oci-force-http` and must be registered
+  explicitly, and `spec.source.helm.version: v3` is ignored; UI extensions must
+  externalize `react/jsx-runtime` after the React 16 → 19 move; three
+  event-listing gRPC methods return Argo CD's own `EventList` type; API
+  operations are impersonated, so configured service accounts need the matching
+  RBAC; SSH host keys for credential-less repositories must live in
+  `argocd-ssh-known-hosts-cm`. `.spec.signatureKeys` on AppProject is deprecated
+  in favour of `sourceIntegrity` — the field is still present in this tag's
+  CRDs, so nothing breaks yet.
+
+### 4. Nothing reaches a running cluster from the seed
+
+`argocd_chart_version` is a **seed knob**, as `cilium_chart_version` is:
+`terraform_data.argocd_render` freezes the seed with `ignore_changes`, so a
+running cluster is not re-seeded by vendoring this tag. Two things do move:
+
+- **Steady state** arrives through Argo CD self-management on the next sync of
+  the component — that is the path that installs `v3.5.2` and the policies.
+- **The CRD apply re-fires.** `terraform_data.argocd_crds_render` carries
+  `triggers_replace` on the chart version, so the next `tofu apply` re-applies
+  the three CRDs server-side at `10.6.0`. It does **not** force conflicts. Both
+  pins move together in this tag (invariant P gates that), so the apply and the
+  steady state agree whichever order you run them in; the three CRDs are
+  additive here — new `tagPrefix` and `hydrateTo.repoURL` fields, no field
+  removed — and they gain
+  `argocd.argoproj.io/sync-options: ServerSideApply=true`.
+
+### Validation steps after upgrade
+
+```bash
+# The five policies are present and argocd-server is still open
+kubectl -n argocd get networkpolicy
+kubectl -n argocd get networkpolicy argocd-server -o jsonpath='{.spec.ingress}'; echo
+
+# The workloads actually rolled to v3.5.2
+kubectl -n argocd get deploy,sts \
+  -o custom-columns='NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image'
+
+# Nothing is stuck syncing or degraded
+kubectl -n argocd get applications.argoproj.io
+```
+
+---
+
 ## `v9.0.0` — the substrate ships no ArgoCD identity (MAJOR — action required for EVERY consumer using the shipped RBAC binding)
 
 **Type:** MAJOR. The base stops shipping an access policy and a base URL for

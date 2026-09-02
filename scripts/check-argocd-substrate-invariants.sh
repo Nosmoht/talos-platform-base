@@ -21,6 +21,8 @@
 #   I4  No non-empty argocd-rbac-cm `policy.csv` (steady-state only).
 #   I5  No non-empty argocd-rbac-cm `policy.default` (steady-state only) — wider
 #       blast radius than I4, hence its own assertion.
+#   I6  Both paths carry the exact five-policy NetworkPolicy posture: component
+#       selectors, ingress peers/ports and policyTypes (shared across both).
 #   P   The module's argocd_chart_version default equals chart.lock.yaml's
 #       version. Load-bearing since the Day-0 apply stopped forcing conflicts.
 #   E0-E5  The worked consumer-SSO overlay still wires the component, asserted
@@ -51,6 +53,7 @@ ARGOCD_DIR="${ROOT}/kubernetes/substrate/argocd"
 LOCK="${ARGOCD_DIR}/chart.lock.yaml"
 STEADY_VALUES="${ARGOCD_DIR}/values.yaml"
 BOOTSTRAP_VALUES="${ROOT}/tofu/modules/talos-cluster/helm/argocd-values.yaml"
+NETPOL_GATE="${ROOT}/scripts/check-argocd-network-policy-invariants.sh"
 
 for t in helm yq; do
   command -v "$t" >/dev/null 2>&1 || { echo "::error::required tool not found on PATH: $t" >&2; exit 1; }
@@ -58,6 +61,7 @@ done
 for f in "$LOCK" "$STEADY_VALUES" "$BOOTSTRAP_VALUES"; do
   [ -f "$f" ] || { echo "::error::required file missing: $f" >&2; exit 1; }
 done
+[ -x "$NETPOL_GATE" ] || { echo "::error::required gate missing or not executable: $NETPOL_GATE" >&2; exit 1; }
 
 repo="$(yq -e '.chart.repo' "$LOCK")"       || { echo "::error::chart.lock.yaml missing .chart.repo" >&2; exit 1; }
 name="$(yq -e '.chart.name' "$LOCK")"       || { echo "::error::chart.lock.yaml missing .chart.name" >&2; exit 1; }
@@ -195,6 +199,24 @@ check_no_url() {
 check_no_url "steady-state"   "$tmp/steady.yaml"
 check_no_url "bootstrap-seed" "$tmp/bootstrap.yaml"
 
+# I6 — exact chart-emitted per-component NetworkPolicy posture, SHARED across
+# both paths. The dedicated gate binds the five-policy anchor, each component's
+# selector, ingress peers/ports and policyTypes. Its bite-check mutates the real
+# committed render to prove empty/wrong selectors, open redis, a closed server
+# and a vanished policy are all rejected.
+check_netpol_floor() {
+  local label="$1" render="$2" got=0
+  "$NETPOL_GATE" "$label" "$render" || got=$?
+  case "$got" in
+    0) ;;
+    3) violations=$((violations + 1)) ;;
+    *) exit "$got" ;;
+  esac
+}
+
+check_netpol_floor "steady-state"   "$tmp/steady.yaml"
+check_netpol_floor "bootstrap-seed" "$tmp/bootstrap.yaml"
+
 # I4 — the substrate ships NO identity: argocd-rbac-cm carries no NON-EMPTY
 # policy.csv. STEADY-STATE ONLY by construction, not by omission — the seed
 # renders from the module values, which have never carried an RBAC policy, and
@@ -263,7 +285,7 @@ fi
 
 # --- E: the worked consumer-SSO overlay actually wires what the contract claims.
 #
-# I1-I4 assert what the base does NOT ship. That is only half the contract: the
+# I1-I6 assert what the base does NOT ship, or ships unweakened. That is only half the contract: the
 # other half is that a consumer CAN supply the missing identity, through the
 # documented mechanism, without losing the keys the base does ship. Documentation
 # alone cannot hold that — a chart bump that renamed a ConfigMap, or a patch that
@@ -380,4 +402,4 @@ if [ "$violations" -ne 0 ]; then
   echo "::error::ArgoCD substrate invariants FAILED (see above). Declared in kubernetes/substrate/argocd/README.md §Substrate invariants." >&2
   exit 3
 fi
-echo "OK: ArgoCD substrate invariants hold (I1-I3 in both render paths: no bundled Dex, no server.dex.server* cmd-params, no placeholder argocd-cm url; I4/I5 steady-state: no shipped policy.csv, no blanket policy.default; P: seed and steady-state chart pins agree; E: the worked consumer-SSO overlay merges url/oidc.config/policy.csv in against a control build without dropping a base-shipped key)."
+echo "OK: ArgoCD substrate invariants hold (I1-I3 + I6 in both render paths: no bundled Dex, no server.dex.server* cmd-params, no placeholder argocd-cm url, and the exact five-policy NetworkPolicy selector/ingress posture; I4/I5 steady-state: no shipped policy.csv, no blanket policy.default; P: seed and steady-state chart pins agree; E: the worked consumer-SSO overlay merges url/oidc.config/policy.csv in against a control build without dropping a base-shipped key)."

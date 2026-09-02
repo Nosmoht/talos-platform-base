@@ -10,6 +10,27 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Changed (BREAKING) — the `argo-cd` chart moves `9.4.5` → `10.6.0`, Argo CD
+  `v3.3.2` → `v3.5.2`.** Both render paths bump together —
+  `kubernetes/substrate/argocd/chart.lock.yaml` and the `argocd_chart_version`
+  default the parity gate binds to it. The breaking part is a chart default the
+  base does not override: `10.0.0` flipped `global.networkPolicy.create` to
+  `true`, so the steady-state render AND the Day-0 seed now carry five
+  `networking.k8s.io/v1` NetworkPolicies, which Cilium enforces in every
+  consuming cluster. `argocd-server` keeps an open ingress rule, so a consumer
+  gateway in front of it is unaffected; ingress to `argocd-repo-server` and
+  `argocd-redis` is restricted to the Argo CD components that call them, and a
+  workload of yours reaching either directly needs its own allow-policy. No
+  policy carries an empty `podSelector`, so this is not a namespace default-deny.
+  The chart also changes the reconciliation timer from a fixed `180s` to a
+  `120s` base plus up to `60s` jitter. Substrate invariant **I6** asserts the
+  complete selector and ingress posture in both paths, with mutation-based bite
+  tests proving the gate rejects unsafe drift. Argo CD's own 3.3→3.4 and
+  3.4→3.5 upgrade notes apply unchanged and are summarised, with the audit and
+  validation steps, in [`UPGRADING.md`](UPGRADING.md) §`v10.0.0`. The three CRDs
+  are additive at this bump (new `tagPrefix` and `hydrateTo.repoURL`, no field
+  removed) and gain `argocd.argoproj.io/sync-options: ServerSideApply=true`;
+  adr-0025's revisit trigger was re-run at the new pin and holds.
 - **Added — the machine-config apply mode is selectable per role.**
   `controlplane_apply_mode` and `worker_apply_mode` plumb the talos provider's
   `apply_mode` to the per-node machine-config apply. Both default to `auto`, so a
