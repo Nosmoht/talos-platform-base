@@ -24,7 +24,9 @@ None.
 ### Modified Capabilities
 
 - `argocd-module-seed`
+- `argocd-substrate`
 - `cilium-cni-delivery`
+- `cluster-bootstrap-lifecycle`
 - `module-interface-contract`
 - `oci-supply-chain`
 
