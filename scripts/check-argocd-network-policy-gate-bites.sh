@@ -73,6 +73,29 @@ mut_drop_repo_server_policy() {
   ' "$1"
 }
 
+mut_add_sixth_policy() {
+  # Growth is a posture change too, and the exact-set comparison is what catches
+  # it: a sixth policy could police a component the five do not, or shadow one
+  # of them, and neither shows up in a per-policy comparison of the five.
+  cat >> "$1" <<'NPEOF'
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argocd-unexpected
+  namespace: argocd
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: argocd
+      app.kubernetes.io/name: argocd-unexpected
+  policyTypes:
+    - Ingress
+  ingress:
+    - {}
+NPEOF
+}
+
 # scenario <expected-exit> <expected-output> <mutator|-> <label>
 scenario() {
   local want_exit="$1" pattern="$2" mutator="$3" label="$4"
@@ -122,8 +145,10 @@ scenario 3 "selector or ingress posture changed" mut_wrong_redis_port \
   "redis must remain restricted to its named service port"
 scenario 3 "selector or ingress posture changed" mut_wrong_policy_type \
   "the ingress-only policy type cannot drift"
-scenario 2 "anchor" mut_drop_repo_server_policy \
+scenario 3 "no longer ships exactly the chart's five" mut_drop_repo_server_policy \
   "the expected five-policy set cannot shrink"
+scenario 3 "no longer ships exactly the chart's five" mut_add_sixth_policy \
+  "an unexpected sixth policy cannot slip in"
 
 if [ "$rc" = 0 ]; then
   echo "ArgoCD NetworkPolicy gate bite-check OK"

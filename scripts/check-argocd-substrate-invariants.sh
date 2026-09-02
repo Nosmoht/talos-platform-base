@@ -22,7 +22,8 @@
 #   I5  No non-empty argocd-rbac-cm `policy.default` (steady-state only) — wider
 #       blast radius than I4, hence its own assertion.
 #   I6  Both paths carry the exact five-policy NetworkPolicy posture: component
-#       selectors, ingress peers/ports and policyTypes (shared across both).
+#       selectors, ingress peers/ports and policyTypes (shared across both), and
+#       the steady-state side is asserted on the kustomize-built bytes too.
 #   P   The module's argocd_chart_version default equals chart.lock.yaml's
 #       version. Load-bearing since the Day-0 apply stopped forcing conflicts.
 #   E0-E5  The worked consumer-SSO overlay still wires the component, asserted
@@ -202,8 +203,14 @@ check_no_url "bootstrap-seed" "$tmp/bootstrap.yaml"
 # I6 — exact chart-emitted per-component NetworkPolicy posture, SHARED across
 # both paths. The dedicated gate binds the five-policy anchor, each component's
 # selector, ingress peers/ports and policyTypes. Its bite-check mutates the real
-# committed render to prove empty/wrong selectors, open redis, a closed server
-# and a vanished policy are all rejected.
+# committed render to prove empty/wrong selectors, open redis, a closed server,
+# a vanished policy and an added sixth are all rejected.
+#
+# Unlike I1-I5 this invariant is POSITIVE, so the gate returns 3 — a recorded
+# violation — for a policy set that no longer matches, not 2. A lost network
+# posture is the violation itself, not a precondition that would leave a negative
+# check passing vacuously, and routing it through 3 keeps it out of the channel a
+# `helm pull` failure uses and lets the remaining invariants still report.
 check_netpol_floor() {
   local label="$1" render="$2" got=0
   "$NETPOL_GATE" "$label" "$render" || got=$?
@@ -321,6 +328,14 @@ kustomize build "$ARGOCD_DIR"  > "$tmp/ctl-full.yaml" 2>"$tmp/kz.err" || {
 kustomize build "$EXAMPLE_DIR" > "$tmp/sso-full.yaml" 2>"$tmp/kz.err" || {
   echo "::error::kustomize build failed for ${EXAMPLE_DIR#"${ROOT}/"} — the documented consumer overlay no longer builds against the component it patches (knowledge/reference/argocd-sso-contract.md)" >&2
   sed 's/^/    /' "$tmp/kz.err" >&2; exit 2; }
+
+# I6 again, on the STAGE-2 bytes. The steady-state run above asserts the fresh
+# helm render; this control build is kustomize-built from the committed
+# _rendered/ tree plus _rendered-overlay/, which is what a consumer vendoring the
+# artifact receives and what the spec scenario names. The overlay carries a live
+# `patches:` block, so a patch stripping or rewriting a policy would leave the
+# Stage-1 run green while the shipped bytes lost the posture.
+check_netpol_floor "steady-state (kustomize build)" "$tmp/ctl-full.yaml"
 
 # Reduce once. Both builds carry the ~29k-line CRD stream, and the E-series makes
 # a dozen ConfigMap lookups; re-parsing the full stream per lookup is pure cost.

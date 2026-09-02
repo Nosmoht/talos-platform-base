@@ -24,8 +24,12 @@ under the new version heading; the historical backfill below it stays put.
   policy carries an empty `podSelector`, so this is not a namespace default-deny.
   The chart also changes the reconciliation timer from a fixed `180s` to a
   `120s` base plus up to `60s` jitter. Substrate invariant **I6** asserts the
-  complete selector and ingress posture in both paths, with mutation-based bite
-  tests proving the gate rejects unsafe drift. Argo CD's own 3.3→3.4 and
+  complete selector and ingress posture in both paths — for the steady state on
+  the kustomize-built component as well as on the fresh helm render, so a
+  Stage-2 overlay patch cannot strip a policy from the bytes a consumer
+  receives — with mutation-based bite tests proving the gate rejects unsafe
+  drift, a vanished policy and an added sixth. A set that no longer matches is a
+  violation, not a render-shape error. Argo CD's own 3.3→3.4 and
   3.4→3.5 upgrade notes apply unchanged and are summarised, with the audit and
   validation steps, in [`UPGRADING.md`](UPGRADING.md) §`v10.0.0`. The three CRDs
   are additive at this bump (new `tagPrefix` and `hydrateTo.repoURL`, no field

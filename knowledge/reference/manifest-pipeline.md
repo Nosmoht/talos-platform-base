@@ -230,9 +230,15 @@ steady-state-only; P compares the two pins:
   `scripts/check-argocd-network-policy-invariants.sh` binds each component's
   selector, ingress peers and ports, and `policyTypes`; the server remains open
   for a consumer gateway while redis and repo-server remain restricted to their
-  documented callers. `scripts/check-argocd-network-policy-gate-bites.sh`
-  mutates the committed render and proves empty/wrong selectors, unsafe ingress
-  drift and a missing policy are rejected.
+  documented callers. The steady-state side runs on the **kustomize-built**
+  component as well as on the fresh helm render, because `_rendered-overlay/`
+  carries a live `patches:` block and a Stage-2 patch could strip a policy from
+  the bytes a consumer receives while a Stage-1-only check stayed green. Unlike
+  I1–I5 the invariant is positive, so a set that no longer matches is a
+  violation (exit 3) rather than a render-shape error.
+  `scripts/check-argocd-network-policy-gate-bites.sh` mutates the committed
+  render and proves empty/wrong selectors, unsafe ingress drift, a missing policy
+  and an added sixth are rejected.
 - **P** — the module's Day-0 `argocd_chart_version` default equals the
   steady-state `chart.lock.yaml` version.
 

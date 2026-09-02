@@ -6,8 +6,15 @@
 # Exit codes:
 #   0  posture holds
 #   1  usage / environment error
-#   2  expected policy set or render shape changed
-#   3  selector or ingress posture changed
+#   2  the render could not be parsed
+#   3  the policy set or a selector/ingress posture changed
+#
+# A missing or extra policy is exit 3, not 2: unlike I1-I5 this invariant is
+# POSITIVE, so the substrate's network posture disappearing IS the violation and
+# not merely a precondition that would leave a negative check passing vacuously.
+# Exit 2 stays reserved for a render the gate could not read, so a lost posture
+# is never reported in the same channel as a `helm pull` failure — and so the
+# caller accumulates it with the other invariants instead of aborting the run.
 set -euo pipefail
 
 [ "$#" = 2 ] || { echo "usage: $0 <label> <render.yaml>" >&2; exit 1; }
@@ -17,25 +24,31 @@ render="$2"
 command -v yq >/dev/null 2>&1 || { echo "::error::required tool not found on PATH: yq" >&2; exit 1; }
 [ -f "$render" ] || { echo "::error::[${label}] render missing: $render" >&2; exit 1; }
 
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+names_out="$tmp/names"
+names_err="$tmp/names.err"
+
 expected_names='argocd-application-controller
 argocd-notifications-controller
 argocd-redis
 argocd-repo-server
 argocd-server'
 
-found="$(yq e 'select(.kind == "NetworkPolicy") | .metadata.name' "$render" 2>/dev/null \
-  | grep -vE '^(---|\.\.\.| *)$' | sort -u || true)"
+if ! yq e 'select(.kind == "NetworkPolicy") | .metadata.name' "$render" > "$names_out" 2> "$names_err"; then
+  echo "::error::[${label}] yq could not list the render's NetworkPolicy names" >&2
+  sed 's/^/    /' "$names_err" >&2
+  exit 2
+fi
+found="$(grep -vE '^(---|\.\.\.| *)$' "$names_out" | sort -u || true)"
 if [ "$found" != "$expected_names" ]; then
-  echo "::error::[${label}] anchor: the rendered NetworkPolicy set is not the expected five; the posture comparison would be incomplete." >&2
+  echo "::error::[${label}] I6 violated: the substrate no longer ships exactly the chart's five per-component NetworkPolicies — its network posture changed, or an override disabled global.networkPolicy.create:" >&2
   echo "    expected:" >&2
   printf '%s\n' "$expected_names" | sed 's/^/      /' >&2
   echo "    found:" >&2
   printf '%s\n' "${found:-<none>}" | sed 's/^/      /' >&2
-  exit 2
+  exit 3
 fi
-
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
 
 # The canonical posture deliberately binds selectors, ingress peers/ports and
 # policyTypes. JSON keeps empty objects unambiguous; sorting whole policy lines
