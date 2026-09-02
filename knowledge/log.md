@@ -6,6 +6,10 @@
   assertion also runs on the kustomize-built component, and that a non-matching
   policy set is a violation rather than a render-shape error.
 - `reference/argocd-sso-contract.md`: the cited invariant range is I1-I6.
+- `reference/manifest-pipeline.md`: the I6 entry records the apiVersion/namespace
+  and named-port bindings, the foreign-policy-kind rejection, the corrected reason
+  the steady-state assertion runs on the kustomize build, and that
+  `argocd-applicationset-controller` is deliberately unpoliced.
 - `decisions/0025-argocd-crd-apply-scope.md`: addendum — the revisit trigger the
   record sets was discharged at argo-cd chart `10.6.0`; the CRD templates' directive
   list and the byte-identical cross-`--kube-version` render both still hold.

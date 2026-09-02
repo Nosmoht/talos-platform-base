@@ -96,6 +96,47 @@ spec:
 NPEOF
 }
 
+mut_wrong_namespace() {
+  # NetworkPolicy is namespaced: five byte-identical policies in another namespace
+  # enforce nothing in argocd, and the namespace is a hand-editable literal in the
+  # committed render (kustomization.yaml applies no namespace transform).
+  yq -i '
+    (select(.kind == "NetworkPolicy") | .metadata.namespace) = "argocd-system"
+  ' "$1"
+}
+
+mut_foreign_policy_kind() {
+  # An AdminNetworkPolicy Deny outranks every NetworkPolicy allow rule, and the
+  # kind filter in the comparison cannot see it.
+  cat >> "$1" <<'ANPEOF'
+---
+apiVersion: policy.networking.k8s.io/v1alpha1
+kind: AdminNetworkPolicy
+metadata:
+  name: argocd-deny-all
+spec:
+  priority: 10
+  subject:
+    namespaces:
+      matchLabels:
+        kubernetes.io/metadata.name: argocd
+  ingress:
+    - name: deny-all
+      action: Deny
+      from:
+        - namespaces: {}
+ANPEOF
+}
+
+mut_rename_container_port() {
+  # The policy documents stay byte-identical; the allow rule silently stops
+  # matching because the target pod no longer declares the named port.
+  yq -i '
+    (select(.kind == "Deployment" and .metadata.name == "argocd-redis")
+      | .spec.template.spec.containers[0].ports[0].name) = "redis-tcp"
+  ' "$1"
+}
+
 # scenario <expected-exit> <expected-output> <mutator|-> <label>
 scenario() {
   local want_exit="$1" pattern="$2" mutator="$3" label="$4"
@@ -149,6 +190,12 @@ scenario 3 "no longer ships exactly the chart's five" mut_drop_repo_server_polic
   "the expected five-policy set cannot shrink"
 scenario 3 "no longer ships exactly the chart's five" mut_add_sixth_policy \
   "an unexpected sixth policy cannot slip in"
+scenario 3 "selector or ingress posture changed" mut_wrong_namespace \
+  "the policies cannot be moved out of the argocd namespace"
+scenario 3 "outside networking.k8s.io/v1 NetworkPolicy" mut_foreign_policy_kind \
+  "a higher-precedence policy object cannot ride along"
+scenario 3 "names a port its target workload does not declare" mut_rename_container_port \
+  "a renamed containerPort cannot silently turn an allow into a deny"
 
 if [ "$rc" = 0 ]; then
   echo "ArgoCD NetworkPolicy gate bite-check OK"

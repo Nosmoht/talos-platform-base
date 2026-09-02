@@ -230,15 +230,26 @@ steady-state-only; P compares the two pins:
   `scripts/check-argocd-network-policy-invariants.sh` binds each component's
   selector, ingress peers and ports, and `policyTypes`; the server remains open
   for a consumer gateway while redis and repo-server remain restricted to their
-  documented callers. The steady-state side runs on the **kustomize-built**
-  component as well as on the fresh helm render, because `_rendered-overlay/`
-  carries a live `patches:` block and a Stage-2 patch could strip a policy from
-  the bytes a consumer receives while a Stage-1-only check stayed green. Unlike
-  I1–I5 the invariant is positive, so a set that no longer matches is a
-  violation (exit 3) rather than a render-shape error.
+  documented callers. It also binds `apiVersion` and `metadata.namespace` (a
+  namespaced, group-scoped object enforces nothing outside `argocd`), rejects any
+  higher-precedence policy kind the `kind` filter would otherwise miss, and
+  cross-checks each named ingress port against the target workload's
+  `containerPort` names — a rename there makes an allow rule match nothing while
+  every policy document stays byte-identical. The steady-state side runs on the
+  **kustomize-built** component as well as on the fresh helm render: the
+  committed `_rendered/` tree is a file consumers vendor, so a hand edit to it or
+  a regeneration through a changed `_rendered-overlay/` reaches them while the
+  fresh-render check stays green, and `verify-rendered.sh` proves only that
+  `_rendered/` is reproducible, not that what it reproduces satisfies I6. Unlike
+  I1–I5 the invariant is positive, so a set that no longer matches is a violation
+  (exit 3) rather than a render-shape error.
   `scripts/check-argocd-network-policy-gate-bites.sh` mutates the committed
-  render and proves empty/wrong selectors, unsafe ingress drift, a missing policy
-  and an added sixth are rejected.
+  render and proves empty/wrong selectors, unsafe ingress drift, a missing policy,
+  an added sixth, a namespace move, a foreign policy kind and a renamed
+  `containerPort` are all rejected. `argocd-applicationset-controller` is
+  deliberately unpoliced — the chart gates its policy on
+  `applicationSet.{metrics,ingress,httproute}`, none of which the base enables,
+  and an emitted policy would default-deny the webhook receiver.
 - **P** — the module's Day-0 `argocd_chart_version` default equals the
   steady-state `chart.lock.yaml` version.
 

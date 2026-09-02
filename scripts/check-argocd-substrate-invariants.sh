@@ -21,9 +21,13 @@
 #   I4  No non-empty argocd-rbac-cm `policy.csv` (steady-state only).
 #   I5  No non-empty argocd-rbac-cm `policy.default` (steady-state only) — wider
 #       blast radius than I4, hence its own assertion.
-#   I6  Both paths carry the exact five-policy NetworkPolicy posture: component
-#       selectors, ingress peers/ports and policyTypes (shared across both), and
-#       the steady-state side is asserted on the kustomize-built bytes too.
+#   I6  Both paths carry the exact five-policy NetworkPolicy posture: apiVersion,
+#       namespace, component selectors, ingress peers/ports and policyTypes, with
+#       named ports cross-checked against the target workloads' containerPorts and
+#       no higher-precedence policy kind riding along. The steady-state side is
+#       asserted on the kustomize-built bytes too. "Both paths" means both
+#       BASE-SHIPPED values files — a consumer argocd_values_override merged over
+#       the seed is out of scope here, as the note below says for every invariant.
 #   P   The module's argocd_chart_version default equals chart.lock.yaml's
 #       version. Load-bearing since the Day-0 apply stopped forcing conflicts.
 #   E0-E5  The worked consumer-SSO overlay still wires the component, asserted
@@ -329,12 +333,16 @@ kustomize build "$EXAMPLE_DIR" > "$tmp/sso-full.yaml" 2>"$tmp/kz.err" || {
   echo "::error::kustomize build failed for ${EXAMPLE_DIR#"${ROOT}/"} — the documented consumer overlay no longer builds against the component it patches (knowledge/reference/argocd-sso-contract.md)" >&2
   sed 's/^/    /' "$tmp/kz.err" >&2; exit 2; }
 
-# I6 again, on the STAGE-2 bytes. The steady-state run above asserts the fresh
-# helm render; this control build is kustomize-built from the committed
-# _rendered/ tree plus _rendered-overlay/, which is what a consumer vendoring the
-# artifact receives and what the spec scenario names. The overlay carries a live
-# `patches:` block, so a patch stripping or rewriting a policy would leave the
-# Stage-1 run green while the shipped bytes lost the posture.
+# I6 again, on the COMMITTED bytes. The steady-state run above asserts a fresh
+# helm render of values.yaml; this control build is `kustomize build` over
+# kustomization.yaml — namespace.yaml plus the committed _rendered/ tree — which
+# is what a consumer vendoring the artifact actually receives, and what the spec
+# scenario names. The two are not the same input: the committed render is a file
+# in the tree, so a hand edit to it, or a _rendered/ regenerated through a
+# changed _rendered-overlay/ (the Stage-2 producer input, which carries a live
+# `patches:` block), reaches consumers while the fresh-render check stays green.
+# verify-rendered.sh proves _rendered/ is REPRODUCIBLE from values + overlay; it
+# does not assert that what it reproduces satisfies I6. This closes that.
 check_netpol_floor "steady-state (kustomize build)" "$tmp/ctl-full.yaml"
 
 # Reduce once. Both builds carry the ~29k-line CRD stream, and the E-series makes

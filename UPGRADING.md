@@ -87,6 +87,16 @@ selects.
 | `argocd-application-controller` | the `metrics` port from any namespace |
 | `argocd-notifications-controller` | the `metrics` port from any namespace |
 
+**Five policies, six workloads.** `argocd-applicationset-controller` is not in
+the table because the chart does not emit a policy for it unless one of
+`applicationSet.{metrics,ingress,httproute}` is enabled, and the base enables
+none — an emitted policy would carry an empty ingress list, which is a default
+deny on the pod that receives SCM webhooks. So that pod stays **unrestricted**:
+its `webhook` (:7000), `metrics` (:8080) and `probe` (:8081) ports remain
+reachable from every pod in every namespace. If your threat model does not accept
+that, add your own policy for it — the base cannot, without breaking the webhook
+path it cannot see.
+
 `argocd-server` stays open on purpose and I6 asserts it: the base runs it with
 `server.insecure` and expects a consumer gateway in front, whose pod labels and
 namespace a cluster-agnostic floor cannot know. **A Gateway API HTTPRoute to
@@ -102,7 +112,34 @@ Synced/Healthy). Unverified here — this repository has no cluster. If your
 scrapers are host-network, confirm the three targets are still `up` after the
 sync; the Validation steps below include the check.
 
+The **same reasoning reaches kubelet probes**, and it is the sharper case. The
+`argocd-redis` policy admits three pod selectors on the `redis` port and nothing
+else; `argocd-repo-server` admits four pod selectors plus metrics. Neither admits
+the node's own identity on a probe port. Under the module's Cilium seed,
+host→pod traffic is not policy-subject by default, so probes keep working — but
+that is a property of the CNI configuration, not of these policies. If you run
+Cilium's host firewall, or a different CNI under `deploy_cilium = false`, verify
+before adopting: a failed probe puts redis and repo-server into
+`CrashLoopBackOff`, and on a fresh bootstrap that happens before Argo CD exists
+to report it.
+
 ### 2. Audit anything that reaches repo-server or redis directly
+
+**On an existing cluster this arrives unattended.** The seed path is inert for
+you (§4), so the policies come exclusively through Argo CD self-management of the
+steady-state component — i.e. at whatever moment that Application next syncs,
+into live traffic, with no operator present if auto-sync is on. Kubernetes emits
+no event for a policy-dropped connection, and the base ships Hubble off, so the
+first signal is usually an Argo CD `ComparisonError` / `context deadline
+exceeded` or a metric that stopped arriving — both of which read as an Argo CD
+problem rather than a network one. If you cannot audit ahead of time, either
+disable auto-sync on the argocd Application for this bump, or turn Hubble on
+first (`substrate.cilium.hubble_enabled`) so a drop is attributable:
+
+```bash
+# On the node hosting the suspect client pod
+cilium-dbg monitor --type drop
+```
 
 Break-risk is confined to traffic *into* `argocd-repo-server` or `argocd-redis`
 from a pod that is not one of the Argo CD components named above. In-pod
@@ -148,6 +185,12 @@ them; read both against your own manifests before adopting:
   `.spec.signatureKeys` on AppProject is deprecated in favour of
   `sourceIntegrity` — the field is still present in this tag's CRDs, so nothing
   breaks yet.
+
+**Kubernetes floor.** Argo CD 3.5 is tested against Kubernetes v1.33-v1.36 and
+**drops v1.32**, which 3.3 and 3.4 supported. The base pins no Kubernetes
+version — `kubernetes_version` is a required module input — so check your own
+value before adopting; this tag's `cluster.yaml.example` shows `v1.36.3`, inside
+the window.
 
 Two of those need saying against *this* base rather than in general:
 

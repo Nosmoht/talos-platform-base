@@ -24,17 +24,36 @@ under the new version heading; the historical backfill below it stays put.
   policy carries an empty `podSelector`, so this is not a namespace default-deny.
   The chart also changes the reconciliation timer from a fixed `180s` to a
   `120s` base plus up to `60s` jitter. Substrate invariant **I6** asserts the
-  complete selector and ingress posture in both paths — for the steady state on
-  the kustomize-built component as well as on the fresh helm render, so a
-  Stage-2 overlay patch cannot strip a policy from the bytes a consumer
-  receives — with mutation-based bite tests proving the gate rejects unsafe
-  drift, a vanished policy and an added sixth. A set that no longer matches is a
-  violation, not a render-shape error. Argo CD's own 3.3→3.4 and
+  complete posture in both paths — `apiVersion`, namespace, selectors, ingress
+  peers and ports, `policyTypes`, no higher-precedence policy kind riding along,
+  and every named port cross-checked against the target workload's
+  `containerPort` names — and for the steady state on the kustomize-built
+  component as well as on the fresh helm render, so a hand edit to the committed
+  `_rendered/` tree cannot ship a weakened posture. A set that no longer matches
+  is a violation, not a render-shape error. Twelve mutation-based bite tests back
+  it. `argocd-applicationset-controller` is deliberately unpoliced — the chart
+  gates its policy on `applicationSet.{metrics,ingress,httproute}`, none of which
+  the base enables, and an emitted policy would default-deny the webhook
+  receiver; that leaves its `webhook`, `metrics` and `probe` ports reachable
+  cluster-wide, which `UPGRADING.md` now states. Argo CD 3.5 is tested against
+  Kubernetes v1.33-v1.36 and **drops v1.32**. Argo CD's own 3.3→3.4 and
   3.4→3.5 upgrade notes apply unchanged and are summarised, with the audit and
   validation steps, in [`UPGRADING.md`](UPGRADING.md) §`v10.0.0`. The three CRDs
   are additive at this bump (new `tagPrefix` and `hydrateTo.repoURL`, no field
   removed) and gain `argocd.argoproj.io/sync-options: ServerSideApply=true`;
   adr-0025's revisit trigger was re-run at the new pin and holds.
+- **Changed — a chart-version default bump now carries a stated obligation.**
+  `module-interface-contract` gains a requirement: because the declared default is
+  the single source of truth for the pinned chart and the shipped examples leave
+  the key unset, moving it is a consumer-visible change. The behavioural delta
+  belongs on the capability describing what the pin renders or seeds,
+  `Spec-Impact: none` is not available for the variables file, and the upstream
+  Kubernetes support range plus the upgrade notes for every version crossed are
+  re-verified and recorded for the adopting consumer. Reviewer-enforced, like the
+  Gateway-API CRD floor it cites as precedent — no gate compares a chart pin
+  against an upstream support matrix. Prompted by this release: the argo-cd bump's
+  module-side commit claimed the escape on a change its own entry above calls
+  BREAKING.
 - **Added — the machine-config apply mode is selectable per role.**
   `controlplane_apply_mode` and `worker_apply_mode` plumb the talos provider's
   `apply_mode` to the per-node machine-config apply. Both default to `auto`, so a
