@@ -2,6 +2,11 @@
 
 ## 2026-09-02
 
+- `architecture/substrate.md`, `workflows/first-consumer-cluster.md`: the OCI
+  payload now carries every root-level talos-cluster implementation file; the
+  checkout-only authoring and bootstrap helpers are identified explicitly.
+- `reference/tasks.md`: add the extracted OCI module validation target to the
+  supply-chain inventory.
 - `decisions/0025-argocd-crd-apply-scope.md`: addendum — the revisit trigger the
   record sets was discharged at argo-cd chart `10.6.0`; the CRD templates' directive
   list and the byte-identical cross-`--kube-version` render both still hold.

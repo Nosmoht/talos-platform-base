@@ -7,11 +7,16 @@
 ./platform-hardware-features.yaml
 ./schemas/hardware-features.schema.json
 ./tofu/modules/talos-cluster/README.md
+./tofu/modules/talos-cluster/cilium-values.tf
+./tofu/modules/talos-cluster/composition.tf
 ./tofu/modules/talos-cluster/helm/argocd-values.yaml
 ./tofu/modules/talos-cluster/helm/cilium-values.yaml
+./tofu/modules/talos-cluster/kubeconfig-refresh.tf
 ./tofu/modules/talos-cluster/main.tf
 ./tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
+./tofu/modules/talos-cluster/nodes.tf
 ./tofu/modules/talos-cluster/outputs.tf
+./tofu/modules/talos-cluster/profiles.tf
 ./tofu/modules/talos-cluster/test/README.md
 ./tofu/modules/talos-cluster/test/pki-reconcile-microtest.sh
 ./tofu/modules/talos-cluster/test/run-adoption-proof.sh
