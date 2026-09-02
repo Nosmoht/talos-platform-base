@@ -5,6 +5,14 @@
 - `decisions/0025-argocd-crd-apply-scope.md`: addendum — the revisit trigger the
   record sets was discharged at argo-cd chart `10.6.0`; the CRD templates' directive
   list and the byte-identical cross-`--kube-version` render both still hold.
+- `reference/manifest-pipeline.md`: refresh the ArgoCD substrate-invariant
+  inventory through I6/P and record the NetworkPolicy posture bite-check.
+- `architecture/day-zero-bootstrap.md`: refresh the two-render-path invariant
+  inventory through I6/P after the NetworkPolicy gate was strengthened.
+- `reference/argocd-sso-contract.md`: include the `policy.default` I5 guard in
+  the identity-free substrate invariant range.
+- `reference/tasks.md`: refresh the local `gitops:validate` sequence with the
+  NetworkPolicy bite-check and the existing bootstrap/Cilium tail checks.
 
 ## 2026-08-28
 

@@ -56,8 +56,12 @@ in argo-cd `10.0.0`. Both base render paths therefore ship five
 enforces them. No base input was renamed or removed; what changed is what the
 render contains and what the cluster then permits. Argo CD itself moves two
 minors, `v3.3.2` → `v3.5.2`, and the bundled redis image `8.2.3` → `8.6.4`.
+The chart-emitted `argocd-cm` also changes the reconciliation timer from a
+fixed `180s` to a `120s` base plus up to `60s` jitter; the maximum interval is
+unchanged, while individual reconciliations may happen sooner.
 
-Substrate invariant **I6** now asserts the policy set in both paths — see
+Substrate invariant **I6** now asserts the complete selector and ingress posture
+in both paths, backed by mutation-based bite tests — see
 [`kubernetes/substrate/argocd/README.md`](kubernetes/substrate/argocd/README.md)
 §Substrate invariants.
 

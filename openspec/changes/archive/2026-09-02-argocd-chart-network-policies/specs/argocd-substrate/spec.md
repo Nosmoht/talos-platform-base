@@ -15,6 +15,13 @@ their own gateway in front of Argo CD is never cut off by the floor.
 - **THEN** a `networking.k8s.io/v1` NetworkPolicy exists for the
   application-controller, the notifications-controller, redis, the repo-server
   and the server, each selecting only its own component's pods
+- **AND** redis admits its named port only from the server, repo-server and
+  application-controller components
+- **AND** repo-server admits its named service port only from the server,
+  application-controller, notifications-controller and applicationset-controller
+  components, while its metrics port remains reachable from every namespace
+- **AND** the application-controller and notifications-controller policies admit
+  only their metrics ports from every namespace
 
 #### Scenario: The server stays reachable and no default deny ships
 

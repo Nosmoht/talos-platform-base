@@ -21,9 +21,8 @@
 #   I4  No non-empty argocd-rbac-cm `policy.csv` (steady-state only).
 #   I5  No non-empty argocd-rbac-cm `policy.default` (steady-state only) — wider
 #       blast radius than I4, hence its own assertion.
-#   I6  The chart's five per-component NetworkPolicies are present in BOTH paths,
-#       no policy selects every pod in the namespace, and argocd-server admits
-#       ingress from every source (shared across both paths).
+#   I6  Both paths carry the exact five-policy NetworkPolicy posture: component
+#       selectors, ingress peers/ports and policyTypes (shared across both).
 #   P   The module's argocd_chart_version default equals chart.lock.yaml's
 #       version. Load-bearing since the Day-0 apply stopped forcing conflicts.
 #   E0-E5  The worked consumer-SSO overlay still wires the component, asserted
@@ -54,6 +53,7 @@ ARGOCD_DIR="${ROOT}/kubernetes/substrate/argocd"
 LOCK="${ARGOCD_DIR}/chart.lock.yaml"
 STEADY_VALUES="${ARGOCD_DIR}/values.yaml"
 BOOTSTRAP_VALUES="${ROOT}/tofu/modules/talos-cluster/helm/argocd-values.yaml"
+NETPOL_GATE="${ROOT}/scripts/check-argocd-network-policy-invariants.sh"
 
 for t in helm yq; do
   command -v "$t" >/dev/null 2>&1 || { echo "::error::required tool not found on PATH: $t" >&2; exit 1; }
@@ -61,6 +61,7 @@ done
 for f in "$LOCK" "$STEADY_VALUES" "$BOOTSTRAP_VALUES"; do
   [ -f "$f" ] || { echo "::error::required file missing: $f" >&2; exit 1; }
 done
+[ -x "$NETPOL_GATE" ] || { echo "::error::required gate missing or not executable: $NETPOL_GATE" >&2; exit 1; }
 
 repo="$(yq -e '.chart.repo' "$LOCK")"       || { echo "::error::chart.lock.yaml missing .chart.repo" >&2; exit 1; }
 name="$(yq -e '.chart.name' "$LOCK")"       || { echo "::error::chart.lock.yaml missing .chart.name" >&2; exit 1; }
@@ -198,50 +199,19 @@ check_no_url() {
 check_no_url "steady-state"   "$tmp/steady.yaml"
 check_no_url "bootstrap-seed" "$tmp/bootstrap.yaml"
 
-# I6 — the chart's per-component NetworkPolicies. SHARED across both paths.
-# argo-cd 10.0.0 flipped global.networkPolicy.create to true and the base carries
-# no override, so the policies are the substrate's shipped network posture and
-# not an accident of the pin. Three properties, because they fail differently:
-#
-#  - PRESENCE (anchor). A negative assertion on a resource class the chart could
-#    stop emitting passes vacuously; require_netpols is the same anchor idiom
-#    require_cm applies to the name-scoped ConfigMap invariants. Exit 2, not 3 —
-#    a vanished policy set is a render-shape problem, not a violated invariant.
-#  - NO NAMESPACE-WIDE SELECTOR. A policy with an empty podSelector applies to
-#    every pod in the argocd namespace; combined with policyTypes: Ingress that
-#    is a namespace default-deny, which a cluster-agnostic floor must not ship
-#    blind — the consumer's own workloads live behind whatever they add here.
-#  - argocd-server ADMITS ALL INGRESS. The substrate runs argocd-server with
-#    server.insecure and expects a consumer gateway in front of it. The chart's
-#    open `ingress: [{}]` rule is what keeps that gateway — whose pod labels and
-#    namespace the base cannot know — from being cut off by the floor.
-NETPOL_EXPECTED='argocd-application-controller
-argocd-notifications-controller
-argocd-redis
-argocd-repo-server
-argocd-server'
-
-require_netpols() {
-  local label="$1" render="$2" found
-  found="$(yq e 'select(.kind == "NetworkPolicy") | .metadata.name' "$render" 2>/dev/null \
-    | grep -vE '^(---|\.\.\.| *)$' | sort -u || true)"
-  if [ "$found" != "$NETPOL_EXPECTED" ]; then
-    echo "::error::[${label}] anchor: the rendered NetworkPolicy set is not the expected five — the invariants below would pass vacuously; the chart render shape changed." >&2
-    echo "    expected:" >&2; printf '%s\n' "$NETPOL_EXPECTED" | sed 's/^/      /' >&2
-    echo "    found:"    >&2; printf '%s\n' "${found:-<none>}" | sed 's/^/      /' >&2
-    exit 2
-  fi
-}
-
+# I6 — exact chart-emitted per-component NetworkPolicy posture, SHARED across
+# both paths. The dedicated gate binds the five-policy anchor, each component's
+# selector, ingress peers/ports and policyTypes. Its bite-check mutates the real
+# committed render to prove empty/wrong selectors, open redis, a closed server
+# and a vanished policy are all rejected.
 check_netpol_floor() {
-  local label="$1" render="$2"
-  require_netpols "$label" "$render"
-  assert_invariant "$label" "$render" \
-    'select(.kind == "NetworkPolicy") | select((.spec.podSelector // {}) | (has("matchLabels") or has("matchExpressions")) | not) | .metadata.name' \
-    'I6 violated: a NetworkPolicy selects every pod in the argocd namespace (empty podSelector) — with policyTypes: Ingress that is a namespace default-deny the substrate floor must not ship blind'
-  assert_invariant "$label" "$render" \
-    'select(.kind == "NetworkPolicy" and .metadata.name == "argocd-server") | select([.spec.ingress[] | select(length == 0)] | length == 0) | .metadata.name' \
-    'I6 violated: the argocd-server NetworkPolicy no longer admits ingress from every source — the base cannot know the pod labels or namespace of a consumer gateway, so restricting it here cuts off the only documented way to reach Argo CD'
+  local label="$1" render="$2" got=0
+  "$NETPOL_GATE" "$label" "$render" || got=$?
+  case "$got" in
+    0) ;;
+    3) violations=$((violations + 1)) ;;
+    *) exit "$got" ;;
+  esac
 }
 
 check_netpol_floor "steady-state"   "$tmp/steady.yaml"
@@ -432,4 +402,4 @@ if [ "$violations" -ne 0 ]; then
   echo "::error::ArgoCD substrate invariants FAILED (see above). Declared in kubernetes/substrate/argocd/README.md §Substrate invariants." >&2
   exit 3
 fi
-echo "OK: ArgoCD substrate invariants hold (I1-I3 + I6 in both render paths: no bundled Dex, no server.dex.server* cmd-params, no placeholder argocd-cm url, the five per-component NetworkPolicies with no namespace-wide selector and an open argocd-server; I4/I5 steady-state: no shipped policy.csv, no blanket policy.default; P: seed and steady-state chart pins agree; E: the worked consumer-SSO overlay merges url/oidc.config/policy.csv in against a control build without dropping a base-shipped key)."
+echo "OK: ArgoCD substrate invariants hold (I1-I3 + I6 in both render paths: no bundled Dex, no server.dex.server* cmd-params, no placeholder argocd-cm url, and the exact five-policy NetworkPolicy selector/ingress posture; I4/I5 steady-state: no shipped policy.csv, no blanket policy.default; P: seed and steady-state chart pins agree; E: the worked consumer-SSO overlay merges url/oidc.config/policy.csv in against a control build without dropping a base-shipped key)."

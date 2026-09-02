@@ -22,8 +22,10 @@ under the new version heading; the historical backfill below it stays put.
   `argocd-redis` is restricted to the Argo CD components that call them, and a
   workload of yours reaching either directly needs its own allow-policy. No
   policy carries an empty `podSelector`, so this is not a namespace default-deny.
-  Substrate invariant **I6** asserts the set, the absence of a namespace-wide
-  selector, and the open server rule in both paths. Argo CD's own 3.3→3.4 and
+  The chart also changes the reconciliation timer from a fixed `180s` to a
+  `120s` base plus up to `60s` jitter. Substrate invariant **I6** asserts the
+  complete selector and ingress posture in both paths, with mutation-based bite
+  tests proving the gate rejects unsafe drift. Argo CD's own 3.3→3.4 and
   3.4→3.5 upgrade notes apply unchanged and are summarised, with the audit and
   validation steps, in [`UPGRADING.md`](UPGRADING.md) §`v10.0.0`. The three CRDs
   are additive at this bump (new `tagPrefix` and `hydrateTo.repoURL`, no field

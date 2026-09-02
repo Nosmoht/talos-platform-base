@@ -20,11 +20,11 @@ The two render paths are owned by two specs, so both widen.
 
 ## What Changes
 
-- `argocd-substrate`: a new requirement fixing the NetworkPolicy set in the
-  committed render, and the two properties that make the set safe to ship on a
-  cluster-agnostic floor — `argocd-server` stays open to all ingress so a
-  consumer's gateway is never cut off, and the policies are per-component
-  allow-rules rather than a namespace default-deny.
+- `argocd-substrate`: a new requirement fixing the complete selector and ingress
+  posture in the committed render: `argocd-server` stays open to all ingress so
+  a consumer's gateway is never cut off, every policy selects its named
+  component, and redis/repo-server keep their documented caller and port
+  restrictions rather than becoming ineffective allow-all policies.
 - `argocd-module-seed`: the same set ships in the slim Day-0 seed, so a cluster
   is policed from bootstrap rather than from the first ArgoCD self-management
   sync.

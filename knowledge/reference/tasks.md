@@ -3,7 +3,7 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-generated: { by: human:nosmoht, at: "2026-08-23T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-02T00:00:00Z" }
 sources:
   - resource: Taskfile.yml
   - resource: Makefile
@@ -62,7 +62,7 @@ modules rather than standalone modules.
 
 | Task | Purpose |
 | --- | --- |
-| `gitops:validate` | Full pipeline: kustomize-target discovery → safe render → SOPS check → conftest → kubeconform → conftest bite-check → ArgoCD substrate invariants → `scripts/check-bootstrap-render.sh`. Stage detail in [manifest pipeline](manifest-pipeline.md). |
+| `gitops:validate` | Full pipeline: kustomize-target discovery → safe render → SOPS check → conftest → kubeconform → conftest bite-check → ArgoCD substrate invariants → NetworkPolicy gate bite-check → `scripts/check-bootstrap-render.sh` → Cilium reference-values schema check. Stage detail in [manifest pipeline](manifest-pipeline.md). |
 | `gitops:render-component` | Stage-1 (helm template) + Stage-2 (kustomize build) render of one component. Usage: `task gitops:render-component COMPONENT=<name>`; fails with usage text when `COMPONENT` is unset. |
 | `gitops:render-all` | Render every component under `kubernetes/substrate/` that has a `chart.lock.yaml`; exits 0 with a notice when none exist. |
 | `gitops:verify-rendered` | Re-render all components and fail if the committed `_rendered/` tree drifts (`scripts/verify-rendered.sh`). |

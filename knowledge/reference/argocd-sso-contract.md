@@ -3,7 +3,7 @@ type: reference
 title: ArgoCD SSO Wiring Contract
 description: What a consumer cluster must supply to attach any external OIDC identity provider to the substrate's identity-free ArgoCD, and the mechanism that carries it across the base/consumer repo boundary.
 tags: [argocd, sso, oidc, rbac, consumer-contract]
-generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-02T00:00:00Z" }
 sources:
   - resource: kubernetes/substrate/argocd/values.yaml
   - resource: kubernetes/substrate/argocd/_rendered/manifests.yaml
@@ -17,7 +17,7 @@ The substrate ships ArgoCD with **no identity**: no bundled Dex, no OIDC
 connector, no base URL, and no RBAC policy naming any principal. That is a
 deliberate floor property — an access policy names principals of a specific
 organisation, which a cluster-agnostic base cannot know — and it is gated in CI
-(invariants I1–I4, see the component README `kubernetes/substrate/argocd/README.md`).
+(invariants I1–I5, see the component README `kubernetes/substrate/argocd/README.md`).
 
 The cost of that property is a contract: the cluster does not authenticate
 anyone until the consumer supplies the missing half. This page is that contract.
