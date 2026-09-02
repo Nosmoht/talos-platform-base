@@ -285,10 +285,11 @@ tasks:
         -filter=tests/apply-mode.tftest.hcl
 
   tofu:ci:
-    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + test:offline — mirrors CI, stays offline"
+    desc: "Full local tofu validation: fmt:check + validate + vendored OCI module validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + test:offline — mirrors CI; provider init may use the registry, no live Image Factory"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
+      - task: supply-chain:oci-module-validate
       - task: tofu:lint
       - task: tofu:check:render-determinism
       - task: tofu:check:argocd-day0-apply-shape
@@ -603,6 +604,24 @@ tasks:
       fi
       rm -f .work/oci-check.tar.gz
       ./scripts/check-substrate-consumability.sh
+
+  supply-chain:oci-module-validate:
+    desc: Extract the allowlist-built OCI payload and validate the vendored talos-cluster module
+    cmd: |
+      set -e
+      command -v tofu >/dev/null 2>&1 || { echo "ERROR: tofu is required" >&2; exit 2; }
+      work="$(mktemp -d)"
+      trap 'rm -rf "$work"' EXIT
+      tar -czf "$work/base.tar.gz" --files-from=.ci-oci-tarball-include.txt
+      mkdir "$work/extracted"
+      tar -xzf "$work/base.tar.gz" -C "$work/extracted"
+      module="$work/extracted/tofu/modules/talos-cluster"
+      [ -d "$module" ] || { echo "ERROR: vendored talos-cluster module missing" >&2; exit 1; }
+      (
+        cd "$module"
+        tofu init -backend=false -input=false >/dev/null
+        tofu validate
+      )
 
   # ===========================================================================
   # knowledge:* — OKF knowledge bundle (knowledge/) authoring + validation

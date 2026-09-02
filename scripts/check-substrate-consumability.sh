@@ -10,7 +10,10 @@
 #       documented for argocd;
 #   (b) the retired kubernetes/base/ tree stays empty in the tracked tree
 #       (git ls-files based, so gitignored local residue can neither fake a
-#       violation nor a pass — ADR-0024 §Amendment to ADR-0004).
+#       violation nor a pass — ADR-0024 §Amendment to ADR-0004);
+#   (c) every root-level .tf file in the talos-cluster module ships in the
+#       artifact. A partial module can satisfy the allowlist membership diff
+#       while failing for every vendoring consumer (#158).
 # Invoked by `task supply-chain:oci-allowlist` and the gitops-validate.yml
 # oci-allowlist-check job (same script, same verdict — local green means what
 # CI green means).
@@ -78,7 +81,20 @@ EOF
   fi
 done < .ci-renderable-components.txt
 
+while IFS= read -r module_file; do
+  relative="${module_file#tofu/modules/talos-cluster/}"
+  case "${relative}" in
+    */*) continue ;;
+    *.tf) ;;
+    *) continue ;;
+  esac
+  if ! grep -qx "${module_file}" .ci-oci-tarball-include.txt; then
+    echo "FAIL: ${module_file} is part of the talos-cluster module but is absent from .ci-oci-tarball-include.txt — the vendored module is incomplete (#158)" >&2
+    fail=1
+  fi
+done < <(git ls-files tofu/modules/talos-cluster/)
+
 if [ "${fail}" -eq 0 ]; then
-  echo "OK: every renderable substrate component is consumable from the artifact; kubernetes/base/ stays retired."
+  echo "OK: the artifact carries every talos-cluster module file and every renderable substrate component; kubernetes/base/ stays retired."
 fi
 exit "${fail}"
