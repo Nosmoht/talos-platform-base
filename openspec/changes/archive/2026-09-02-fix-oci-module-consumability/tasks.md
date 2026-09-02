@@ -7,7 +7,7 @@
 
 ## 2. Executable Validation
 
-- [ ] 2.1 Add an extracted-artifact `tofu init -backend=false` and
+- [x] 2.1 Add an extracted-artifact `tofu init -backend=false` and
   `tofu validate` target to `tofu:ci`; verify it succeeds against the packaged
   module.
 - [x] 2.2 Update release-guard coverage and its lock; verify
@@ -22,5 +22,5 @@
 
 ## 4. Final Verification
 
-- [ ] 4.1 Run the repository-required supply-chain, OpenTofu, spec, knowledge,
+- [x] 4.1 Run the repository-required supply-chain, OpenTofu, spec, knowledge,
   GitOps, and shell checks and record their outcomes in the PR.
