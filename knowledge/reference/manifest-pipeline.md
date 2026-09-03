@@ -57,6 +57,30 @@ upstream republished the same version (a security event) or the lock needs a
 deliberate update. When the digest is absent, the script writes the observed
 digest back into the lock, so the pin self-establishes on first render.
 
+### What a chart bump obliges
+
+Two review obligations attach to moving a pin. Neither is mechanically gated —
+they are repo-internal QA, which is why they live here rather than in
+`openspec/`; the observable half is a requirement of the
+`module-interface-contract` spec.
+
+- **`Spec-Impact: none` is not available for the variables file.** For a
+  component the `talos-cluster` module also seeds, the module's declared default
+  is the single source of truth for the pin, and the shipped examples leave the
+  key unset — so moving the default changes what a fresh bootstrap seeds and what
+  the steady-state render delivers. The escape is scoped to verified
+  no-behaviour-change diffs, and the staleness gate cannot reach the render-side
+  spec on its own, because the file describing the seed's contents is not the file
+  a version bump touches. The delta belongs on the render or seed capability.
+- **Re-verify what the module cannot check at plan time, and record it where an
+  adopting consumer reads it.** The Kubernetes version range the new upstream
+  version supports — `kubernetes_version` is a required module input the module
+  never validates against the chart — and the upstream project's own upgrade
+  notes for every version crossed. Same form and same reason as the Gateway-API
+  CRD floor the module-interface spec attaches to `cilium_chart_version`: no gate
+  compares a chart pin against an upstream support matrix, and a mechanical
+  coupling remains desirable and unbuilt.
+
 ## Render stages (`task gitops:render-component COMPONENT=<name>`)
 
 `scripts/render-component.sh <component>` runs per component:
@@ -230,9 +254,26 @@ steady-state-only; P compares the two pins:
   `scripts/check-argocd-network-policy-invariants.sh` binds each component's
   selector, ingress peers and ports, and `policyTypes`; the server remains open
   for a consumer gateway while redis and repo-server remain restricted to their
-  documented callers. `scripts/check-argocd-network-policy-gate-bites.sh`
-  mutates the committed render and proves empty/wrong selectors, unsafe ingress
-  drift and a missing policy are rejected.
+  documented callers. It also binds `apiVersion` and `metadata.namespace` (a
+  namespaced, group-scoped object enforces nothing outside `argocd`), rejects any
+  higher-precedence policy kind the `kind` filter would otherwise miss, and
+  cross-checks each named ingress port against the target workload's
+  `containerPort` names — a rename there makes an allow rule match nothing while
+  every policy document stays byte-identical. The steady-state side runs on the
+  **kustomize-built** component as well as on the fresh helm render: the
+  committed `_rendered/` tree is a file consumers vendor, so a hand edit to it or
+  a regeneration through a changed `_rendered-overlay/` reaches them while the
+  fresh-render check stays green, and `verify-rendered.sh` proves only that
+  `_rendered/` is reproducible, not that what it reproduces satisfies I6. Unlike
+  I1–I5 the invariant is positive, so a set that no longer matches is a violation
+  (exit 3) rather than a render-shape error.
+  `scripts/check-argocd-network-policy-gate-bites.sh` mutates the committed
+  render and proves empty/wrong selectors, unsafe ingress drift, a missing policy,
+  an added sixth, a namespace move, a foreign policy kind and a renamed
+  `containerPort` are all rejected. `argocd-applicationset-controller` is
+  deliberately unpoliced — the chart gates its policy on
+  `applicationSet.{metrics,ingress,httproute}`, none of which the base enables,
+  and an emitted policy would default-deny the webhook receiver.
 - **P** — the module's Day-0 `argocd_chart_version` default equals the
   steady-state `chart.lock.yaml` version.
 

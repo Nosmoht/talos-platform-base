@@ -55,7 +55,18 @@ in argo-cd `10.0.0`. Both base render paths therefore ship five
 `networking.k8s.io/v1` NetworkPolicies, and Cilium — the substrate CNI —
 enforces them. No base input was renamed or removed; what changed is what the
 render contains and what the cluster then permits. Argo CD itself moves two
-minors, `v3.3.2` → `v3.5.2`, and the bundled redis image `8.2.3` → `8.6.4`.
+minors, `v3.3.2` → `v3.5.2`, and the bundled redis image `8.2.3` → `8.6.4` —
+in full, `ecr-public.aws.com/docker/library/redis:8.6.4-alpine`, tag-pinned and
+not digest-pinned. If you run a mirror, a pull-through cache or a registry
+allowlist, mirror it before the sync **and** before any fresh bootstrap: in the
+Day-0 seed a redis pull failure happens before Argo CD exists to report it.
+
+For that audit the render pulls from three places, not one — the chart images are
+`quay.io/argoproj/argocd:v3.5.2` and the redis reference above, and the base's own
+values add `viaductoss/ksops:v4.3.2` as the repo-server init container on both
+paths. Only the redis tag moves in this bump; the list is here because an
+allowlist built from "the argo images" leaves repo-server unable to start.
+
 The chart-emitted `argocd-cm` also changes the reconciliation timer from a
 fixed `180s` to a `120s` base plus up to `60s` jitter; the maximum interval is
 unchanged, while individual reconciliations may happen sooner.
@@ -80,13 +91,77 @@ selects.
 | `argocd-application-controller` | the `metrics` port from any namespace |
 | `argocd-notifications-controller` | the `metrics` port from any namespace |
 
+**Five policies, six workloads.** `argocd-applicationset-controller` is not in
+the table: the chart emits a policy for it only when one of
+`applicationSet.{metrics,ingress,httproute}` is enabled, and the base enables
+none. So that pod is selected by no policy and therefore stays
+**unrestricted** — its `webhook` (:7000), `metrics` (:8080) and `probe` (:8081)
+ports remain reachable from every pod in every namespace. If your threat model
+does not accept that, write your own policy for it.
+
+Do **not** reach for `applicationSet.metrics.enabled` to get one. The chart's
+template emits the metrics rule unconditionally and the webhook rule only under
+`ingress.enabled` or `httproute.enabled`, so enabling metrics alone yields an
+`Ingress`-type policy permitting metrics and nothing else — which
+**default-denies the webhook port** on the pod that receives SCM webhooks. If you
+want the chart's policy, enable it alongside `ingress` or `httproute`; otherwise
+supply your own rule for the webhook path.
+
 `argocd-server` stays open on purpose and I6 asserts it: the base runs it with
 `server.insecure` and expects a consumer gateway in front, whose pod labels and
 namespace a cluster-agnostic floor cannot know. **A Gateway API HTTPRoute to
-argocd-server keeps working with no action.** Prometheus scraping of any
-component keeps working from any namespace.
+argocd-server keeps working with no action.**
+
+The three `metrics` rules are `from: [{namespaceSelector: {}}]`, which selects
+pods in **every namespace** — so a Prometheus running as a pod keeps scraping
+with no action. It does not obviously cover a scraper reaching the pod from the
+node or from the host network namespace: under Cilium that traffic carries the
+`host` / `remote-node` identity, which a Kubernetes `namespaceSelector` does not
+match, and the symptom would be silent (metrics stop, Argo CD keeps reporting
+Synced/Healthy). Unverified here — this repository has no cluster. If your
+scrapers are host-network, confirm the three targets are still `up` after the
+sync; the Validation steps below include the check.
+
+The **same reasoning reaches kubelet probes**, and it is the sharper case. The
+`argocd-redis` policy admits three pod selectors on the `redis` port and nothing
+else; `argocd-repo-server` admits four pod selectors plus metrics. Neither admits
+the node's own identity on a probe port. Under the module's Cilium seed,
+host→pod traffic is not policy-subject by default, so probes keep working — but
+that is a property of the CNI configuration, not of these policies. If you run
+Cilium's host firewall, or a different CNI under `deploy_cilium = false`, verify
+before adopting: a failed probe puts redis and repo-server into
+`CrashLoopBackOff`, and on a fresh bootstrap that happens before Argo CD exists
+to report it.
 
 ### 2. Audit anything that reaches repo-server or redis directly
+
+**On an existing cluster this arrives unattended.** The seed path is inert for
+you (§4), so the policies come exclusively through Argo CD self-management of the
+steady-state component — that is, at whatever moment that Application next syncs,
+into live traffic, with no operator present if auto-sync is on. Kubernetes emits
+no event for a policy-dropped connection, and the base ships Hubble off, so the
+first signal is usually an Argo CD `ComparisonError` / `context deadline
+exceeded` or a metric that stopped arriving — both of which read as an Argo CD
+problem rather than a network one. If you cannot audit ahead of time, disable
+auto-sync on the argocd Application for this bump — that is the lever that always
+works.
+
+Turning Hubble on first is the other option, but on an existing cluster it is not
+a one-line change: `substrate.cilium.hubble_enabled` feeds the Cilium seed,
+`terraform_data.cilium_render` is frozen, and `cilium_self_management` defaults to
+false — so setting it changes the plan and not the running cluster. You need
+Cilium self-management, or another live path that updates the running Cilium
+release, before Hubble can carry this audit.
+
+Without Hubble, ask the agent directly. Talos nodes have no shell, so the
+diagnostic runs inside the Cilium pod on the node hosting the suspect client:
+
+```bash
+POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
+  --field-selector "spec.nodeName=<node>" -o name | head -1)
+kubectl -n kube-system exec -it "$POD" -c cilium-agent -- \
+  cilium-dbg monitor --type drop
+```
 
 Break-risk is confined to traffic *into* `argocd-repo-server` or `argocd-redis`
 from a pod that is not one of the Argo CD components named above. In-pod
@@ -101,10 +176,18 @@ unaffected — they are not network ingress. Check for:
 
 If you find one, add your own NetworkPolicy allowing it — additive policies
 union, so a second policy selecting the same pods widens access rather than
-replacing the base rule. To opt out of a base policy entirely, patch it away in
-your overlay (`$patch: delete` on the named NetworkPolicy) for the steady state,
-or set `global.networkPolicy.create: false` via `argocd_values_override` for the
-Day-0 seed.
+replacing the base rule.
+
+To opt out of a base policy entirely, the two paths need different levers and
+they are **not** interchangeable:
+
+- **Steady state** — `$patch: delete` on the named NetworkPolicy in your own
+  kustomize overlay. This is the lever that reaches a running cluster, and it is
+  the one to use while something is broken.
+- **Day-0 seed** — `global.networkPolicy.create: false` via
+  `argocd_values_override`. This reaches a **fresh bootstrap only**: the seed
+  render is frozen (§4), so on an already-bootstrapped cluster setting it
+  produces a clean plan and changes nothing.
 
 ### 3. Argo CD `v3.3.2` → `v3.5.2` — upstream's own notes apply
 
@@ -119,12 +202,33 @@ them; read both against your own manifests before adopting:
   repository now needs `--insecure-oci-force-http` and must be registered
   explicitly, and `spec.source.helm.version: v3` is ignored; UI extensions must
   externalize `react/jsx-runtime` after the React 16 → 19 move; three
-  event-listing gRPC methods return Argo CD's own `EventList` type; API
-  operations are impersonated, so configured service accounts need the matching
-  RBAC; SSH host keys for credential-less repositories must live in
-  `argocd-ssh-known-hosts-cm`. `.spec.signatureKeys` on AppProject is deprecated
-  in favour of `sourceIntegrity` — the field is still present in this tag's
-  CRDs, so nothing breaks yet.
+  event-listing gRPC methods return Argo CD's own `EventList` type; SSH host keys
+  for credential-less repositories must live in `argocd-ssh-known-hosts-cm`.
+  `.spec.signatureKeys` on AppProject is deprecated in favour of
+  `sourceIntegrity` — the field is still present in this tag's CRDs, so nothing
+  breaks yet.
+
+**Kubernetes floor.** Argo CD 3.5 is tested against Kubernetes v1.33-v1.36 and
+**drops v1.32**, which 3.3 and 3.4 supported. The base pins no Kubernetes
+version — `kubernetes_version` is a required module input — so check your own
+value before adopting; this tag's `cluster.yaml.example` shows `v1.36.3`, inside
+the window.
+
+Two of those need saying against *this* base rather than in general:
+
+- **`--insecure-oci-force-http` is an opt-out, not a migration step.** Helm v4
+  stopped silently downgrading OCI chart pulls to cleartext; the flag re-opens
+  that transport for content the cluster then executes. Move the registry to
+  HTTPS if you can, and reach for the flag only for a registry that is
+  reachable exclusively over an in-cluster path.
+- **The impersonation change does not apply on base defaults.** Upstream extends
+  impersonation from sync to *all* API-server operations — but only "when
+  impersonation is enabled", meaning through an AppProject's
+  `destinationServiceAccounts`. The base's shipped `argocd-cm` pins
+  `application.sync.impersonation.enabled: "false"`, so a consumer who has not
+  turned it on is unaffected. If you *have* turned it on, the service accounts
+  in `destinationServiceAccounts` now need get/patch/delete/list/create for the
+  UI and API paths too, not just for sync.
 
 ### 4. Nothing reaches a running cluster from the seed
 
@@ -143,6 +247,36 @@ running cluster is not re-seeded by vendoring this tag. Two things do move:
   removed — and they gain
   `argocd.argoproj.io/sync-options: ServerSideApply=true`.
 
+### Back-out
+
+Reach for the smallest move first.
+
+1. **The policies broke something — keep the version, drop the policy.**
+   `$patch: delete` the offending NetworkPolicy in your overlay (§2). Nothing
+   else in the bump has to move, and this is the only lever that reaches a
+   running cluster.
+2. **Do not revert the chart pin to undo the policies.** Moving
+   `argocd_chart_version` back puts `9.4.5` in `triggers_replace`, so the next
+   `tofu apply` re-applies `9.4.5` CRDs against schemas `argocd-controller` owns
+   at `10.6.0` — the conflict of §4, in the other direction, and a CRD *schema*
+   downgrade against live `Application` objects besides.
+
+   `tofu state rm` does **not** avoid it. Both resources stay declared in
+   `main.tf` behind `count = var.deploy_argocd ? 1 : 0`, so forgetting them makes
+   the next apply *recreate* them and run the `9.4.5` apply anyway. The only
+   configuration-level lever is `deploy_argocd = false`, which drops the whole
+   ArgoCD seed — namespace, age-key Secret and render — and is not a rollback of
+   this bump.
+
+   So: use step 1 for the policies. If you must go back to the `9.4.5` chart, pin
+   the **steady-state** component back and leave the CRDs at `10.6.0` — nothing
+   was removed from the three schemas in this range, so a `10.6.0` CRD serves a
+   `9.4.5` control plane. §`v9.0.0` §3 covers the apply if it fires anyway. Do
+   not re-add `--force-conflicts`.
+
+3. **The redis image and the `argocd-cm` reconciliation defaults ride the chart
+   pin** and roll back with it — they are not separately settable in the base.
+
 ### Validation steps after upgrade
 
 ```bash
@@ -157,6 +291,11 @@ kubectl -n argocd get deploy,sts \
 # Nothing is stuck syncing or degraded
 kubectl -n argocd get applications.argoproj.io
 ```
+
+Then, in Prometheus, confirm the scrape targets for `argocd-server`,
+`argocd-repo-server`, `argocd-application-controller` and
+`argocd-notifications-controller` are still `up` — a host-network scraper is the
+one path §1 cannot promise the policies admit.
 
 ---
 

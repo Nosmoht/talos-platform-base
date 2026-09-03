@@ -21,8 +21,13 @@
 #   I4  No non-empty argocd-rbac-cm `policy.csv` (steady-state only).
 #   I5  No non-empty argocd-rbac-cm `policy.default` (steady-state only) — wider
 #       blast radius than I4, hence its own assertion.
-#   I6  Both paths carry the exact five-policy NetworkPolicy posture: component
-#       selectors, ingress peers/ports and policyTypes (shared across both).
+#   I6  Both paths carry the exact five-policy NetworkPolicy posture: apiVersion,
+#       namespace, component selectors, ingress peers/ports and policyTypes, with
+#       named ports cross-checked against the target workloads' containerPorts and
+#       no higher-precedence policy kind riding along. The steady-state side is
+#       asserted on the kustomize-built bytes too. "Both paths" means both
+#       BASE-SHIPPED values files — a consumer argocd_values_override merged over
+#       the seed is out of scope here, as the note below says for every invariant.
 #   P   The module's argocd_chart_version default equals chart.lock.yaml's
 #       version. Load-bearing since the Day-0 apply stopped forcing conflicts.
 #   E0-E5  The worked consumer-SSO overlay still wires the component, asserted
@@ -202,8 +207,14 @@ check_no_url "bootstrap-seed" "$tmp/bootstrap.yaml"
 # I6 — exact chart-emitted per-component NetworkPolicy posture, SHARED across
 # both paths. The dedicated gate binds the five-policy anchor, each component's
 # selector, ingress peers/ports and policyTypes. Its bite-check mutates the real
-# committed render to prove empty/wrong selectors, open redis, a closed server
-# and a vanished policy are all rejected.
+# committed render to prove empty/wrong selectors, open redis, a closed server,
+# a vanished policy and an added sixth are all rejected.
+#
+# Unlike I1-I5 this invariant is POSITIVE, so the gate returns 3 — a recorded
+# violation — for a policy set that no longer matches, not 2. A lost network
+# posture is the violation itself, not a precondition that would leave a negative
+# check passing vacuously, and routing it through 3 keeps it out of the channel a
+# `helm pull` failure uses and lets the remaining invariants still report.
 check_netpol_floor() {
   local label="$1" render="$2" got=0
   "$NETPOL_GATE" "$label" "$render" || got=$?
@@ -321,6 +332,18 @@ kustomize build "$ARGOCD_DIR"  > "$tmp/ctl-full.yaml" 2>"$tmp/kz.err" || {
 kustomize build "$EXAMPLE_DIR" > "$tmp/sso-full.yaml" 2>"$tmp/kz.err" || {
   echo "::error::kustomize build failed for ${EXAMPLE_DIR#"${ROOT}/"} — the documented consumer overlay no longer builds against the component it patches (knowledge/reference/argocd-sso-contract.md)" >&2
   sed 's/^/    /' "$tmp/kz.err" >&2; exit 2; }
+
+# I6 again, on the COMMITTED bytes. The steady-state run above asserts a fresh
+# helm render of values.yaml; this control build is `kustomize build` over
+# kustomization.yaml — namespace.yaml plus the committed _rendered/ tree — which
+# is what a consumer vendoring the artifact actually receives, and what the spec
+# scenario names. The two are not the same input: the committed render is a file
+# in the tree, so a hand edit to it, or a _rendered/ regenerated through a
+# changed _rendered-overlay/ (the Stage-2 producer input, which carries a live
+# `patches:` block), reaches consumers while the fresh-render check stays green.
+# verify-rendered.sh proves _rendered/ is REPRODUCIBLE from values + overlay; it
+# does not assert that what it reproduces satisfies I6. This closes that.
+check_netpol_floor "steady-state (kustomize build)" "$tmp/ctl-full.yaml"
 
 # Reduce once. Both builds carry the ~29k-line CRD stream, and the E-series makes
 # a dozen ConfigMap lookups; re-parsing the full stream per lookup is pure cost.

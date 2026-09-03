@@ -17,7 +17,7 @@ The substrate ships ArgoCD with **no identity**: no bundled Dex, no OIDC
 connector, no base URL, and no RBAC policy naming any principal. That is a
 deliberate floor property — an access policy names principals of a specific
 organisation, which a cluster-agnostic base cannot know — and it is gated in CI
-(invariants I1–I5, see the component README `kubernetes/substrate/argocd/README.md`).
+(invariants I1–I5, see the component README `kubernetes/substrate/argocd/README.md`; I6 is that README's NetworkPolicy-posture invariant and asserts nothing about identity).
 
 The cost of that property is a contract: the cluster does not authenticate
 anyone until the consumer supplies the missing half. This page is that contract.
