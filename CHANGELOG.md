@@ -10,6 +10,14 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Fixed (BREAKING) — the OCI artifact now contains the complete runtime
+  `talos-cluster` module.** The allowlist adds `cilium-values.tf`,
+  `composition.tf`, `kubeconfig-refresh.tf`, `nodes.tf`, and `profiles.tf`, so a
+  consumer can extract the artifact and use the vendored module without
+  missing local references. CI derives the required root `.tf` set from git and
+  runs `tofu init -backend=false` plus `tofu validate` against the extracted
+  payload. The payload layout therefore gains five published paths; git-only
+  examples and bootstrap helpers remain outside the artifact. Fixes #158.
 - **Changed (BREAKING) — the `argo-cd` chart moves `9.4.5` → `10.6.0`, Argo CD
   `v3.3.2` → `v3.5.2`.** Both render paths bump together —
   `kubernetes/substrate/argocd/chart.lock.yaml` and the `argocd_chart_version`

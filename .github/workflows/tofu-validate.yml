@@ -13,6 +13,8 @@ on:
       - 'tofu/**'
       - 'Taskfile.yml'
       - '.github/workflows/tofu-validate.yml'
+      - '.ci-oci-tarball-include.txt'
+      - '.ci-oci-tarball-expected.txt'
       # tofu:ci is the ONLY runner of these fences, so a PR touching just a
       # fence script must still execute it — otherwise a weakening edit to the
       # guard merges without the guard ever running (#218 review).
@@ -23,6 +25,7 @@ on:
       - 'scripts/check-node-projection-wiring.sh'
       - 'scripts/check-module-readme-parity.sh'
       - 'scripts/check-shim-key-parity.sh'
+      - 'scripts/check-substrate-consumability.sh'
       # tofu:ci carries check:shim-key-parity, which reads the schema. Without
       # this entry a schema-only widening — the exact diff shape that leaves a
       # new substrate key unmapped in the shim — would not run the gate at all.
@@ -34,6 +37,8 @@ on:
       - 'tofu/**'
       - 'Taskfile.yml'
       - '.github/workflows/tofu-validate.yml'
+      - '.ci-oci-tarball-include.txt'
+      - '.ci-oci-tarball-expected.txt'
       # tofu:ci is the ONLY runner of these fences, so a PR touching just a
       # fence script must still execute it — otherwise a weakening edit to the
       # guard merges without the guard ever running (#218 review).
@@ -44,6 +49,7 @@ on:
       - 'scripts/check-node-projection-wiring.sh'
       - 'scripts/check-module-readme-parity.sh'
       - 'scripts/check-shim-key-parity.sh'
+      - 'scripts/check-substrate-consumability.sh'
       # tofu:ci carries check:shim-key-parity, which reads the schema. Without
       # this entry a schema-only widening — the exact diff shape that leaves a
       # new substrate key unmapped in the shim — would not run the gate at all.

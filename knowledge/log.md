@@ -15,8 +15,14 @@
   record sets was discharged at argo-cd chart `10.6.0`; the CRD templates'
   directive list and the byte-identical cross-`--kube-version` render both still
   hold.
-- `architecture/day-zero-bootstrap.md`, `reference/tasks.md`: the NetworkPolicy
-  posture gate and its bite-check join the ArgoCD seed and task inventories.
+- `architecture/day-zero-bootstrap.md`: the NetworkPolicy posture gate and its
+  bite-check join the ArgoCD seed inventory.
+- `architecture/substrate.md`, `workflows/first-consumer-cluster.md`: the OCI
+  payload now carries every root-level talos-cluster implementation file; the
+  checkout-only authoring and bootstrap helpers are identified explicitly.
+- `reference/tasks.md`: the supply-chain inventory gains the extracted OCI module
+  validation target, and the local `gitops:validate` sequence gains the
+  NetworkPolicy posture bite-check.
 
 ## 2026-08-28
 

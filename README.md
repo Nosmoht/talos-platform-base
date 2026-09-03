@@ -69,19 +69,15 @@ Full system context and container view: [`ARCHITECTURE.md`](ARCHITECTURE.md)
 ## What ships in the artifact
 
 A consumer that pulls `ghcr.io/<owner>/talos-platform-base:<tag>`
-receives a frozen tree containing:
+receives exactly the frozen paths in `.ci-oci-tarball-include.txt`:
 
-- **The OpenTofu cluster-lifecycle module** (`tofu/modules/talos-cluster`)
-  — the sole Talos provisioning path: per-class Image-Factory installer,
-  machine-config generation, config apply, bootstrap, kubeconfig, plus the
-  create-only Cilium (CNI) and ArgoCD `inlineManifest` seeds. Ships its
-  `helm/` values floor (`cilium-values.yaml`, `argocd-values.yaml`) and a
-  worked `examples/complete` `yamldecode` shim.
-- **`cluster.yaml.example`** — the declarative cluster Source-of-Truth
-  template (identity, Talos/Kubernetes versions, endpoint, pod/service
-  CIDR, dual-stack, node classes, machine-config patches, substrate
-  config). `task cluster:init-yaml` copies it to a `cluster.yaml` the
-  consumer fills in.
+- **The complete OpenTofu cluster-lifecycle runtime module**
+  (`tofu/modules/talos-cluster`): every root-level `.tf` implementation file,
+  its Cilium/ArgoCD values floors, the cert-approver manifest, its README, and
+  the explicitly allowlisted adoption proof scripts. The module is the sole
+  Talos provisioning path: per-class Image-Factory installer, machine-config
+  generation and apply, bootstrap, kubeconfig, and the create-only Cilium and
+  ArgoCD `inlineManifest` seeds.
 - **The substrate-only infrastructure component** under
   `kubernetes/substrate/` — `argocd/`, the only component
   delivered as a base kustomize manifest set. ArgoCD is a co-equal
@@ -99,20 +95,14 @@ receives a frozen tree containing:
   catalog as independently versioned, signed OCI artifacts; consumers
   self-serve from there (see
   [`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md)).
-- **Per-class Talos machine-config**, derived by the module from the
-  `cluster.yaml` classes (architecture, system extensions, optional
-  ARM/SBC overlay, per-class and per-node patches) — `cni:none` is forced
-  in both the config-generation and per-node apply passes so a caller
-  patch cannot resurrect Flannel.
-- **Parameterised ArgoCD bootstrap templates** (`*.tmpl`, rendered by
-  the consumer at install time via `task bootstrap:argocd`).
-- **The validation pipeline** itself (`task gitops:validate`, conftest
-  Rego, kubeconform, the Layer-C hardware-features linter) so consumers
-  can re-render the base inside their own CI and catch divergence.
+- **Cilium Day-2 reference values** plus the GatewayClass extra, and the
+  Layer-C hardware-capability vocabulary with its schema.
 
-What does **not** ship: cluster identity (IPs, FQDNs, OIDC issuers,
-SOPS keys), per-cluster secrets, live ArgoCD state, application
-manifests. Those live in the consumer cluster repo.
+What does **not** ship: `Taskfile.yml`, `cluster.yaml.example`, the worked
+`examples/complete` shim, the ArgoCD bootstrap templates, or the validation
+pipeline. Use the base Git checkout at the same pinned tag for those authoring
+and bootstrap helpers. Cluster identity, per-cluster secrets, live ArgoCD state,
+and application manifests belong in the consumer cluster repo.
 
 ## Consume
 
