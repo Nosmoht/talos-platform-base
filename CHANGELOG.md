@@ -30,6 +30,13 @@ under the new version heading; the historical backfill below it stays put.
   and `v9.2.0` failed earlier still and have **no published artifact at all**,
   so they must not be pinned. Both groups are recorded in
   [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
+  Because release creation now happens in the job that also holds the signing
+  identity, that job's five actions are pinned by commit SHA instead of a
+  mutable tag, and every `run:` block there reads its values from `env:`
+  rather than from a `${{ }}` interpolation the shell would parse; a check in
+  the required `docs-lint` context keeps both properties, and the absence of
+  the publish plugin, from regressing. `CHANGELOG.md` joins the release
+  surface in `CODEOWNERS`, since its matching section is the release body.
   Fixes #251.
 - **Fixed (BREAKING) — the OCI artifact now contains the complete runtime
   `talos-cluster` module.** The allowlist adds `cilium-values.tf`,

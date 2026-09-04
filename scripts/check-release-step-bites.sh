@@ -68,7 +68,37 @@ for f in create.sh assert.sh; do
     note "$f interpolates a \${{ }} expression into the shell — variable text belongs in the step's env: block (release.yml §notify)"
   fi
 done
-ok "both steps extracted; neither splices a workflow expression into the shell"
+ok "both steps extracted"
+
+# No `run:` block in the WHOLE workflow may splice a workflow expression into
+# the shell, not just these two. GitHub substitutes `${{ }}` textually before
+# bash parses the script, and a git ref may contain `$`, a backtick, `(`, `)`
+# and `"` — so an interpolated tag name is shell source, in the job that holds
+# `id-token: write` and `attestations: write`. Values belong in `env:`.
+# Only run CONTENT is inspected; `if:` and `env:` lines carry `${{ }}` by
+# design.
+interpolated="$(awk '
+  match($0, /^[[:space:]]*run:[[:space:]]*\|/) {
+    key = index($0, "run:") - 1; in_run = 1; next
+  }
+  match($0, /^[[:space:]]*run:[[:space:]]*[^|>[:space:]]/) {
+    in_run = 0
+    if ($0 ~ /\$\{\{/) print FILENAME ":" FNR ": " $0
+    next
+  }
+  in_run {
+    if ($0 ~ /^[[:space:]]*$/) next
+    ind = match($0, /[^[:space:]]/) - 1
+    if (ind <= key) { in_run = 0; next }
+    if ($0 ~ /\$\{\{/) print FILENAME ":" FNR ": " $0
+  }
+' "$WF")"
+if [ -n "$interpolated" ]; then
+  note "a run: block interpolates a workflow expression into the shell:"
+  printf '%s\n' "$interpolated" >&2
+else
+  ok "no run: block in the workflow splices a workflow expression into the shell"
+fi
 
 # ---------------------------------------------------------------------------
 # 0) the other half of the fix, and the half nothing else watches

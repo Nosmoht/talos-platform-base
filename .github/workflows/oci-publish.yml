@@ -32,7 +32,7 @@ jobs:
     # release. The 6-hour default would sit on that for a working day.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -46,14 +46,14 @@ jobs:
         # it: @v1 last shipped 2025-09 and rejects every 1.3.1+ pin. Passing url
         # + checksum bypasses the table, so the pin follows .tool-versions rather
         # than the action's release cadence. The runner is linux/amd64.
-        uses: oras-project/setup-oras@v2.0.1
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
         with:
           version: 1.3.4
           url: https://github.com/oras-project/oras/releases/download/v1.3.4/oras_1.3.4_linux_amd64.tar.gz
           checksum: f27adb935022d94df8dc77719c322dda592c78a0d57a6f7dcdd8d900b248c454
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           # Without this the installer silently uses its own default release,
           # which is a cosign 2.x for every v3.x tag of the action — the
@@ -61,9 +61,18 @@ jobs:
           cosign-release: v3.1.3
 
       - name: Login to ghcr.io
+        # Every value a `run:` block here reads is env-bound, never spliced
+        # into the script by `${{ }}`. A tag name is contributor-supplied and
+        # git permits `$`, backtick, `(`, `)` and `"` in a ref, so an
+        # interpolated one is shell source — inside the job that holds
+        # `id-token: write` and `attestations: write`, i.e. the signing
+        # identity consumers verify against. Same discipline as release.yml.
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+          printf '%s' "$GHCR_TOKEN" \
+            | oras login ghcr.io -u "$ACTOR" --password-stdin
 
       - name: Build tarball
         # Allowlist-driven (fail-closed): only files listed in
@@ -77,6 +86,8 @@ jobs:
         # update .ci-oci-tarball-expected.txt accordingly; the "Verify
         # tarball contents" step below will catch any divergence.
         shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p _release
@@ -84,7 +95,7 @@ jobs:
             echo "::error::.ci-oci-tarball-include.txt missing — cannot build tarball"
             exit 1
           }
-          tar -czf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" \
+          tar -czf "_release/talos-platform-base-${TAG}.tar.gz" \
             --files-from=.ci-oci-tarball-include.txt
 
       - name: Verify tarball contents
@@ -94,10 +105,12 @@ jobs:
         # fixture aborts the publication (a deleted fixture would
         # otherwise silently disable the membership gate); parity with
         # `task supply-chain:oci-allowlist`.
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p .work
-          tar -tzf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" \
+          tar -tzf "_release/talos-platform-base-${TAG}.tar.gz" \
             | sed 's|^\./||' | LC_ALL=C sort | sed 's|^|./|' > .work/tarball-contents.txt
           [ -f .ci-oci-tarball-expected.txt ] || {
             echo "::error::.ci-oci-tarball-expected.txt missing at the tagged commit — the membership diff is a required gate. Recovery: commit the fixture (verify locally via task supply-chain:oci-allowlist) and cut a NEW tag; this tag cannot be republished from a commit lacking the fixture."
@@ -111,28 +124,33 @@ jobs:
 
       - name: Generate checksums
         working-directory: _release
-        run: sha256sum *.tar.gz > checksums.txt
+        run: sha256sum -- *.tar.gz > checksums.txt
 
       - name: Push OCI artifact
         id: push
         working-directory: _release
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
-          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          OWNER_LC="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
           oras push \
-            "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
+            "ghcr.io/${OWNER_LC}/talos-platform-base:${TAG}" \
             --artifact-type "application/vnd.talos-platform-base.v1+tar" \
-            "talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz:application/gzip" \
+            "talos-platform-base-${TAG}.tar.gz:application/gzip" \
             "checksums.txt:text/plain"
           echo "owner_lc=${OWNER_LC}" >> "$GITHUB_OUTPUT"
 
       - name: Capture artifact digest
         id: digest
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          OWNER_LC: ${{ steps.push.outputs.owner_lc }}
         run: |
           set -euo pipefail
-          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
           DIGEST=$(oras manifest fetch --descriptor \
-            "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
+            "ghcr.io/${OWNER_LC}/talos-platform-base:${TAG}" \
             | jq -r .digest)
           if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
             echo "::error::failed to capture artifact digest after oras push"
@@ -146,14 +164,16 @@ jobs:
         # (the workflow ref, the repository, and the tag pattern).
         # Verify command + identity regex documented in
         # knowledge/workflows/verify-release.md.
+        env:
+          OWNER_LC: ${{ steps.push.outputs.owner_lc }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           set -euo pipefail
-          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
           cosign sign --yes \
-            "ghcr.io/${OWNER_LC}/talos-platform-base@${{ steps.digest.outputs.digest }}"
+            "ghcr.io/${OWNER_LC}/talos-platform-base@${DIGEST}"
 
       - name: Attach SLSA build provenance
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v1
         with:
           subject-name: ghcr.io/${{ steps.push.outputs.owner_lc }}/talos-platform-base
           subject-digest: ${{ steps.digest.outputs.digest }}
@@ -167,7 +187,7 @@ jobs:
         # maturity in 2026 (Syft, Trivy, cosign attest --type cyclonedx
         # all native; SPDX 3.0 still gated behind opt-in flags).
         # Spec: https://cyclonedx.org/specification/overview/
-        uses: anchore/sbom-action@v0.17.9
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
         with:
           file: _release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz
           format: cyclonedx-json
@@ -181,13 +201,16 @@ jobs:
         #     --certificate-identity-regexp <pattern> \
         #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
         #     ghcr.io/<owner>/talos-platform-base:<tag>
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          OWNER_LC: ${{ steps.push.outputs.owner_lc }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           set -euo pipefail
-          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
           cosign attest --yes \
             --type cyclonedx \
-            --predicate "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.cdx.json" \
-            "ghcr.io/${OWNER_LC}/talos-platform-base@${{ steps.digest.outputs.digest }}"
+            --predicate "_release/talos-platform-base-${TAG}.cdx.json" \
+            "ghcr.io/${OWNER_LC}/talos-platform-base@${DIGEST}"
 
       - name: Tag :latest
         # Skip on SemVer pre-release tags (`v*-*`). Pre-release artifacts
@@ -196,10 +219,13 @@ jobs:
         # SemVer §9 treats any hyphenated suffix as a pre-release
         # identifier, so this matches the spec.
         if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          OWNER_LC: ${{ steps.push.outputs.owner_lc }}
         run: |
-          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          set -euo pipefail
           oras tag \
-            "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
+            "ghcr.io/${OWNER_LC}/talos-platform-base:${TAG}" \
             latest
 
       - name: Create GitHub Release

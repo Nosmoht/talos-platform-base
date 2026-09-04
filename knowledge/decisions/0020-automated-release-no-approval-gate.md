@@ -284,6 +284,18 @@ The decision, replacing that half of §Decision 4:
    extracts them from the workflow rather than copying them, and asserts the
    ORDER of the API calls — "created a release" and "created a release whose
    assets arrived before it was published" have the same exit status.
+6. **The publish job's own trust surface is brought up to `release.yml`'s.**
+   Moving release creation into that job concentrated the OIDC signing
+   identity, the attestation authority, the GHCR credential and the power to
+   author an immutable public release into one place, so: every action is
+   pinned by commit SHA rather than a mutable tag, every `run:` block reads
+   its values from `env:` instead of `${{ }}` interpolation (a git ref may
+   contain `$`, a backtick and quotes, which made the tag name shell source in
+   seven pre-existing steps), and the third assertion in the bite-check keeps
+   the second property from regressing. `CHANGELOG.md` joins the release
+   surface in `CODEOWNERS`, because its matching section is now the verbatim
+   body of every signed release; the cost — nearly every PR needs owner review
+   — is accepted rather than overlooked.
 
 Accepted trade-offs:
 
