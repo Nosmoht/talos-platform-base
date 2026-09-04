@@ -249,6 +249,18 @@ tasks:
     desc: "CI fence: the Cilium operator replica count keeps its chart key spelling on both sides (computed contributor + floor), and `operator` stays a single merge term"
     cmd: scripts/check-cilium-operator-replicas-key.sh
 
+  tofu:check:provider-document-kinds:
+    # Full rationale in scripts/check-provider-document-kinds.sh. The module's
+    # four opaque config_patches lists read as "any machine-config field is
+    # reachable", but the provider decodes every patch against its OWN bundled
+    # Talos machinery, so the reachable surface is bounded by the provider
+    # version rather than by the consumer's talos_version. Nothing else observes
+    # that coupling. Cases B and C assert a REJECTION, so this fence also
+    # EXPIRES: it turns red the day a provider inside the declared range accepts
+    # the Talos 1.14 kinds, which is the signal to reopen the migration.
+    desc: "CI fence: which Talos machine-config document kinds the PINNED provider accepts, and that a Talos 1.14 pin still yields none of the 1.14 default documents"
+    cmd: scripts/check-provider-document-kinds.sh
+
   tofu:check:shim-key-parity:
     # Full rationale in scripts/check-shim-key-parity.sh. The worked example's
     # shim reads cluster.yaml through try(), which is total: a mistyped key
@@ -285,7 +297,7 @@ tasks:
         -filter=tests/apply-mode.tftest.hcl
 
   tofu:ci:
-    desc: "Full local tofu validation: fmt:check + validate + vendored OCI module validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + test:offline — mirrors CI; provider init may use the registry, no live Image Factory"
+    desc: "Full local tofu validation: fmt:check + validate + vendored OCI module validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + check:provider-document-kinds + test:offline — mirrors CI; provider init may use the registry, no live Image Factory"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
@@ -299,6 +311,7 @@ tasks:
       - task: tofu:check:node-projection-wiring
       - task: tofu:check:shim-key-parity
       - task: tofu:check:cilium-operator-replicas-key
+      - task: tofu:check:provider-document-kinds
       - task: tofu:test:offline
 
   # ===========================================================================
