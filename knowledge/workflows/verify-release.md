@@ -3,7 +3,7 @@ type: workflow
 title: Verify a Base Release
 description: Fail-closed verification of a published talos-platform-base OCI artifact — signature, provenance, SBOM attestation, and checksums — before vendoring.
 tags: [supply-chain, cosign, verification]
-generated: { by: human:nosmoht, at: "2026-08-31T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-04T00:00:00Z" }
 sources:
   - resource: .github/workflows/oci-publish.yml
   - resource: .ci-oci-tarball-include.txt
@@ -48,9 +48,41 @@ The trust chain, in workflow order:
    with `cosign attest --yes --type cyclonedx` keyed to the digest.
 9. **`:latest` tag** — only for non-hyphenated tags; SemVer pre-releases
    (`v*-*`) never become `:latest`.
-10. **GitHub Release.** Tarball, `checksums.txt`, and the SBOM JSON are
-    mirrored as Release assets; hyphenated tags are marked pre-release.
-    ghcr.io remains the authoritative, signed consumption path.
+10. **GitHub Release.** Created as a draft, the tarball, `checksums.txt`, and
+    the SBOM JSON attached to it, then published — release immutability
+    freezes a release at publish time and a published one rejects asset
+    uploads, so the draft window is the only place the assets can be attached.
+    Hyphenated tags are marked pre-release. ghcr.io remains the authoritative,
+    signed consumption path.
+11. **Asset assertion.** The draft's assets are verified before it is
+    published, and the published release is read back afterwards through the
+    tag endpoint a consumer browsing the Releases page sees; either mismatch
+    fails the workflow and opens a tracking issue.
+
+## Releases without assets
+
+Seven published releases carry **no** Release assets, and a published release
+is immutable, so none of them can be backfilled. They split into two groups
+that need different handling — do not treat the list as uniform:
+
+**Artifact intact, assets missing** — `v9.2.2`, `v9.2.3`, `v10.0.0`,
+`v11.0.0`, `v11.0.1`. The release object was already published by
+semantic-release, so every asset upload was refused with HTTP 422 (#251). The
+OCI artifacts are published, signed, and attested normally: consume these tags
+via `oras pull` and the digest, exactly as the recipe below documents. Only the
+Release-asset download path is missing.
+
+**Nothing published at all** — `v9.1.2`, `v9.2.0`. These failed earlier, at
+the `oras` install step, which is upstream of the push: there is no artifact,
+no signature, and no attestation, and
+`ghcr.io/nosmoht/talos-platform-base:<tag>` returns 404 for both (verified
+2026-09-04). They are git tags with a GitHub Release object and nothing else.
+**Do not pin them.** `v9.2.1` and `v9.1.1` are the intact tags on either side.
+
+Tags from the fix onward carry all three assets, asserted in the publish
+workflow itself. Recovery procedure and why it is forward-only:
+[release-process](./release-process.md) §A release that shipped without
+assets.
 
 ## The signing identity
 

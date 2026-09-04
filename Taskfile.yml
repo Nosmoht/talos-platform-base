@@ -571,6 +571,23 @@ tasks:
         exit 1
       }
 
+  supply-chain:check-release-step:
+    desc: "CI fence: oci-publish.yml's release steps attach the assets before the release is published, and refuse every state that cannot"
+    # The steps under test run ONLY on a tag push, and a published release is
+    # immutable -- a defect there costs a version rather than a re-run. The
+    # bite-check extracts them from the workflow and drives them against a stub
+    # `gh`, so the PR that changes them is where they are exercised.
+    cmd: |
+      set -e
+      bite_out="$(./scripts/check-release-step-bites.sh 2>&1)" || { printf '%s\n' "$bite_out"; exit 1; }
+      printf '%s\n' "$bite_out"
+      # A two-digit count, not `[0-9]+`: the zero-scenario case is exactly what
+      # this marker exists to reject. The script asserts its own, higher floor.
+      printf '%s\n' "$bite_out" | grep -qE '^release-step bite-check OK \([0-9]{2,} scenarios\)$' || {
+        echo "ERROR: the bite-check did not report a two-digit scenario count — it may have been narrowed" >&2
+        exit 1
+      }
+
   supply-chain:relock-release-guard:
     desc: "Re-lock the release guard's data files after a DELIBERATE change to what it protects"
     # Never chained into another target: the lock exists so that narrowing the

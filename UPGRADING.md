@@ -13,6 +13,14 @@ For consumer-cluster repos vendoring `talos-platform-base` via OCI.
   section carrying a tag in your range by its heading, not by position.
 - Always verify the new artifact (cosign + provenance) before vendoring
   — see [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
+- Vendor through `oras pull`, as the workflow below does, not through the
+  Releases page. Five tags — `v9.2.2`, `v9.2.3`, `v10.0.0`, `v11.0.0`,
+  `v11.0.1` — carry no Release assets, and a published release is immutable, so
+  they never will; their OCI artifacts are complete, signed and attested, so
+  the workflow below works normally for them. Two further tags, `v9.1.2` and
+  `v9.2.0`, have **no published artifact at all** and must not be pinned. See
+  [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md)
+  §Releases without assets.
 
 ## Upgrade workflow (every version)
 

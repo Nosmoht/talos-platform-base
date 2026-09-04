@@ -7,12 +7,15 @@ name: Release
 # job summary. `plan` also runs a blocking MAJOR-bump guard (see the step) — the
 # backstop that replaced the former manual approval. If a release is due and the
 # guard passes, `release` runs the real semantic-release unattended: it creates
-# the tag + GitHub Release. Because the tag is pushed with a GitHub App token
-# (NOT the default GITHUB_TOKEN, whose events do not trigger other workflows),
-# the existing `oci-publish.yml` (on: push tags 'v*') fires and attaches the
-# cosign-signed OCI assets to the Release. oci-publish.yml is unchanged, so the
-# signing identity + consumer verification regex are preserved. semantic-release
-# does NOT commit back to `main`; CHANGELOG.md is cut by hand in the releasing PR
+# and pushes the tag, and nothing else. Because the tag is pushed with a GitHub
+# App token (NOT the default GITHUB_TOKEN, whose events do not trigger other
+# workflows), `oci-publish.yml` (on: push tags 'v*') fires and is the sole
+# creator of the GitHub Release object — it is the only place the release assets
+# exist, and an immutable release can only receive them before it is published.
+# That is why `.releaserc.json` carries no `@semantic-release/github` plugin:
+# the plugin published an asset-less release the moment it tagged, and every
+# later upload was refused with HTTP 422 (#251). semantic-release does NOT
+# commit back to `main`; CHANGELOG.md is cut by hand in the releasing PR
 # (ADR-0020).
 #
 # See knowledge/workflows/release-process.md for the full design, the one-time GitHub App
@@ -33,7 +36,9 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # dry-run only — satisfies @semantic-release/github verifyConditions.
+      contents: write # dry-run only — semantic-release's own verifyAuth runs
+      # `git push --dry-run` even under --dry-run (semantic-release/index.js),
+      # so a read-only token fails the plan before it computes anything.
       # GITHUB_TOKEN cannot push to protected main nor trigger downstream
       # workflows, so it cannot cut a real release from this ungated job.
     timeout-minutes: 15
@@ -266,7 +271,10 @@ jobs:
           # closing the issue cannot red an otherwise successful release.
           printf '%s\n' "$existing" | while IFS= read -r n; do
             [ -n "$n" ] || continue
-            printf '%s' "A release completed: $RUN_URL" \
+            # "tagged", not "released": since #251 this workflow only pushes the
+            # tag, and whether the artifact and its GitHub Release followed is
+            # oci-publish.yml's own tracking issue to answer.
+            printf '%s' "A release tag was pushed: $RUN_URL" \
               | gh issue comment "$n" --repo "$REPO" --body-file - || true
             gh issue close "$n" --repo "$REPO" --reason completed || true
           done

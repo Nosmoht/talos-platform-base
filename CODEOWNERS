@@ -36,6 +36,12 @@
 # OCI publish surface — supply-chain critical.
 /.github/workflows/oci-publish.yml               @nosmoht
 /knowledge/workflows/verify-release.md           @nosmoht
+/scripts/check-release-step-bites.sh             @nosmoht
+# Since #251 the matching `## vX.Y.Z ` section is the verbatim body of every
+# signed public GitHub Release, so this file is a release-surface input like
+# the ones below it. It is also touched by nearly every PR: that is the cost
+# of the routing, accepted deliberately rather than overlooked.
+/CHANGELOG.md                                    @nosmoht
 
 # Release automation surface — supply-chain critical. These files decide what
 # gets versioned, packaged, and signed; a change here can ship/sign content

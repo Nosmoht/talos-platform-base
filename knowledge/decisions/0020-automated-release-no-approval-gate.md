@@ -8,6 +8,7 @@ decided: "2026-07-21T00:00:00Z"
 history:
   - 2026-07-21 accepted
   - 2026-08-25 amended (surface set corrected and moved to committed data; merge-commit-only premise made mechanical; fail-opens closed; notification shipped)
+  - 2026-09-04 amended (release-object ownership moved to oci-publish.yml so assets are attached before immutability freezes the release)
 deciders:
   - platform-maintainer
 related:
@@ -236,3 +237,95 @@ body is legitimate, it is where `Allow-Non-Major:` goes.
 Cost, stated rather than hidden: the effect check trails by one merge. It
 notices a reverted setting only after a merge has happened under it. The direct
 reading stays the primary path on a local admin run.
+
+## Amendment (2026-09-04)
+
+**Correction to §Decision 4: semantic-release no longer creates the GitHub
+Release.** That clause said it "tags and creates the GitHub Release only". It
+did — and that was the defect. `@semantic-release/github` publishes the release
+object the moment it tags, with no assets attached, because the assets do not
+exist yet: they are built one workflow later, in `oci-publish.yml`.
+
+Release immutability, an asserted invariant of this repository
+(`AGENTS.md` §Tool-Agnostic Safety Invariants, `scripts/preflight-checks.sh`
+Check 3), freezes a release when it is **published**. So every tag after the
+setting was enabled reached `oci-publish.yml` to find its release already
+published and its three asset uploads refused with HTTP 422. Five releases
+shipped with no tarball, no `checksums.txt`, and no SBOM before anyone
+noticed, because the only signal was a red run on a tag nobody watches (#251).
+
+The decision, replacing that half of §Decision 4:
+
+1. **`.releaserc.json` carries no publish plugin.** semantic-release computes
+   the version, creates and pushes the tag, and stops; `publish` is an optional
+   lifecycle step in semantic-release, so removing the plugin costs the release
+   object and nothing else.
+2. **`oci-publish.yml` is the sole creator of the GitHub Release**, and creates
+   it as a **draft**, attaches the three assets, and publishes it last.
+   Immutability at publish time makes the draft window the only place assets
+   can be attached; GitHub documents that order as the supported one.
+3. **The assets are asserted on the draft, before the publish flip**, so a
+   missing one ends the run with something a re-run can discard; the published
+   release is read back afterwards as the end-state proof. A publish job that
+   does not succeed — failed, cancelled, or timed out — opens or updates one
+   tracking issue and a successful one closes it, mirroring `release.yml`'s
+   `notify` / `notify-resolved` pair. The failure that shipped five asset-less
+   releases was invisible; it is now a tracker entry an agent reads at session
+   start.
+4. **The workflow serializes on one concurrency group and publishes with
+   `make_latest=legacy`.** It now moves both `:latest` and the release's Latest
+   flag, which `release.yml`'s `release-main` group used to serialize on its
+   behalf; `legacy` resolves Latest from the creation date and the higher
+   SemVer rather than from whichever concurrent run patched last.
+5. **Both steps are bound mechanically**, by `task
+   supply-chain:check-release-step` in the required `docs-lint` context. The
+   steps only ever run on a tag push, so the PR that changes them is the only
+   place they can be exercised before a version is spent; the bite-check
+   extracts them from the workflow rather than copying them, and asserts the
+   ORDER of the API calls — "created a release" and "created a release whose
+   assets arrived before it was published" have the same exit status.
+6. **The publish job's own trust surface is brought up to `release.yml`'s.**
+   Moving release creation into that job concentrated the OIDC signing
+   identity, the attestation authority, the GHCR credential and the power to
+   author an immutable public release into one place, so: every action is
+   pinned by commit SHA rather than a mutable tag, every `run:` block reads
+   its values from `env:` instead of `${{ }}` interpolation (a git ref may
+   contain `$`, a backtick and quotes, which made the tag name shell source in
+   seven pre-existing steps), and the third assertion in the bite-check keeps
+   the second property from regressing. `CHANGELOG.md` joins the release
+   surface in `CODEOWNERS`, because its matching section is now the verbatim
+   body of every signed release; the cost — nearly every PR needs owner review
+   — is accepted rather than overlooked.
+
+Accepted trade-offs:
+
+- **Release notes now come from the hand-cut CHANGELOG section**, with
+  `gh --generate-notes` as the fallback. Previously semantic-release's
+  generated notes reached the release object; now they only reach the `plan`
+  job's dry-run log. Stated plainly: the fallback is the *current* path, not
+  the exception — no CHANGELOG section has been cut since `v9.1.0`, so eleven
+  of the last twelve tags would have taken it. The by-hand cut becoming
+  load-bearing for release notes is a consequence of this decision, and #233
+  is where the backlog of missing sections lives.
+- **A publish that fails after the draft is published cannot be repaired.**
+  Recovery is a new tag. A failure *before* that flip leaves a draft the next
+  run discards, so the RELEASE OBJECT is recoverable up to that point — but a
+  re-run is not idempotent overall: it rebuilds the tarball (whose bytes carry
+  checkout mtimes), so it remaps `ghcr.io/<owner>/talos-platform-base:<tag>`
+  onto a NEW digest, mints a second signature and a second provenance for the
+  same version, and moves `:latest`. Consumers pin digests
+  (`knowledge/workflows/verify-release.md`) precisely so this is visible to
+  them rather than silent; the runbook states the cost at the point of use.
+- **The release object is claimable by anything holding `contents: write`.**
+  "This workflow is the sole creator" is a convention, not an enforcement: a
+  release published for a tag before the workflow reaches it makes that
+  version unreleasable, because the guard refuses and immutability forbids
+  amendment. That was equally true before — `@semantic-release/github` would
+  have hit HTTP 422 on the same pre-claimed release — so the change neither
+  opens nor closes it, and it is recorded here rather than left implicit.
+- **The seven already-published asset-less tags cannot be backfilled** —
+  immutability is the whole point of the setting. Two groups, recorded
+  separately in `knowledge/workflows/verify-release.md`: five whose OCI
+  artifacts are intact, so the `oras pull` path is unaffected for them, and
+  two (`v9.1.2`, `v9.2.0`) that failed upstream of the push and have no
+  published artifact at all, which must not be pinned.

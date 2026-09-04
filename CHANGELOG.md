@@ -10,6 +10,34 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Fixed — a GitHub Release again ships its tarball, `checksums.txt`, and
+  SBOM.** Release immutability freezes a release when it is **published**, and
+  semantic-release published the release object the moment it tagged, before
+  the assets existed — so every asset upload the publish workflow attempted was
+  refused with HTTP 422. `@semantic-release/github` is removed; the publish
+  workflow is now the sole creator of the release, creates it as a draft,
+  attaches the three assets, and publishes it last. The published release is
+  verified on the draft before it is published and read back afterwards, and
+  any publish failure — including a cancelled one — opens a tracking issue
+  instead of only reddening a run on a tag nobody watches. Release notes now
+  come from the matching hand-cut CHANGELOG section on **every** release,
+  falling back to auto-generated notes where no section exists (which is the
+  common case today: no section has been cut since `v9.1.0`, tracked in #233).
+  Seven already-published tags carry no assets and cannot be backfilled —
+  immutability is the point of the setting. `v9.2.2`, `v9.2.3`, `v10.0.0`,
+  `v11.0.0` and `v11.0.1` have intact, signed, attested OCI artifacts, so the
+  `oras pull` path consumers are told to use is unaffected for them; `v9.1.2`
+  and `v9.2.0` failed earlier still and have **no published artifact at all**,
+  so they must not be pinned. Both groups are recorded in
+  [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
+  Because release creation now happens in the job that also holds the signing
+  identity, that job's five actions are pinned by commit SHA instead of a
+  mutable tag, and every `run:` block there reads its values from `env:`
+  rather than from a `${{ }}` interpolation the shell would parse; a check in
+  the required `docs-lint` context keeps both properties, and the absence of
+  the publish plugin, from regressing. `CHANGELOG.md` joins the release
+  surface in `CODEOWNERS`, since its matching section is the release body.
+  Fixes #251.
 - **Fixed (BREAKING) — the OCI artifact now contains the complete runtime
   `talos-cluster` module.** The allowlist adds `cilium-values.tf`,
   `composition.tf`, `kubeconfig-refresh.tf`, `nodes.tf`, and `profiles.tf`, so a
