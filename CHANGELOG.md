@@ -38,6 +38,37 @@ under the new version heading; the historical backfill below it stays put.
   the publish plugin, from regressing. `CHANGELOG.md` joins the release
   surface in `CODEOWNERS`, since its matching section is the release body.
   Fixes #251.
+- **Added — a CI fence bounding what the `config_patches` escape hatch can
+  actually carry, and a Talos 1.14 readiness statement.** Talos 1.14.0 went
+  generally available on 2026-09-03. The base pins no Talos version, so nothing
+  here forces the move — and deliberately nothing moves: the examples and
+  fixtures stay on 1.13.9. What changes is that the boundary is now measured
+  instead of assumed. `scripts/check-provider-document-kinds.sh`
+  (`task tofu:check:provider-document-kinds`, inside `tofu:ci`) probes the
+  pinned `siderolabs/talos` provider with a locally generated PKI — no cluster,
+  no Image Factory — and asserts three things: a provider-registered document
+  kind survives the patch path, the Talos 1.14 kinds do not, and a `v1.14.0`
+  pin yields none of the 1.14 default documents. The finding it fixes is that
+  the module's four opaque patch lists are an escape hatch onto the PROVIDER's
+  document surface, not onto Talos': the provider decodes every patch against
+  its own bundled machinery, so `SecurityProfileConfig`,
+  `FilesystemTrimConfig`, `KubeNodeConfig`, `UnattendedInstallConfig` and
+  `BGPInstanceConfig` are each refused with `"<kind>" "v1alpha1": not
+  registered` on provider `0.11.0`. Two consequences a consumer must know
+  before pinning 1.14 now live in the module README §"Talos 1.14: reachable and
+  unreachable": a cluster bootstrapped at a 1.14 pin runs WITHOUT the
+  workload isolation and filesystem trim Talos enables by default for new 1.14
+  clusters, with no way to opt in; and `reboot` is a `*_apply_mode` value Talos
+  1.14 removed from `talosctl apply-config`, whose behaviour over the provider's
+  API path is unverified. The fence is an expiry alarm by construction — two of
+  its cases assert a rejection, so it turns red the day a signed provider inside
+  the declared `>= 0.7.0, < 1.0.0` range ships the 1.14 machinery, which is the
+  signal to revisit rather than a breakage to patch out. Today only
+  `0.12.0-beta.0` carries it and `tofu init` refuses it as unsigned.
+  `knowledge/decisions/0026-machine-config-apply-mode.md` gains the matching
+  addendum, and the follow-up — reaching the 1.14 document surface, then moving
+  the pins — is tracked in
+  [#252](https://github.com/Nosmoht/talos-platform-base/issues/252).
 - **Fixed (BREAKING) — the OCI artifact now contains the complete runtime
   `talos-cluster` module.** The allowlist adds `cilium-values.tf`,
   `composition.tf`, `kubeconfig-refresh.tf`, `nodes.tf`, and `profiles.tf`, so a

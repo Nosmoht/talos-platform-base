@@ -191,3 +191,42 @@ the machine configuration.
 - Requirement text: `openspec/specs/cluster-bootstrap-lifecycle/spec.md`
   §Apply mode per role, `openspec/specs/module-interface-contract/spec.md`
   §Grouped typed input surface.
+
+## Addendum 2026-09-04 — the unbound mirror is now half bound, and `reboot` is untested on Talos 1.14
+
+Talos 1.14.0 reached general availability on 2026-09-03, which turns two of this
+decision's forward-looking statements into observations.
+
+**The provider coupling is now gated, one layer up.** §Validation records that
+nothing compares the module's accepted `apply_mode` set against the provider's,
+because the offline runs use `mock_provider`. That specific mirror is still
+unbound, but the adjacent and larger one is not: `scripts/check-provider-document-kinds.sh`
+(`task tofu:check:provider-document-kinds`, in `tofu:ci`) probes the pinned
+provider with the real thing and asserts which Talos machine-config document
+kinds it accepts. It exists because the same failure shape bites the four
+`config_patches` inputs far harder than it bites `apply_mode`: the provider
+decodes patches against its own bundled Talos machinery, so the module's
+"arbitrary machine-config" escape hatch reaches the provider's document surface
+and not Talos'. Measured on provider `0.11.0`: `UserVolumeConfig` renders,
+while `SecurityProfileConfig`, `FilesystemTrimConfig`, `KubeNodeConfig`,
+`UnattendedInstallConfig` and `BGPInstanceConfig` are each refused with
+`"<kind>" "v1alpha1": not registered`.
+
+**`reboot` is now a value the operating system no longer offers.** The Talos
+1.14 CLI reference lists `auto`, `no-reboot`, `staged` and `try` as the
+`talosctl apply-config --mode` values; `reboot` was removed. This module keeps
+accepting `reboot` because its value set mirrors the provider's, and the
+provider still exposes it. Whether a 1.14 node honours the provider's REBOOT
+request over the machined API is UNVERIFIED — the CLI flag removal is not
+evidence about the API enum, and answering it needs a 1.14 cluster. Until it is
+answered, `reboot` is untested on 1.14 and `staged` plus an out-of-band reboot
+is the supported way to force one. The decision's four-value set is unchanged:
+narrowing it would break consumers on 1.13 and below for a value that may still
+work.
+
+**`staged_if_needing_reboot` stays rejected**, for the reason §Considered
+Options already gives, now confirmed from the other side: the sole provider
+release bundling the 1.14 machinery, `0.12.0-beta.0`, does not install from the
+OpenTofu registry at all — `tofu init` refuses it as "not signed with a valid
+signing key (authentication signature from unknown issuer)". So the provider
+range this module declares still cannot reach it.

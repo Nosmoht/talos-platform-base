@@ -22,6 +22,14 @@
 - `decisions/0020-automated-release-no-approval-gate.md`: amendment
   (2026-09-04) — release-object ownership moves to the publish workflow, with
   the trade-offs on notes, re-runs, and the unbackfillable tags.
+- `decisions/0026-machine-config-apply-mode.md`: addendum — the adjacent
+  provider-mirror coupling is now gated by a document-kind probe, `reboot` is
+  recorded as a value Talos 1.14 removed from its CLI and left unverified over
+  the API, and `staged_if_needing_reboot` stays rejected because the only
+  provider bundling the 1.14 machinery does not install from the OpenTofu
+  registry.
+- `reference/tasks.md`: the tofu fence inventory gains
+  `tofu:check:provider-document-kinds`, and the `tofu:ci` aggregate names it.
 
 ## 2026-09-02
 
