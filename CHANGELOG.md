@@ -17,17 +17,20 @@ under the new version heading; the historical backfill below it stays put.
   refused with HTTP 422. `@semantic-release/github` is removed; the publish
   workflow is now the sole creator of the release, creates it as a draft,
   attaches the three assets, and publishes it last. The published release is
-  read back and its asset set asserted, and any publish failure opens a
-  tracking issue instead of only reddening a run on a tag nobody watches.
-  Release notes now come from the hand-cut CHANGELOG section on **every**
-  release (fallback: auto-generated), where previously semantic-release's
-  generated notes reached the release object. Seven already-published tags
-  carry no assets and cannot be backfilled — immutability is the point of the
-  setting — so `v9.1.2`, `v9.2.0`, `v9.2.2`, `v9.2.3`, `v10.0.0`, `v11.0.0`
-  and `v11.0.1` are recorded as asset-less in
-  [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md);
-  their OCI artifacts are published, signed, and attested, so the `oras pull`
-  path consumers are told to use is unaffected. Fixes #251.
+  verified on the draft before it is published and read back afterwards, and
+  any publish failure — including a cancelled one — opens a tracking issue
+  instead of only reddening a run on a tag nobody watches. Release notes now
+  come from the matching hand-cut CHANGELOG section on **every** release,
+  falling back to auto-generated notes where no section exists (which is the
+  common case today: no section has been cut since `v9.1.0`, tracked in #233).
+  Seven already-published tags carry no assets and cannot be backfilled —
+  immutability is the point of the setting. `v9.2.2`, `v9.2.3`, `v10.0.0`,
+  `v11.0.0` and `v11.0.1` have intact, signed, attested OCI artifacts, so the
+  `oras pull` path consumers are told to use is unaffected for them; `v9.1.2`
+  and `v9.2.0` failed earlier still and have **no published artifact at all**,
+  so they must not be pinned. Both groups are recorded in
+  [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
+  Fixes #251.
 - **Fixed (BREAKING) — the OCI artifact now contains the complete runtime
   `talos-cluster` module.** The allowlist adds `cilium-values.tf`,
   `composition.tf`, `kubeconfig-refresh.tf`, `nodes.tf`, and `profiles.tf`, so a

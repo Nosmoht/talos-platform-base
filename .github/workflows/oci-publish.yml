@@ -5,6 +5,19 @@ on:
     tags:
       - 'v*'
 
+# PER TAG, deliberately not one group for the whole workflow. A single group
+# would serialize tag publishes — but with `cancel-in-progress: false` GitHub
+# holds only ONE run pending per group and cancels that pending run when a
+# third arrives, and a run cancelled before its jobs start reaches neither
+# `notify` nor `notify-resolved`: a tag would end up with no artifact, no
+# release, and no signal, which is a worse version of the silence #251 was
+# filed for. Cross-tag Latest ordering is handled where it actually belongs
+# instead, by publishing with `make_latest=legacy` (see the release step).
+# Per-ref grouping still stops a manual re-run from racing the run it repeats.
+concurrency:
+  group: oci-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write       # gh release create (GitHub Release object + assets)
   packages: write
@@ -14,6 +27,10 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Every step here can hang rather than fail — oras and cosign both talk to
+    # network services, and this job holds the only path from a pushed tag to a
+    # release. The 6-hour default would sit on that for a working day.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -190,9 +207,13 @@ jobs:
         # release is published. Release immutability (AGENTS.md §Tool-Agnostic
         # Safety Invariants) freezes a release at PUBLISH time, not at creation:
         # a published release refuses every asset upload with HTTP 422, and
-        # GitHub documents create-draft → attach → publish as the only supported
-        # order. `gh release create --draft` uploads against the release id it
-        # just created, so no lookup stands between creating and filling it.
+        # GitHub's immutable-releases documentation prescribes create-draft →
+        # attach → publish as the supported order (docs.github.com,
+        # "Preventing changes to your releases"). That behaviour is GitHub's,
+        # not something this repository can assert — the bite-check proves the
+        # step follows the order, never that the platform honours it.
+        # `gh release create --draft` uploads against the release id it just
+        # created, so no lookup stands between creating and filling it.
         #
         # This workflow is the SOLE creator of the release object:
         # `.releaserc.json` carries no `@semantic-release/github` plugin, so
@@ -209,9 +230,15 @@ jobs:
         # authoritative, signed consumption path.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # env-bound rather than interpolated into `run:` — the tag name is the
+          # one value here that does not come from this file, and the shell must
+          # never parse it. Same discipline as release.yml's notify job. The
+          # older steps above still interpolate it and are not fixed here; that
+          # sweep is its own change, and this comment describes the two steps
+          # that reach the release object, not the whole file.
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.tag.outputs.tag }}"
           mkdir -p .work
           NOTES_FILE=".work/release-notes.md"
 
@@ -235,7 +262,7 @@ jobs:
           fi
 
           prerelease_args=()
-          make_latest=true
+          make_latest=legacy
           case "$TAG" in
             *-*) prerelease_args=(--prerelease); make_latest=false ;;
           esac
@@ -248,23 +275,49 @@ jobs:
 
           # The release LIST, not GET /releases/tags/{tag}: the tags endpoint
           # does not return drafts, and a draft is precisely the state a re-run
-          # has to recognise.
-          find_release() {
+          # has to recognise. EVERY match is returned, not the first: a draft
+          # does not reserve a tag name, so a draft can sit beside a published
+          # release for the same tag and picking one line would let the
+          # already-published guard below read the wrong one. The listing is
+          # captured whole rather than piped into `head` — under `pipefail` a
+          # reader that closes early can SIGPIPE `gh` and fail the step for a
+          # reason that has nothing to do with the release. `env.TAG`, not shell
+          # interpolation, keeps the tag out of the jq program text.
+          find_releases() {
             gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
-              --jq ".[] | select(.tag_name == \"${TAG}\") | \"\(.id) \(.draft)\"" \
-              | head -1
+              --jq '.[] | select(.tag_name == env.TAG) | "\(.id) \(.draft)"'
           }
 
-          existing="$(find_release)"
+          # Names as GitHub stores them: it rewrites every character outside
+          # [A-Za-z0-9._-] in an asset filename, so a tag carrying one would
+          # make a correct release compare unequal.
+          expected_assets="$(printf '%s\n' \
+            "talos-platform-base-${TAG}.tar.gz" \
+            "checksums.txt" \
+            "talos-platform-base-${TAG}.cdx.json" \
+            | tr -c 'A-Za-z0-9._\n-' '.' | LC_ALL=C sort)"
+
+          # `.state == "uploaded"` and a non-zero size: an upload that died
+          # part-way still leaves an asset record carrying the right NAME, and
+          # that is the exact failure this gate exists to catch.
+          release_assets() {
+            gh api "repos/${GITHUB_REPOSITORY}/releases/$1" \
+              --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name' \
+              | LC_ALL=C sort
+          }
+
+          existing="$(find_releases)"
           if [ -n "$existing" ]; then
-            existing_id="${existing%% *}"
-            existing_draft="${existing##* }"
-            if [ "$existing_draft" != "true" ]; then
+            if printf '%s\n' "$existing" | grep -q ' false$'; then
               echo "::error::Release ${TAG} is already published; an immutable release can neither receive nor replace assets. Recovery: knowledge/workflows/release-process.md, section \"A release that shipped without assets\"."
               exit 1
             fi
+            if [ "$(printf '%s\n' "$existing" | grep -c .)" -ne 1 ]; then
+              echo "::error::more than one draft release exists for ${TAG}; discarding one would orphan the others. Delete them by hand, then re-run this workflow."
+              exit 1
+            fi
             echo "Discarding the draft release left by an earlier run of this job"
-            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${existing_id}"
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${existing%% *}"
           fi
 
           gh release create "$TAG" \
@@ -274,36 +327,62 @@ jobs:
             "${prerelease_args[@]}" \
             "${assets[@]}"
 
-          release_id="$(find_release | cut -d' ' -f1)"
-          if [ -z "$release_id" ]; then
-            echo "::error::created the draft release for ${TAG} but cannot resolve its id — refusing to leave an unpublished draft behind silently"
+          created="$(find_releases)"
+          # The draft LINE, not the first line: the listing can carry more than
+          # one release for the tag, so `${created%% *}` would happily hand back
+          # the id of a published one that appeared in the meantime — and the
+          # PATCH below would then aim at it. Both checks are re-applied here
+          # for that reason, not out of symmetry with the block above.
+          if printf '%s\n' "$created" | grep -q ' false$'; then
+            echo "::error::a published release for ${TAG} appeared while this job was creating its draft; refusing to publish anything. Recovery: knowledge/workflows/release-process.md, section \"When the publish job fails\"."
+            exit 1
+          fi
+          if [ "$(printf '%s\n' "$created" | grep -c ' true$')" -ne 1 ]; then
+            echo "::error::expected exactly one draft release for ${TAG} after creating it, found: ${created:-none}"
+            exit 1
+          fi
+          release_id="$(printf '%s\n' "$created" | grep ' true$' | cut -d' ' -f1)"
+
+          # Asserted on the DRAFT, before the release is published. The draft is
+          # still mutable, so a missing asset ends the run with something a
+          # re-run can discard; the same check after publishing could only
+          # report an immutable release that has already shipped incomplete.
+          draft_assets="$(release_assets "$release_id")"
+          if [ "$expected_assets" != "$draft_assets" ]; then
+            echo "::error::the draft release for ${TAG} does not carry the expected assets; refusing to publish it"
+            printf 'expected:\n%s\nattached:\n%s\n' "$expected_assets" "$draft_assets"
             exit 1
           fi
 
           # Publishing is what makes the release immutable, so it happens last,
-          # with every asset already attached.
+          # with every asset already attached and verified. `make_latest=legacy`
+          # rather than `true`: legacy resolves the latest release from the
+          # creation date and the higher SemVer, so it cannot depend on which
+          # concurrent run patched last.
           gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
             -F draft=false \
             -f "make_latest=${make_latest}" \
             --jq .html_url
 
       - name: Assert the published release carries its assets
-        # Five asset-less releases shipped because the upload failed while the
-        # release object stayed, and nothing downstream noticed that consumers
-        # following knowledge/workflows/verify-release.md were being sent after
-        # files that did not exist. Asserted against the PUBLISHED release, so
-        # it proves the end state rather than an intermediate one.
+        # The end-state proof. The step above already refused to publish a draft
+        # that was missing an asset — that is the check with a recovery path;
+        # this one reads back what consumers actually see, through the same
+        # endpoint knowledge/workflows/verify-release.md points them at, so a
+        # regression in the publish flip itself cannot pass unnoticed.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.tag.outputs.tag }}"
           expected="$(printf '%s\n' \
             "checksums.txt" \
             "talos-platform-base-${TAG}.cdx.json" \
-            "talos-platform-base-${TAG}.tar.gz" | LC_ALL=C sort)"
+            "talos-platform-base-${TAG}.tar.gz" \
+            | tr -c 'A-Za-z0-9._\n-' '.' | LC_ALL=C sort)"
           actual="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
-            --jq '.assets[].name' | LC_ALL=C sort)"
+            --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name' \
+            | LC_ALL=C sort)"
           if [ "$expected" != "$actual" ]; then
             echo "::error::release ${TAG} does not carry the expected assets"
             printf 'expected:\n%s\nactual:\n%s\n' "$expected" "$actual"
@@ -317,7 +396,12 @@ jobs:
   # fixed sentence plus the run URL and carries no run-derived text.
   notify:
     needs: publish
-    if: ${{ always() && needs.publish.result == 'failure' }}
+    # Not `== 'failure'`: a cancelled or timed-out publish is the state that
+    # leaves a tag with an unpublished draft, or `:latest` on a tag with no
+    # release, and it would produce no signal at all. `publish` carries no
+    # `if:`, so it can never be `skipped` and the inverted form has no third
+    # case to catch.
+    if: ${{ always() && needs.publish.result != 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -342,7 +426,7 @@ jobs:
           body() {
             printf '%s\n\n%s\n' \
               "The Publish OCI artifact workflow did not complete for a pushed tag. The artifact, its signature, its attestations or its GitHub Release assets may be missing: $RUN_URL" \
-              "Recovery: knowledge/workflows/release-process.md, section \"A release that shipped without assets\"."
+              "Recovery: knowledge/workflows/release-process.md, section \"When the publish job fails\" — it starts by reading which of the states the run left behind, because most of them are repaired by re-running the workflow rather than by cutting a tag."
           }
           if [ -n "$existing" ]; then
             printf '%s\n' "$existing" | while IFS= read -r n; do
@@ -353,3 +437,37 @@ jobs:
             body | gh issue create --repo "$REPO" --title "$TITLE" \
               --label 'kind: ci' --label 'area: ci' --body-file -
           fi
+
+  # The mirror of `notify`: a run that actually published closes the tracking
+  # issue, so a permanently-open alert cannot train the operator to ignore it.
+  # A human close means "start a fresh record", hence the state:open lookup.
+  notify-resolved:
+    needs: publish
+    if: ${{ always() && needs.publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Close the publish-blocked tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: "release: the OCI publish did not complete"
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --repo "$REPO" --state open --limit 100 \
+            --json number,title,author \
+            --jq '[.[] | select(.title == env.TITLE) | select(.author.login == "github-actions")] | .[].number')"
+          [ -n "$existing" ] || { echo "no open tracking issue"; exit 0; }
+          # Every match, not just the first: a duplicate left open is the alert
+          # fatigue this job exists to prevent. `|| true` so a race with a human
+          # closing the issue cannot red an otherwise successful publish.
+          printf '%s\n' "$existing" | while IFS= read -r n; do
+            [ -n "$n" ] || continue
+            printf '%s' "A publish completed: $RUN_URL" \
+              | gh issue comment "$n" --repo "$REPO" --body-file - || true
+            gh issue close "$n" --repo "$REPO" --reason completed || true
+          done

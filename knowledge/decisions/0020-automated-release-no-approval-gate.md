@@ -264,22 +264,56 @@ The decision, replacing that half of §Decision 4:
    it as a **draft**, attaches the three assets, and publishes it last.
    Immutability at publish time makes the draft window the only place assets
    can be attached; GitHub documents that order as the supported one.
-3. **The published release is read back and its assets asserted**, and any
-   failure of the publish job opens or updates one tracking issue, mirroring
-   `release.yml`'s `notify`. The failure that shipped five asset-less releases
-   was invisible; it is now a tracker entry an agent reads at session start.
+3. **The assets are asserted on the draft, before the publish flip**, so a
+   missing one ends the run with something a re-run can discard; the published
+   release is read back afterwards as the end-state proof. A publish job that
+   does not succeed — failed, cancelled, or timed out — opens or updates one
+   tracking issue and a successful one closes it, mirroring `release.yml`'s
+   `notify` / `notify-resolved` pair. The failure that shipped five asset-less
+   releases was invisible; it is now a tracker entry an agent reads at session
+   start.
+4. **The workflow serializes on one concurrency group and publishes with
+   `make_latest=legacy`.** It now moves both `:latest` and the release's Latest
+   flag, which `release.yml`'s `release-main` group used to serialize on its
+   behalf; `legacy` resolves Latest from the creation date and the higher
+   SemVer rather than from whichever concurrent run patched last.
+5. **Both steps are bound mechanically**, by `task
+   supply-chain:check-release-step` in the required `docs-lint` context. The
+   steps only ever run on a tag push, so the PR that changes them is the only
+   place they can be exercised before a version is spent; the bite-check
+   extracts them from the workflow rather than copying them, and asserts the
+   ORDER of the API calls — "created a release" and "created a release whose
+   assets arrived before it was published" have the same exit status.
 
 Accepted trade-offs:
 
-- **Release notes now always come from the hand-cut CHANGELOG section**, with
+- **Release notes now come from the hand-cut CHANGELOG section**, with
   `gh --generate-notes` as the fallback. Previously semantic-release's
   generated notes reached the release object; now they only reach the `plan`
-  job's dry-run log. A renamed version header degrades the notes of every
-  release rather than only a manually pushed one.
+  job's dry-run log. Stated plainly: the fallback is the *current* path, not
+  the exception — no CHANGELOG section has been cut since `v9.1.0`, so eleven
+  of the last twelve tags would have taken it. The by-hand cut becoming
+  load-bearing for release notes is a consequence of this decision, and #233
+  is where the backlog of missing sections lives.
 - **A publish that fails after the draft is published cannot be repaired.**
-  Recovery is a new tag. A failure *before* that flip leaves a draft, which the
-  next run discards and rebuilds, so re-runs stay idempotent up to that point.
+  Recovery is a new tag. A failure *before* that flip leaves a draft the next
+  run discards, so the RELEASE OBJECT is recoverable up to that point — but a
+  re-run is not idempotent overall: it rebuilds the tarball (whose bytes carry
+  checkout mtimes), so it remaps `ghcr.io/<owner>/talos-platform-base:<tag>`
+  onto a NEW digest, mints a second signature and a second provenance for the
+  same version, and moves `:latest`. Consumers pin digests
+  (`knowledge/workflows/verify-release.md`) precisely so this is visible to
+  them rather than silent; the runbook states the cost at the point of use.
+- **The release object is claimable by anything holding `contents: write`.**
+  "This workflow is the sole creator" is a convention, not an enforcement: a
+  release published for a tag before the workflow reaches it makes that
+  version unreleasable, because the guard refuses and immutability forbids
+  amendment. That was equally true before — `@semantic-release/github` would
+  have hit HTTP 422 on the same pre-claimed release — so the change neither
+  opens nor closes it, and it is recorded here rather than left implicit.
 - **The seven already-published asset-less tags cannot be backfilled** —
-  immutability is the whole point of the setting. They are recorded as
-  asset-less in `knowledge/workflows/verify-release.md`; their OCI artifacts
-  are intact, so the `oras pull` path consumers are told to use is unaffected.
+  immutability is the whole point of the setting. Two groups, recorded
+  separately in `knowledge/workflows/verify-release.md`: five whose OCI
+  artifacts are intact, so the `oras pull` path is unaffected for them, and
+  two (`v9.1.2`, `v9.2.0`) that failed upstream of the push and have no
+  published artifact at all, which must not be pinned.

@@ -94,6 +94,12 @@ jobs:
         # block a merge.
         run: task supply-chain:check-release-guard
 
+      - name: task supply-chain:check-release-step
+        # Same reasoning as the guard above: the release steps only ever run on
+        # a tag push, where a defect costs a version rather than a re-run, so
+        # their bite-check has to block the PR that changes them.
+        run: task supply-chain:check-release-step
+
       - name: task spec:validate
         run: task spec:validate
 

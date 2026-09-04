@@ -3,7 +3,7 @@ type: glossary
 title: Glossary
 description: Cross-domain vocabulary for the talos-platform-base substrate, its delivery pipeline, and its consumer contract.
 tags: [glossary, vocabulary, platform]
-generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-04T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-07-17T00:00:00Z" }
@@ -143,8 +143,9 @@ record; deep-dive pages are linked where they exist.
   content-hash-deduplicated so identical nodes share one schematic. See
   [capability-composition](architecture/capability-composition.md).
 - **semantic-release** — the release automation configured in
-  `.releaserc.json`: conventional-commit analysis on `main`, `v${version}`
-  tags, GitHub releases; the resulting tag push triggers OCI publication.
+  `.releaserc.json`: conventional-commit analysis on `main` and a `v${version}`
+  tag, and nothing more. It carries no publish plugin, so the GitHub Release is
+  created by `.github/workflows/oci-publish.yml`, which the tag push triggers.
 - **SOPS (consumer-side only)** — secret encryption used exclusively in
   consumer repos; this base ships no `*.sops.yaml`. The module's
   `sops_age_key` input seeds the ArgoCD ksops repoServer so consumer secrets

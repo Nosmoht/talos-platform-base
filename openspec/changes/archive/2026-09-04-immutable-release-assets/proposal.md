@@ -35,9 +35,14 @@ None.
 
 - `.releaserc.json` loses its publish plugin; release notes come from the
   hand-cut CHANGELOG section on every release, with `--generate-notes` as the
-  fallback.
+  fallback — and the fallback is the current path, since no section has been
+  cut since `v9.1.0`.
 - A publish failing after the draft is published is unrepairable in place;
   recovery is a new tag. A failure before that point leaves a draft the next
-  run discards, so re-runs stay idempotent up to the flip.
-- Consumers on the `oras pull` path are unaffected — the OCI artifacts of the
-  asset-less tags are published, signed, and attested.
+  run discards, so the release object is recoverable up to the flip — but the
+  re-run rebuilds the tarball and therefore remaps the OCI tag to a new
+  digest, mints a second signature and provenance, and moves `:latest`.
+- Consumers on the `oras pull` path are unaffected for the five tags whose
+  artifacts exist. `v9.1.2` and `v9.2.0` failed upstream of the push and have
+  no published artifact at all; they are recorded separately and must not be
+  pinned.

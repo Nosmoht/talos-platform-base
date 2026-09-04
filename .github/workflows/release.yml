@@ -271,7 +271,10 @@ jobs:
           # closing the issue cannot red an otherwise successful release.
           printf '%s\n' "$existing" | while IFS= read -r n; do
             [ -n "$n" ] || continue
-            printf '%s' "A release completed: $RUN_URL" \
+            # "tagged", not "released": since #251 this workflow only pushes the
+            # tag, and whether the artifact and its GitHub Release followed is
+            # oci-publish.yml's own tracking issue to answer.
+            printf '%s' "A release tag was pushed: $RUN_URL" \
               | gh issue comment "$n" --repo "$REPO" --body-file - || true
             gh issue close "$n" --repo "$REPO" --reason completed || true
           done

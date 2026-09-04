@@ -4,12 +4,21 @@
 
 - `workflows/release-process.md`: `generated.at 2026-09-04`. `.releaserc.json`
   carries no publish plugin; the publish workflow creates the GitHub Release as
-  a draft, attaches the assets, publishes it last, and asserts the asset set,
-  with a `notify` job on failure. New §A release that shipped without assets
-  carries the forward-only recovery the workflow's error output points at.
+  a draft, attaches the assets, verifies them, publishes it last, and reads the
+  result back, with a `notify` / `notify-resolved` pair around the job. New §A
+  release that shipped without assets and §When the publish job fails carry the
+  per-state recovery the workflow's error output and the tracking issue point
+  at, including what a re-run costs. §CHANGELOG contract records that the
+  generated-notes fallback is the current path and where a new version heading
+  must go.
 - `workflows/verify-release.md`: `generated.at 2026-09-04`. The release step is
-  described as draft-then-publish plus the asset assertion, and a new §Releases
-  without assets lists the seven asset-less tags and their causes.
+  described as draft-then-publish plus the asset assertions, and a new
+  §Releases without assets separates the five asset-less tags whose artifacts
+  are intact from the two that have no published artifact at all.
+- `reference/tasks.md`: `generated.at 2026-09-04`. The `supply-chain:*`
+  inventory gains `check-release-step`, the release-step bite-check.
+- `glossary.md`: `generated.at 2026-09-04`. The semantic-release entry states
+  that it tags only and names the publish workflow as the release's creator.
 - `decisions/0020-automated-release-no-approval-gate.md`: amendment
   (2026-09-04) — release-object ownership moves to the publish workflow, with
   the trade-offs on notes, re-runs, and the unbackfillable tags.

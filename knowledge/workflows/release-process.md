@@ -77,9 +77,10 @@ output no longer reaches a release, but the dry-run prints it into the `plan`
 log, which is where a maintainer reads what the computed version contains.
 
 The toolchain is pinned in
-`package.json` (`semantic-release` 25.0.5,
-`conventional-changelog-conventionalcommits` 9.3.1) — the repo is **not** a
-Node project; the manifest exists only to pin npm-distributed tooling
+`package.json` (`semantic-release` plus
+`conventional-changelog-conventionalcommits`) — read the versions from there,
+never from this page, which carried a stale one for three minor releases. The
+repo is **not** a Node project; the manifest exists only to pin npm-distributed tooling
 (it also carries the `openspec`/`markdownlint-cli` gate pins, see the
 spec-driven-development workflow) and is excluded from the OCI tarball.
 
@@ -261,8 +262,18 @@ degrades release notes without failing the release.
 
 Note the interaction with `release.yml`: nothing there creates a GitHub
 Release, so the CHANGELOG-extraction path runs on **every** release, automated
-or manually tagged. A renamed or malformed version header therefore
-degrades the notes of a normal release, not just a hand-pushed one.
+or manually tagged. A renamed or malformed version header therefore degrades
+the notes of a normal release, not just a hand-pushed one — and the degrade is
+the current norm rather than an edge case: the newest cut section is
+`## v9.1.0`, so every tag since has taken the `--generate-notes` fallback
+(#233 tracks the backlog).
+
+Where the new `## vX.Y.Z — DATE` heading goes matters for the same reason. The
+extractor prints everything from that heading to the next second-level
+heading, and third-level sub-headings do not stop it. Put the heading **below** the historical-backfill
+block that stays inside `[Unreleased]`, so the section it opens contains only
+the moved `### Pending release` entries; placed above the backfill it would
+swallow all of it into one patch release's notes, and the awk cannot tell.
 
 ## Publish — `.github/workflows/oci-publish.yml`
 
@@ -288,27 +299,76 @@ Triggered on `push` of tags `v*` (job `publish`):
 8. **GitHub Release** — created as a **draft** with notes from the matching
    CHANGELOG section (or auto-generated on mismatch) and `--prerelease` for
    hyphenated tags, the three assets attached to that draft (the tarball,
-   `checksums.txt`, and the CycloneDX SBOM), and only then flipped to
-   published. The order is not stylistic: release immutability freezes a
-   release when it is **published**, and a published release rejects every
-   asset upload with HTTP 422, so the draft window is the only place assets can
-   be attached. ghcr.io remains the authoritative, signed consumption path.
-9. **Asset assertion** — the published release is read back and its asset names
-   compared against the three expected ones. A publish that loses an asset
-   fails the job, and the `notify` job below turns that into a tracking issue.
+   `checksums.txt`, and the CycloneDX SBOM), **the draft's assets verified**,
+   and only then flipped to published with `make_latest=legacy`. The order is
+   not stylistic: release immutability freezes a release when it is
+   **published**, and a published release rejects every asset upload with HTTP
+   422, so the draft window is the only place assets can be attached — and the
+   only place a missing one can still be caught and discarded. An
+   already-published release for the tag is refused outright; two drafts are
+   refused rather than one being orphaned. ghcr.io remains the authoritative,
+   signed consumption path.
+9. **End-state assertion** — the published release is read back through the
+   tag endpoint consumers use, and its asset set compared against the three
+   expected files (`state == "uploaded"` and non-zero size, so a truncated
+   upload does not pass on its filename alone).
 
-A failure anywhere in `publish` opens or updates one tracking issue titled
-"release: the OCI publish did not complete" (job `notify`, mirroring
-`release.yml`). Before this existed, a failed publish was visible only in the
-Actions tab of a tag nobody was watching.
+Both steps are exercised on every PR by `task supply-chain:check-release-step`,
+which extracts them from the workflow and drives them against a stub `gh`
+through each release state — they never run on a PR themselves, and a tag
+cannot be re-released.
+
+A `publish` job that does not succeed — failed, cancelled, or timed out —
+opens or updates one tracking issue titled "release: the OCI publish did not
+complete" (job `notify`), and a successful one closes it (`notify-resolved`),
+mirroring `release.yml`'s pair. Before this existed, a failed publish was
+visible only in the Actions tab of a tag nobody was watching. The workflow also
+serializes on a single `oci-publish` concurrency group, because it now moves
+both `:latest` and the release's Latest flag.
 
 Consumer-side signature/provenance verification is covered in
 [verify-release](verify-release.md).
 
+## When the publish job fails
+
+**This section is the authoritative copy of the publish-recovery procedure.**
+The `notify` issue body points here. Read the state the run left behind first;
+most of these are repaired by re-running the workflow for the same tag, and
+only the last one costs a version.
+
+| What the run left | How to tell | Recovery |
+|---|---|---|
+| No GitHub Release at all | `gh release view <tag>` fails | Re-run the workflow for the tag |
+| An unpublished draft | the release shows as Draft, or `gh api repos/<repo>/releases --jq '.[] \| select(.tag_name=="<tag>") \| .draft'` says `true` | Re-run: it discards the draft and rebuilds a complete one |
+| Two drafts for the tag | the job says so and refuses | Delete them by hand, then re-run |
+| `:latest` on a tag with no release | `oras manifest fetch …:latest --descriptor` against the tag's digest | Re-run; if the tag is defective instead, move `:latest` per §Rollback |
+| A published release with no assets | see the section below | Forward-only — a new tag |
+
+A re-run recovers the RELEASE OBJECT for every row above the last, because it
+is created as a draft and published only after its assets are verified:
+nothing immutable exists yet. Re-run from the Actions tab (`Publish OCI
+artifact` → the run for the tag → Re-run all jobs).
+
+**A re-run is not free, and it is not idempotent.** It re-executes the whole
+job from the tarball build, and the tarball is not byte-reproducible — it
+carries the mtimes of a fresh checkout. So a re-run:
+
+- pushes a **new digest** to `ghcr.io/<owner>/talos-platform-base:<tag>`, i.e.
+  the tag is remapped;
+- mints a **second** cosign signature and a **second** SLSA provenance for the
+  same version, both individually valid;
+- moves `:latest` again for a non-hyphenated tag.
+
+Consumers who pinned the digest (which
+[verify-release](./verify-release.md) tells them to do, for exactly this
+reason) keep resolving the first artifact and must re-pin deliberately; anyone
+resolving the tag silently moves. Say so in the release notes or `UPGRADING.md`
+when a re-run happens after consumers could already have vendored the tag.
+
 ## A release that shipped without assets
 
 **This section is the authoritative copy of the asset-recovery procedure.** The
-publish job's `::error::` output and the `notify` issue body both point here.
+publish job's `::error::` output points here for the already-published case.
 
 A published GitHub Release is immutable: its assets cannot be added, replaced,
 or deleted, and no API call or workflow re-run changes that. So a release that
@@ -332,9 +392,10 @@ shipped without its assets stays that way — recovery is forward-only:
    in-place amendment.
 
 The five tags that shipped asset-less this way (`v9.2.2`, `v9.2.3`, `v10.0.0`,
-`v11.0.0`, `v11.0.1`) plus the two earlier ones whose publish failed for an
-unrelated reason (`v9.1.2`, `v9.2.0`) are listed in
-[verify-release](verify-release.md).
+`v11.0.0`, `v11.0.1`) keep their artifacts. Two earlier tags, `v9.1.2` and
+`v9.2.0`, failed upstream of the push and have no artifact either — a
+different, worse state. Both groups, and what a consumer should do with each,
+are in [verify-release](verify-release.md) §Releases without assets.
 
 ## End-to-end summary
 

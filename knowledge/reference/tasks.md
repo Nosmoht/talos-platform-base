@@ -3,7 +3,7 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-generated: { by: human:nosmoht, at: "2026-09-02T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-04T00:00:00Z" }
 sources:
   - resource: Taskfile.yml
   - resource: Makefile
@@ -116,6 +116,8 @@ Details of the render → apply path (`bootstrap:render-root`, `bootstrap:check-
 | `supply-chain:oci-allowlist` | Build the OCI tarball locally from `.ci-oci-tarball-include.txt` and diff its sorted contents against `.ci-oci-tarball-expected.txt` (fail-closed allowlist). Run before pushing a tag to confirm the fixture matches actual contents. |
 | `supply-chain:oci-module-validate` | Build and extract the allowlist-defined payload, then run `tofu init -backend=false` and `tofu validate` inside the vendored `tofu/modules/talos-cluster` directory. Part of `tofu:ci`. |
 | `supply-chain:check-release-guard` | Two halves, neither substitutable. `scripts/check-release-guard-coverage.sh` is the EXTERNAL anchor: it walks `.ci-oci-tarball-expected.txt` and fails unless every published path is matched by `.ci-release-guard-pathspec.txt` or listed in `.ci-release-guard-exempt.txt` with a non-placeholder reason, and it refuses a stale exemption, either shipped Helm-value floor being exempted, a guard invocation carrying `--base`/`--advisory`, and a pathspec literal reappearing in `release.yml`. `scripts/check-release-guard-gate-bites.sh` proves the guard bites, over a throwaway git repo; its scenarios are generated from the guard's own data files, so it aborts first unless those files equal their committed `.expected.txt` fixtures — otherwise a removed entry would remove its own test. The target asserts the bite-check's completion marker, not just its exit code. Run verbatim by `docs-lint.yml`. |
+
+| `supply-chain:check-release-step` | Proves `oci-publish.yml`'s two release steps bite, via `scripts/check-release-step-bites.sh`. The steps only ever run on a tag push and a published release is immutable, so a defect there costs a version rather than a re-run; the bite-check EXTRACTS them from the workflow (a copy would keep passing after the workflow changed) and drives them against a stub `gh` through every release state: absent, leftover draft, two drafts, already published, and a draft whose asset upload died part-way. It asserts the ORDER of the `gh` calls, because a release created and a release whose assets arrived before it was published have the same exit status. The target asserts the completion marker, not just the exit code. Run verbatim by `docs-lint.yml`. |
 
 ## `knowledge:*` — OKF knowledge bundle authoring + validation
 
