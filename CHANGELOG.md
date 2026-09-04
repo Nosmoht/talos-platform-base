@@ -10,6 +10,24 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Fixed — a GitHub Release again ships its tarball, `checksums.txt`, and
+  SBOM.** Release immutability freezes a release when it is **published**, and
+  semantic-release published the release object the moment it tagged, before
+  the assets existed — so every asset upload the publish workflow attempted was
+  refused with HTTP 422. `@semantic-release/github` is removed; the publish
+  workflow is now the sole creator of the release, creates it as a draft,
+  attaches the three assets, and publishes it last. The published release is
+  read back and its asset set asserted, and any publish failure opens a
+  tracking issue instead of only reddening a run on a tag nobody watches.
+  Release notes now come from the hand-cut CHANGELOG section on **every**
+  release (fallback: auto-generated), where previously semantic-release's
+  generated notes reached the release object. Seven already-published tags
+  carry no assets and cannot be backfilled — immutability is the point of the
+  setting — so `v9.1.2`, `v9.2.0`, `v9.2.2`, `v9.2.3`, `v10.0.0`, `v11.0.0`
+  and `v11.0.1` are recorded as asset-less in
+  [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md);
+  their OCI artifacts are published, signed, and attested, so the `oras pull`
+  path consumers are told to use is unaffected. Fixes #251.
 - **Fixed (BREAKING) — the OCI artifact now contains the complete runtime
   `talos-cluster` module.** The allowlist adds `cilium-values.tf`,
   `composition.tf`, `kubeconfig-refresh.tf`, `nodes.tf`, and `profiles.tf`, so a

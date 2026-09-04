@@ -3,7 +3,7 @@ type: workflow
 title: Verify a Base Release
 description: Fail-closed verification of a published talos-platform-base OCI artifact — signature, provenance, SBOM attestation, and checksums — before vendoring.
 tags: [supply-chain, cosign, verification]
-generated: { by: human:nosmoht, at: "2026-08-31T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-04T00:00:00Z" }
 sources:
   - resource: .github/workflows/oci-publish.yml
   - resource: .ci-oci-tarball-include.txt
@@ -48,9 +48,33 @@ The trust chain, in workflow order:
    with `cosign attest --yes --type cyclonedx` keyed to the digest.
 9. **`:latest` tag** — only for non-hyphenated tags; SemVer pre-releases
    (`v*-*`) never become `:latest`.
-10. **GitHub Release.** Tarball, `checksums.txt`, and the SBOM JSON are
-    mirrored as Release assets; hyphenated tags are marked pre-release.
-    ghcr.io remains the authoritative, signed consumption path.
+10. **GitHub Release.** Created as a draft, the tarball, `checksums.txt`, and
+    the SBOM JSON attached to it, then published — release immutability
+    freezes a release at publish time and a published one rejects asset
+    uploads, so the draft window is the only place the assets can be attached.
+    Hyphenated tags are marked pre-release. ghcr.io remains the authoritative,
+    signed consumption path.
+11. **Asset assertion.** The published release is read back and its asset
+    names compared against the three expected ones; a mismatch fails the
+    workflow and opens a tracking issue.
+
+## Releases without assets
+
+Seven published releases carry **no** Release assets. Their OCI artifacts are
+published, signed, and attested normally, so the `oras pull` recipe below is
+unaffected — only the Release-asset download path is missing, and a published
+release is immutable, so these cannot be backfilled:
+
+| Tag | Cause |
+|---|---|
+| `v9.1.2`, `v9.2.0` | the publish workflow failed before the release step (`oras` install pin) |
+| `v9.2.2`, `v9.2.3`, `v10.0.0`, `v11.0.0`, `v11.0.1` | the release was already published by semantic-release, so the asset upload was refused with HTTP 422 (#251) |
+
+Consume these tags via `oras pull` and the digest, exactly as documented below.
+Tags from the fix onward carry all three assets, asserted in the publish
+workflow itself. Recovery procedure and why it is forward-only:
+[release-process](./release-process.md) §A release that shipped without
+assets.
 
 ## The signing identity
 

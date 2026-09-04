@@ -8,6 +8,7 @@ decided: "2026-07-21T00:00:00Z"
 history:
   - 2026-07-21 accepted
   - 2026-08-25 amended (surface set corrected and moved to committed data; merge-commit-only premise made mechanical; fail-opens closed; notification shipped)
+  - 2026-09-04 amended (release-object ownership moved to oci-publish.yml so assets are attached before immutability freezes the release)
 deciders:
   - platform-maintainer
 related:
@@ -236,3 +237,49 @@ body is legitimate, it is where `Allow-Non-Major:` goes.
 Cost, stated rather than hidden: the effect check trails by one merge. It
 notices a reverted setting only after a merge has happened under it. The direct
 reading stays the primary path on a local admin run.
+
+## Amendment (2026-09-04)
+
+**Correction to §Decision 4: semantic-release no longer creates the GitHub
+Release.** That clause said it "tags and creates the GitHub Release only". It
+did — and that was the defect. `@semantic-release/github` publishes the release
+object the moment it tags, with no assets attached, because the assets do not
+exist yet: they are built one workflow later, in `oci-publish.yml`.
+
+Release immutability, an asserted invariant of this repository
+(`AGENTS.md` §Tool-Agnostic Safety Invariants, `scripts/preflight-checks.sh`
+Check 3), freezes a release when it is **published**. So every tag after the
+setting was enabled reached `oci-publish.yml` to find its release already
+published and its three asset uploads refused with HTTP 422. Five releases
+shipped with no tarball, no `checksums.txt`, and no SBOM before anyone
+noticed, because the only signal was a red run on a tag nobody watches (#251).
+
+The decision, replacing that half of §Decision 4:
+
+1. **`.releaserc.json` carries no publish plugin.** semantic-release computes
+   the version, creates and pushes the tag, and stops; `publish` is an optional
+   lifecycle step in semantic-release, so removing the plugin costs the release
+   object and nothing else.
+2. **`oci-publish.yml` is the sole creator of the GitHub Release**, and creates
+   it as a **draft**, attaches the three assets, and publishes it last.
+   Immutability at publish time makes the draft window the only place assets
+   can be attached; GitHub documents that order as the supported one.
+3. **The published release is read back and its assets asserted**, and any
+   failure of the publish job opens or updates one tracking issue, mirroring
+   `release.yml`'s `notify`. The failure that shipped five asset-less releases
+   was invisible; it is now a tracker entry an agent reads at session start.
+
+Accepted trade-offs:
+
+- **Release notes now always come from the hand-cut CHANGELOG section**, with
+  `gh --generate-notes` as the fallback. Previously semantic-release's
+  generated notes reached the release object; now they only reach the `plan`
+  job's dry-run log. A renamed version header degrades the notes of every
+  release rather than only a manually pushed one.
+- **A publish that fails after the draft is published cannot be repaired.**
+  Recovery is a new tag. A failure *before* that flip leaves a draft, which the
+  next run discards and rebuilds, so re-runs stay idempotent up to that point.
+- **The seven already-published asset-less tags cannot be backfilled** —
+  immutability is the whole point of the setting. They are recorded as
+  asset-less in `knowledge/workflows/verify-release.md`; their OCI artifacts
+  are intact, so the `oras pull` path consumers are told to use is unaffected.

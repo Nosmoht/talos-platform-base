@@ -3,7 +3,7 @@ type: workflow
 title: Release Process
 description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-generated: { by: human:nosmoht, at: "2026-08-31T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-04T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
   - resource: scripts/release-major-bump-guard.sh
@@ -61,10 +61,22 @@ below is what keeps an `Allow-Non-Major:` line out of it.
 ## Version computation — `.releaserc.json`
 
 `.releaserc.json` configures semantic-release with `branches: ["main"]`,
-`tagFormat: "v${version}"`, and three plugins: `@semantic-release/commit-analyzer`
-and `@semantic-release/release-notes-generator` (both with the
-`conventionalcommits` preset) plus `@semantic-release/github`
-(`successComment` and `failComment` disabled). The toolchain is pinned in
+`tagFormat: "v${version}"`, and two plugins: `@semantic-release/commit-analyzer`
+and `@semantic-release/release-notes-generator`, both with the
+`conventionalcommits` preset.
+
+There is deliberately **no publish plugin**: `@semantic-release/github` was
+removed because it published an asset-less GitHub Release the moment it tagged,
+and release immutability then refused every asset upload `oci-publish.yml`
+attempted (#251, and the [Amendment
+(2026-09-04)](../decisions/0020-automated-release-no-approval-gate.md) to
+ADR-0020). semantic-release core creates and pushes the git tag itself —
+`publish` is an optional lifecycle step — so dropping the plugin costs the
+GitHub Release object and nothing else. `release-notes-generator` stays: its
+output no longer reaches a release, but the dry-run prints it into the `plan`
+log, which is where a maintainer reads what the computed version contains.
+
+The toolchain is pinned in
 `package.json` (`semantic-release` 25.0.5,
 `conventional-changelog-conventionalcommits` 9.3.1) — the repo is **not** a
 Node project; the manifest exists only to pin npm-distributed tooling
@@ -134,8 +146,9 @@ false`, and runs the real `npx semantic-release` with the App token. The App
 token matters: tags pushed with the default `GITHUB_TOKEN` do not trigger other
 workflows, so the App token is what makes the `v*` tag push fire
 `oci-publish.yml` while preserving its signing identity. semantic-release does
-**not** commit anything back to `main` — it tags and creates the GitHub Release
-only; `CHANGELOG.md` is cut by hand in the releasing PR (automating that cut is
+**not** commit anything back to `main`, and it no longer creates the GitHub
+Release either — it tags, and `oci-publish.yml` owns the release object;
+`CHANGELOG.md` is cut by hand in the releasing PR (automating that cut is
 tracked as a follow-up).
 
 ## When the release is blocked
@@ -246,11 +259,10 @@ heading). If no matching section exists, the workflow **silently falls back**
 to `gh release create --generate-notes` — a renamed or malformed header
 degrades release notes without failing the release.
 
-Note the interaction with `release.yml`: `@semantic-release/github` creates
-the GitHub Release when it tags, so under the automated flow `oci-publish.yml`
-usually finds the Release already existing and only uploads assets
-(`--clobber`). The CHANGELOG-extraction and `gh release create` branch is
-exercised when a tag is pushed manually (the fallback path).
+Note the interaction with `release.yml`: nothing there creates a GitHub
+Release, so the CHANGELOG-extraction path runs on **every** release, automated
+or manually tagged. A renamed or malformed version header therefore
+degrades the notes of a normal release, not just a hand-pushed one.
 
 ## Publish — `.github/workflows/oci-publish.yml`
 
@@ -273,14 +285,55 @@ Triggered on `push` of tags `v*` (job `publish`):
    via `cosign attest --type cyclonedx`.
 7. **`:latest` tag** — skipped for any hyphenated tag (SemVer pre-release
    identifiers must not become the default consumers pin).
-8. **GitHub Release** — if the Release already exists (the normal case under
-   the semantic-release flow), assets are re-uploaded with `--clobber`;
-   otherwise it is created with notes from the matching CHANGELOG section (or
-   auto-generated on mismatch) and `--prerelease` for hyphenated tags. Assets:
-   the tarball, `checksums.txt`, and the CycloneDX SBOM. ghcr.io remains the
-   authoritative, signed consumption path.
+8. **GitHub Release** — created as a **draft** with notes from the matching
+   CHANGELOG section (or auto-generated on mismatch) and `--prerelease` for
+   hyphenated tags, the three assets attached to that draft (the tarball,
+   `checksums.txt`, and the CycloneDX SBOM), and only then flipped to
+   published. The order is not stylistic: release immutability freezes a
+   release when it is **published**, and a published release rejects every
+   asset upload with HTTP 422, so the draft window is the only place assets can
+   be attached. ghcr.io remains the authoritative, signed consumption path.
+9. **Asset assertion** — the published release is read back and its asset names
+   compared against the three expected ones. A publish that loses an asset
+   fails the job, and the `notify` job below turns that into a tracking issue.
+
+A failure anywhere in `publish` opens or updates one tracking issue titled
+"release: the OCI publish did not complete" (job `notify`, mirroring
+`release.yml`). Before this existed, a failed publish was visible only in the
+Actions tab of a tag nobody was watching.
 
 Consumer-side signature/provenance verification is covered in
+[verify-release](verify-release.md).
+
+## A release that shipped without assets
+
+**This section is the authoritative copy of the asset-recovery procedure.** The
+publish job's `::error::` output and the `notify` issue body both point here.
+
+A published GitHub Release is immutable: its assets cannot be added, replaced,
+or deleted, and no API call or workflow re-run changes that. So a release that
+shipped without its assets stays that way — recovery is forward-only:
+
+1. Confirm what is actually missing. The OCI artifact and the release assets
+   fail independently:
+   `oras manifest fetch ghcr.io/nosmoht/talos-platform-base:<tag> --descriptor`
+   against `gh release view <tag> --json assets`. When the artifact is present,
+   consumers on the `oras pull` path documented in
+   [verify-release](verify-release.md) are unaffected and only the
+   release-asset path is broken.
+2. Do not re-run the publish workflow for that tag expecting a repair. The job
+   refuses to touch an already-published release and exits non-zero, by design
+   — the alternative was three HTTP 422s and a green-looking failure.
+3. Record the tag as asset-less in [verify-release](verify-release.md)
+   §Releases without assets, so a consumer is not sent after files that do not
+   exist.
+4. If the assets are genuinely needed, cut a **new** tag. Under the automated
+   flow that means landing a releasing commit; there is no un-publish and no
+   in-place amendment.
+
+The five tags that shipped asset-less this way (`v9.2.2`, `v9.2.3`, `v10.0.0`,
+`v11.0.0`, `v11.0.1`) plus the two earlier ones whose publish failed for an
+unrelated reason (`v9.1.2`, `v9.2.0`) are listed in
 [verify-release](verify-release.md).
 
 ## End-to-end summary
@@ -290,12 +343,12 @@ Consumer-side signature/provenance verification is covered in
 2. Merge to `main` → `plan` computes the next version into the job summary and
    runs the blocking MAJOR-bump guard.
 3. Guard passes → `release` runs unattended (no approval) → semantic-release
-   tags `v<version>` and creates the Release object. semantic-release does not
-   commit back to `main`.
+   tags `v<version>`. It creates no Release object and does not commit back to
+   `main`.
 4. Tag push (App token) → `oci-publish.yml` builds the allowlisted tarball,
    signs, attests (SLSA + SBOM), publishes to
-   `ghcr.io/nosmoht/talos-platform-base:<tag>`, and attaches the tarball,
-   checksums, and SBOM to the Release.
+   `ghcr.io/nosmoht/talos-platform-base:<tag>`, then creates the GitHub Release
+   as a draft carrying the tarball, checksums, and SBOM and publishes it.
 
 ## Rollback — a defective tag
 

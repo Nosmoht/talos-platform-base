@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-04
+
+- `workflows/release-process.md`: `generated.at 2026-09-04`. `.releaserc.json`
+  carries no publish plugin; the publish workflow creates the GitHub Release as
+  a draft, attaches the assets, publishes it last, and asserts the asset set,
+  with a `notify` job on failure. New §A release that shipped without assets
+  carries the forward-only recovery the workflow's error output points at.
+- `workflows/verify-release.md`: `generated.at 2026-09-04`. The release step is
+  described as draft-then-publish plus the asset assertion, and a new §Releases
+  without assets lists the seven asset-less tags and their causes.
+- `decisions/0020-automated-release-no-approval-gate.md`: amendment
+  (2026-09-04) — release-object ownership moves to the publish workflow, with
+  the trade-offs on notes, re-runs, and the unbackfillable tags.
+
 ## 2026-09-02
 
 - `reference/manifest-pipeline.md`: the ArgoCD substrate-invariant inventory is
