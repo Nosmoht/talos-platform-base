@@ -66,6 +66,14 @@ logs/security/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+# …except the talos-cluster module's. The module pins the talos provider to an
+# exact PRERELEASE, which fixes the version string but not the bytes: without a
+# committed lock every init re-derives trust from the registry alone, so bytes
+# re-published under the same version would be adopted silently. The lock records
+# the checksums; it cannot make a withdrawn artifact downloadable. Regenerating
+# it is a deliberate act — `tofu providers lock -platform=…` — not a side effect
+# of validation.
+!tofu/modules/talos-cluster/.terraform.lock.hcl
 # tfvars carry caller secrets (sops_age_key, cilium_ipsec_key) — never commit them.
 # A committed template uses a *.tfvars.example name, which these patterns do not match.
 *.tfvars

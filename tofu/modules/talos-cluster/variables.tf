@@ -1154,12 +1154,12 @@ variable "cert_approver_replicas" {
 variable "controlplane_apply_mode" {
   description = <<-EOT
     apply_mode for the controlplane machine-config apply. Accepted: auto |
-    reboot | no_reboot | staged — the set the provider has carried since 0.7.0,
-    the floor this module declares. The provider's fifth value
-    "staged_if_needing_reboot" is deliberately NOT accepted here: it arrived in
-    0.11.0, so admitting it would let a consumer inside the declared range pass
-    this validation and be rejected by their provider, and it resolves to "auto"
-    on Talos 1.14+ anyway.
+    reboot | no_reboot | staged — the set the provider has carried since 0.7.0.
+    The provider's fifth value "staged_if_needing_reboot" is deliberately NOT
+    accepted here: the pinned provider offers it, but gates it on its own bundled
+    Talos SDK and warns it always resolves to "auto" on Talos 1.14+ — the version
+    line the pin exists to reach — so admitting it would buy a spelling, not a
+    behaviour. See knowledge/decisions/0026-machine-config-apply-mode.md.
     Default "auto" — the provider's own default, and the ONLY value that works
     on Day-0:
     the first apply to a maintenance-mode node IS the install, so a staging mode

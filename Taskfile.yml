@@ -249,16 +249,25 @@ tasks:
     desc: "CI fence: the Cilium operator replica count keeps its chart key spelling on both sides (computed contributor + floor), and `operator` stays a single merge term"
     cmd: scripts/check-cilium-operator-replicas-key.sh
 
+  tofu:check:provider-document-kinds-bites:
+    # The fence below has one exit code for many assertions and reads text an
+    # external provider renders, so an assertion that stopped matching would
+    # report OK forever. Full rationale in the script header; the convention it
+    # follows is scripts/check-argocd-gate-bites.sh's.
+    desc: "CI fence: prove the document-kind fence actually bites (mutation bite-check over a copy of the script)"
+    cmd: scripts/check-provider-document-kinds-bites.sh
+
   tofu:check:provider-document-kinds:
     # Full rationale in scripts/check-provider-document-kinds.sh. The module's
     # four opaque config_patches lists read as "any machine-config field is
     # reachable", but the provider decodes every patch against its OWN bundled
     # Talos machinery, so the reachable surface is bounded by the provider
     # version rather than by the consumer's talos_version. Nothing else observes
-    # that coupling. Cases B and C assert a REJECTION, so this fence also
-    # EXPIRES: it turns red the day a provider inside the declared range accepts
-    # the Talos 1.14 kinds, which is the signal to reopen the migration.
-    desc: "CI fence: which Talos machine-config document kinds the PINNED provider accepts, and that a Talos 1.14 pin still yields none of the 1.14 default documents"
+    # that coupling. Two assertions state what the provider does NOT do, so this
+    # fence still EXPIRES: it turns red when the 1.14 documents reach the 1.13.9
+    # pin the examples carry, or when the generated install document starts
+    # following machine.install — both signals to revisit those pins (#252).
+    desc: "CI fence: which Talos machine-config document kinds the PINNED provider accepts in config_patches, and which documents a Talos version pin makes it generate"
     cmd: scripts/check-provider-document-kinds.sh
 
   tofu:check:shim-key-parity:
@@ -297,7 +306,7 @@ tasks:
         -filter=tests/apply-mode.tftest.hcl
 
   tofu:ci:
-    desc: "Full local tofu validation: fmt:check + validate + vendored OCI module validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + check:provider-document-kinds + test:offline — mirrors CI; provider init may use the registry, no live Image Factory"
+    desc: "Full local tofu validation: fmt:check + validate + vendored OCI module validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + check:provider-document-kinds-bites + check:provider-document-kinds + test:offline — mirrors CI; provider init may use the registry, no live Image Factory"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
@@ -311,6 +320,7 @@ tasks:
       - task: tofu:check:node-projection-wiring
       - task: tofu:check:shim-key-parity
       - task: tofu:check:cilium-operator-replicas-key
+      - task: tofu:check:provider-document-kinds-bites
       - task: tofu:check:provider-document-kinds
       - task: tofu:test:offline
 

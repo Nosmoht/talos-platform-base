@@ -10,6 +10,56 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Changed (BREAKING, MAJOR) — the `siderolabs/talos` provider is pinned
+  exactly to the prerelease `0.12.0-beta.0`, which every consumer inherits.**
+  The module's `>= 0.7.0, < 1.0.0` range resolved to `0.11.0`, whose bundled
+  Talos machinery predates 1.14, so the four `config_patches` lists could not
+  carry a single 1.14 document kind and a 1.14 cluster bootstrapped here ran
+  without workload isolation and without filesystem trim, with no way to opt in
+  (Talos' own `SecurityProfileConfig` reference: a cluster without the document
+  "keeps the old (non-isolated) behavior"). Only the 0.12 line bundles the 1.14
+  machinery, it has no final release, and OpenTofu never selects a prerelease
+  from a range — an exact pin is the only constraint that reaches it. The
+  blocker recorded earlier as a signature failure no longer reproduces:
+  `tofu init` installs the version signed (key ID `3A983D7A800C63E0`).
+  **Does your root need an edit?** Measured: a root declaring a version RANGE
+  still resolves — the module's exact pin wins the intersection — as does a root
+  with no `version` key or no talos entry. What fails is a constraint that
+  EXCLUDES the version (a different exact pin, or a lower bound above it such as
+  `>= 0.12.0`), and a plain `tofu init` against a lock still recording `0.11.0`,
+  which needs `tofu init -upgrade`.
+  **What every consumer gets regardless:** a prerelease provider, and one changed
+  value in the rendered configuration even on the 1.13 line — the provider's
+  default `machine.install.image` moved from
+  `ghcr.io/siderolabs/installer:v1.13.0` to a
+  `factory.talos.dev/metal-installer/…:v1.14.0-rc.2` URL, since the old image is
+  no longer published. A byte-diff of a rendered `v1.13.9` configuration across
+  the two providers shows that line and nothing else, and the module overrides it
+  per node from the Image Factory — those per-node installer URLs were compared
+  across both providers and are identical, same schematic IDs, so nothing
+  re-images. What changes is `machine_configuration_input` on every node, so the
+  first plan updates every node. `UPGRADING.md` carries the procedure, including the `staged` first roll,
+  the back-out (measured: re-pinning to `0.11.0` against state written by the
+  beta plans cleanly), and what changes for a consumer already pinned at 1.14.
+  **What opens up:** the 1.14 kinds decode — a patch sets
+  `SecurityProfileConfig.workloadIsolation`, merges `KubeNodeConfig.labels`, or
+  carries `FilesystemTrimConfig` / `UnattendedInstallConfig` / `BGPInstanceConfig`
+  — and a `v1.14.0` pin now generates the full 1.14 document set including both
+  previously absent defaults. **What to watch:** at a 1.14 pin the provider also
+  emits an `UnattendedInstallConfig` from its own defaults (a `/dev/sda` disk
+  selector and a `v1.14.0-rc.2` installer image carrying none of your Image
+  Factory schematic) that does **not** follow the module's `machine.install`
+  patch — two install descriptions that disagree, with the node's precedence
+  UNVERIFIED here. Patching that document directly works and is fenced. The
+  example and fixture pins therefore stay on Talos 1.13.9.
+  `scripts/check-provider-document-kinds.sh` was rewritten with the boundary and
+  now also asserts pin parity across the five sites carrying the version;
+  `scripts/check-provider-document-kinds-bites.sh` binds every assertion an
+  expectation-level mutation can falsify. The module's `.terraform.lock.hcl` is committed for the
+  first time, because an exact pin fixes the version string and not the artifact.
+  Decision:
+  [`knowledge/decisions/0027-talos-provider-prerelease-pin.md`](knowledge/decisions/0027-talos-provider-prerelease-pin.md).
+  Refs #252.
 - **Fixed — the Talos 1.14 section no longer claims `EPHEMERAL` is mounted
   `noexec`.** The claim described a pre-GA state that `siderolabs/talos@6fa811a0d`
   ("drop `noexec` for KUBELET, EPHEMERAL and CRI") reverted before the release,
@@ -80,6 +130,10 @@ under the new version heading; the historical backfill below it stays put.
   addendum, and the follow-up — reaching the 1.14 document surface, then moving
   the pins — is tracked in
   [#252](https://github.com/Nosmoht/talos-platform-base/issues/252).
+  Superseded within this same release by the provider-pin entry at the top of
+  this block: the alarm fired, the rejection cases became acceptance cases, and
+  the README section is now §"Talos 1.14: the pinned provider, and what it
+  reaches". The `0.11.0` measurements above are the state before that pin.
 - **Fixed (BREAKING) — the OCI artifact now contains the complete runtime
   `talos-cluster` module.** The allowlist adds `cilium-values.tf`,
   `composition.tf`, `kubeconfig-refresh.tf`, `nodes.tf`, and `profiles.tf`, so a

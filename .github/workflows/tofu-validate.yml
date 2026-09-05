@@ -26,6 +26,7 @@ on:
       - 'scripts/check-module-readme-parity.sh'
       - 'scripts/check-shim-key-parity.sh'
       - 'scripts/check-provider-document-kinds.sh'
+      - 'scripts/check-provider-document-kinds-bites.sh'
       - 'scripts/check-substrate-consumability.sh'
       # tofu:ci carries check:shim-key-parity, which reads the schema. Without
       # this entry a schema-only widening — the exact diff shape that leaves a
@@ -51,6 +52,7 @@ on:
       - 'scripts/check-module-readme-parity.sh'
       - 'scripts/check-shim-key-parity.sh'
       - 'scripts/check-provider-document-kinds.sh'
+      - 'scripts/check-provider-document-kinds-bites.sh'
       - 'scripts/check-substrate-consumability.sh'
       # tofu:ci carries check:shim-key-parity, which reads the schema. Without
       # this entry a schema-only widening — the exact diff shape that leaves a

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-05
+
+- `decisions/0027-talos-provider-prerelease-pin.md`: new decision — the module
+  pins `siderolabs/talos` exactly to `0.12.0-beta.0`, the reachable 1.14 kinds
+  and generated defaults that buys, the prerelease every consumer inherits, and
+  the install-document conflict that keeps the example and fixture pins on the
+  1.13 line.
+- `decisions/0026-machine-config-apply-mode.md`: addendum — Option 3's revisit
+  trigger fired and the option still loses on its durable cons; Option 2's
+  availability con is superseded by the exact pin while its dependability cons
+  keep the four-value set; the 0.11.0 document-kind measurement is marked
+  historical.
+- `workflows/release-process.md`: `generated.at 2026-09-05`. §CHANGELOG contract
+  records that the by-hand cut also renames `UPGRADING.md`'s unreleased heading
+  to the tag.
+- `reference/tasks.md`: the `tofu:check:provider-document-kinds` entry records
+  the moved boundary — pin parity, acceptance by rendered value, and the two
+  expiry alarms that replace the two rejection cases — and the inventory gains
+  `tofu:check:provider-document-kinds-bites`.
+
 ## 2026-09-04
 
 - `workflows/release-process.md`: `generated.at 2026-09-04`. `.releaserc.json`
