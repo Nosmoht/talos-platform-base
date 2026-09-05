@@ -457,11 +457,9 @@ has no way to opt in. Upgrading an existing cluster to 1.14 lands in the same
 place, because Talos does not add either document on upgrade either.
 
 **The upstream blocker.** Only provider `0.12.0-beta.0` bundles the 1.14
-machinery, and it does not install from the OpenTofu registry: `tofu init`
-refuses it with "the provider is not signed with a valid signing key
-(authentication signature from unknown issuer)". Until a signed release inside
-the module's declared `>= 0.7.0, < 1.0.0` range ships that machinery, the gap
-cannot be closed here. Tracked in
+machinery, and a prerelease is not selected by the module's declared
+`>= 0.7.0, < 1.0.0` range. Until a release inside that range ships the
+machinery, the gap cannot be closed here. Tracked in
 [issue #252](https://github.com/Nosmoht/talos-platform-base/issues/252), which
 `task tofu:check:provider-document-kinds` turning red is the trigger for.
 

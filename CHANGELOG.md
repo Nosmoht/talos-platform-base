@@ -61,10 +61,9 @@ under the new version heading; the historical backfill below it stays put.
   clusters, with no way to opt in; and `reboot` is a `*_apply_mode` value Talos
   1.14 removed from `talosctl apply-config`, whose behaviour over the provider's
   API path is unverified. The fence is an expiry alarm by construction — two of
-  its cases assert a rejection, so it turns red the day a signed provider inside
-  the declared `>= 0.7.0, < 1.0.0` range ships the 1.14 machinery, which is the
-  signal to revisit rather than a breakage to patch out. Today only
-  `0.12.0-beta.0` carries it and `tofu init` refuses it as unsigned.
+  its cases assert a rejection, so it turns red the day a release inside the
+  declared `>= 0.7.0, < 1.0.0` range ships the 1.14 machinery, which is the
+  signal to revisit rather than a breakage to patch out.
   `knowledge/decisions/0026-machine-config-apply-mode.md` gains the matching
   addendum, and the follow-up — reaching the 1.14 document surface, then moving
   the pins — is tracked in

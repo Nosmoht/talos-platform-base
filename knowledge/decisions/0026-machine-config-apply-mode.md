@@ -223,10 +223,3 @@ answered, `reboot` is untested on 1.14 and `staged` plus an out-of-band reboot
 is the supported way to force one. The decision's four-value set is unchanged:
 narrowing it would break consumers on 1.13 and below for a value that may still
 work.
-
-**`staged_if_needing_reboot` stays rejected**, for the reason §Considered
-Options already gives, now confirmed from the other side: the sole provider
-release bundling the 1.14 machinery, `0.12.0-beta.0`, does not install from the
-OpenTofu registry at all — `tofu init` refuses it as "not signed with a valid
-signing key (authentication signature from unknown issuer)". So the provider
-range this module declares still cannot reach it.
