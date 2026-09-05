@@ -423,6 +423,68 @@ runs `talosctl upgrade --image …:<version>` idempotently per node, and finally
 `tofu apply` updates state. Tofu owns the declarative state; the consumer
 Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
 
+## Talos 1.14: reachable and unreachable
+
+Talos 1.14.0 is generally available since 2026-09-03. This module has not
+adopted it, and the fixtures and examples still pin 1.13.9 on purpose. Both
+version inputs are consumer-supplied with no default, so nothing here stops you
+from pinning 1.14 — but what you get is bounded by the provider, not by the
+version you pin.
+
+**Running 1.14 works.** The provider accepts a `v1.14.0` pin and renders a
+1.13-shaped configuration from it, and 1.14 still accepts that shape: the wide
+v1alpha1 surface 1.14 moves into dedicated documents is deprecated, not removed.
+Every field this module writes — the cluster network, the kubelet serving-cert
+bootstrap, the CNI and proxy settings, the inline manifests, the install image,
+the capability-derived kernel modules, sysctls and node labels — remains valid.
+
+**The 1.14 document kinds are unreachable.** The provider decodes every
+`config_patches` entry against its own bundled Talos machinery before rendering,
+so a document kind newer than that machinery is a hard plan-time error rather
+than a passthrough. On the pinned provider a patch carrying `SecurityProfileConfig`,
+`FilesystemTrimConfig`, `KubeNodeConfig`, `UnattendedInstallConfig` or
+`BGPInstanceConfig` fails with `"<kind>" "v1alpha1": not registered`. The four
+opaque patch lists are therefore an escape hatch onto the PROVIDER's document
+surface, not onto Talos'. `scripts/check-provider-document-kinds.sh` fixes that
+boundary mechanically and turns red when it moves.
+
+**So two 1.14 defaults are silently absent.** Talos generates
+`SecurityProfileConfig` with `workloadIsolation: true` and a
+`FilesystemTrimConfig` for every new 1.14 configuration; the provider generates
+neither, and a patch cannot add them. A cluster bootstrapped through this module
+at a 1.14 pin runs without workload isolation and without filesystem trim, and
+has no way to opt in. Upgrading an existing cluster to 1.14 lands in the same
+place, because Talos does not add either document on upgrade either.
+
+**The upstream blocker.** Only provider `0.12.0-beta.0` bundles the 1.14
+machinery, and a prerelease is not selected by the module's declared
+`>= 0.7.0, < 1.0.0` range. Until a release inside that range ships the
+machinery, the gap cannot be closed here. Tracked in
+[issue #252](https://github.com/Nosmoht/talos-platform-base/issues/252), which
+`task tofu:check:provider-document-kinds` turning red is the trigger for.
+
+**Behaviour changes that reach you regardless of this module:**
+
+- `apply-config` no longer reboots on its own, and `talosctl apply-config`
+  accepts only `auto`, `no-reboot`, `staged` and `try`. `reboot` is gone from the
+  command. This module still accepts `reboot` for both `*_apply_mode` inputs
+  because it mirrors the provider's value set; whether a 1.14 node still honours
+  the provider's REBOOT request over the API is UNVERIFIED here — treat that
+  value as untested on 1.14 and prefer `staged` plus an out-of-band reboot. See
+  §"Staged machine-config roll (Day-2)".
+- etcd serves `/metrics` and the HTTP health endpoint on port `2383`; port
+  `2379` is gRPC only. A scrape configuration or firewall rule pinned to `2379`
+  stops working.
+- etcd and kube-apiserver run with a TLS 1.3 minimum, and custom cipher-suite
+  settings are ignored and removed.
+- `ghcr.io/siderolabs/installer` is no longer published. This module already
+  derives the installer from the Image Factory, so nothing changes here.
+- The in-tree Kubernetes volume plugins, iSCSI in particular, stop working once
+  workload isolation is on. Use a CSI driver.
+- New nodes mount the `EPHEMERAL` volume with `noexec`. A workload executing
+  binaries from `/var` needs a `VolumeConfig` opt-out, which is itself one of the
+  kinds the provider cannot carry today.
+
 ## ArgoCD delivery + health gate
 
 ArgoCD is **Layer-1 substrate** in the platform's C4 layer model, not a Day-2
