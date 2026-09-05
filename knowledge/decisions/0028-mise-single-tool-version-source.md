@@ -112,7 +112,7 @@ claim.
 - Positive: the *file-versus-file* drift-check steps in `gitops-validate.yml` and `docs-lint.yml` become unnecessary and are deleted, because there is no second copy left to disagree with.
 - Negative, and the sharpest one: the *binary-versus-pin* assertions are a different control and are **not** obsoleted. `scripts/verify-tools.sh` and `Taskfile.yml`'s `OK_GUARD` check what PATH actually resolves; a manifest declares what was installed. Deleting them without a replacement would leave a runner-preinstalled or `~/.local/bin` binary free to shadow the pinned one with every file-state check still green. The replacement — asserting that each gate's binary resolves under mise's root at the manifest version — is part of the implementation, not an optional extra.
 - Negative: `.envrc` is reported to activate the environment through devbox (`devbox generate direnv`), so it is rewritten in the same change; until it is, every direnv-using contributor gets a failing eval on `cd`. This one claim is **not** first-hand: `.envrc` sits behind the agent read guard, so neither its content nor whether it is tracked was confirmed here. If it turns out to be gitignored, the consequence is smaller and the rewrite is per-contributor rather than a repo edit.
-- Negative: `yamllint` has no aqua-registry entry and would be installed through the `pipx` backend, which `--locked` exempts from checksum enforcement. Its pin would be weaker than today's; §Validation names this as an item to settle before the ADR leaves `draft`.
+- Positive, found while sizing the manifest: `yamllint` is dropped rather than pinned. Its entire footprint was one line in `tofu:lint:yaml`, a task nothing invoked, running `-d relaxed` with stderr discarded and the exit code swallowed by `|| true`, against no config file. It gated nothing, so deleting the task costs no coverage and removes the `pipx` backend — the one backend `--locked` would have exempted from checksum enforcement — from the manifest entirely. The same task's second line duplicated `docs:lint`, which already lints `**/*.md` repo-wide in CI.
 - Negative: the repository gains a dependency on the aqua registry's package definitions and on mise itself. Backend-qualified names remove the *name-resolution* half of that trust; the *content* half remains, and it reaches `oci-publish.yml`, the workflow that signs releases.
 - Negative, and the bound on the headline claim: four actions ship a tool inside themselves, pinned only by the action's commit SHA and invisible to the manifest — `actions/attest-build-provenance` (`oci-publish.yml:176`), `anchore/sbom-action`, i.e. syft (`:190`), `fsfe/reuse-action` (`gitops-validate.yml:354`) and `ossf/scorecard-action` (`scorecard.yml:47`). Two sit on the release path. Bringing them onto the manifest means replacing each action with a direct binary invocation, which is its own change. So the claim is: every tool **this repository installs itself** is named once. An action SHA is still a pin; it is just not this one.
 - Negative: deleting `devbox.json` also deletes the only thing that was floating. Nine of its entries are `<name>@latest`, and `devbox.lock`'s divergence from the hand-written pins is what produced this ADR's own drift evidence. After the change every version is a frozen literal, the repository has no bot (no `renovate.json`, no `dependabot.yml`), and the measurement channel that detected staleness is gone. The Renovate follow-up is therefore not polish: this decision closes a duplication problem and, in the same move, closes the detector for the staleness problem the Context leads with.
@@ -129,7 +129,7 @@ claim.
 - Pro: `mise.lock` records per-platform checksum plus resolved URL for every platform the tool publishes, and `MISE_LOCKED=1` fails closed when an entry is absent.
 - Pro: Renovate has a native `mise` manager, so the follow-up automation needs no hand-written regex.
 - Pro: mise-action caches installed tools by default.
-- Con: `--locked` does not enforce checksums for the `npm`, `pipx`, `cargo` and `asdf` backends — they are skipped rather than failed. This is why the Node tooling stays on npm and why `yamllint` is an open point.
+- Con: `--locked` does not enforce checksums for the `npm`, `pipx`, `cargo` and `asdf` backends — they are skipped rather than failed. This is why the Node tooling stays on npm. No other manifest entry uses those backends.
 - Con: the version-manager layer becomes a dependency of every local workflow and every CI job, including the release-signing one.
 
 ### Option 2 — aqua
@@ -161,7 +161,7 @@ claim.
 - Con: the exemption is narrower than it looks, and the reason is qualitative rather than arithmetic. `shellcheck` v0.11.0 added seven new warning codes (SC2327–SC2332, SC3062), any of which turns a previously green run red. HashiCorp documents that `terraform fmt`'s canonical format changes between minor versions and states this is deliberately not treated as a breaking change; the same code path backs `tofu fmt`. Conftest's default Rego syntax version changed across releases, which moves policy verdicts with no policy edit. These are the tools this repository's gates rest on, so the exemption cannot reach them.
 - Con: after removing what is genuinely exempt — `ripgrep`, `curl`, `envsubst` — the saving is three tools, so it does not address the maintenance cost. Their exemption is from *pinning*, not from *provisioning*, and the two are easy to conflate: `scripts/render_kustomize_safe.sh:9-13` exits 2 without `rg` because ksops detection would otherwise fail open and render an encrypted manifest as plaintext, and `scripts/check-bootstrap-render.sh:34` fails closed without `envsubst`. Which version runs does not matter; that one runs does. `devbox.json` is their only provisioner today and macOS ships no `envsubst`, so deleting it without a replacement breaks `task gitops:validate` on a maintainer's own machine.
 - Con: it also cannot reach the tool it looks most likely to exempt. `shellcheck` has no pin to reduce — it is pinned nowhere today — so this option leaves it floating rather than shrinking anything. Measured 2026-09-06 on darwin-arm64: `shellcheck` 0.11.0 under the exact CI invocation (`git ls-files -z '*.sh' | xargs -0 -r shellcheck -S warning`) exits 0 over all forty-four tracked scripts, so adopting the newest release as its first pin does not turn the job red — the seven new codes do not fire on this tree.
-- Note: two motivations for pinning are in play and the literature names neither as a pair. One is reproducibility, where the tool writes an artifact whose bytes are compared (`tofu fmt`, `helm template`, `kustomize build`). The other is gate stability, where the tool emits findings and an upgrade adds new ones (`shellcheck`, `yamllint`, `markdownlint`). SLSA v1.0 does separate "pinned dependencies" from "Hermetic", but that is build-input control versus network isolation — a different axis. This ADR keeps both motivations explicit rather than adopting a coined term for the distinction.
+- Note: two motivations for pinning are in play and the literature names neither as a pair. One is reproducibility, where the tool writes an artifact whose bytes are compared (`tofu fmt`, `helm template`, `kustomize build`). The other is gate stability, where the tool emits findings and an upgrade adds new ones (`shellcheck`, `markdownlint`, `conftest`). SLSA v1.0 does separate "pinned dependencies" from "Hermetic", but that is build-input control versus network isolation — a different axis. This ADR keeps both motivations explicit rather than adopting a coined term for the distinction.
 
 ### Option 6 — status quo
 
@@ -191,7 +191,7 @@ will have fallen further behind by then.
 The exit is cheap but not free. The change lands as a merge commit — `AGENTS.md`
 §Tool-Agnostic Safety Invariants records `merge_commit_message=BLANK` with squash
 and rebase merges disabled — so backing it out is `git revert -m 1`, and re-landing
-later means reverting the revert. For sixteen of the nineteen manifest entries the
+later means reverting the revert. For fifteen of the eighteen manifest entries the
 restore is mechanical, because `mise.toml` carries the same version strings the
 deleted files carried; for `shellcheck`, `jq` and `node` it is a deletion, since
 those three had no prior pin anywhere.
@@ -205,16 +205,18 @@ the install-cost budget below — is not a rollback trigger.
 ## Validation
 
 Measured 2026-09-06 on darwin-arm64 against an isolated `MISE_DATA_DIR`: every tool
-this repository pins today installed at its exact pinned version — nineteen
+this repository pins today installed at its exact pinned version — eighteen
 binaries, not a sample. This measures mise's *backend coverage* across today's whole
-inventory; it is not the future `mise.toml` membership set. Two entries differ
+inventory; it is not the future `mise.toml` membership set. Three entries differ
 deliberately: `npm:@fission-ai/openspec` is measured here but **stays** in
-`package.json` per the Decision Outcome, and `node` is in the manifest but has no
-prior pin to install at, so the implementation PR measures it instead.
+`package.json` per the Decision Outcome; `pipx:yamllint` was measured before the
+tool was dropped, so it is backend evidence and not a manifest entry; and `node` is
+in the manifest but has no prior pin to install at, so the implementation PR
+measures it instead.
 
 - `github:openknowledge-sh/openknowledge@0.12.0` — installed, selected the `darwin_arm64` asset, reported the upstream project's GitHub artifact attestations as verified, and `openknowledge version` printed `0.12.0`. This is the binary that is in no public registry and the one that decides the whole option.
 - `aqua:` backend — `helm/helm@4.2.4`, `kubernetes-sigs/kustomize@5.8.1` (whose upstream tag form is `kustomize/vX.Y.Z`), `sigstore/cosign@3.1.3`, `oras-project/oras@1.3.4`, `open-policy-agent/conftest@0.69.0`, `yannh/kubeconform@0.8.0`, `mikefarah/yq@4.53.6`, `lycheeverse/lychee@0.24.2`, `vale-cli/vale@3.14.2`, `gitleaks/gitleaks@8.24.3`, `opentofu/opentofu@1.12.1`, `terraform-linters/tflint@0.61.0`, `go-task/task@3.53.1`, `terraform-docs/terraform-docs@0.22.0`, `koalaman/shellcheck@0.11.0`, `jqlang/jq@1.8.1` — all installed.
-- `pipx:yamllint@1.37.1` and `npm:@fission-ai/openspec@1.11.0` — both installed.
+- `npm:@fission-ai/openspec@1.11.0` — installed. (`pipx:yamllint@1.37.1` was measured too, before the tool was dropped; the measurement stands as backend evidence and the entry does not enter the manifest.)
 - A generated `mise.lock` carried seven platform entries per tool with checksums and URLs, and its four `openknowledge` checksums matched the four constants in `Taskfile.yml` byte for byte.
 
 **Not yet verified, and gating the implementation PR:**
@@ -224,17 +226,16 @@ prior pin to install at, so the implementation PR measures it instead.
 - That the pins still hold their artifacts stable. The primary evidence is already mechanical and already required: `scripts/verify-rendered.sh` fails on any drift from the committed `_rendered/` bytes, and `tofu:fmt:check` plus `tofu:check:render-determinism` cover the OpenTofu side — their "before" bytes are in git, so no hand-run baseline is needed. Only the non-committed kustomize render set needs a manual `sha256sum` before and after. The reference side is *the versions this PR pins, installed by today's mechanism*, so pre-existing version drift is excluded by construction rather than surfacing as a false difference. Process stdout stays the wrong comparand — three of the four validation targets emit host- and network-dependent text.
 - That the release path still signs. `oci-publish.yml` triggers on tag push only, so no branch CI run exercises it; the evidence is a pre-release tag against a throwaway registry, with `cosign verify` succeeding on the produced digest.
 - That the `gitleaks` pre-commit hook still bites in both directions after becoming a local hook.
-- Whether `yamllint` can be pinned under a checksum-enforcing backend, or whether the `pipx` backend's exemption from `--locked` is accepted for it — one decision by the maintainer, not a disjunction that any choice satisfies. The answer is written back into this ADR, since §Consequences carries the weakened-pin note and a PR body would leave it with no recorded resolution.
 - What the aqua registry's package definition for `sigstore/cosign` actually resolves to. This change replaces `sigstore/cosign-installer` — a first-party installer maintained by the signing project — with `aqua:sigstore/cosign@3.1.3` plus one `mise.lock` checksum, on the workflow that signs releases. The lock pins the bytes once recorded, but whoever can land a package definition in the aqua registry chooses the URL the next lock regeneration fetches from. Read the definition before the lock is committed.
 - The CI install cost, measured **per job** — mise installs once per job, while today's `setup-*` steps are spread across parallel jobs, so a single cross-workflow sum corresponds to no observable wall clock. For each job: the `jdx/mise-action` step's duration against the summed duration of the `setup-*` steps it replaces *in that same job*, both sides cache-miss, median of three runs, read from the run's step durations. The baseline must be captured on `main` before the deletion lands; afterwards it is unrecoverable. **The decision is wrong** if any job exceeds 1.5×.
 
 This ADR is `draft` and stays draft until the list above is observed. The option
 comparison is settled and the mechanism is measured — that is what makes the record
-worth writing now — but two of the open items are decision-level, not merely
-implementation detail: the `yamllint` backend question weakens a pin relative to
-today, and the install-cost budget is a stated falsification condition. Marking the
-ADR `stable` while either is open would assert more than has been observed, which is
-the failure this section exists to prevent.
+worth writing now — but one open item is decision-level rather than
+implementation detail: the per-job install-cost budget is this decision's stated
+falsification condition. Marking the ADR `stable` while it is unmeasured would
+assert more than has been observed, which is the failure this section exists to
+prevent.
 
 ## Links
 

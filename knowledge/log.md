@@ -8,7 +8,7 @@
   `jdx/mise-action`, the `gitleaks` pre-commit hook and `shellcheck` join the
   managed set, and the npm-distributed Node tooling stays in `package-lock.json`.
   Records the measured drift across the forty-five current pin sites, the five
-  rejected options, the darwin-arm64 install measurements for all nineteen
+  rejected options, the darwin-arm64 install measurements for all eighteen
   binaries, the `mise.lock` platform coverage, the binary-versus-pin control the
   file-drift gates do not replace, the `openspec/specs/oci-supply-chain` delta
   this triggers (proposed and applied in one PR, because the staleness gate
@@ -19,7 +19,11 @@
   duplication; that `ripgrep` and `envsubst` are exempt from pinning but not from
   provisioning, one of them gating the ksops plaintext check; that `shellcheck`,
   `jq` and `node` receive a first pin rather than a moved one, with `shellcheck`
-  0.11.0 measured green over all forty-four tracked scripts.
+  0.11.0 measured green over all forty-four tracked scripts; and that `yamllint`
+  leaves the inventory rather than entering the manifest, since the only task
+  invoking it was itself uninvoked and discarded both its output and its exit
+  code — which removes the `pipx` backend, and with it the sole entry `--locked`
+  would not have checksum-enforced.
 - `decisions/index.md`: the new decision listed under Proposed.
 
 ## 2026-09-05
