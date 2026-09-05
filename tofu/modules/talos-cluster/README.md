@@ -480,10 +480,10 @@ machinery, the gap cannot be closed here. Tracked in
 - `ghcr.io/siderolabs/installer` is no longer published. This module already
   derives the installer from the Image Factory, so nothing changes here.
 - The in-tree Kubernetes volume plugins, iSCSI in particular, stop working once
-  workload isolation is on. Use a CSI driver.
-- New nodes mount the `EPHEMERAL` volume with `noexec`. A workload executing
-  binaries from `/var` needs a `VolumeConfig` opt-out, which is itself one of the
-  kinds the provider cannot carry today.
+  workload isolation is on. Use a CSI driver — though a driver reaching
+  `machined`'s namespace through `hostPID` plus `nsenter`, the Talos-native iSCSI
+  shape, gets the sandbox's PID namespace instead. Whether such a driver still
+  works is UNVERIFIED here and needs a 1.14 node with the driver installed.
 
 ## ArgoCD delivery + health gate
 
