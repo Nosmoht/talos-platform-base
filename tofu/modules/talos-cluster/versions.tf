@@ -17,9 +17,19 @@ terraform {
   required_version = ">= 1.9.0"
 
   required_providers {
+    # EXACT, and a prerelease: 0.12.0-beta.0 is the only release bundling the
+    # Talos 1.14 machinery, and a RANGE never selects a prerelease — the former
+    # `>= 0.7.0, < 1.0.0` resolves to 0.11.0 and leaves every 1.14 document kind
+    # undecodable. A consumer root declaring a range still resolves (measured:
+    # the exact pin wins the intersection); only a root pinning a DIFFERENT exact
+    # version fails init. Mirrored verbatim in examples/complete/versions.tf,
+    # tests/fixtures/provider-document-kinds/versions.tf, the README's example
+    # root and test/pki-reconcile-microtest.sh — parity is asserted by
+    # scripts/check-provider-document-kinds.sh. See
+    # knowledge/decisions/0027-talos-provider-prerelease-pin.md.
     talos = {
       source  = "siderolabs/talos"
-      version = ">= 0.7.0, < 1.0.0"
+      version = "0.12.0-beta.0"
     }
     # helm provider ONLY for data.helm_template (local rendering of ArgoCD into
     # a Talos inlineManifest — NO helm_release/apply, no kubeconfig-from-computed

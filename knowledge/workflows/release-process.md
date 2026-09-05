@@ -3,7 +3,7 @@ type: workflow
 title: Release Process
 description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-generated: { by: human:nosmoht, at: "2026-09-04T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-05T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
   - resource: scripts/release-major-bump-guard.sh
@@ -241,6 +241,12 @@ PR, because the admin path leaves no record of what was disabled.
 
 `CHANGELOG.md` is **hand-maintained** (Keep a Changelog sections under
 `## Unreleased`); semantic-release ships no changelog plugin here.
+
+The same by-hand pass renames any `## Unreleased (next MAJOR|MINOR)` heading in
+`UPGRADING.md` to the tag being cut. That file's own §How to use this file tells
+consumers to locate sections by their tag heading, so a section authored before
+the version is known carries the unreleased form until the cut and is renamed
+here — nothing automates it.
 
 `## [Unreleased]` carries two blocks with different lifetimes. `### Pending
 release` holds entries awaiting the next tag: the by-hand cut moves **that block

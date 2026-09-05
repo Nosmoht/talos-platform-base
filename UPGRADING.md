@@ -55,6 +55,161 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
+## Unreleased (next MAJOR) — the `siderolabs/talos` provider becomes an exact prerelease pin (every consumer inherits it; most roots need no edit)
+
+The heading takes the tag when the release is cut, in the same by-hand pass that
+cuts `CHANGELOG.md`'s `[Unreleased]` block — see
+[`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md)
+§CHANGELOG contract. Until then, find this section by its title.
+
+**What changed.** The module pinned `siderolabs/talos` to `>= 0.7.0, < 1.0.0`,
+which resolves to `0.11.0`. That provider's bundled Talos machinery predates
+1.14, so none of the Talos 1.14 config-document kinds could be carried by the
+module's `config_patches` inputs. The module now pins the provider **exactly**
+to `0.12.0-beta.0`, the only release bundling the 1.14 machinery — OpenTofu
+never selects a prerelease from a range, so an exact `=` is the only constraint
+that reaches it.
+
+**Does your root need an edit?** Measured against this module:
+
+| Your root's `required_providers` | Result |
+|---|---|
+| no `siderolabs/talos` entry, or an entry with no `version` | resolves to `0.12.0-beta.0`, no edit needed |
+| a range that admits it — `>= 0.7.0, < 1.0.0`, `~> 0.11.0`, `< 0.12.0` | resolves to `0.12.0-beta.0`, no edit needed: the module's exact pin wins the intersection |
+| a constraint that EXCLUDES it — a different exact pin (`0.11.0`), or a lower bound above it (`>= 0.12.0`, `~> 0.12.0`) | `tofu init` fails: `no available releases match the given constraints` |
+| **any of the above with a committed `.terraform.lock.hcl` recording `0.11.0`** | plain `tofu init` **fails** on the locked selection — run `tofu init -upgrade` |
+
+A prerelease sorts *below* the release of the same number, which is why
+`< 0.12.0` admits it and `>= 0.12.0` does not. If you must edit, use the
+module's own pin, or drop the `version` key and inherit it:
+
+```hcl
+terraform {
+  required_providers {
+    talos = { source = "siderolabs/talos", version = "0.12.0-beta.0" }
+  }
+}
+```
+
+Everyone else inherits a **prerelease** provider without touching anything. If
+your supply-chain policy forbids prereleases, or you install providers from a
+mirror populated with released versions only, that mirror cannot serve
+`0.12.0-beta.0` at any constraint spelling — stay on the previous base tag until
+the final `0.12.0` ships (tracked as the follow-up of
+[ADR-0027](knowledge/decisions/0027-talos-provider-prerelease-pin.md)).
+
+**Re-lock deliberately, and review the lock diff on its own.** `tofu init
+-upgrade` relaxes the lock for *every* provider in your configuration, not just
+this one, and records the `h1:` hash only for the platform it ran on — a
+workstation-only lock then churns or fails checksum verification on a CI runner
+of a different platform. Prefer the targeted, multi-platform form and commit the
+result as its own reviewed diff:
+
+```bash
+tofu providers lock \
+  -platform=linux_amd64 -platform=darwin_arm64 \
+  registry.opentofu.org/siderolabs/talos
+```
+
+This base commits its own module lock for the same reason — an exact pin fixes
+the version string, not the bytes served under it.
+
+### If your `talos_version` is on the 1.13 line
+
+**Stage the roll before you apply it.** This change updates
+`machine_configuration_input` on every node of *both* roles in one apply, and at
+the `auto` default that apply re-sends the machine config and lets Talos decide
+about a reboot — concurrently, across roles. Open the window in the same apply
+that carries the change, never after it (module README §"Staged machine-config
+roll (Day-2)"):
+
+```hcl
+controlplane_apply_mode = "staged"
+worker_apply_mode       = "staged"
+```
+
+```bash
+tofu init -upgrade   # or the targeted providers lock above
+tofu plan            # expect: one update per node, the diff confined to install.image
+tofu apply
+# then reboot node by node, out of band, under your own health gate
+```
+
+Revert the two inputs to `auto` only after **every** node of that role has been
+rebooted — reverting while a node still holds an unadopted staged config
+re-applies it in `auto` mode and reboots exactly the nodes that were not gated.
+
+**Why there is a diff at all.** The provider's DEFAULT `machine.install.image`
+moved from `ghcr.io/siderolabs/installer:v1.13.0` to a
+`factory.talos.dev/metal-installer/…:v1.14.0-rc.2` URL, because the old image is
+no longer published. Byte-diffing a rendered `v1.13.9` configuration across the
+two providers (same machine secrets, this module's own example topology) shows
+that line and nothing else. The module overrides it per node with the Image
+Factory URL, and those URLs were compared across both providers and are
+identical — same schematic IDs, same tag — so **neither the image your nodes
+install nor their schematic hashes change**, and nothing re-images.
+
+### If your `talos_version` is already on 1.14
+
+This is not a one-line diff. The new provider renders the full 1.14 document set
+for a 1.14 pin — 28 documents where the old provider rendered a 1.13-shaped
+configuration — including `SecurityProfileConfig` (`workloadIsolation: true`),
+`FilesystemTrimConfig`, and an `UnattendedInstallConfig` built from the
+provider's own defaults: a `disk.dev_path == "/dev/sda"` selector and a
+`v1.14.0-rc.2` installer image that does **not** follow the module's
+`machine.install` patch and carries none of your Image Factory schematic.
+
+Read that document before you apply. The rendered configuration is carried in
+the plan:
+
+```bash
+tofu plan -out=tfplan.bin
+tofu show -json tfplan.bin | jq -r '
+  [.resource_changes[] | select(.type == "talos_machine_configuration_apply")][0]
+  .change.after.machine_configuration_input' > /tmp/rendered.yaml
+# /tmp/rendered.yaml holds the cluster PKI — do not commit it, and delete it after.
+```
+
+Then, in order:
+
+1. If the `UnattendedInstallConfig` disk selector or installer image is wrong for
+   your hardware, patch that document directly — a `config_patches` entry of
+   `kind: UnattendedInstallConfig` merges into the generated one and produces
+   exactly one document (fenced) — and keep it consistent with your
+   `machine.install` block.
+2. Which of the two install descriptions a 1.14 node honours is **unverified**;
+   until it is answered, keep both correct rather than picking one.
+3. Roll with `staged` as above and reboot node by node.
+
+### Back-out
+
+The supported back-out is a **base-tag revert**: re-vendor the previous tag per
+§"Upgrade workflow (every version)" and revert your root's pin if you changed
+it. It reverts the whole MAJOR, not only the provider. Re-pinning the provider
+alone in your root does not work — a root at `0.11.0` against this module hits
+the third row of the table above.
+
+Measured on the module itself: re-pinning to `0.11.0` against state written by
+`0.12.0-beta.0` succeeds — `tofu init -upgrade` and `tofu plan` run, there is no
+state-version refusal, and the render reverts. So on the 1.13 line the revert is
+mechanically clean.
+
+On the 1.14 line it is **not**. A 1.13-rendering provider omits
+`SecurityProfileConfig` and `FilesystemTrimConfig` entirely, and per Talos' own
+reference a node without the security document "keeps the old (non-isolated)
+behavior" — so backing out after a 1.14 apply is a knowing workload-isolation
+downgrade, and the module has no way to express those documents once the
+provider is reverted. Do **not** reach for `talos_version` to escape this: it is
+the schema pin, fixed at bootstrap, and the module documents it as
+never-changeable. If you have applied a 1.14 configuration and need the old
+provider back, treat the isolation setting as something to restore out of band
+on the nodes, and confirm the node's state with `talosctl` rather than from the
+plan.
+
+**Land both edits together.** If you do edit your root's pin, the base-tag bump
+and that edit must be one change: a root pinning `0.11.0` against the new module
+does not plan, and neither does the new pin against the old module.
+
 ## `v10.0.0` — argo-cd chart `9.4.5` → `10.6.0`, Argo CD `v3.3.2` → `v3.5.2` (MAJOR — action required for consumers reaching repo-server or redis from outside Argo CD)
 
 **Type:** MAJOR. The chart's own major moved, and with it a default the base

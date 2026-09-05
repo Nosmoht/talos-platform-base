@@ -75,16 +75,21 @@ machine-config roll below have no row of their own.
 > out-of-band `talosctl upgrade`. Nodes with an unchanged hash keep their installer
 > and do NOT re-image.
 
-**Two out-of-band Day-2 ops are upgrades** — the `siderolabs/talos` provider ships no
-OS- or Kubernetes-upgrade resource, so both are imperative `talosctl` commands
-the consumer Taskfile drives. The **OS upgrade** is `talosctl upgrade --image
+**Two out-of-band Day-2 ops are upgrades** — this module drives neither through a
+provider resource, so both are imperative `talosctl` commands the consumer
+Taskfile drives. The **OS upgrade** is `talosctl upgrade --image
 …:<version>` (bump `talos_install_version`; tofu renders the new installer URL
 into tfplan JSON, the Taskfile rolls each node — see §"Versions: schema-pin vs
 install-pin"). The **Kubernetes upgrade** is `talosctl upgrade-k8s --to
 <version>` (bump `kubernetes_version` to keep the machine-config in sync). In
 both cases tofu owns the declarative state and the talosctl command performs the
-rolling upgrade. Tracked follow-up for when the provider exposes these as
-resources.
+rolling upgrade. The pinned provider does now ship a `talos_machine` resource
+that performs an in-place OS upgrade, but the module does not use it: it carries
+no `apply_mode`, hardcodes an AUTO apply, and sequences only through
+`depends_on`, which the module's `for_each` over the node set cannot express.
+Adopting it is tracked in
+[issue #129](https://github.com/Nosmoht/talos-platform-base/issues/129); there
+is still no Kubernetes-upgrade resource.
 
 **A staged apply is the other out-of-band Day-2 op.** Setting a role's
 `apply_mode` to `staged` keeps the apply from rebooting and hands the reboot to
@@ -271,9 +276,12 @@ Example root `versions.tf`:
 
 ```hcl
 terraform {
-  required_version = ">= 1.7.0"
+  required_version = ">= 1.9.0"
   required_providers {
-    talos = { source = "siderolabs/talos", version = ">= 0.7.0, < 1.0.0" }
+    # The module pins this exact prerelease and it wins the intersection, so a
+    # range here still resolves to it. Spelling it out keeps the resolved version
+    # visible in the root. See §Talos 1.14.
+    talos = { source = "siderolabs/talos", version = "0.12.0-beta.0" }
   }
   # State holds machine_secrets — the backend MUST be encrypted.
   encryption {
@@ -423,45 +431,96 @@ runs `talosctl upgrade --image …:<version>` idempotently per node, and finally
 `tofu apply` updates state. Tofu owns the declarative state; the consumer
 Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
 
-## Talos 1.14: reachable and unreachable
+## Talos 1.14: the pinned provider, and what it reaches
 
-Talos 1.14.0 is generally available since 2026-09-03. This module has not
-adopted it, and the fixtures and examples still pin 1.13.9 on purpose. Both
-version inputs are consumer-supplied with no default, so nothing here stops you
-from pinning 1.14 — but what you get is bounded by the provider, not by the
-version you pin.
+Talos 1.14.0 is generally available since 2026-09-03. The module pins the
+`siderolabs/talos` provider **exactly** to `0.12.0-beta.0`, the only release
+bundling the 1.14 machinery ([ADR-0027](../../../knowledge/decisions/0027-talos-provider-prerelease-pin.md)).
+The example and fixture pins deliberately stay on Talos 1.13.9; both version
+inputs are consumer-supplied with no default.
 
-**Running 1.14 works.** The provider accepts a `v1.14.0` pin and renders a
-1.13-shaped configuration from it, and 1.14 still accepts that shape: the wide
-v1alpha1 surface 1.14 moves into dedicated documents is deprecated, not removed.
-Every field this module writes — the cluster network, the kubelet serving-cert
-bootstrap, the CNI and proxy settings, the inline manifests, the install image,
-the capability-derived kernel modules, sysctls and node labels — remains valid.
+**The pin is a prerelease, and it wins over your root's range.** OpenTofu never
+selects a prerelease from a range, so only an exact `=` reaches this version —
+and because provider constraints intersect across the whole configuration, that
+exact pin is what the configuration resolves to even when your root still
+declares `>= 0.7.0, < 1.0.0`. Measured: such a root initializes normally and
+installs `0.12.0-beta.0`, as do `~> 0.11.0`, a bare `source` with no `version`,
+and a root that never names the provider. Two things do fail: any root
+constraint that EXCLUDES this version — a different exact pin (`0.11.0`), or a
+lower bound above it (`>= 0.12.0`, since the prerelease sorts below the
+release) — and a plain `tofu init` against a committed lock still recording
+`0.11.0`, which needs `tofu init -upgrade`. So most roots need no edit, but
+every one of them inherits a prerelease provider, named or not. `UPGRADING.md`
+carries the table and the migration.
 
-**The 1.14 document kinds are unreachable.** The provider decodes every
+**The 1.14 document kinds are reachable.** The provider decodes every
 `config_patches` entry against its own bundled Talos machinery before rendering,
-so a document kind newer than that machinery is a hard plan-time error rather
-than a passthrough. On the pinned provider a patch carrying `SecurityProfileConfig`,
+and that machinery is now 1.14's: a patch carrying `SecurityProfileConfig`,
 `FilesystemTrimConfig`, `KubeNodeConfig`, `UnattendedInstallConfig` or
-`BGPInstanceConfig` fails with `"<kind>" "v1alpha1": not registered`. The four
-opaque patch lists are therefore an escape hatch onto the PROVIDER's document
-surface, not onto Talos'. `scripts/check-provider-document-kinds.sh` fixes that
-boundary mechanically and turns red when it moves.
+`BGPInstanceConfig` renders, while a kind that machinery does not know is still
+a hard plan-time error (`"<kind>" "v1alpha1": not registered`), not a
+passthrough. Patching a kind the provider also generates MERGES into the
+generated document rather than appending a second one.
+`scripts/check-provider-document-kinds.sh` fixes the boundary mechanically and
+turns red when it moves.
 
-**So two 1.14 defaults are silently absent.** Talos generates
-`SecurityProfileConfig` with `workloadIsolation: true` and a
-`FilesystemTrimConfig` for every new 1.14 configuration; the provider generates
-neither, and a patch cannot add them. A cluster bootstrapped through this module
-at a 1.14 pin runs without workload isolation and without filesystem trim, and
-has no way to opt in. Upgrading an existing cluster to 1.14 lands in the same
-place, because Talos does not add either document on upgrade either.
+> The new documents do not reuse the v1alpha1 field names. `KubeNodeConfig`
+> carries `labels:` and `taints:`, not the `machine.nodeLabels` /
+> `machine.nodeTaints` spelling this module still writes — a patch using the old
+> key is rejected with `unknown keys found`.
 
-**The upstream blocker.** Only provider `0.12.0-beta.0` bundles the 1.14
-machinery, and a prerelease is not selected by the module's declared
-`>= 0.7.0, < 1.0.0` range. Until a release inside that range ships the
-machinery, the gap cannot be closed here. Tracked in
-[issue #252](https://github.com/Nosmoht/talos-platform-base/issues/252), which
-`task tofu:check:provider-document-kinds` turning red is the trigger for.
+**Both 1.14 defaults are now generated.** At a `v1.14.0` pin the provider emits
+the full 1.14 document set, `SecurityProfileConfig` with `workloadIsolation:
+true` and `FilesystemTrimConfig` with a 168h interval included. A patch
+overrides either. At the 1.13.9 pin the examples carry, neither is generated —
+that pin renders the 1.13-shaped configuration it always did.
+
+**A 1.14 pin generates a second, conflicting install description.** The module
+writes `machine.install` (v1alpha1, the deprecated spelling). At a 1.14 pin the
+provider ALSO emits an `UnattendedInstallConfig` built from its own defaults —
+a `disk.dev_path == "/dev/sda"` selector and an installer image tagged
+`v1.14.0-rc.2`, the Talos version its machinery bundles — and it does **not**
+follow your `machine.install` patch: patching the disk to `/dev/nvme0n1` leaves
+the generated selector on `/dev/sda`. Which document a 1.14 node honours is
+UNVERIFIED here and needs a 1.14 node to answer. Two consequences follow while
+it is unanswered:
+
+- That generated installer reference does not come from the Image Factory, so it
+  carries none of your schematic — no system extensions, no `extra_kernel_args`,
+  no SBC overlay — and the module's code-level SecureBoot guarantee, which
+  applies to the URL it selects, does not reach it.
+- Patching the document directly does work and is measured (case G of the
+  fence): the patch merges into the generated document and produces exactly one
+  of them. Keep both install descriptions consistent:
+
+  ```yaml
+  # controlplane_config_patches / worker_config_patches, alongside your machine.install patch
+  apiVersion: v1alpha1
+  kind: UnattendedInstallConfig
+  provisioning:
+    diskSelector:
+      match: disk.dev_path == "/dev/nvme0n1"
+  installer:
+    image: <the same Image Factory installer URL the module derives for that node>
+  ```
+
+This is why the examples and fixtures stay on 1.13.9
+([issue #252](https://github.com/Nosmoht/talos-platform-base/issues/252)).
+
+**One rendered value changes on the 1.13 line too.** The provider's DEFAULT
+`machine.install.image` moved from `ghcr.io/siderolabs/installer:v1.13.0` to a
+`factory.talos.dev/metal-installer/…:v1.14.0-rc.2` URL, because the old image is
+no longer published. That default is the only byte that differs in a rendered
+`v1.13.9` configuration between the old provider and this one — and the module
+overrides it per node with the Image Factory URL, so the image a node installs
+is unchanged. What does change is `machine_configuration_input` on every
+`talos_machine_configuration_apply` resource, so your first plan after the bump
+shows an update for every node. See `UPGRADING.md`.
+
+**Patch kinds that match the version you pin.** Reachability is a property of
+the provider, not of `talos_version`: at a 1.13.9 pin the provider accepts a
+`SecurityProfileConfig` patch and renders it into the configuration, producing a
+document a 1.13 node does not know. The module does not police patch contents.
 
 **Behaviour changes that reach you regardless of this module:**
 
