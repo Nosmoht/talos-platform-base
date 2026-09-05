@@ -10,6 +10,18 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Fixed — the Talos 1.14 section no longer claims `EPHEMERAL` is mounted
+  `noexec`.** The claim described a pre-GA state that `siderolabs/talos@6fa811a0d`
+  ("drop `noexec` for KUBELET, EPHEMERAL and CRI") reverted before the release,
+  and that commit is an ancestor of `v1.14.0` — in 1.14.0 `noexec` reaches only
+  dedicated ETCD and LOG volumes. The bullet is removed rather than restated:
+  with the claim gone there is no behaviour change left for a consumer to act
+  on, and this module declares no `VolumeConfig`. The neighbouring CSI bullet
+  gains the caveat that a driver reaching `machined`'s namespace through
+  `hostPID` plus `nsenter` — the Talos-native iSCSI shape — gets the sandbox's
+  PID namespace instead; it is labelled UNVERIFIED because settling it needs a
+  1.14 node with the driver installed. The section ships in the OCI artifact, so
+  both corrections reach consumers. Refs #252.
 - **Fixed — a GitHub Release again ships its tarball, `checksums.txt`, and
   SBOM.** Release immutability freezes a release when it is **published**, and
   semantic-release published the release object the moment it tagged, before
