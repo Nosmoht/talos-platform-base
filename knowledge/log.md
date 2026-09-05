@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-06
+
+- `decisions/0028-mise-single-tool-version-source.md`: new decision (proposed) —
+  `mise.toml` plus `mise.lock` become the sole committed source for every binary
+  tool version, `.tool-versions` and `devbox.json` are deleted, CI installs via
+  `jdx/mise-action`, the `gitleaks` pre-commit hook and `shellcheck` join the
+  managed set, and the npm-distributed Node tooling stays in `package-lock.json`.
+  Records the measured drift across the forty-five current pin sites, the five
+  rejected options, the darwin-arm64 install measurements for all nineteen
+  binaries, the `mise.lock` platform coverage, the binary-versus-pin control the
+  file-drift gates do not replace, the `openspec/specs/oci-supply-chain` delta
+  this triggers (proposed and applied in one PR, because the staleness gate
+  clears only on a touch of the spec file itself), and a rollback section.
+  Also records what the change does not make single: four tools bundled inside
+  third-party actions and pinned only by action SHA; that deleting `devbox.json`
+  removes the repository's only floating-version channel along with the
+  duplication; that `ripgrep` and `envsubst` are exempt from pinning but not from
+  provisioning, one of them gating the ksops plaintext check; that `shellcheck`,
+  `jq` and `node` receive a first pin rather than a moved one, with `shellcheck`
+  0.11.0 measured green over all forty-four tracked scripts.
+- `decisions/index.md`: the new decision listed under Proposed.
+
 ## 2026-09-05
 
 - `decisions/0027-talos-provider-prerelease-pin.md`: new decision — the module
