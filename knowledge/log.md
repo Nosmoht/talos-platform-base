@@ -20,6 +20,25 @@
   `values.schema.json`. Plus the recorded rationale from ADR-0007 §4 and
   ADR-0022 §(c)/§(l), six open findings, and a dated tracker snapshot pointing at issues 261, 262 and 86.
 - `index.md`: Reference section gains the new concept.
+- `decisions/0028-consumer-free-helm-value-surface.md`: new decision — the
+  consumer's free-form values layer is the last layer on every ArgoCD and Cilium
+  workload-values path. The emitted Cilium `Application` inherits
+  `cilium_values_override` and the hard-reject guard goes, replaced by a
+  plan-time rejection on keys whose Talos-side counterpart the module writes; the
+  steady-state ArgoCD component ships its chart inputs so a consumer re-renders
+  in their own repo, retracting a negative assertion in
+  `openspec/specs/oci-supply-chain/spec.md`. Records the costs it accepts rather
+  than mitigates: the ArgoCD values-level security floor becomes consumer-owned,
+  `cilium_values_override` gains a git-committed sink, and the seed and the
+  `Application` may diverge over an unverified live behaviour. The Day-0 CRD
+  render keeps no values layer; `substrate.cilium` stays closed.
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: dated
+  partial-supersession banner for §(c) third bullet, the §(f) override-drop
+  hazard and the 2026-08-15 addendum's typed-input substitution claim, plus the
+  `supersedes: []` / `superseded_by: []` keys the convention pairs with such a
+  banner.
+- `decisions/index.md`: the new decision joins Accepted; the ADR-0022 entry
+  records the partial supersession.
 
 ## 2026-09-05
 
