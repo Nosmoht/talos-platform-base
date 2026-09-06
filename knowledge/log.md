@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-06
+
+- `reference/helm-values-surface.md`: new concept — the five ArgoCD/Cilium
+  Helm delivery paths with the spec that owns each, a value-reachability matrix
+  per lifecycle phase, and the three points where the surface closes: the
+  published ArgoCD component exposes no values input (the git remote-base path
+  is qualified separately), Cilium's long tail has no base-delivered Day-2 path
+  though the consumer-owned Application route exists unautomated, and
+  seed/steady-state collisions are documented case by case but never
+  enumerated. Records that both seeds are bootstrap-only because an
+  inlineManifest is create-only, not because the render is frozen, and that
+  what `-replace` does to a live cluster stays unverified per UPGRADING.md;
+  that path B is a server-side `kubectl apply` which re-fires on a chart bump,
+  unlike the seeds; and two measurements against the pinned argo-cd chart — a
+  leaf key the floor owns cannot be handed back to the chart with `null`
+  (nulling the parent map drops the subtree instead), and a type-invalid
+  override value templates cleanly because that chart ships no
+  `values.schema.json`. Plus the recorded rationale from ADR-0007 §4 and
+  ADR-0022 §(c)/§(l), six open findings, and a dated tracker snapshot pointing at issues 261, 262 and 86.
+- `index.md`: Reference section gains the new concept.
+
 ## 2026-09-05
 
 - `decisions/0027-talos-provider-prerelease-pin.md`: new decision — the module
