@@ -34,6 +34,7 @@ wins.
 
 ## Proposed
 
+- [ADR: mise is the single committed source of every binary tool version](0028-mise-single-tool-version-source.md) - replaces `.tool-versions`, `devbox.json` and the per-workflow env/with version pins with one `mise.toml` plus a checksum lockfile that `jdx/mise-action` reads unchanged in CI; npm-distributed Node tooling stays in `package-lock.json` because mise's `--locked` enforcement exempts the npm backend (proposed)
 - [ADR: Where the per-node capability-composition logic should live (HCL vs a portable pre-processing layer)](0010-composition-logic-placement.md) - defers HCL-vs-portable-layer extraction of the composition logic, with a hybrid recommendation and concrete revisit triggers (proposed)
 
 ## Superseded
