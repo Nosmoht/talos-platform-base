@@ -1134,30 +1134,3 @@ resource "null_resource" "argocd_crds" {
 # upgrades, run `talosctl upgrade-k8s --to <version>` against the cluster —
 # this is the one Day-2 op that escapes the tofu apply loop. Tracked for
 # follow-up when the provider exposes the upgrade as a resource.
-
-locals {
-  # Seed observability markers, hoisted out of outputs.tf so the output can name
-  # it twice (see that output's declassification comment). Split on the DOCUMENT
-  # boundary ("\n---\n"), not the bare literal: several consumer-controlled
-  # strings reach this render — cilium_values_override above all, which is
-  # free-form YAML the module cannot introspect — and a "---" occurring
-  # mid-scalar (PEM material carries it too) would split a document in half.
-  # Both halves then fail yamldecode, the comprehension yields nothing, and the
-  # output's outer try() reports {} — "nothing enabled" rather than an error. An
-  # audit output that goes silent on malformed input is exactly the wrong failure
-  # direction, which is why the output keeps that fallback LAST.
-  cilium_seed_observability_markers = try(
-    [
-      for doc in split("\n---\n", try(terraform_data.cilium_render[0].output, "")) : {
-        agent_metrics          = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
-        agent_metric_overrides = contains(keys(yamldecode(doc).data), "metrics")
-        operator_metrics       = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")
-        hubble                 = try(yamldecode(doc).data["enable-hubble"], "false") == "true"
-        hubble_metrics         = contains(keys(yamldecode(doc).data), "hubble-metrics-server")
-        hubble_open_metrics    = try(yamldecode(doc).data["enable-hubble-open-metrics"], "false") == "true"
-      }
-      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
-    ][0],
-    {}
-  )
-}

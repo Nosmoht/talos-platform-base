@@ -450,6 +450,38 @@ output "cilium_values_override_digest" {
   value       = local.cilium_values_override_digest
 }
 
+locals {
+  # Seed observability markers, a local rather than an inline
+  # comprehension so the output below can name it twice — nonsensitive(x) errors
+  # when x is NOT sensitive, so the output's try() needs the raw value as its
+  # second arm, and a hoisted local is the only way to write the same expression
+  # twice without duplicating it. It lives in THIS file, not beside
+  # terraform_data.cilium_render in main.tf, because cilium-values.tf is
+  # symlinked into the offline test fixture, which declares no such resource (see that output's declassification comment). Split on the DOCUMENT
+  # boundary ("\n---\n"), not the bare literal: several consumer-controlled
+  # strings reach this render — cilium_values_override above all, which is
+  # free-form YAML the module cannot introspect — and a "---" occurring
+  # mid-scalar (PEM material carries it too) would split a document in half.
+  # Both halves then fail yamldecode, the comprehension yields nothing, and the
+  # output's outer try() reports {} — "nothing enabled" rather than an error. An
+  # audit output that goes silent on malformed input is exactly the wrong failure
+  # direction, which is why the output keeps that fallback LAST.
+  cilium_seed_observability_markers = try(
+    [
+      for doc in split("\n---\n", try(terraform_data.cilium_render[0].output, "")) : {
+        agent_metrics          = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
+        agent_metric_overrides = contains(keys(yamldecode(doc).data), "metrics")
+        operator_metrics       = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")
+        hubble                 = try(yamldecode(doc).data["enable-hubble"], "false") == "true"
+        hubble_metrics         = contains(keys(yamldecode(doc).data), "hubble-metrics-server")
+        hubble_open_metrics    = try(yamldecode(doc).data["enable-hubble-open-metrics"], "false") == "true"
+      }
+      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
+    ][0],
+    {}
+  )
+}
+
 output "cilium_seed_observability_markers" {
   description = <<-EOT
     Booleans decoded from the FROZEN bootstrap seed render

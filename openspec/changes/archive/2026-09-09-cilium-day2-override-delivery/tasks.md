@@ -41,7 +41,9 @@
       break-glass, the two-artifact pairing, AppProject `sourceRepos`.
 - [x] 4.5 `CHANGELOG.md` + the MAJOR marker on the commit and PR title.
 - [x] 4.6 Knowledge bundle: ADR-0028 addendum, the surface map, `log.md`.
-- [ ] 4.7 Close #227 against this change.
+- [x] 4.7 Close #227 against this change — the commit and PR carry
+      `Closes: #227`, so the merge closes it; #265 ships the typed inputs the
+      issue asked for rather than reframing the request.
 
 ## 5. Review fixes (post-review, same change)
 
