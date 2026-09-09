@@ -310,8 +310,9 @@ The object SHALL further admit `k8s_service_host` and `k8s_service_port`
 (strings, defaulting in the module to Talos KubePrism) — the API-server
 endpoint Cilium reaches before the CNI is up. Each SHALL carry a COMPLETE
 mirror of the module's guard, not a shape approximation: the host pattern
-admits a bare DNS name or IPv4 literal, or a bracketed IPv6 literal, and
-nothing else; the port pattern mirrors BOTH module conjuncts, digit shape and
+admits a bare DNS name or IPv4 literal, or an UNBRACKETED IPv6 literal, and
+nothing else — brackets are rejected because client-go joins this value with
+the port through `net.JoinHostPort`, which brackets a colon-bearing host itself; the port pattern mirrors BOTH module conjuncts, digit shape and
 the 1-65535 range, since a port range is non-relational and therefore
 expressible in a single-document schema. On the seed path the resulting render
 is frozen into a create-only machine configuration, so a malformed endpoint is
@@ -325,9 +326,12 @@ whose `values_path` is REQUIRED and whose `repo_url`, `revision` and
 to this document's own `repo.url` and `cluster.target_revision`: declaring the
 consumer's repository twice in one Source-of-Truth would let the two spellings
 diverge silently. `values_path` and `override_path` SHALL be constrained to
-repo-root-relative paths — a character allowlist admitting neither a leading
-`/` nor whitespace, and no `..` segment — mirroring the module's guard, because
-a malformed one stops all Cilium reconciliation with no plan-time signal.
+NORMALIZED repo-root-relative paths — a character allowlist
+admitting neither a leading `/` nor whitespace, and no `..`, `.` or empty
+segment — mirroring the module's guard. A malformed path stops all Cilium
+reconciliation with no plan-time signal, and a non-normalized one ("./x" beside
+"x") would additionally let two spellings of ONE file pass the module's
+distinctness guard.
 
 Every lint-time rule this requirement adds SHALL be bound red-green by an
 offending entry in the negative schema fixture, with its own CI needle — the

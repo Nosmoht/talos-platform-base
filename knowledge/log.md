@@ -2,6 +2,12 @@
 
 ## 2026-09-09
 
+- `architecture/day-zero-bootstrap.md`: §The direct-apply exception now records
+  TWO exceptions — the one-time bootstrap content, and the datapath break-glass
+  for a broken CNI that leaves ArgoCD unable to reconcile. States what the second
+  does not authorize: automation in this repository applying cluster-side.
+- `workflows/first-consumer-cluster.md`: the never-kubectl-apply line points at
+  the break-glass exception rather than reading as absolute.
 - `decisions/0028-consumer-free-helm-value-surface.md`: addendum corrected after
   review — the joint-key re-assertion is sound for the override INPUT and only a
   precedence over the override FILE the module never reads; the "put the file

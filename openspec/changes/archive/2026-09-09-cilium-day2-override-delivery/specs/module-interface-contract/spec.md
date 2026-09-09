@@ -163,7 +163,8 @@ and is already observable in that manifest — MAY be declassified so the
 secret-free outputs stay exportable; the override's CONTENT SHALL NOT be.
 
 `cilium_k8s_service_host` SHALL be constrained to a bare DNS name or IPv4
-literal, or a bracketed IPv6 literal — no scheme, no `:port`, no whitespace —
+literal, or an UNBRACKETED IPv6 literal — no scheme, no `:port`, no
+whitespace, no brackets —
 and `cilium_k8s_service_port` to a decimal port in 1-65535, each conjunct in its
 OWN validation block so a test binding one cannot pass on the other's rejection.
 The measured sink is not the one the raw-render class rule below covers: chart
@@ -197,15 +198,17 @@ bootstrap deadlock no later apply repairs.
 #### Scenario: A repo URL that is not a resolvable git remote is rejected
 
 - **WHEN** `cilium_self_management_values_source.repo_url` is not one of the git
-  remote forms Argo CD resolves (`https://`, `ssh://`, `git@host:path`), or
-  carries embedded credentials
+  remote forms Argo CD resolves (`https://`, `ssh://user@host[:port]/path`,
+  `git@host:path`), or carries an embedded PASSWORD — an SSH username is the
+  documented form and stays accepted
 - **THEN** the plan is rejected — the value becomes `spec.sources[0].repoURL`
   verbatim and decides where a privileged DaemonSet's Helm values are fetched
   from, and a credential there would be committed to git
 
 #### Scenario: One path for both values layers is rejected
 
-- **WHEN** `values_path` and `override_path` name the same file
+- **WHEN** `values_path` and `override_path` name the same file, in the same or
+  in an equivalent spelling
 - **THEN** the plan is rejected: the two are ordered layers of one Helm merge,
   and the prescribed `local_file` write would overwrite the consumer's override
   with the module-set layer while every other guard — the emptied-override

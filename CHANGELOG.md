@@ -31,7 +31,9 @@ under the new version heading; the historical backfill below it stays put.
   The replacement is three typed keys, two of them new:
   `kube_proxy_replacement`, `k8s_service_host` and `k8s_service_port`
   (defaulting to Talos KubePrism `localhost` / `"7445"`), which set both halves
-  together — closing #227, whose typed-input request this answers rather than
+  together. An IPv6 endpoint goes in **unbracketed** (`2001:db8::1`): the chart
+  passes the value to `KUBERNETES_SERVICE_HOST`, and client-go joins host and
+  port with `net.JoinHostPort`, which brackets a colon-bearing host itself — closing #227, whose typed-input request this answers rather than
   dismisses. The override is also rejected when it does not decode to a YAML
   mapping, and it is now `sensitive`: `tofu plan` no longer shows its diff.
   **Opt-in, and unchanged if you do not opt in:** leaving the new
@@ -58,10 +60,12 @@ under the new version heading; the historical backfill below it stays put.
   host-networked `cilium` DaemonSet's Helm values at any repository. The module
   now **warns at plan time** when a values source is configured while
   `self_management_project` is still `default`, and `repo_url` is constrained to
-  the git remote forms Argo CD resolves (`https://`, `ssh://`, `git@host:path`)
-  with no embedded credentials. A scoped project must list BOTH repositories in
+  the git remote forms Argo CD resolves (`https://`, `ssh://user@host[:port]/path`,
+  `git@host:path`) with no embedded password — an SSH username is the documented
+  form and stays accepted. A scoped project must list BOTH repositories in
   `sourceRepos`, or the adopted `Application` goes degraded. `values_path` and
-  `override_path` must also differ — one path for both silently overwrites the
+  `override_path` must also differ and be normalized (no `./`, no `..`, no
+  doubled `/`) — one path for both, in either spelling, silently overwrites the
   override with the module-set layer.
   **The override file is not confidential.** Argo CD reads it as a plain Helm
   values document and applies no decryption to a Helm `valueFiles` source, so

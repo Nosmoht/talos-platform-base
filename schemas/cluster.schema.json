@@ -206,9 +206,9 @@
               "type": "boolean"
             },
             "k8s_service_host": {
-              "description": "Cilium's k8sServiceHost — the endpoint Cilium reaches the API server through BEFORE the CNI is up. Default \"localhost\" (Talos KubePrism on the node); set a VIP or load-balancer address on a cluster where KubePrism is not the intended path. Only emitted when kube_proxy_replacement is true. A bare host: no scheme, no \":port\". Mirrors variables.tf var.cilium_k8s_service_host so a malformed value is caught at lint time too, not only at plan time — chart 1.20.0 renders it into the KUBERNETES_SERVICE_HOST container env var (quoted), and on the seed path that render is baked into the create-only machine config, where a malformed host is a bootstrap deadlock no later apply repairs.",
+              "description": "Cilium's k8sServiceHost — the endpoint Cilium reaches the API server through BEFORE the CNI is up. Default \"localhost\" (Talos KubePrism on the node); set a VIP or load-balancer address on a cluster where KubePrism is not the intended path. Only emitted when kube_proxy_replacement is true. A bare host: no scheme, no \":port\", and an IPv6 literal UNBRACKETED (\"2001:db8::1\") \u2014 client-go joins this value with the port through net.JoinHostPort, which brackets a colon-bearing host itself, so a pre-bracketed value reaches the API server as \"[[2001:db8::1]]:6443\". Mirrors variables.tf var.cilium_k8s_service_host so a malformed value is caught at lint time too, not only at plan time — chart 1.20.0 renders it into the KUBERNETES_SERVICE_HOST container env var (quoted), and on the seed path that render is baked into the create-only machine config, where a malformed host is a bootstrap deadlock no later apply repairs.",
               "type": "string",
-              "pattern": "^([a-zA-Z0-9._-]+|\\[[0-9a-fA-F:.]+\\])$"
+              "pattern": "^([a-zA-Z0-9._-]+|[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7})$"
             },
             "k8s_service_port": {
               "description": "Cilium's k8sServicePort, paired with k8s_service_host. Default \"7445\" (the KubePrism port). A decimal TCP port as a STRING, which is the shape the module emits into the chart. The pattern mirrors BOTH of the module's port guards — digit shape and the 1-65535 range — so a port the module rejects at plan time is rejected at lint time too.",
@@ -328,13 +328,13 @@
                   "description": "Repo-root-relative path you commit the cilium_self_management_values output to. No leading \"/\" and no \"..\" segment.",
                   "type": "string",
                   "pattern": "^[A-Za-z0-9._-][A-Za-z0-9._/-]*$",
-                  "not": { "pattern": "(^|/)\\.\\.($|/)" }
+                  "not": { "pattern": "(^|/)\\.{1,2}($|/)|//" }
                 },
                 "override_path": {
                   "description": "Repo-root-relative path you commit your values_override document to. Required when values_override is non-empty. The module never writes this file. It is read as a PLAIN Helm values document: Argo CD applies no decryption to a Helm valueFiles source, so a SOPS-encrypted file does not work here without a config-management plugin this base neither ships nor configures. Key material committed at this path is plaintext in git unless you have built that path yourself.",
                   "type": "string",
                   "pattern": "^[A-Za-z0-9._-][A-Za-z0-9._/-]*$",
-                  "not": { "pattern": "(^|/)\\.\\.($|/)" }
+                  "not": { "pattern": "(^|/)\\.{1,2}($|/)|//" }
                 }
               }
             }

@@ -258,14 +258,29 @@ becomes orphaned; delete it after the downgrade, not before.
 
 An arbitrary-depth consumer document now reaches the reconciled CNI, and ArgoCD
 itself runs over the datapath Cilium provides, so a bad sync can leave the
-GitOps engine unable to reconcile the fix. Recover out of band:
+GitOps engine unable to reconcile the fix. This is the one exception in
+`AGENTS.md` §Hard Constraints that lets an operator apply an ArgoCD-managed
+resource by hand — bounded to restoring service, and not the end state.
+
+Nothing else restores it for you: Talos' inline-manifest controller only
+CREATES missing resources and never updates or deletes, so the frozen seed does
+not heal a broken Cilium, and ArgoCD's own disaster-recovery documentation
+covers only `argocd admin export`/`import` of its CRDs — not a down datapath.
 
 1. Revert the offending commit in your values or override file. If ArgoCD can
    still sync, that is the whole procedure.
-2. If it cannot, apply the chart directly against the API server, which is
-   host-network and unaffected by ClusterIP loss. **This is a deliberate
-   break-glass exception to `AGENTS.md` §Hard Constraints ("NEVER `kubectl
-   apply` ArgoCD-managed resources"), scoped to a datapath outage.**
+2. **If you added a `syncPolicy`, disable automated sync and self-heal first.**
+   The emitted `Application` deliberately carries none, so by default nothing
+   fights a hand-apply; with self-heal on, ArgoCD reverts your recovery to the
+   Git-declared state — the broken one — as soon as it can reconcile again.
+
+   ```sh
+   kubectl -n argocd patch application cilium --type=merge \
+     -p '{"spec":{"syncPolicy":{"automated":null}}}'
+   ```
+
+3. Apply the chart directly against the API server, which is host-network and
+   unaffected by ClusterIP loss.
 
    ```sh
    helm repo add cilium https://helm.cilium.io && helm repo update
@@ -284,14 +299,27 @@ GitOps engine unable to reconcile the fix. Recover out of band:
    `--set` after every `--values`, which mirrors that position. Omitting them
    re-applies the outage by hand.
 
-3. Once the datapath is back, land the fix in git and sync the `Application`.
-   The hand-applied state is NOT reconciled — the next sync replaces it, and
-   because there is no `syncPolicy` that sync is operator-timed and easy to
-   forget.
+4. Once the datapath is back, **land the same fix in git and sync the
+   `Application`** — this step is not optional, it is the condition the
+   exception is granted under. The hand-applied state is NOT reconciled; the
+   next sync replaces it, and because there is no `syncPolicy` that sync is
+   operator-timed and easy to forget. Re-enable any automated sync you disabled
+   in step 2 only after git and the cluster agree.
 
-4. Do NOT expect the frozen seed to restore the previous values on reboot —
-   `inlineManifests` are create-only and the render resource carries
-   `ignore_changes`.
+5. Do NOT expect the frozen seed to restore the previous values on reboot —
+   `inlineManifests` are create-only, the render resource carries
+   `ignore_changes`, and Talos' controller never updates a manifest it already
+   created.
+
+6. If you reach this procedure twice for the same cause, the fix belongs
+   upstream of it — in the values you commit, or in a review gate on them — not
+   in a faster break-glass.
+
+**One residual, named rather than solved.** `kubectl apply` takes field
+ownership under Server-Side Apply, and how ArgoCD's own field manager resolves
+that on the next reconcile is not something this repository has measured. Expect
+the adopting sync to report differences and possibly restart the agent, the same
+seed-to-GitOps takeover behaviour §3 describes.
 
 ### Validation steps after upgrade
 

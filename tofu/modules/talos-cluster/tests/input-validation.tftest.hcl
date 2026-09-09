@@ -2403,14 +2403,18 @@ run "values_source_accepts_an_ssh_scheme_repo_url" {
     deploy_cilium                  = true
     cilium_self_management_project = "platform-substrate"
     cilium_self_management_values_source = {
-      repo_url    = "ssh://git.example.com/consumer/cluster.git"
+      # The DOCUMENTED ssh form, username and all — the shape the first draft of
+      # this allowlist rejected because it excluded every "@", while the README
+      # and the variable's own error message named it as valid. A leg using a
+      # userless ssh:// URL passed and hid that.
+      repo_url    = "ssh://git@git.example.com:2222/consumer/cluster.git"
       revision    = "v1.2.3"
       values_path = "cilium/module-values.yaml"
     }
   }
   assert {
-    condition     = yamldecode(output.cilium_self_management_app).spec.sources[0].repoURL == "ssh://git.example.com/consumer/cluster.git"
-    error_message = "allowlist negative space: an ssh:// git remote must plan cleanly and reach sources[0].repoURL verbatim"
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[0].repoURL == "ssh://git@git.example.com:2222/consumer/cluster.git"
+    error_message = "allowlist negative space: the documented ssh://user@host:port/path git remote must plan cleanly and reach sources[0].repoURL verbatim"
   }
 }
 
@@ -2463,17 +2467,87 @@ run "k8s_service_port_rejects_zero" {
   expect_failures = [var.cilium_k8s_service_port]
 }
 
-# Positive control for the host guard's bracketed-IPv6 branch: the "[" and "]"
-# in the character class are otherwise unexercised in either direction, so a
-# future tightening could reject a legitimate IPv6 endpoint silently.
-run "k8s_service_host_accepts_a_bracketed_ipv6_literal" {
+# Positive control for the host guard's IPv6 branch, UNBRACKETED. The bracketed
+# spelling is the broken one and has its own rejection leg below: the chart puts
+# this value in KUBERNETES_SERVICE_HOST and client-go joins it with the port via
+# net.JoinHostPort, which brackets a colon-bearing host again — so a bracketed
+# input reaches the API server as "[[2001:db8::1]]:6443". Both directions need a
+# leg, or the guard could be "fixed" back to the broken form silently.
+run "k8s_service_host_accepts_a_bare_ipv6_literal" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "2001:db8::1"
+  }
+  assert {
+    condition     = output.cilium_joint_keys.k8sServiceHost == "2001:db8::1"
+    error_message = "host guard negative space: an unbracketed IPv6 literal is the form client-go expects and must plan cleanly, reaching the joint keys verbatim"
+  }
+}
+
+run "k8s_service_host_rejects_a_bracketed_ipv6_literal" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }
   variables {
     cilium_k8s_service_host = "[2001:db8::1]"
   }
-  assert {
-    condition     = output.cilium_joint_keys.k8sServiceHost == "[2001:db8::1]"
-    error_message = "host guard negative space: a bracketed IPv6 literal is a legitimate API-server endpoint and must plan cleanly"
+  expect_failures = [var.cilium_k8s_service_host]
+}
+
+# The two-colon floor: this is what keeps a "host:port" pair whose halves happen
+# to be hex out of the IPv6 branch. One colon is never an IPv6 literal.
+run "k8s_service_host_rejects_a_hex_host_port_pair" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "abc:6443"
   }
+  expect_failures = [var.cilium_k8s_service_host]
+}
+
+# An SSH username is not secret material and is the documented form; a PASSWORD
+# is. Both halves need their own leg, or the split between them is untested.
+run "values_source_rejects_a_password_in_an_ssh_repo_url" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management_values_source = {
+      repo_url    = "ssh://git:hunter2@git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "cilium/module-values.yaml"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+# Distinctness cannot be spelled around. "./x" and "x" name ONE file, and the
+# consequence is the destructive one the distinctness guard exists to stop: the
+# module-set layer overwrites the consumer's override, with the emptied-override
+# check silent (the override variable is still non-empty) and the values-digest
+# pair still matching (the digest covers the module-set layer only).
+run "values_source_rejects_a_non_normalized_path_segment" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management_values_source = {
+      repo_url      = "https://git.example.com/consumer/cluster.git"
+      revision      = "v1.2.3"
+      values_path   = "cilium/values.yaml"
+      override_path = "./cilium/values.yaml"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+run "values_source_rejects_a_doubled_path_separator" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management_values_source = {
+      repo_url    = "https://git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "cilium//module-values.yaml"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
 }

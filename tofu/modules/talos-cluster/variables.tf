@@ -791,6 +791,9 @@ variable "cilium_k8s_service_host" {
     cilium_kube_proxy_replacement = true (with kube-proxy present Cilium reaches
     the API server through the ClusterIP kube-proxy provides).
 
+    An IPv6 endpoint goes in UNBRACKETED ("2001:db8::1") — client-go joins this
+    value with the port through net.JoinHostPort, which brackets it itself.
+
     Install-time-fixed on the seed; reaches an already-bootstrapped cluster only
     through cilium_self_management. An endpoint that does not exist until the CNI
     is up deadlocks a fresh bootstrap — the reason this is a typed input rather
@@ -812,13 +815,30 @@ variable "cilium_k8s_service_host" {
   # create-only machine config, so a malformed host is a bootstrap deadlock that no
   # later apply repairs. A host is a DNS name or an IP literal: no whitespace, no
   # ":" (the port is its own input), non-empty.
-  # Two accepted shapes, as an alternation rather than one permissive class: a
-  # bare DNS name or IPv4 literal (no ":" at all, so "host:port" is rejected —
-  # the port is its own input), or a BRACKETED IPv6 literal, where ":" is part of
-  # the address and the brackets are what disambiguate it from a host:port pair.
+  # Two accepted shapes, as an alternation rather than one permissive class:
+  #
+  #   (1) a DNS name or IPv4 literal — no ":" at all, so "host:port" is rejected
+  #       (the port is its own input);
+  #   (2) an UNBRACKETED IPv6 literal: hex groups and ":" only, at least two
+  #       colons. Bracketing it is REJECTED, and that direction is measured
+  #       rather than stylistic. The chart puts this value in
+  #       KUBERNETES_SERVICE_HOST, and client-go's rest.InClusterConfig() builds
+  #       the API-server URL as net.JoinHostPort(<that env var>, <the port env
+  #       var>) — JoinHostPort brackets any host containing a colon and does not
+  #       special-case one that is already bracketed, so "[2001:db8::1]" reaches
+  #       the API server as "[[2001:db8::1]]:6443", which does not parse. Bare is
+  #       also the form kubelet itself injects for a ClusterIP. The two-colon
+  #       floor separates a literal from a "host:port" pair whose halves happen
+  #       to be hex ("abc:6443").
+  #
+  # A zone index ("fe80::1%eth0") is out: link-local is not an endpoint a whole
+  # cluster shares.
   validation {
-    condition     = can(regex("^([a-zA-Z0-9._-]+|\\[[0-9a-fA-F:.]+\\])$", var.cilium_k8s_service_host))
-    error_message = "cilium_k8s_service_host must be a bare host — a DNS name, an IPv4 literal, or a BRACKETED IPv6 literal such as \"[2001:db8::1]\" — with no whitespace, no scheme and no \":port\" (use cilium_k8s_service_port)."
+    condition = can(regex("^[a-zA-Z0-9._-]+$", var.cilium_k8s_service_host)) || (
+      can(regex("^[0-9a-fA-F:]+$", var.cilium_k8s_service_host)) &&
+      length(split(":", var.cilium_k8s_service_host)) >= 3
+    )
+    error_message = "cilium_k8s_service_host must be a bare host — a DNS name, an IPv4 literal, or an UNBRACKETED IPv6 literal such as \"2001:db8::1\" — with no whitespace, no scheme, no brackets and no \":port\" (use cilium_k8s_service_port). Brackets are rejected on purpose: the chart passes this value to KUBERNETES_SERVICE_HOST, and client-go joins host and port with net.JoinHostPort, which brackets a colon-bearing host again — \"[2001:db8::1]\" would reach the API server as \"[[2001:db8::1]]:6443\"."
   }
 }
 
@@ -1322,9 +1342,14 @@ variable "cilium_self_management_values_source" {
       for p in compact([
         try(var.cilium_self_management_values_source.values_path, ""),
         try(var.cilium_self_management_values_source.override_path, ""),
-      ]) : can(regex("^[A-Za-z0-9._/-]+$", p))
+        ]) : can(regex("^[A-Za-z0-9._/-]+$", p)) && alltrue([
+        # No empty or "." segment either: those are not a character-set question
+        # but the same one — a non-normalized spelling. ".." is the traversal
+        # block's below, so it is not re-checked here.
+        for seg in split("/", p) : seg != "" && seg != "."
+      ])
     ])
-    error_message = "cilium_self_management_values_source paths must contain only letters, digits, dot, underscore, dash and \"/\" — they are interpolated into an emitted Helm values document's header and into a $values/<path> reference, where whitespace or a newline injects a top-level values key."
+    error_message = "cilium_self_management_values_source paths must be normalized repo-relative paths: only letters, digits, dot, underscore, dash and \"/\", and no empty or \".\" segment. Whitespace or a newline injects a top-level values key into the emitted Helm values document's header, and a non-normalized spelling (\"./cilium/values.yaml\") would let two paths naming ONE file pass the distinctness guard below."
   }
 
   validation {
@@ -1347,10 +1372,10 @@ variable "cilium_self_management_values_source" {
   # "cilium_self_management_values_source_on_permissive_project").
   validation {
     condition = var.cilium_self_management_values_source == null || can(regex(
-      "^(https://[^@[:space:]]+|ssh://[^@[:space:]]+|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^[:space:]]+)$",
+      "^(https://[^@[:space:]]+|ssh://([A-Za-z0-9._-]+@)?[^@:[:space:]]+(:[0-9]+)?/[^@[:space:]]*|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^@[:space:]]+)$",
       try(var.cilium_self_management_values_source.repo_url, ""),
     ))
-    error_message = "cilium_self_management_values_source.repo_url must be a git remote ArgoCD can resolve — \"https://host/org/repo.git\", \"ssh://git@host/org/repo.git\" or \"git@host:org/repo.git\" — and must carry no embedded credentials (no \"https://user:token@host\"): ArgoCD repository credentials belong in the repository registration, not in a manifest committed to git."
+    error_message = "cilium_self_management_values_source.repo_url must be a git remote ArgoCD can resolve — \"https://host/org/repo.git\", \"ssh://git@host[:port]/org/repo.git\" or \"git@host:org/repo.git\" — and must carry no embedded PASSWORD (no \"https://user:token@host\", no \"ssh://user:pass@host\"): ArgoCD repository credentials belong in the repository registration, not in a manifest committed to git. An SSH USERNAME is fine, and is the documented form."
   }
 
   # Distinctness. The two paths address two DIFFERENT layers of the same Helm

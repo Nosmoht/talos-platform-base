@@ -133,6 +133,7 @@ substrate:
     routing_mode: tunnel # tunnel | native (native needs native_routing_cidr or pod_cidr)
     kube_proxy_replacement: true # Cilium replaces kube-proxy (Talos cluster.proxy.disabled)
     # k8s_service_host / k8s_service_port: OMITTED ON PURPOSE — omitting them
+    # (an IPv6 endpoint goes in UNBRACKETED: "2001:db8::1", not "[2001:db8::1]")
     # takes Talos KubePrism (localhost:7445), which is what Talos' own Cilium
     # guide documents. Set them only on a cluster where KubePrism is not the
     # endpoint Cilium should reach the API server through before the CNI is up
@@ -171,7 +172,8 @@ substrate:
     # You then commit TWO artifacts and keep them in step — the module's
     # cilium_self_management_values output at values_path, and your own
     # values_override document at override_path. repo_url and revision default to
-    # this file's repo.url and cluster.target_revision. The two paths must differ.
+    # this file's repo.url and cluster.target_revision. The two paths must differ
+    # and must be normalized (no "./", no "..", no doubled "/").
     #
     # SCOPE self_management_project above before using this: the Application then
     # names a values repo of its own, and the "default" AppProject accepts every
