@@ -83,6 +83,8 @@ module "complete" {
   cilium_routing_mode            = try(local.cilium.routing_mode, "tunnel")
   cilium_native_routing_cidr     = try(local.cilium.native_routing_cidr, "")
   cilium_kube_proxy_replacement  = try(local.cilium.kube_proxy_replacement, true)
+  cilium_k8s_service_host        = try(local.cilium.k8s_service_host, null) # null = take the module default (Talos KubePrism)
+  cilium_k8s_service_port        = try(local.cilium.k8s_service_port, null) # null = take the module default (KubePrism 7445)
   cilium_mtu                     = try(local.cilium.mtu, 0)
   cilium_gateway_api             = try(local.cilium.gateway_api, true)
   cilium_gateway_api_crds_url    = try(local.cilium.gateway_api_crds_url, "")
@@ -98,6 +100,19 @@ module "complete" {
   cilium_hubble_open_metrics     = try(local.cilium.hubble_open_metrics, false)
   cilium_self_management         = try(local.cilium.self_management, false)
   cilium_self_management_project = try(local.cilium.self_management_project, "default")
+
+  # The Day-2 values source. repo_url and revision DEFAULT to the SoT's own
+  # bootstrap identity (cluster.yaml repo.url / cluster.target_revision) rather
+  # than being declared a second time in substrate.cilium — two authoritative
+  # spellings of one fact in one file diverge silently, and this is the layer
+  # whose job is mapping the SoT onto the typed interface. A consumer whose
+  # values live elsewhere still overrides either key explicitly.
+  cilium_self_management_values_source = try(local.cilium.self_management_values_source, null) == null ? null : {
+    repo_url      = try(local.cilium.self_management_values_source.repo_url, try(local.cfg.repo.url, ""))
+    revision      = try(local.cilium.self_management_values_source.revision, try(local.cfg.cluster.target_revision, ""))
+    values_path   = try(local.cilium.self_management_values_source.values_path, "")
+    override_path = try(local.cilium.self_management_values_source.override_path, "")
+  }
 
   # --- Substrate: ArgoCD ---
   deploy_argocd          = try(local.argocd.enabled, true)

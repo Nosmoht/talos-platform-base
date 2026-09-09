@@ -93,3 +93,25 @@ output "first_controlplane_ip" {
 output "register_with_fqdn_patch" {
   value = local.register_with_fqdn_patch
 }
+
+# Mirrors the real module's output of the same name (outputs.tf). Fixture-side
+# mirroring is MANDATORY for anything the offline suite asserts on: this file is
+# a real file, not a symlink of the module's outputs.tf, so a new module output
+# is otherwise unreachable from tests/input-validation.tftest.hcl. The real
+# output carries the arm-binding precondition; this one is the value only.
+output "cilium_self_management_values" {
+  value = local.cilium_self_management_values_file
+}
+
+# The adr-0028 §(d) joint keys as re-asserted into the multi-source Application's
+# last values layer. Exposed separately so the re-assertion is bindable offline
+# without parsing the emitted manifest.
+output "cilium_joint_keys" {
+  value = local.cilium_joint_keys
+}
+
+# Mirrors the real module's output of the same name, so the declassified digest
+# is bindable offline (a sensitive input must not leak into an assertion).
+output "cilium_values_override_digest" {
+  value = local.cilium_values_override_digest
+}

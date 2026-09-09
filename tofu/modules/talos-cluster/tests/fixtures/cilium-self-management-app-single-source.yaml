@@ -1,0 +1,85 @@
+# GOLDEN — the SINGLE-SOURCE emitted Cilium Application, byte for byte.
+#
+# Why it exists: the values-source input of issue #265 makes the module emit two
+# different manifest schemas, and the compatibility promise of that MAJOR release
+# is that leaving the input unset keeps the emitted document unchanged. Presence
+# and absence assertions cannot carry that promise — a field added, renamed or
+# reordered anywhere else satisfies every one of them.
+#
+# PROVENANCE: captured by rendering this fixture module at the commit BEFORE the
+# values-source change (git worktree at that commit, `tofu output -raw
+# cilium_self_management_app`) with the input set the binding run uses, and the
+# post-change tree reproduces it byte for byte. So this file is evidence about
+# the previous release, not a snapshot of the change's own output.
+#
+# Input set (tests/input-validation.tftest.hcl, run
+# "cilium_self_management_single_source_arm_is_unchanged"): the file's global
+# variables block plus cilium_self_management / deploy_argocd / deploy_cilium
+# true and NO cilium_self_management_values_source. Everything else is a module
+# default, so a changed default moves this file — which is the point.
+#
+# When it fails: a byte moved. Decide DELIBERATELY whether that is a
+# consumer-visible manifest change (then it belongs in CHANGELOG/UPGRADING and
+# the next MAJOR) before refreshing the fixture. Do not regenerate it to get
+# green — the same rule as tests/fixtures/cilium-config-keys.txt.
+"apiVersion": "argoproj.io/v1alpha1"
+"kind": "Application"
+"metadata":
+  "labels":
+    "app.kubernetes.io/component": "cni"
+    "app.kubernetes.io/instance": "cilium"
+    "app.kubernetes.io/managed-by": "argocd"
+    "app.kubernetes.io/name": "cilium"
+    "app.kubernetes.io/part-of": "talos-platform-base"
+    "app.kubernetes.io/version": "1.20.0"
+  "name": "cilium"
+  "namespace": "argocd"
+"spec":
+  "destination":
+    "namespace": "kube-system"
+    "server": "https://kubernetes.default.svc"
+  "project": "default"
+  "source":
+    "chart": "cilium"
+    "helm":
+      "valuesObject":
+        "cgroup":
+          "autoMount":
+            "enabled": false
+          "hostRoot": "/sys/fs/cgroup"
+        "cni":
+          "exclusive": false
+        "gatewayAPI":
+          "enableAppProtocol": true
+          "enabled": true
+        "hubble":
+          "enabled": false
+        "ipam":
+          "mode": "kubernetes"
+        "k8sServiceHost": "localhost"
+        "k8sServicePort": "7445"
+        "kubeProxyReplacement": true
+        "operator":
+          "replicas": 1
+        "routingMode": "tunnel"
+        "securityContext":
+          "capabilities":
+            "ciliumAgent":
+            - "CHOWN"
+            - "KILL"
+            - "NET_ADMIN"
+            - "NET_RAW"
+            - "NET_BIND_SERVICE"
+            - "IPC_LOCK"
+            - "SYS_ADMIN"
+            - "SYS_RESOURCE"
+            - "DAC_OVERRIDE"
+            - "FOWNER"
+            - "SETGID"
+            - "SETUID"
+            "cleanCiliumState":
+            - "NET_ADMIN"
+            - "SYS_ADMIN"
+            - "SYS_RESOURCE"
+    "repoURL": "https://helm.cilium.io"
+    "targetRevision": "1.20.0"

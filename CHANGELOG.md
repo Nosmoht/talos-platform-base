@@ -10,6 +10,90 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Changed (BREAKING, MAJOR) — `cilium_values_override` reaches Day-2, and the
+  API-server endpoint moves to typed inputs.** The override reached exactly one
+  place, the create-only bootstrap seed, and enabling `cilium_self_management`
+  alongside a non-empty override was a hard plan-time rejection — so the long
+  tail the override exists to carry (Hubble beyond the typed inputs, L2/BGP
+  announcements, bpf tuning, `secretsNamespaceLabels`) had no base-delivered
+  route into a running cluster. It now reaches the emitted self-management
+  `Application` as the LAST of two ordered `valueFiles` entries, so **Helm**
+  performs the merge and the consumer's layer wins at arbitrary depth. That
+  shape requires a Multi-Source `Application`: verified against Argo CD
+  `v3.5.2`, `valuesObject` is applied after every `valueFiles` entry, but
+  `$values/<path>` resolves ONLY through a sibling `spec.sources[]` entry
+  carrying `ref`, so a single-source chart `Application` cannot address a
+  consumer-committed file at all.
+  **What every consumer must check:** `substrate.cilium.values_override` is now
+  rejected when it names `kubeProxyReplacement`, `k8sServiceHost` or
+  `k8sServicePort` — each has a Talos-side half the module writes, and setting
+  one half alone leaves a cluster with no ClusterIP datapath and no cluster DNS.
+  The replacement is three typed keys, two of them new:
+  `kube_proxy_replacement`, `k8s_service_host` and `k8s_service_port`
+  (defaulting to Talos KubePrism `localhost` / `"7445"`), which set both halves
+  together — closing #227, whose typed-input request this answers rather than
+  dismisses. The override is also rejected when it does not decode to a YAML
+  mapping, and it is now `sensitive`: `tofu plan` no longer shows its diff.
+  **Opt-in, and unchanged if you do not opt in:** leaving the new
+  `substrate.cilium.self_management_values_source` unset keeps the emitted
+  single-source `Application` byte-identical. Setting it switches the manifest
+  to `spec.sources` and adds a second deliverable — the
+  `cilium_self_management_values` output, the module-set values layer, which the
+  consumer commits at `values_path` while authoring their override at
+  `override_path`. The two artifacts are committed independently and Argo CD
+  compares neither, so the `Application` carries a
+  `talos-platform-base.io/values-digest` annotation matching the values file's
+  own header; `UPGRADING.md` prescribes writing both through `local_file` so a
+  forgotten re-commit is a dirty tree rather than silent drift.
+  **What the module still guarantees:** the three joint keys are re-asserted in
+  the emitted `valuesObject`, applied after both `valueFiles`, so a missing or
+  stale values file cannot strand a running cluster without the kube-proxy
+  replacement while Talos already carries `cluster.proxy.disabled` — the one
+  failure here a create-only seed cannot repair. `ignoreMissingValueFiles` is
+  explicitly `false` in the manifest so a wrong path is a loud sync error.
+  **Scope the `AppProject` before you adopt this arm.** The multi-source
+  manifest names a values repo of its own, and `spec.project` is what bounds
+  which repos it may read — the `default` project carries `sourceRepos: ['*']`,
+  so a one-line `repo_url` edit could otherwise point the privileged,
+  host-networked `cilium` DaemonSet's Helm values at any repository. The module
+  now **warns at plan time** when a values source is configured while
+  `self_management_project` is still `default`, and `repo_url` is constrained to
+  the git remote forms Argo CD resolves (`https://`, `ssh://`, `git@host:path`)
+  with no embedded credentials. A scoped project must list BOTH repositories in
+  `sourceRepos`, or the adopted `Application` goes degraded. `values_path` and
+  `override_path` must also differ — one path for both silently overwrites the
+  override with the module-set layer.
+  **The override file is not confidential.** Argo CD reads it as a plain Helm
+  values document and applies no decryption to a Helm `valueFiles` source, so
+  SOPS does not apply there without a config-management plugin this base neither
+  ships nor configures. Key material at `override_path` is plaintext in git
+  until you build that path yourself.
+  **Known limits, stated rather than mitigated:** the joint-key guard is a
+  footgun guard and not a boundary (the chart's own `extraConfig` passthrough
+  and a caller `config_patches` entry reach the same state around it), and it
+  covers the `values_override` INPUT — naming one of the three keys in the
+  override FILE is silently overruled by the re-assertion, which the generated
+  values document's header discloses; the merge order the re-assertion relies on
+  was read from the Argo CD `v3.5.2` repo-server and is an implementation detail
+  rather than an API guarantee, while `argocd_chart_version` is a create-only
+  seed knob — so read your running repo-server version before adopting;
+  a stale values file loses the module's tunables recoverably, but an EMPTY or
+  truncated one also drops the shipped floor's `ipam.mode: kubernetes` and
+  `cni.exclusive: false`, whose chart defaults are `cluster-pool` IPAM and
+  exclusive CNI on a running cluster; the values-digest rotates on the node
+  count and the pod CIDR, not only on `substrate.cilium`; and the seed and the
+  reconciled `Application` may now hold different override content
+  indefinitely, over a live re-capture behaviour this repository records as
+  UNVERIFIED.
+  `UPGRADING.md` carries the migration, the rollback in both directions
+  (including that an older base tag re-arms the old reject), and the break-glass
+  path for a sync that breaks the datapath Argo CD itself runs over.
+  Decision:
+  [`knowledge/decisions/0028-consumer-free-helm-value-surface.md`](knowledge/decisions/0028-consumer-free-helm-value-surface.md)
+  §(b)/§(d), superseding
+  [`knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md`](knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md)
+  §(c)/§(f).
+
 - **Changed (BREAKING, MAJOR) — the `siderolabs/talos` provider is pinned
   exactly to the prerelease `0.12.0-beta.0`, which every consumer inherits.**
   The module's `>= 0.7.0, < 1.0.0` range resolved to `0.11.0`, whose bundled

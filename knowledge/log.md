@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-09-09
+
+- `decisions/0028-consumer-free-helm-value-surface.md`: addendum corrected after
+  review — the joint-key re-assertion is sound for the override INPUT and only a
+  precedence over the override FILE the module never reads; the "put the file
+  behind your own SOPS gate" framing is retracted (Argo CD decrypts no Helm
+  `valueFiles` source), so §(g) stays open on this arm; the losable set names the
+  Talos floor invariants (`ipam.mode`, `cni.exclusive`) rather than tunables
+  alone; and the values-digest's two limits are recorded — it rotates on the node
+  count and pod CIDR, and it compares working-tree artifacts while Argo CD renders
+  the pinned revision.
+- `decisions/0028-consumer-free-helm-value-surface.md`: addendum recording what
+  building the Cilium half changed — §(b)'s candidate shape needs a MULTI-SOURCE
+  Application because `$values/` resolves only through a sibling `ref` source;
+  the override rides in a `valueFiles` entry rather than `valuesObject`, and the
+  input is now `sensitive`, which answers §(g); §(d)'s "costs no capability" was
+  false for `k8sServiceHost`/`k8sServicePort`, so typed inputs ship with the
+  guard and #227 is closed by shipping rather than reframed; §(d) is a footgun
+  guard and not a boundary (`extraConfig`, caller `config_patches`); §(f)'s
+  two-engine-drift obligation grew rather than staying unchanged; and the joint
+  keys are re-asserted as the last values layer against a stale committed values
+  file.
+- `reference/helm-values-surface.md`: the ADR-0022 §(c) supersession note now
+  quotes §(c)'s actual objection instead of narrowing it to an HCL-side merge —
+  the lost plan-time visibility is accepted as a recorded cost, with the git diff,
+  the values-digest and `cilium_values_override_digest` named as the compensations.
+- `reference/helm-values-surface.md`: §2 rewritten — the Cilium Day-2 gap is
+  CLOSED, opt-in, with the Argo CD `v3.5.2` source readings that decided the
+  shape and the stale-values-file hazard the re-assertion covers. Path E's row,
+  the reachability matrix, the ADR-0022 citations (now marked superseded by
+  ADR-0028) and the "what works today" list follow.
+
 ## 2026-09-06
 
 - `reference/helm-values-surface.md`: new concept — the five ArgoCD/Cilium

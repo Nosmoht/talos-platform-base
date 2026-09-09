@@ -1367,23 +1367,12 @@ run "cilium_self_management_guard_leg_b_requires_cilium" {
   expect_failures = [var.cilium_self_management]
 }
 
-# AC #3 guard leg C — the override-drop hard-reject guard. deploy_argocd AND
-# deploy_cilium are kept explicitly TRUE (builder-addenda.md item 5) so this
-# leg is isolated to the SECOND validation block (override-drop), not the
-# deploy-prereq one legs A/B already bind. Red-green: deleting the
-# override-drop validation block turns this run's expect_failures into
-# "Missing expected failure" while legs A/B stay green.
-run "cilium_self_management_guard_leg_c_rejects_override" {
-  command = plan
-  module { source = "./tests/fixtures/colliding-catalog" }
-  variables {
-    cilium_self_management = true
-    deploy_argocd          = true
-    deploy_cilium          = true
-    cilium_values_override = "bgpControlPlane:\n  enabled: true\n"
-  }
-  expect_failures = [var.cilium_self_management]
-}
+# Leg C moved: the override-drop hard reject it used to bind was replaced by a
+# values-source REQUIREMENT in issue #265, and its single leg now lives with the
+# other values-source legs below as
+# `cilium_self_management_guard_leg_c_requires_values_source`. One leg per
+# predicate — a second copy under the retired framing would misdirect a reader
+# mapping legs to guards.
 
 # Negative-space positive control (builder-addenda.md item 1, HARD-REQUIRED).
 # An override-only consumer who never touches self-management must NOT be
@@ -1403,6 +1392,592 @@ run "cilium_self_management_off_with_override_set_plans_clean" {
     condition     = output.cilium_self_management_app == ""
     error_message = "negative-space: an override-only consumer (self_management=false) must plan cleanly with an empty emitted app, never rejected by the override-drop guard"
   }
+}
+
+# --- Day-2 override delivery: the multi-source arm (issue #265) --------------
+#
+# adr-0028 §(b). The override reaches the emitted Application as a LATER Helm
+# values layer than floor ⊕ computed, and the ordering lives in the valueFiles
+# LIST — module-set layer first, consumer override second, so Helm's later-wins
+# merge gives the consumer precedence at arbitrary depth.
+#
+# Verified against ArgoCD v3.5.2 before this shape was built: `$values/...`
+# resolves ONLY through a sibling spec.sources[] entry carrying `ref`
+# (util/argo/argo.go GetRefSources), which is why a single-source chart
+# Application cannot address a consumer-committed file at all.
+#
+# Red-green: revert cilium-values.tf's cilium_self_management_spec to the
+# single-source-only form and every assert in this run fails at the first
+# spec.sources index.
+run "cilium_self_management_multi_source_carries_the_override" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management = true
+    deploy_argocd          = true
+    deploy_cilium          = true
+    cilium_values_override = "bgpControlPlane:\n  enabled: true\n"
+    # Scoped project: the multi-source arm names a values repo of its own, so the
+    # permissive "default" AppProject warns (check
+    # cilium_self_management_values_source_on_permissive_project, bound by its own
+    # leg below). Every leg here that must plan CLEAN therefore scopes it.
+    cilium_self_management_project = "platform-substrate"
+    cilium_self_management_values_source = {
+      repo_url      = "https://git.example.com/consumer/cluster.git"
+      revision      = "v1.2.3"
+      values_path   = "cilium/module-values.yaml"
+      override_path = "cilium/override.yaml"
+    }
+  }
+
+  assert {
+    condition     = !contains(keys(yamldecode(output.cilium_self_management_app).spec), "source")
+    error_message = "multi-source: spec must carry sources[], never the singular source — ArgoCD treats the two as mutually exclusive"
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[0].ref == "values"
+    error_message = "multi-source: sources[0] must be the ref source named \"values\" — $values/... resolves through nothing else"
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[0].repoURL == "https://git.example.com/consumer/cluster.git"
+    error_message = "multi-source: sources[0].repoURL must be the values source's repo_url"
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[0].targetRevision == "v1.2.3"
+    error_message = "multi-source: sources[0].targetRevision must be the values source's revision, so the values half is pinned like the chart half"
+  }
+  assert {
+    condition     = !contains(keys(yamldecode(output.cilium_self_management_app).spec.sources[0]), "chart")
+    error_message = "multi-source: sources[0] is ref-only and must declare no chart (it generates no manifests)"
+  }
+
+  # THE acceptance assertion for issue #265: the override is present, and it is
+  # LAST. Asserting the whole list rather than membership binds the ORDER, which
+  # is the entire precedence mechanism — a reversed list plans identically and
+  # silently loses the override.
+  assert {
+    condition = yamldecode(output.cilium_self_management_app).spec.sources[1].helm.valueFiles == [
+      "$values/cilium/module-values.yaml",
+      "$values/cilium/override.yaml",
+    ]
+    error_message = "multi-source: sources[1].helm.valueFiles must be [module-set layer, consumer override] IN THAT ORDER — the order is the precedence, and reversing it silently drops the override"
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[1].helm.ignoreMissingValueFiles == false
+    error_message = "multi-source: ignoreMissingValueFiles must be explicitly false — it is the switch that turns a wrong values path from a loud sync error into a silent render against chart defaults"
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[1].chart == "cilium"
+    error_message = "multi-source: sources[1] must be the Cilium chart source"
+  }
+
+  # Joint-key re-assertion (adr-0028 §(d)). These three keys live nowhere but the
+  # module-set layer, which on this arm is a file the consumer may commit stale
+  # or not at all; re-asserting them in valuesObject — the last layer — is what
+  # keeps a missing file from stranding the cluster with no kube-proxy
+  # replacement while Talos already carries cluster.proxy.disabled.
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[1].helm.valuesObject.kubeProxyReplacement == true
+    error_message = "multi-source: valuesObject must re-assert kubeProxyReplacement as the last values layer"
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[1].helm.valuesObject.k8sServiceHost == "localhost"
+    error_message = "multi-source: valuesObject must re-assert k8sServiceHost as the last values layer"
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[1].helm.valuesObject.k8sServicePort == "7445"
+    error_message = "multi-source: valuesObject must re-assert k8sServicePort as the last values layer"
+  }
+  # The override must NOT be in valuesObject: that slot is applied after the
+  # valueFiles, so an override placed there would beat the joint-key
+  # re-assertion — and it would put consumer secret material into a manifest the
+  # module emits, which is why var.cilium_values_override is sensitive.
+  # The KEY SET, not memberships: `valuesObject = merge(cilium_effective_values,
+  # cilium_joint_keys)` satisfies every membership assertion above while beating
+  # the consumer's valueFiles override on every module-set key — the exact failure
+  # this change exists to prevent. The spec says "the joint keys and nothing else".
+  assert {
+    condition     = join(",", sort(keys(yamldecode(output.cilium_self_management_app).spec.sources[1].helm.valuesObject))) == "k8sServiceHost,k8sServicePort,kubeProxyReplacement"
+    error_message = "multi-source: valuesObject must carry the three joint keys AND NOTHING ELSE — it is applied after every valueFiles entry, so any additional key there silently beats the consumer's override"
+  }
+
+  # The module-set layer as the consumer commits it, and the digest that is the
+  # only mechanical link between the two independently-committed artifacts.
+  assert {
+    condition     = yamldecode(output.cilium_self_management_values).cni.exclusive == false
+    error_message = "multi-source: cilium_self_management_values must carry the shipped floor (cni.exclusive=false) — it is the module-set layer the Application's first valueFiles entry reads"
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_values).kubeProxyReplacement == true
+    error_message = "multi-source: cilium_self_management_values must carry the computed layer too, not the floor alone"
+  }
+  assert {
+    condition     = regex("values-digest: ([0-9a-f]{64})", output.cilium_self_management_values)[0] == yamldecode(output.cilium_self_management_app).metadata.annotations["talos-platform-base.io/values-digest"]
+    error_message = "multi-source: the values file's header digest must equal the Application's talos-platform-base.io/values-digest annotation — it is the only thing a consumer-side gate can compare to catch a stale values file"
+  }
+  # …and the digest is bound to its SUBJECT. The assertion above compares two
+  # readings of the same local, so it stays green if the digest is computed over
+  # the wrong content (or over a constant) — and a digest that does not move when
+  # the module-set layer moves detects no stale file at all, which is the whole
+  # function the spec assigns it.
+  assert {
+    condition     = regex("values-digest: ([0-9a-f]{64})", output.cilium_self_management_values)[0] == sha256(yamlencode(output.cilium_effective_values))
+    error_message = "multi-source: the values-digest must be sha256(yamlencode(<module-set layer>)) — computed over anything else it cannot detect a stale values file, which is the only thing it exists for"
+  }
+}
+
+# The override entry is absent when there is no override, so a consumer using the
+# multi-source arm for the module-set layer alone gets a one-entry list rather
+# than a `$values/` path to a file they never wrote.
+run "cilium_self_management_multi_source_without_override_has_one_value_file" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management         = true
+    deploy_argocd                  = true
+    deploy_cilium                  = true
+    cilium_self_management_project = "platform-substrate"
+    cilium_self_management_values_source = {
+      repo_url    = "https://git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "cilium/module-values.yaml"
+    }
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[1].helm.valueFiles == ["$values/cilium/module-values.yaml"]
+    error_message = "multi-source without override: valueFiles must carry the module-set layer alone, not a path to an override file the consumer never wrote"
+  }
+
+}
+
+# The emptied-override check's red-green binding. It fires on the state that says
+# an override was REMOVED — an override_path configured with nothing to put in it
+# — and NOT on the supported "module-set layer only" shape above, which is why
+# that run carries no expect_failures. A `check` block is a checkable object, so
+# `tofu test` promotes its warning to a failure and expect_failures binds it
+# directly; deleting the block turns this into "Missing expected failure".
+run "emptied_override_with_a_configured_override_path_warns" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management         = true
+    deploy_argocd                  = true
+    deploy_cilium                  = true
+    cilium_self_management_project = "platform-substrate"
+    cilium_self_management_values_source = {
+      repo_url      = "https://git.example.com/consumer/cluster.git"
+      revision      = "v1.2.3"
+      values_path   = "cilium/module-values.yaml"
+      override_path = "cilium/override.yaml"
+    }
+  }
+  expect_failures = [check.cilium_values_override_emptied_while_day2_wired]
+}
+
+# A values source with self-management off reaches nothing, and the module's
+# warning tier says so rather than planning silently.
+run "values_source_without_self_management_warns" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management = false
+    cilium_self_management_values_source = {
+      repo_url    = "https://git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "cilium/module-values.yaml"
+    }
+  }
+  expect_failures = [check.cilium_self_management_values_source_is_inert]
+}
+
+# --- Raw-render guards on the values-source strings --------------------------
+#
+# repo_url and both paths are interpolated into the generated values document's
+# `#` header lines by bare string join, so a newline breaks out of the comment
+# and injects a TOP-LEVEL key into the module-set values layer — the first
+# valueFiles entry of an Application rendering a privileged, host-networked
+# DaemonSet. Same class and same measured vector as
+# cilium_native_routing_cidr and cilium_k8s_service_host.
+run "values_source_rejects_an_injected_newline_in_a_path" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management_values_source = {
+      repo_url    = "https://git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "cilium/values.yaml\nhostNetwork: true"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+run "values_source_rejects_an_injected_newline_in_the_repo_url" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management_values_source = {
+      repo_url    = "https://git.example.com/consumer/cluster.git\nhostNetwork: true"
+      revision    = "v1.2.3"
+      values_path = "cilium/module-values.yaml"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+# Negative-space control for the charset guard: the documented path form must
+# still be accepted, so a future tightening cannot quietly reject real paths.
+run "values_source_accepts_the_documented_path_form" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management         = true
+    deploy_argocd                  = true
+    deploy_cilium                  = true
+    cilium_values_override         = "bgpControlPlane:\n  enabled: true\n"
+    cilium_self_management_project = "platform-substrate"
+    cilium_self_management_values_source = {
+      repo_url      = "git@git.example.com:consumer/cluster.git"
+      revision      = "v1.2.3"
+      values_path   = "clusters/prod-1/cilium/module-values.yaml"
+      override_path = "clusters/prod-1/cilium/values-override.yaml"
+    }
+  }
+  assert {
+    condition     = length(yamldecode(output.cilium_self_management_app).spec.sources[1].helm.valueFiles) == 2
+    error_message = "charset guard negative space: a nested repo-relative path and an SSH repo URL must plan cleanly"
+  }
+}
+
+# The override digest replaces the plan-time change signal the sensitive marking
+# removes. Red-green: drop the digest local and this run cannot resolve.
+run "override_digest_tracks_the_override" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_values_override = "bgpControlPlane:\n  enabled: true\n"
+  }
+  assert {
+    condition     = can(regex("^[0-9a-f]{64}$", output.cilium_values_override_digest))
+    error_message = "override digest: a non-empty override must yield a sha256 hex digest"
+  }
+}
+
+run "override_digest_is_empty_without_an_override" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  assert {
+    condition     = output.cilium_values_override_digest == ""
+    error_message = "override digest: an unset override must read as unset, not as the hash of the empty string"
+  }
+}
+
+# Negative-space control for the arm switch. The single-source shape is what
+# every existing consumer has, and it must stay byte-identical: no sources[], no
+# annotation, and the module-set layer still inline in valuesObject. Red-green:
+# key the bifurcation on the override's content instead of on the values-source
+# input and this run fails the moment an override is set.
+run "cilium_self_management_single_source_arm_is_unchanged" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management = true
+    deploy_argocd          = true
+    deploy_cilium          = true
+  }
+  assert {
+    condition     = contains(keys(yamldecode(output.cilium_self_management_app).spec), "source")
+    error_message = "single-source arm: spec.source must still be present with no values source configured"
+  }
+  assert {
+    condition     = !contains(keys(yamldecode(output.cilium_self_management_app).spec), "sources")
+    error_message = "single-source arm: spec.sources must be absent — the multi-source shape is opt-in via cilium_self_management_values_source"
+  }
+  assert {
+    condition     = !contains(keys(yamldecode(output.cilium_self_management_app).metadata), "annotations")
+    error_message = "single-source arm: metadata must carry no annotations — the values-digest describes a file this arm does not have, and adding a key here moves every existing consumer's manifest"
+  }
+  assert {
+    condition     = output.cilium_self_management_values == ""
+    error_message = "single-source arm: cilium_self_management_values must be empty — the module-set layer rides inline in valuesObject, there is no file to commit"
+  }
+
+  # Whole-document identity against the golden captured at the pre-change commit.
+  # The presence/absence assertions above name the facts a reader cares about;
+  # this one is what actually carries the MAJOR-release promise, because it fails
+  # on any byte the others do not look at. yamlencode's own output is stable for a
+  # given value, so this is a value comparison, not a formatting one.
+  assert {
+    condition     = output.cilium_self_management_app == replace(file("tests/fixtures/cilium-self-management-app-single-source.yaml"), "/(?m)^#.*\n/", "")
+    error_message = "single-source arm: the emitted Application must be BYTE-IDENTICAL to tests/fixtures/cilium-self-management-app-single-source.yaml, the document the previous release emitted for this input set. A byte moved — decide whether that is a consumer-visible change for CHANGELOG/UPGRADING before refreshing the fixture."
+  }
+}
+
+# AC #3 guard leg C, REPLACED (issue #265): the hard reject is no longer
+# "self-management with any override" but "self-management with an override and
+# nowhere for the Application to read it from". Without a values source the
+# emitted Application falls back to the single-source shape, whose valuesObject
+# carries no override term — the same silent drop the old guard prevented.
+# deploy_argocd/deploy_cilium stay explicitly TRUE so this leg is isolated to the
+# second validation block, not the deploy-prereq one legs A/B bind. The override
+# deliberately names NO adr-0028 §(d) joint key, or the joint-key validation on
+# cilium_values_override would fire instead and expect_failures would match the
+# wrong variable.
+run "cilium_self_management_guard_leg_c_requires_values_source" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management = true
+    deploy_argocd          = true
+    deploy_cilium          = true
+    cilium_values_override = "bgpControlPlane:\n  enabled: true\n"
+  }
+  expect_failures = [var.cilium_self_management]
+}
+
+# --- adr-0028 §(d) joint keys: rejected in the override ----------------------
+#
+# One leg per key, never merged: expect_failures matches the VARIABLE, so a
+# single leg would leave two thirds of the key set untested. Each override is a
+# well-formed MAPPING so the map-shape validation on the same variable cannot be
+# what fires. self_management stays off so no self-management guard is in play.
+run "cilium_values_override_rejects_kube_proxy_replacement" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_values_override = "kubeProxyReplacement: false\n"
+  }
+  expect_failures = [var.cilium_values_override]
+}
+
+run "cilium_values_override_rejects_k8s_service_host" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_values_override = "k8sServiceHost: 192.0.2.10\n"
+  }
+  expect_failures = [var.cilium_values_override]
+}
+
+run "cilium_values_override_rejects_k8s_service_port" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_values_override = "k8sServicePort: \"6443\"\n"
+  }
+  expect_failures = [var.cilium_values_override]
+}
+
+# Negative-space control: an override naming a key that merely LOOKS adjacent
+# must not be rejected. Red-green: widen the guard to a substring match instead
+# of a key-set intersection and this run hard-fails.
+run "cilium_values_override_accepts_neighbouring_keys" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_values_override = "k8sServiceHostOverrideNote: keep\nkubeProxyReplacementHealthzBindAddr: \"0.0.0.0:10256\"\n"
+  }
+  assert {
+    condition     = output.cilium_self_management_app == ""
+    error_message = "joint-key guard: only the three exact key names are closed — a neighbouring key must plan cleanly"
+  }
+}
+
+# --- Override document shape -------------------------------------------------
+#
+# A comment-only override decodes to null and a list-rooted one to a tuple.
+# Either would reach the seed's values list and the emitted Application as a
+# non-object, so the reject belongs on the input rather than on the artifact.
+run "cilium_values_override_rejects_a_comment_only_document" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_values_override = "# nothing configured yet\n"
+  }
+  expect_failures = [var.cilium_values_override]
+}
+
+run "cilium_values_override_rejects_a_sequence_document" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_values_override = "- bgpControlPlane\n- hubble\n"
+  }
+  expect_failures = [var.cilium_values_override]
+}
+
+# --- Values-source coordinate guards ----------------------------------------
+#
+# Each leg trips EXACTLY ONE of the three validation blocks on
+# cilium_self_management_values_source; the others are satisfied by construction,
+# which is what keeps expect_failures meaningful on a variable carrying three.
+run "values_source_rejects_a_missing_values_path" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management_values_source = {
+      repo_url    = "https://git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = ""
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+run "values_source_rejects_an_absolute_path" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management_values_source = {
+      repo_url    = "https://git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "/etc/cilium/values.yaml"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+run "values_source_rejects_a_parent_traversal_path" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management_values_source = {
+      repo_url    = "https://git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "cilium/../../secrets/values.yaml"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+# The override needs its own path or it has no way into the Application — the
+# silent drop again, one layer below the cilium_self_management guard.
+run "values_source_rejects_a_missing_override_path_while_an_override_is_set" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management = true
+    deploy_argocd          = true
+    deploy_cilium          = true
+    cilium_values_override = "bgpControlPlane:\n  enabled: true\n"
+    cilium_self_management_values_source = {
+      repo_url    = "https://git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "cilium/module-values.yaml"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+# --- Typed API-server endpoint inputs (issue #227, closed by #265) ----------
+#
+# These exist to make the §(d) joint-key rejection cost no capability: the value
+# is reachable, just not through the override. Cilium documents these values as
+# endpoint-derived in general and Talos KubePrism is one source of them, so the
+# defaults are KubePrism and the inputs are what a cluster without it uses.
+run "k8s_service_endpoint_defaults_to_kubeprism" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    deploy_cilium = true
+  }
+  assert {
+    condition     = output.cilium_computed_values.k8sServiceHost == "localhost"
+    error_message = "endpoint defaults: k8sServiceHost must default to Talos KubePrism's localhost"
+  }
+  assert {
+    condition     = output.cilium_computed_values.k8sServicePort == "7445"
+    error_message = "endpoint defaults: k8sServicePort must default to Talos KubePrism's 7445"
+  }
+}
+
+run "k8s_service_endpoint_inputs_reach_the_computed_layer" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    deploy_cilium           = true
+    cilium_k8s_service_host = "api.cluster.example"
+    cilium_k8s_service_port = "6443"
+  }
+  assert {
+    condition     = output.cilium_computed_values.k8sServiceHost == "api.cluster.example"
+    error_message = "endpoint inputs: cilium_k8s_service_host must reach the computed layer, which is what both delivery paths read"
+  }
+  assert {
+    condition     = output.cilium_computed_values.k8sServicePort == "6443"
+    error_message = "endpoint inputs: cilium_k8s_service_port must reach the computed layer"
+  }
+  assert {
+    condition     = output.cilium_joint_keys.k8sServiceHost == "api.cluster.example"
+    error_message = "endpoint inputs: the joint-key re-assertion must carry the configured host, not a hardcoded KubePrism literal"
+  }
+}
+
+# With kube-proxy present, Cilium reaches the API server through the ClusterIP
+# kube-proxy provides, so the endpoint keys must be ABSENT rather than set — and
+# the joint-key re-assertion must not put them back.
+run "k8s_service_endpoint_is_absent_without_kube_proxy_replacement" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    deploy_cilium                 = true
+    cilium_kube_proxy_replacement = false
+  }
+  assert {
+    condition     = !contains(keys(output.cilium_computed_values), "k8sServiceHost")
+    error_message = "endpoint gating: k8sServiceHost must not be emitted when cilium_kube_proxy_replacement is false"
+  }
+  assert {
+    condition     = keys(output.cilium_joint_keys) == ["kubeProxyReplacement"]
+    error_message = "endpoint gating: the joint-key re-assertion must carry kubeProxyReplacement alone when the toggle is off"
+  }
+}
+
+run "k8s_service_host_rejects_a_scheme" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "https://api.cluster.example"
+  }
+  expect_failures = [var.cilium_k8s_service_host]
+}
+
+run "k8s_service_host_rejects_an_embedded_port" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "api.cluster.example:6443"
+  }
+  expect_failures = [var.cilium_k8s_service_host]
+}
+
+# The same measured reason cilium_native_routing_cidr carries a format guard: the
+# chart renders this value raw into cilium-config, which is baked into the
+# create-only machine config, so a newline can inject a standalone key.
+run "k8s_service_host_rejects_an_injected_newline" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "localhost\n  injected-key: pwned"
+  }
+  expect_failures = [var.cilium_k8s_service_host]
+}
+
+run "k8s_service_port_rejects_an_out_of_range_port" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_port = "70000"
+  }
+  expect_failures = [var.cilium_k8s_service_port]
+}
+
+run "k8s_service_port_rejects_a_non_numeric_port" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_port = "kubeprism"
+  }
+  expect_failures = [var.cilium_k8s_service_port]
 }
 
 # --- Node identity: one node, one definition place (issue #204) -------------
@@ -1760,5 +2335,145 @@ run "projections_and_bootstrap_target_follow_node_name" {
   assert {
     condition     = output.first_controlplane_ip == "192.0.2.11"
     error_message = "the bootstrap target must be the lowest-named CONTROLPLANE (cp-1) — not the lowest-named node overall (a-w, a worker)"
+  }
+}
+
+# The permissive-project warning. The multi-source arm is the first shape that
+# names a values repo of its own, and the always-present "default" AppProject
+# carries sourceRepos: ['*'] — so a cluster.yaml edit repointing repo_url feeds
+# attacker-chosen Helm values to a privileged, host-networked DaemonSet with
+# nothing but PR review in the way. Red-green: delete the check and this run
+# reports "missing expected failure".
+run "values_source_on_the_default_project_warns" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management = true
+    deploy_argocd          = true
+    deploy_cilium          = true
+    cilium_self_management_values_source = {
+      repo_url    = "https://git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "cilium/module-values.yaml"
+    }
+  }
+  expect_failures = [check.cilium_self_management_values_source_on_permissive_project]
+}
+
+# --- repo_url scheme allowlist ------------------------------------------------
+#
+# repo_url becomes spec.sources[0].repoURL verbatim. The allowlist is the three
+# forms ArgoCD resolves for a git source; a bare token, a file:// path, or an
+# embedded credential are all rejected.
+run "values_source_rejects_a_non_git_repo_url_scheme" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management_values_source = {
+      repo_url    = "file:///etc/cilium/values"
+      revision    = "v1.2.3"
+      values_path = "cilium/module-values.yaml"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+run "values_source_rejects_embedded_credentials_in_the_repo_url" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management_values_source = {
+      repo_url    = "https://oauth2:ghp_exampletokenvalue@git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "cilium/module-values.yaml"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+# Negative space for the allowlist: all three accepted forms must still plan.
+# ssh:// is asserted here because no other leg uses it, and the accepted-path leg
+# above covers the scp-like git@host:path form.
+run "values_source_accepts_an_ssh_scheme_repo_url" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management         = true
+    deploy_argocd                  = true
+    deploy_cilium                  = true
+    cilium_self_management_project = "platform-substrate"
+    cilium_self_management_values_source = {
+      repo_url    = "ssh://git.example.com/consumer/cluster.git"
+      revision    = "v1.2.3"
+      values_path = "cilium/module-values.yaml"
+    }
+  }
+  assert {
+    condition     = yamldecode(output.cilium_self_management_app).spec.sources[0].repoURL == "ssh://git.example.com/consumer/cluster.git"
+    error_message = "allowlist negative space: an ssh:// git remote must plan cleanly and reach sources[0].repoURL verbatim"
+  }
+}
+
+# --- path distinctness --------------------------------------------------------
+#
+# One path for both layers makes the same $values/ entry appear twice and, with
+# the local_file write UPGRADING prescribes, overwrites the consumer's override
+# document with the module-set layer. Every other guard stays green on that
+# state: the override variable is still non-empty, so the emptied-override check
+# does not fire, and the values-digest pair still matches because the digest
+# covers the module-set layer only.
+run "values_source_rejects_one_path_for_both_layers" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_self_management = true
+    deploy_argocd          = true
+    deploy_cilium          = true
+    cilium_values_override = "bgpControlPlane:\n  enabled: true\n"
+    cilium_self_management_values_source = {
+      repo_url      = "https://git.example.com/consumer/cluster.git"
+      revision      = "v1.2.3"
+      values_path   = "cilium/values.yaml"
+      override_path = "cilium/values.yaml"
+    }
+  }
+  expect_failures = [var.cilium_self_management_values_source]
+}
+
+# --- endpoint inputs: the guards the merged port condition used to hide -------
+#
+# The port's two predicates are separate validation blocks, so each is bindable:
+# a non-numeric value reaches the FORMAT block's message rather than crashing a
+# tonumber() inside a merged condition, and the range legs bind the range block.
+run "k8s_service_port_rejects_an_injected_newline" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_port = "7445\n  injected-key: pwned"
+  }
+  expect_failures = [var.cilium_k8s_service_port]
+}
+
+run "k8s_service_port_rejects_zero" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_port = "0"
+  }
+  expect_failures = [var.cilium_k8s_service_port]
+}
+
+# Positive control for the host guard's bracketed-IPv6 branch: the "[" and "]"
+# in the character class are otherwise unexercised in either direction, so a
+# future tightening could reject a legitimate IPv6 endpoint silently.
+run "k8s_service_host_accepts_a_bracketed_ipv6_literal" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "[2001:db8::1]"
+  }
+  assert {
+    condition     = output.cilium_joint_keys.k8sServiceHost == "[2001:db8::1]"
+    error_message = "host guard negative space: a bracketed IPv6 literal is a legitimate API-server endpoint and must plan cleanly"
   }
 }

@@ -205,6 +205,16 @@
               "description": "Run Cilium as the kube-proxy replacement (also sets Talos cluster.proxy.disabled). Install-time-fixed.",
               "type": "boolean"
             },
+            "k8s_service_host": {
+              "description": "Cilium's k8sServiceHost — the endpoint Cilium reaches the API server through BEFORE the CNI is up. Default \"localhost\" (Talos KubePrism on the node); set a VIP or load-balancer address on a cluster where KubePrism is not the intended path. Only emitted when kube_proxy_replacement is true. A bare host: no scheme, no \":port\". Mirrors variables.tf var.cilium_k8s_service_host so a malformed value is caught at lint time too, not only at plan time — chart 1.20.0 renders it into the KUBERNETES_SERVICE_HOST container env var (quoted), and on the seed path that render is baked into the create-only machine config, where a malformed host is a bootstrap deadlock no later apply repairs.",
+              "type": "string",
+              "pattern": "^([a-zA-Z0-9._-]+|\\[[0-9a-fA-F:.]+\\])$"
+            },
+            "k8s_service_port": {
+              "description": "Cilium's k8sServicePort, paired with k8s_service_host. Default \"7445\" (the KubePrism port). A decimal TCP port as a STRING, which is the shape the module emits into the chart. The pattern mirrors BOTH of the module's port guards — digit shape and the 1-65535 range — so a port the module rejects at plan time is rejected at lint time too.",
+              "type": "string",
+              "pattern": "^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$"
+            },
             "gateway_api": {
               "description": "Enable the Cilium Gateway API controller. Hard Constraint: Gateway API only, no Ingress.",
               "type": "boolean"
@@ -238,7 +248,7 @@
               "type": "object"
             },
             "values_override": {
-              "description": "Long-tail consumer Helm values merged on the floor + computed values (Hubble long tail beyond the first-class inputs below, L2/BGP announcements, bpf tuning). Feeds ONLY the bootstrap seed, never the self-management emitted Application (see self_management).",
+              "description": "Long-tail consumer Helm values merged on the floor + computed values (Hubble long tail beyond the first-class inputs below, L2/BGP announcements, bpf tuning). Reaches BOTH delivery paths per adr-0028: the bootstrap seed as the last Helm values layer, and — with self_management_values_source set — the emitted Day-2 Application as the last valueFiles entry, a file YOU commit. Rejected at plan time when it names kubeProxyReplacement, k8sServiceHost or k8sServicePort (each has a Talos-side half the module writes; use the typed keys instead) or when it is not a YAML mapping. Content is otherwise deliberately NOT validated here.",
               "type": "string"
             },
             "agent_metrics": {
@@ -250,7 +260,7 @@
               "type": "boolean"
             },
             "operator_replicas": {
-              "description": "Cilium operator Deployment replica count (operator.replicas). Omit to derive it from the node count: 2 at two or more nodes (the chart's own default), and nothing at exactly one node, where the shipped floor's 1 stays effective. Set it to pin the count on BOTH delivery paths — values_override reaches only the seed and is mutually exclusive with self_management. Pinning more replicas than there are declared nodes is rejected at plan time: the operator's anti-affinity is per-hostname, so the surplus could never place.",
+              "description": "Cilium operator Deployment replica count (operator.replicas). Omit to derive it from the node count: 2 at two or more nodes (the chart's own default), and nothing at exactly one node, where the shipped floor's 1 stays effective. Set it to pin the count deterministically on BOTH delivery paths — values_override can set it too, but the module cannot introspect that string, so nothing validates the count against the node set. Pinning more replicas than there are declared nodes is rejected at plan time: the operator's anti-affinity is per-hostname, so the surplus could never place.",
               "type": "integer",
               "minimum": 1
             },
@@ -293,12 +303,40 @@
               "type": "boolean"
             },
             "self_management": {
-              "description": "Opt-in: emit a Cilium ArgoCD Application (module output only, never applied by the module) as the Day-2 delivery path. HARD-REJECTED at plan time when values_override is non-empty (the emitted Application does not inherit it — see ADR-0022). Requires enabled=true and the ArgoCD substrate enabled. Default off.",
+              "description": "Opt-in: emit a Cilium ArgoCD Application (module output only, never applied by the module) as the Day-2 delivery path. With a non-empty values_override this REQUIRES self_management_values_source — without it the emitted Application is single-source and silently drops the override (adr-0028 \u00a7(b), superseding adr-0022). Requires enabled=true and the ArgoCD substrate enabled. Default off.",
               "type": "boolean"
             },
             "self_management_project": {
               "description": "ArgoCD AppProject the emitted Application targets. Default \"default\" (the always-present permissive project) — scope to a dedicated project with the required destination + clusterResourceWhitelist for hardening (see README).",
               "type": "string"
+            },
+            "self_management_values_source": {
+              "description": "Git source the emitted Day-2 Application reads its Helm values layers from. Setting it switches the emitted manifest from single-source to MULTI-SOURCE: sources[0] is a ref source for this repo, sources[1] the chart with two ORDERED valueFiles — the module-set layer (the cilium_self_management_values output, which you commit at values_path) first, your values_override second — so HELM performs the merge and your layer wins at arbitrary depth. Required with a non-empty values_override. repo_url and revision are OPTIONAL here because the consumer shim defaults them to this file's own repo.url and cluster.target_revision; set them only when the values live in a different repo or at a different revision. A scoped self_management_project must list BOTH repos in sourceRepos.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["values_path"],
+              "properties": {
+                "repo_url": {
+                  "description": "Git repo ArgoCD reads the values files from. Omit to inherit repo.url.",
+                  "type": "string"
+                },
+                "revision": {
+                  "description": "targetRevision for that source. Omit to inherit cluster.target_revision — normally the same branch the root Application tracks, so the values half moves with the rest of the repo and git revert is the rollback. A tag or SHA makes the values/chart revision pair explicit instead, at the cost of a second thing to bump.",
+                  "type": "string"
+                },
+                "values_path": {
+                  "description": "Repo-root-relative path you commit the cilium_self_management_values output to. No leading \"/\" and no \"..\" segment.",
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-][A-Za-z0-9._/-]*$",
+                  "not": { "pattern": "(^|/)\\.\\.($|/)" }
+                },
+                "override_path": {
+                  "description": "Repo-root-relative path you commit your values_override document to. Required when values_override is non-empty. The module never writes this file. It is read as a PLAIN Helm values document: Argo CD applies no decryption to a Helm valueFiles source, so a SOPS-encrypted file does not work here without a config-management plugin this base neither ships nor configures. Key material committed at this path is plaintext in git unless you have built that path yourself.",
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._-][A-Za-z0-9._/-]*$",
+                  "not": { "pattern": "(^|/)\\.\\.($|/)" }
+                }
+              }
             }
           }
         },
