@@ -10,6 +10,187 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Changed (BREAKING, MAJOR) — the `siderolabs/talos` provider is pinned
+  exactly to the prerelease `0.12.0-beta.0`, which every consumer inherits.**
+  The module's `>= 0.7.0, < 1.0.0` range resolved to `0.11.0`, whose bundled
+  Talos machinery predates 1.14, so the four `config_patches` lists could not
+  carry a single 1.14 document kind and a 1.14 cluster bootstrapped here ran
+  without workload isolation and without filesystem trim, with no way to opt in
+  (Talos' own `SecurityProfileConfig` reference: a cluster without the document
+  "keeps the old (non-isolated) behavior"). Only the 0.12 line bundles the 1.14
+  machinery, it has no final release, and OpenTofu never selects a prerelease
+  from a range — an exact pin is the only constraint that reaches it. The
+  blocker recorded earlier as a signature failure no longer reproduces:
+  `tofu init` installs the version signed (key ID `3A983D7A800C63E0`).
+  **Does your root need an edit?** Measured: a root declaring a version RANGE
+  still resolves — the module's exact pin wins the intersection — as does a root
+  with no `version` key or no talos entry. What fails is a constraint that
+  EXCLUDES the version (a different exact pin, or a lower bound above it such as
+  `>= 0.12.0`), and a plain `tofu init` against a lock still recording `0.11.0`,
+  which needs `tofu init -upgrade`.
+  **What every consumer gets regardless:** a prerelease provider, and one changed
+  value in the rendered configuration even on the 1.13 line — the provider's
+  default `machine.install.image` moved from
+  `ghcr.io/siderolabs/installer:v1.13.0` to a
+  `factory.talos.dev/metal-installer/…:v1.14.0-rc.2` URL, since the old image is
+  no longer published. A byte-diff of a rendered `v1.13.9` configuration across
+  the two providers shows that line and nothing else, and the module overrides it
+  per node from the Image Factory — those per-node installer URLs were compared
+  across both providers and are identical, same schematic IDs, so nothing
+  re-images. What changes is `machine_configuration_input` on every node, so the
+  first plan updates every node. `UPGRADING.md` carries the procedure, including the `staged` first roll,
+  the back-out (measured: re-pinning to `0.11.0` against state written by the
+  beta plans cleanly), and what changes for a consumer already pinned at 1.14.
+  **What opens up:** the 1.14 kinds decode — a patch sets
+  `SecurityProfileConfig.workloadIsolation`, merges `KubeNodeConfig.labels`, or
+  carries `FilesystemTrimConfig` / `UnattendedInstallConfig` / `BGPInstanceConfig`
+  — and a `v1.14.0` pin now generates the full 1.14 document set including both
+  previously absent defaults. **What to watch:** at a 1.14 pin the provider also
+  emits an `UnattendedInstallConfig` from its own defaults (a `/dev/sda` disk
+  selector and a `v1.14.0-rc.2` installer image carrying none of your Image
+  Factory schematic) that does **not** follow the module's `machine.install`
+  patch — two install descriptions that disagree, with the node's precedence
+  UNVERIFIED here. Patching that document directly works and is fenced. The
+  example and fixture pins therefore stay on Talos 1.13.9.
+  `scripts/check-provider-document-kinds.sh` was rewritten with the boundary and
+  now also asserts pin parity across the five sites carrying the version;
+  `scripts/check-provider-document-kinds-bites.sh` binds every assertion an
+  expectation-level mutation can falsify. The module's `.terraform.lock.hcl` is committed for the
+  first time, because an exact pin fixes the version string and not the artifact.
+  Decision:
+  [`knowledge/decisions/0027-talos-provider-prerelease-pin.md`](knowledge/decisions/0027-talos-provider-prerelease-pin.md).
+  Refs #252.
+- **Fixed — the Talos 1.14 section no longer claims `EPHEMERAL` is mounted
+  `noexec`.** The claim described a pre-GA state that `siderolabs/talos@6fa811a0d`
+  ("drop `noexec` for KUBELET, EPHEMERAL and CRI") reverted before the release,
+  and that commit is an ancestor of `v1.14.0` — in 1.14.0 `noexec` reaches only
+  dedicated ETCD and LOG volumes. The bullet is removed rather than restated:
+  with the claim gone there is no behaviour change left for a consumer to act
+  on, and this module declares no `VolumeConfig`. The neighbouring CSI bullet
+  gains the caveat that a driver reaching `machined`'s namespace through
+  `hostPID` plus `nsenter` — the Talos-native iSCSI shape — gets the sandbox's
+  PID namespace instead; it is labelled UNVERIFIED because settling it needs a
+  1.14 node with the driver installed. The section ships in the OCI artifact, so
+  both corrections reach consumers. Refs #252.
+- **Fixed — a GitHub Release again ships its tarball, `checksums.txt`, and
+  SBOM.** Release immutability freezes a release when it is **published**, and
+  semantic-release published the release object the moment it tagged, before
+  the assets existed — so every asset upload the publish workflow attempted was
+  refused with HTTP 422. `@semantic-release/github` is removed; the publish
+  workflow is now the sole creator of the release, creates it as a draft,
+  attaches the three assets, and publishes it last. The published release is
+  verified on the draft before it is published and read back afterwards, and
+  any publish failure — including a cancelled one — opens a tracking issue
+  instead of only reddening a run on a tag nobody watches. Release notes now
+  come from the matching hand-cut CHANGELOG section on **every** release,
+  falling back to auto-generated notes where no section exists (which is the
+  common case today: no section has been cut since `v9.1.0`, tracked in #233).
+  Seven already-published tags carry no assets and cannot be backfilled —
+  immutability is the point of the setting. `v9.2.2`, `v9.2.3`, `v10.0.0`,
+  `v11.0.0` and `v11.0.1` have intact, signed, attested OCI artifacts, so the
+  `oras pull` path consumers are told to use is unaffected for them; `v9.1.2`
+  and `v9.2.0` failed earlier still and have **no published artifact at all**,
+  so they must not be pinned. Both groups are recorded in
+  [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
+  Because release creation now happens in the job that also holds the signing
+  identity, that job's five actions are pinned by commit SHA instead of a
+  mutable tag, and every `run:` block there reads its values from `env:`
+  rather than from a `${{ }}` interpolation the shell would parse; a check in
+  the required `docs-lint` context keeps both properties, and the absence of
+  the publish plugin, from regressing. `CHANGELOG.md` joins the release
+  surface in `CODEOWNERS`, since its matching section is the release body.
+  Fixes #251.
+- **Added — a CI fence bounding what the `config_patches` escape hatch can
+  actually carry, and a Talos 1.14 readiness statement.** Talos 1.14.0 went
+  generally available on 2026-09-03. The base pins no Talos version, so nothing
+  here forces the move — and deliberately nothing moves: the examples and
+  fixtures stay on 1.13.9. What changes is that the boundary is now measured
+  instead of assumed. `scripts/check-provider-document-kinds.sh`
+  (`task tofu:check:provider-document-kinds`, inside `tofu:ci`) probes the
+  pinned `siderolabs/talos` provider with a locally generated PKI — no cluster,
+  no Image Factory — and asserts three things: a provider-registered document
+  kind survives the patch path, the Talos 1.14 kinds do not, and a `v1.14.0`
+  pin yields none of the 1.14 default documents. The finding it fixes is that
+  the module's four opaque patch lists are an escape hatch onto the PROVIDER's
+  document surface, not onto Talos': the provider decodes every patch against
+  its own bundled machinery, so `SecurityProfileConfig`,
+  `FilesystemTrimConfig`, `KubeNodeConfig`, `UnattendedInstallConfig` and
+  `BGPInstanceConfig` are each refused with `"<kind>" "v1alpha1": not
+  registered` on provider `0.11.0`. Two consequences a consumer must know
+  before pinning 1.14 now live in the module README §"Talos 1.14: reachable and
+  unreachable": a cluster bootstrapped at a 1.14 pin runs WITHOUT the
+  workload isolation and filesystem trim Talos enables by default for new 1.14
+  clusters, with no way to opt in; and `reboot` is a `*_apply_mode` value Talos
+  1.14 removed from `talosctl apply-config`, whose behaviour over the provider's
+  API path is unverified. The fence is an expiry alarm by construction — two of
+  its cases assert a rejection, so it turns red the day a release inside the
+  declared `>= 0.7.0, < 1.0.0` range ships the 1.14 machinery, which is the
+  signal to revisit rather than a breakage to patch out.
+  `knowledge/decisions/0026-machine-config-apply-mode.md` gains the matching
+  addendum, and the follow-up — reaching the 1.14 document surface, then moving
+  the pins — is tracked in
+  [#252](https://github.com/Nosmoht/talos-platform-base/issues/252).
+  Superseded within this same release by the provider-pin entry at the top of
+  this block: the alarm fired, the rejection cases became acceptance cases, and
+  the README section is now §"Talos 1.14: the pinned provider, and what it
+  reaches". The `0.11.0` measurements above are the state before that pin.
+- **Fixed (BREAKING) — the OCI artifact now contains the complete runtime
+  `talos-cluster` module.** The allowlist adds `cilium-values.tf`,
+  `composition.tf`, `kubeconfig-refresh.tf`, `nodes.tf`, and `profiles.tf`, so a
+  consumer can extract the artifact and use the vendored module without
+  missing local references. CI derives the required root `.tf` set from git and
+  runs `tofu init -backend=false` plus `tofu validate` against the extracted
+  payload. The payload layout therefore gains five published paths; git-only
+  examples and bootstrap helpers remain outside the artifact. Fixes #158.
+- **Changed (BREAKING) — the `argo-cd` chart moves `9.4.5` → `10.6.0`, Argo CD
+  `v3.3.2` → `v3.5.2`.** Both render paths bump together —
+  `kubernetes/substrate/argocd/chart.lock.yaml` and the `argocd_chart_version`
+  default the parity gate binds to it. The breaking part is a chart default the
+  base does not override: `10.0.0` flipped `global.networkPolicy.create` to
+  `true`, so the steady-state render AND the Day-0 seed now carry five
+  `networking.k8s.io/v1` NetworkPolicies, which Cilium enforces in every
+  consuming cluster. `argocd-server` keeps an open ingress rule, so a consumer
+  gateway in front of it is unaffected; ingress to `argocd-repo-server` and
+  `argocd-redis` is restricted to the Argo CD components that call them, and a
+  workload of yours reaching either directly needs its own allow-policy. No
+  policy carries an empty `podSelector`, so this is not a namespace default-deny.
+  The chart also changes the reconciliation timer from a fixed `180s` to a
+  `120s` base plus up to `60s` jitter. Substrate invariant **I6** asserts the
+  complete posture in both paths — `apiVersion`, namespace, selectors, ingress
+  peers and ports, `policyTypes`, no higher-precedence policy kind riding along,
+  and every named port cross-checked against the target workload's
+  `containerPort` names — and for the steady state on the kustomize-built
+  component as well as on the fresh helm render, so a hand edit to the committed
+  `_rendered/` tree cannot ship a weakened posture. A set that no longer matches
+  is a violation, not a render-shape error. Twelve mutation-based bite tests back
+  it. `argocd-applicationset-controller` is deliberately unpoliced — the chart
+  gates its policy on `applicationSet.{metrics,ingress,httproute}`, none of which
+  the base enables, so no policy is emitted for it and its `webhook`, `metrics`
+  and `probe` ports are reachable cluster-wide — which `UPGRADING.md` now states,
+  together with why enabling `applicationSet.metrics` alone is not the fix (the
+  metrics rule is unconditional in the template and the webhook rule is not, so
+  metrics-only default-denies the webhook port). Argo CD 3.5 is tested against
+  Kubernetes v1.33-v1.36 and **drops v1.32**. Argo CD's own 3.3→3.4 and
+  3.4→3.5 upgrade notes apply unchanged and are summarised, with the audit and
+  validation steps, in [`UPGRADING.md`](UPGRADING.md) §`v10.0.0`. The three CRDs
+  are additive at this bump (new `tagPrefix` and `hydrateTo.repoURL`, no field
+  removed) and gain `argocd.argoproj.io/sync-options: ServerSideApply=true`;
+  adr-0025's revisit trigger was re-run at the new pin and holds.
+- **Changed — a chart-version default bump now carries a stated obligation.**
+  `module-interface-contract` gains a requirement fixing the observable half:
+  because the declared default is the single source of truth for the pinned chart
+  and the shipped examples leave the key unset, moving it is a consumer-visible
+  change — and it names exactly which paths it reaches, since the seed renders are
+  frozen. A fresh bootstrap and a deliberate replacement seed the new chart; an
+  already-bootstrapped consumer's machine config does not change, and the new
+  chart reaches a running cluster through the steady-state sync and the
+  chart-version-triggered CRD apply. The delta belongs on the capability
+  describing what the pin renders or seeds. The review obligations it implies —
+  no `Spec-Impact: none` for the variables file, and re-verifying the upstream
+  Kubernetes support range and upgrade notes for the adopting consumer — are
+  repo-internal QA and live in `knowledge/reference/manifest-pipeline.md`
+  §Chart pin. Prompted by this release: the argo-cd bump's module-side commit
+  claimed that escape on a change its own entry above calls BREAKING.
 - **Added — the machine-config apply mode is selectable per role.**
   `controlplane_apply_mode` and `worker_apply_mode` plumb the talos provider's
   `apply_mode` to the per-node machine-config apply. Both default to `auto`, so a
@@ -61,6 +242,24 @@ under the new version heading; the historical backfill below it stays put.
 - **Added — a failed or blocked release now files a tracking issue**
   (ADR-0020's listed follow-up), and a `release-guard-advisory` job tells a PR
   author before merging whether their branch touches a guarded path.
+- **Changed — the example and fixture versions now track Talos v1.13.9 /
+  Kubernetes v1.36.3** (was v1.12.6 / v1.35.0). The base pins neither:
+  `talos_version` and `kubernetes_version` are required module inputs whose
+  only constraint is a version-agnostic semver regex, so this moves the values
+  a consumer copies when standing up a new cluster and nothing else. Every
+  extension and overlay the repo names resolves at v1.13.9 against the Image
+  Factory. Existing clusters are unaffected — an OS upgrade still means
+  bumping `talos_install_version`, never the bootstrap-fixed `talos_version`.
+- **Changed — the worked example is a composition-coverage matrix**, not a
+  deployment. `tofu/modules/talos-cluster/examples/complete/cluster.yaml` now
+  carries one node per distinct composition path (6 nodes, 3 images) instead
+  of a specific eight-node hardware inventory, and its images are named for
+  what distinguishes them (`amd64`, `amd64-hugepages`, `arm64-sbc`). The GPU
+  node now shares the plain `amd64` image and still resolves to its own
+  schematic, because `nvidia-lts` contributes the extensions from the profile
+  catalog — which is what ADR-0009 says should happen. Coverage is unchanged:
+  mixed amd64/arm64, an SBC overlay, per-image kernel args, per-node patches,
+  both role-tier patch lists, and a node holding a set of two capabilities.
 
 ### Historical backfill
 

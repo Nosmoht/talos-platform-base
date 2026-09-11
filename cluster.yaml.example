@@ -52,10 +52,10 @@ repo:
 
 # --- Talos / Kubernetes versions ---
 talos:
-  version: v1.12.6 # machine-config SCHEMA pin — fixed at bootstrap, do NOT change later
+  version: v1.13.9 # machine-config SCHEMA pin — fixed at bootstrap, do NOT change later
   install_version: "" # installer-image tag for OS upgrades; "" = matches talos.version
 kubernetes:
-  version: v1.35.0
+  version: v1.36.3
 
 # --- Base images: the non-composable per-image installer base ---
 # Key = image id (referenced by node.image). architecture + cpu_vendor + baseline

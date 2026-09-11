@@ -7,6 +7,8 @@ id: base:cilium-observability-and-argocd-self-management
 decided: "2026-07-22T00:00:00Z"
 deciders:
   - platform-maintainer
+supersedes: []
+superseded_by: []
 related:
   - base:cluster-yaml-sot
   - base:opentofu-cluster-lifecycle
@@ -16,6 +18,30 @@ tags: [adr, cilium, observability, argocd]
 ---
 
 # ADR: Cilium observability inputs + opt-in ArgoCD self-management delivery mode
+
+> [2026-09-06 partial supersession] **§(c) third bullet, the §(f)
+> Override-drop hazard and the typed-input substitution claim in
+> §Addendum 2026-08-15 are superseded by
+> [0028-consumer-free-helm-value-surface.md](./0028-consumer-free-helm-value-surface.md).**
+> The declined "unbounded consumer-override merge into the emitted
+> `valuesObject`" is now the decision: the emitted `Application` inherits
+> `cilium_values_override` as its last values layer. The hard-reject guard that
+> §(f) justifies is removed along with the silent-drop hazard it exists to
+> prevent, and a narrower plan-time rejection takes its place: an override
+> naming a key whose Talos-side counterpart the module writes (the
+> `kubeProxyReplacement` / `k8sServiceHost` pair) is refused, because that
+> combination is unbootable rather than merely opaque. The reason for the
+> decline — no plan-time visibility into an opaque override — stands as a
+> recorded cost rather than as a reason to close the path; so does §(f)'s
+> second effect, which kept the seed and the emitted `Application` from ever
+> carrying different override content, now a named unverified risk in 0028.
+> The deciding input is a product constraint, that a consumer blocked on a base
+> release does not adopt the base. §(a), §(b), §(d)-§(e), §(g)-§(k), the
+> 2026-08-12 and 2026-08-14 addenda in full and the remainder of the 2026-08-15
+> one are untouched. §(l)'s closed `substrate.cilium` object explicitly stays
+> closed and four of its five parity dimensions stand; only dimension 5's "no
+> confidentiality requirement" is re-opened, because 0028 §(b) gives
+> `cilium_values_override` a git-committed sink it did not have here.
 
 ## Context and Problem Statement
 

@@ -5,6 +5,19 @@ on:
     tags:
       - 'v*'
 
+# PER TAG, deliberately not one group for the whole workflow. A single group
+# would serialize tag publishes — but with `cancel-in-progress: false` GitHub
+# holds only ONE run pending per group and cancels that pending run when a
+# third arrives, and a run cancelled before its jobs start reaches neither
+# `notify` nor `notify-resolved`: a tag would end up with no artifact, no
+# release, and no signal, which is a worse version of the silence #251 was
+# filed for. Cross-tag Latest ordering is handled where it actually belongs
+# instead, by publishing with `make_latest=legacy` (see the release step).
+# Per-ref grouping still stops a manual re-run from racing the run it repeats.
+concurrency:
+  group: oci-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write       # gh release create (GitHub Release object + assets)
   packages: write
@@ -14,8 +27,12 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Every step here can hang rather than fail — oras and cosign both talk to
+    # network services, and this job holds the only path from a pushed tag to a
+    # release. The 6-hour default would sit on that for a working day.
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
@@ -29,14 +46,14 @@ jobs:
         # it: @v1 last shipped 2025-09 and rejects every 1.3.1+ pin. Passing url
         # + checksum bypasses the table, so the pin follows .tool-versions rather
         # than the action's release cadence. The runner is linux/amd64.
-        uses: oras-project/setup-oras@v2.0.1
+        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # v2.0.1
         with:
           version: 1.3.4
           url: https://github.com/oras-project/oras/releases/download/v1.3.4/oras_1.3.4_linux_amd64.tar.gz
           checksum: f27adb935022d94df8dc77719c322dda592c78a0d57a6f7dcdd8d900b248c454
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           # Without this the installer silently uses its own default release,
           # which is a cosign 2.x for every v3.x tag of the action — the
@@ -44,9 +61,18 @@ jobs:
           cosign-release: v3.1.3
 
       - name: Login to ghcr.io
+        # Every value a `run:` block here reads is env-bound, never spliced
+        # into the script by `${{ }}`. A tag name is contributor-supplied and
+        # git permits `$`, backtick, `(`, `)` and `"` in a ref, so an
+        # interpolated one is shell source — inside the job that holds
+        # `id-token: write` and `attestations: write`, i.e. the signing
+        # identity consumers verify against. Same discipline as release.yml.
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+          printf '%s' "$GHCR_TOKEN" \
+            | oras login ghcr.io -u "$ACTOR" --password-stdin
 
       - name: Build tarball
         # Allowlist-driven (fail-closed): only files listed in
@@ -60,6 +86,8 @@ jobs:
         # update .ci-oci-tarball-expected.txt accordingly; the "Verify
         # tarball contents" step below will catch any divergence.
         shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p _release
@@ -67,7 +95,7 @@ jobs:
             echo "::error::.ci-oci-tarball-include.txt missing — cannot build tarball"
             exit 1
           }
-          tar -czf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" \
+          tar -czf "_release/talos-platform-base-${TAG}.tar.gz" \
             --files-from=.ci-oci-tarball-include.txt
 
       - name: Verify tarball contents
@@ -77,10 +105,12 @@ jobs:
         # fixture aborts the publication (a deleted fixture would
         # otherwise silently disable the membership gate); parity with
         # `task supply-chain:oci-allowlist`.
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p .work
-          tar -tzf "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz" \
+          tar -tzf "_release/talos-platform-base-${TAG}.tar.gz" \
             | sed 's|^\./||' | LC_ALL=C sort | sed 's|^|./|' > .work/tarball-contents.txt
           [ -f .ci-oci-tarball-expected.txt ] || {
             echo "::error::.ci-oci-tarball-expected.txt missing at the tagged commit — the membership diff is a required gate. Recovery: commit the fixture (verify locally via task supply-chain:oci-allowlist) and cut a NEW tag; this tag cannot be republished from a commit lacking the fixture."
@@ -94,28 +124,33 @@ jobs:
 
       - name: Generate checksums
         working-directory: _release
-        run: sha256sum *.tar.gz > checksums.txt
+        run: sha256sum -- *.tar.gz > checksums.txt
 
       - name: Push OCI artifact
         id: push
         working-directory: _release
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
-          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          OWNER_LC="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
           oras push \
-            "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
+            "ghcr.io/${OWNER_LC}/talos-platform-base:${TAG}" \
             --artifact-type "application/vnd.talos-platform-base.v1+tar" \
-            "talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz:application/gzip" \
+            "talos-platform-base-${TAG}.tar.gz:application/gzip" \
             "checksums.txt:text/plain"
           echo "owner_lc=${OWNER_LC}" >> "$GITHUB_OUTPUT"
 
       - name: Capture artifact digest
         id: digest
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          OWNER_LC: ${{ steps.push.outputs.owner_lc }}
         run: |
           set -euo pipefail
-          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
           DIGEST=$(oras manifest fetch --descriptor \
-            "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
+            "ghcr.io/${OWNER_LC}/talos-platform-base:${TAG}" \
             | jq -r .digest)
           if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
             echo "::error::failed to capture artifact digest after oras push"
@@ -129,14 +164,16 @@ jobs:
         # (the workflow ref, the repository, and the tag pattern).
         # Verify command + identity regex documented in
         # knowledge/workflows/verify-release.md.
+        env:
+          OWNER_LC: ${{ steps.push.outputs.owner_lc }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           set -euo pipefail
-          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
           cosign sign --yes \
-            "ghcr.io/${OWNER_LC}/talos-platform-base@${{ steps.digest.outputs.digest }}"
+            "ghcr.io/${OWNER_LC}/talos-platform-base@${DIGEST}"
 
       - name: Attach SLSA build provenance
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v1
         with:
           subject-name: ghcr.io/${{ steps.push.outputs.owner_lc }}/talos-platform-base
           subject-digest: ${{ steps.digest.outputs.digest }}
@@ -150,7 +187,7 @@ jobs:
         # maturity in 2026 (Syft, Trivy, cosign attest --type cyclonedx
         # all native; SPDX 3.0 still gated behind opt-in flags).
         # Spec: https://cyclonedx.org/specification/overview/
-        uses: anchore/sbom-action@v0.17.9
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
         with:
           file: _release/talos-platform-base-${{ steps.tag.outputs.tag }}.tar.gz
           format: cyclonedx-json
@@ -164,13 +201,16 @@ jobs:
         #     --certificate-identity-regexp <pattern> \
         #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
         #     ghcr.io/<owner>/talos-platform-base:<tag>
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          OWNER_LC: ${{ steps.push.outputs.owner_lc }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
         run: |
           set -euo pipefail
-          OWNER_LC='${{ steps.push.outputs.owner_lc }}'
           cosign attest --yes \
             --type cyclonedx \
-            --predicate "_release/talos-platform-base-${{ steps.tag.outputs.tag }}.cdx.json" \
-            "ghcr.io/${OWNER_LC}/talos-platform-base@${{ steps.digest.outputs.digest }}"
+            --predicate "_release/talos-platform-base-${TAG}.cdx.json" \
+            "ghcr.io/${OWNER_LC}/talos-platform-base@${DIGEST}"
 
       - name: Tag :latest
         # Skip on SemVer pre-release tags (`v*-*`). Pre-release artifacts
@@ -179,27 +219,52 @@ jobs:
         # SemVer §9 treats any hyphenated suffix as a pre-release
         # identifier, so this matches the spec.
         if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          OWNER_LC: ${{ steps.push.outputs.owner_lc }}
         run: |
-          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          set -euo pipefail
           oras tag \
-            "ghcr.io/${OWNER_LC}/talos-platform-base:${{ steps.tag.outputs.tag }}" \
+            "ghcr.io/${OWNER_LC}/talos-platform-base:${TAG}" \
             latest
 
       - name: Create GitHub Release
-        # Closes the gap where tag pushes published the OCI artifact but
-        # left no GitHub Release object (the Releases page lagged behind the
-        # actual published tags). Notes come from the matching CHANGELOG
-        # section when present; otherwise `gh` auto-generates them from the
-        # commit range. Hyphenated SemVer tags are marked pre-release,
-        # consistent with the `:latest` skip above. Idempotent: re-runs of an
-        # already-released tag re-upload assets with --clobber instead of
-        # failing. Artifacts attached here mirror the OCI layers — ghcr.io
-        # remains the authoritative, signed consumption path.
+        # Assets are attached while the release is still a DRAFT, then the
+        # release is published. Release immutability (AGENTS.md §Tool-Agnostic
+        # Safety Invariants) freezes a release at PUBLISH time, not at creation:
+        # a published release refuses every asset upload with HTTP 422, and
+        # GitHub's immutable-releases documentation prescribes create-draft →
+        # attach → publish as the supported order (docs.github.com,
+        # "Preventing changes to your releases"). That behaviour is GitHub's,
+        # not something this repository can assert — the bite-check proves the
+        # step follows the order, never that the platform honours it.
+        # `gh release create --draft` uploads against the release id it just
+        # created, so no lookup stands between creating and filling it.
+        #
+        # This workflow is the SOLE creator of the release object:
+        # `.releaserc.json` carries no `@semantic-release/github` plugin, so
+        # semantic-release tags and stops. A release existing at this point is
+        # therefore a leftover from an earlier run of THIS job — still a draft,
+        # hence still mutable, so a re-run discards it and builds a complete
+        # one. A published one nothing can amend, and that case exits non-zero
+        # instead of emitting three 422s.
+        #
+        # Notes come from the matching CHANGELOG section when present; otherwise
+        # `gh` auto-generates them from the commit range. Hyphenated SemVer tags
+        # are marked pre-release, consistent with the `:latest` skip above.
+        # Artifacts attached here mirror the OCI layers — ghcr.io remains the
+        # authoritative, signed consumption path.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # env-bound rather than interpolated into `run:` — the tag name is the
+          # one value here that does not come from this file, and the shell must
+          # never parse it. Same discipline as release.yml's notify job. The
+          # older steps above still interpolate it and are not fixed here; that
+          # sweep is its own change, and this comment describes the two steps
+          # that reach the release object, not the whole file.
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${{ steps.tag.outputs.tag }}"
           mkdir -p .work
           NOTES_FILE=".work/release-notes.md"
 
@@ -223,8 +288,9 @@ jobs:
           fi
 
           prerelease_args=()
+          make_latest=legacy
           case "$TAG" in
-            *-*) prerelease_args=(--prerelease) ;;
+            *-*) prerelease_args=(--prerelease); make_latest=false ;;
           esac
 
           assets=(
@@ -233,13 +299,201 @@ jobs:
             "_release/talos-platform-base-${TAG}.cdx.json"
           )
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release ${TAG} already exists; re-uploading assets"
-            gh release upload "$TAG" "${assets[@]}" --clobber
-          else
-            gh release create "$TAG" \
-              --title "$TAG" \
-              "${notes_args[@]}" \
-              "${prerelease_args[@]}" \
-              "${assets[@]}"
+          # The release LIST, not GET /releases/tags/{tag}: the tags endpoint
+          # does not return drafts, and a draft is precisely the state a re-run
+          # has to recognise. EVERY match is returned, not the first: a draft
+          # does not reserve a tag name, so a draft can sit beside a published
+          # release for the same tag and picking one line would let the
+          # already-published guard below read the wrong one. The listing is
+          # captured whole rather than piped into `head` — under `pipefail` a
+          # reader that closes early can SIGPIPE `gh` and fail the step for a
+          # reason that has nothing to do with the release. `env.TAG`, not shell
+          # interpolation, keeps the tag out of the jq program text.
+          find_releases() {
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+              --jq '.[] | select(.tag_name == env.TAG) | "\(.id) \(.draft)"'
+          }
+
+          # Names as GitHub stores them: it rewrites every character outside
+          # [A-Za-z0-9._-] in an asset filename, so a tag carrying one would
+          # make a correct release compare unequal.
+          expected_assets="$(printf '%s\n' \
+            "talos-platform-base-${TAG}.tar.gz" \
+            "checksums.txt" \
+            "talos-platform-base-${TAG}.cdx.json" \
+            | tr -c 'A-Za-z0-9._\n-' '.' | LC_ALL=C sort)"
+
+          # `.state == "uploaded"` and a non-zero size: an upload that died
+          # part-way still leaves an asset record carrying the right NAME, and
+          # that is the exact failure this gate exists to catch.
+          release_assets() {
+            gh api "repos/${GITHUB_REPOSITORY}/releases/$1" \
+              --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name' \
+              | LC_ALL=C sort
+          }
+
+          existing="$(find_releases)"
+          if [ -n "$existing" ]; then
+            if printf '%s\n' "$existing" | grep -q ' false$'; then
+              echo "::error::Release ${TAG} is already published; an immutable release can neither receive nor replace assets. Recovery: knowledge/workflows/release-process.md, section \"A release that shipped without assets\"."
+              exit 1
+            fi
+            if [ "$(printf '%s\n' "$existing" | grep -c .)" -ne 1 ]; then
+              echo "::error::more than one draft release exists for ${TAG}; discarding one would orphan the others. Delete them by hand, then re-run this workflow."
+              exit 1
+            fi
+            echo "Discarding the draft release left by an earlier run of this job"
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${existing%% *}"
           fi
+
+          gh release create "$TAG" \
+            --draft \
+            --title "$TAG" \
+            "${notes_args[@]}" \
+            "${prerelease_args[@]}" \
+            "${assets[@]}"
+
+          created="$(find_releases)"
+          # The draft LINE, not the first line: the listing can carry more than
+          # one release for the tag, so `${created%% *}` would happily hand back
+          # the id of a published one that appeared in the meantime — and the
+          # PATCH below would then aim at it. Both checks are re-applied here
+          # for that reason, not out of symmetry with the block above.
+          if printf '%s\n' "$created" | grep -q ' false$'; then
+            echo "::error::a published release for ${TAG} appeared while this job was creating its draft; refusing to publish anything. Recovery: knowledge/workflows/release-process.md, section \"When the publish job fails\"."
+            exit 1
+          fi
+          if [ "$(printf '%s\n' "$created" | grep -c ' true$')" -ne 1 ]; then
+            echo "::error::expected exactly one draft release for ${TAG} after creating it, found: ${created:-none}"
+            exit 1
+          fi
+          release_id="$(printf '%s\n' "$created" | grep ' true$' | cut -d' ' -f1)"
+
+          # Asserted on the DRAFT, before the release is published. The draft is
+          # still mutable, so a missing asset ends the run with something a
+          # re-run can discard; the same check after publishing could only
+          # report an immutable release that has already shipped incomplete.
+          draft_assets="$(release_assets "$release_id")"
+          if [ "$expected_assets" != "$draft_assets" ]; then
+            echo "::error::the draft release for ${TAG} does not carry the expected assets; refusing to publish it"
+            printf 'expected:\n%s\nattached:\n%s\n' "$expected_assets" "$draft_assets"
+            exit 1
+          fi
+
+          # Publishing is what makes the release immutable, so it happens last,
+          # with every asset already attached and verified. `make_latest=legacy`
+          # rather than `true`: legacy resolves the latest release from the
+          # creation date and the higher SemVer, so it cannot depend on which
+          # concurrent run patched last.
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+            -F draft=false \
+            -f "make_latest=${make_latest}" \
+            --jq .html_url
+
+      - name: Assert the published release carries its assets
+        # The end-state proof. The step above already refused to publish a draft
+        # that was missing an asset — that is the check with a recovery path;
+        # this one reads back what consumers actually see, through the same
+        # endpoint knowledge/workflows/verify-release.md points them at, so a
+        # regression in the publish flip itself cannot pass unnoticed.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          expected="$(printf '%s\n' \
+            "checksums.txt" \
+            "talos-platform-base-${TAG}.cdx.json" \
+            "talos-platform-base-${TAG}.tar.gz" \
+            | tr -c 'A-Za-z0-9._\n-' '.' | LC_ALL=C sort)"
+          actual="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+            --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name' \
+            | LC_ALL=C sort)"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::release ${TAG} does not carry the expected assets"
+            printf 'expected:\n%s\nactual:\n%s\n' "$expected" "$actual"
+            exit 1
+          fi
+          printf '%s\n' "$actual"
+
+  # A failed publish is otherwise visible only in the Actions tab of a tag
+  # nobody watches — which is how five releases shipped without assets. ONE
+  # tracking issue, updated, mirroring release.yml's notify job; the body is a
+  # fixed sentence plus the run URL and carries no run-derived text.
+  notify:
+    needs: publish
+    # Not `== 'failure'`: a cancelled or timed-out publish is the state that
+    # leaves a tag with an unpublished draft, or `:latest` on a tag with no
+    # release, and it would produce no signal at all. `publish` carries no
+    # `if:`, so it can never be `skipped` and the inverted form has no third
+    # case to catch.
+    if: ${{ always() && needs.publish.result != 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the publish-blocked tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: "release: the OCI publish did not complete"
+        run: |
+          set -euo pipefail
+          # The LIST api, not --search: the search index lags, so two tags
+          # pushed close together would each miss the other's issue and file a
+          # duplicate. The author filter keeps a same-titled issue opened by
+          # anyone else from capturing the alert.
+          existing="$(gh issue list --repo "$REPO" --state open --limit 100 \
+            --json number,title,author \
+            --jq '[.[] | select(.title == env.TITLE) | select(.author.login == "github-actions")] | .[].number')"
+          body() {
+            printf '%s\n\n%s\n' \
+              "The Publish OCI artifact workflow did not complete for a pushed tag. The artifact, its signature, its attestations or its GitHub Release assets may be missing: $RUN_URL" \
+              "Recovery: knowledge/workflows/release-process.md, section \"When the publish job fails\" — it starts by reading which of the states the run left behind, because most of them are repaired by re-running the workflow rather than by cutting a tag."
+          }
+          if [ -n "$existing" ]; then
+            printf '%s\n' "$existing" | while IFS= read -r n; do
+              [ -n "$n" ] || continue
+              body | gh issue comment "$n" --repo "$REPO" --body-file - || true
+            done
+          else
+            body | gh issue create --repo "$REPO" --title "$TITLE" \
+              --label 'kind: ci' --label 'area: ci' --body-file -
+          fi
+
+  # The mirror of `notify`: a run that actually published closes the tracking
+  # issue, so a permanently-open alert cannot train the operator to ignore it.
+  # A human close means "start a fresh record", hence the state:open lookup.
+  notify-resolved:
+    needs: publish
+    if: ${{ always() && needs.publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Close the publish-blocked tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: "release: the OCI publish did not complete"
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --repo "$REPO" --state open --limit 100 \
+            --json number,title,author \
+            --jq '[.[] | select(.title == env.TITLE) | select(.author.login == "github-actions")] | .[].number')"
+          [ -n "$existing" ] || { echo "no open tracking issue"; exit 0; }
+          # Every match, not just the first: a duplicate left open is the alert
+          # fatigue this job exists to prevent. `|| true` so a race with a human
+          # closing the issue cannot red an otherwise successful publish.
+          printf '%s\n' "$existing" | while IFS= read -r n; do
+            [ -n "$n" ] || continue
+            printf '%s' "A publish completed: $RUN_URL" \
+              | gh issue comment "$n" --repo "$REPO" --body-file - || true
+            gh issue close "$n" --repo "$REPO" --reason completed || true
+          done

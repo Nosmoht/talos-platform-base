@@ -1,5 +1,118 @@
 # Changelog
 
+## 2026-09-06
+
+- `reference/helm-values-surface.md`: new concept — the five ArgoCD/Cilium
+  Helm delivery paths with the spec that owns each, a value-reachability matrix
+  per lifecycle phase, and the three points where the surface closes: the
+  published ArgoCD component exposes no values input (the git remote-base path
+  is qualified separately), Cilium's long tail has no base-delivered Day-2 path
+  though the consumer-owned Application route exists unautomated, and
+  seed/steady-state collisions are documented case by case but never
+  enumerated. Records that both seeds are bootstrap-only because an
+  inlineManifest is create-only, not because the render is frozen, and that
+  what `-replace` does to a live cluster stays unverified per UPGRADING.md;
+  that path B is a server-side `kubectl apply` which re-fires on a chart bump,
+  unlike the seeds; and two measurements against the pinned argo-cd chart — a
+  leaf key the floor owns cannot be handed back to the chart with `null`
+  (nulling the parent map drops the subtree instead), and a type-invalid
+  override value templates cleanly because that chart ships no
+  `values.schema.json`. Plus the recorded rationale from ADR-0007 §4 and
+  ADR-0022 §(c)/§(l), six open findings, and a dated tracker snapshot pointing at issues 261, 262 and 86.
+- `index.md`: Reference section gains the new concept.
+- `decisions/0028-consumer-free-helm-value-surface.md`: new decision — the
+  consumer's free-form values layer is the last layer on every ArgoCD and Cilium
+  workload-values path. The emitted Cilium `Application` inherits
+  `cilium_values_override` and the hard-reject guard goes, replaced by a
+  plan-time rejection on keys whose Talos-side counterpart the module writes; the
+  steady-state ArgoCD component ships its chart inputs so a consumer re-renders
+  in their own repo, retracting a negative assertion in
+  `openspec/specs/oci-supply-chain/spec.md`. Records the costs it accepts rather
+  than mitigates: the ArgoCD values-level security floor becomes consumer-owned,
+  `cilium_values_override` gains a git-committed sink, and the seed and the
+  `Application` may diverge over an unverified live behaviour. The Day-0 CRD
+  render keeps no values layer; `substrate.cilium` stays closed.
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: dated
+  partial-supersession banner for §(c) third bullet, the §(f) override-drop
+  hazard and the 2026-08-15 addendum's typed-input substitution claim, plus the
+  `supersedes: []` / `superseded_by: []` keys the convention pairs with such a
+  banner.
+- `decisions/index.md`: the new decision joins Accepted; the ADR-0022 entry
+  records the partial supersession.
+
+## 2026-09-05
+
+- `decisions/0027-talos-provider-prerelease-pin.md`: new decision — the module
+  pins `siderolabs/talos` exactly to `0.12.0-beta.0`, the reachable 1.14 kinds
+  and generated defaults that buys, the prerelease every consumer inherits, and
+  the install-document conflict that keeps the example and fixture pins on the
+  1.13 line.
+- `decisions/0026-machine-config-apply-mode.md`: addendum — Option 3's revisit
+  trigger fired and the option still loses on its durable cons; Option 2's
+  availability con is superseded by the exact pin while its dependability cons
+  keep the four-value set; the 0.11.0 document-kind measurement is marked
+  historical.
+- `workflows/release-process.md`: `generated.at 2026-09-05`. §CHANGELOG contract
+  records that the by-hand cut also renames `UPGRADING.md`'s unreleased heading
+  to the tag.
+- `reference/tasks.md`: the `tofu:check:provider-document-kinds` entry records
+  the moved boundary — pin parity, acceptance by rendered value, and the two
+  expiry alarms that replace the two rejection cases — and the inventory gains
+  `tofu:check:provider-document-kinds-bites`.
+
+## 2026-09-04
+
+- `workflows/release-process.md`: `generated.at 2026-09-04`. `.releaserc.json`
+  carries no publish plugin; the publish workflow creates the GitHub Release as
+  a draft, attaches the assets, verifies them, publishes it last, and reads the
+  result back, with a `notify` / `notify-resolved` pair around the job. New §A
+  release that shipped without assets and §When the publish job fails carry the
+  per-state recovery the workflow's error output and the tracking issue point
+  at, including what a re-run costs. §CHANGELOG contract records that the
+  generated-notes fallback is the current path and where a new version heading
+  must go.
+- `workflows/verify-release.md`: `generated.at 2026-09-04`. The release step is
+  described as draft-then-publish plus the asset assertions, and a new
+  §Releases without assets separates the five asset-less tags whose artifacts
+  are intact from the two that have no published artifact at all.
+- `reference/tasks.md`: `generated.at 2026-09-04`. The `supply-chain:*`
+  inventory gains `check-release-step`, the release-step bite-check.
+- `glossary.md`: `generated.at 2026-09-04`. The semantic-release entry states
+  that it tags only and names the publish workflow as the release's creator.
+- `decisions/0020-automated-release-no-approval-gate.md`: amendment
+  (2026-09-04) — release-object ownership moves to the publish workflow, with
+  the trade-offs on notes, re-runs, and the unbackfillable tags.
+- `decisions/0026-machine-config-apply-mode.md`: addendum — the adjacent
+  provider-mirror coupling is now gated by a document-kind probe, `reboot` is
+  recorded as a value Talos 1.14 removed from its CLI and left unverified over
+  the API.
+- `reference/tasks.md`: the tofu fence inventory gains
+  `tofu:check:provider-document-kinds`, and the `tofu:ci` aggregate names it.
+
+## 2026-09-02
+
+- `reference/manifest-pipeline.md`: the ArgoCD substrate-invariant inventory is
+  refreshed through I6/P; the I6 entry records the apiVersion/namespace and
+  named-port bindings, the foreign-policy-kind rejection, why the steady-state
+  assertion also runs on the kustomize build, that a non-matching policy set is a
+  violation rather than a render-shape error, and that
+  `argocd-applicationset-controller` is deliberately unpoliced. §Chart pin gains
+  what a chart bump obliges of a reviewer.
+- `reference/argocd-sso-contract.md`: the identity-enforcement range stays I1-I5,
+  with I6 named separately as the NetworkPolicy-posture invariant it is.
+- `decisions/0025-argocd-crd-apply-scope.md`: addendum — the revisit trigger the
+  record sets was discharged at argo-cd chart `10.6.0`; the CRD templates'
+  directive list and the byte-identical cross-`--kube-version` render both still
+  hold.
+- `architecture/day-zero-bootstrap.md`: the NetworkPolicy posture gate and its
+  bite-check join the ArgoCD seed inventory.
+- `architecture/substrate.md`, `workflows/first-consumer-cluster.md`: the OCI
+  payload now carries every root-level talos-cluster implementation file; the
+  checkout-only authoring and bootstrap helpers are identified explicitly.
+- `reference/tasks.md`: the supply-chain inventory gains the extracted OCI module
+  validation target, and the local `gitops:validate` sequence gains the
+  NetworkPolicy posture bite-check.
+
 ## 2026-08-28
 
 - `workflows/issue-lifecycle.md`: `generated.at 2026-08-28`. The session-start
@@ -704,6 +817,25 @@ collisions only:
 - `workflows/spec-driven-development.md`: upgrade procedure now frames
   regenerated tool trees as security-relevant review surface; CI
   regeneration-parity gate documented.
+
+## 2026-08-31
+
+- `decisions/0020-automated-release-no-approval-gate.md`: second amendment —
+  the merge settings are unreadable under the audit App token, so Check 4 falls
+  back to checking the merge effect on `main`.
+- `decisions/0020-automated-release-no-approval-gate.md`: amendment recording
+  that the merge-method settings landed, that `merge_commit_title` is
+  `PR_TITLE`, and that Check 4 now runs in CI under an App token.
+- `project/openssf-self-assessment.md`: new dated verification of the required
+  contexts — `lint-pr-title` added, `preflight` removed with its workflow.
+- `workflows/release-process.md`: the title lint is required; the merge subject
+  is the PR title.
+- `decisions/0015-openspec-adoption.md`: the repo-internal CI list names
+  `policy-audit` where it named the deleted `preflight`.
+- `workflows/verify-release.md`: the tag-reassignment paragraph no longer
+  credits a GHCR tag-immutability setting, which does not exist. Digest pinning
+  is named as the only protection for the image; repository release
+  immutability is described for what it does cover.
 
 ## 2026-07-11
 

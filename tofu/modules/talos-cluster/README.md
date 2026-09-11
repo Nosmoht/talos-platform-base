@@ -75,16 +75,21 @@ machine-config roll below have no row of their own.
 > out-of-band `talosctl upgrade`. Nodes with an unchanged hash keep their installer
 > and do NOT re-image.
 
-**Two out-of-band Day-2 ops are upgrades** — the `siderolabs/talos` provider ships no
-OS- or Kubernetes-upgrade resource, so both are imperative `talosctl` commands
-the consumer Taskfile drives. The **OS upgrade** is `talosctl upgrade --image
+**Two out-of-band Day-2 ops are upgrades** — this module drives neither through a
+provider resource, so both are imperative `talosctl` commands the consumer
+Taskfile drives. The **OS upgrade** is `talosctl upgrade --image
 …:<version>` (bump `talos_install_version`; tofu renders the new installer URL
 into tfplan JSON, the Taskfile rolls each node — see §"Versions: schema-pin vs
 install-pin"). The **Kubernetes upgrade** is `talosctl upgrade-k8s --to
 <version>` (bump `kubernetes_version` to keep the machine-config in sync). In
 both cases tofu owns the declarative state and the talosctl command performs the
-rolling upgrade. Tracked follow-up for when the provider exposes these as
-resources.
+rolling upgrade. The pinned provider does now ship a `talos_machine` resource
+that performs an in-place OS upgrade, but the module does not use it: it carries
+no `apply_mode`, hardcodes an AUTO apply, and sequences only through
+`depends_on`, which the module's `for_each` over the node set cannot express.
+Adopting it is tracked in
+[issue #129](https://github.com/Nosmoht/talos-platform-base/issues/129); there
+is still no Kubernetes-upgrade resource.
 
 **A staged apply is the other out-of-band Day-2 op.** Setting a role's
 `apply_mode` to `staged` keeps the apply from rebooting and hands the reboot to
@@ -223,13 +228,13 @@ module "complete" {
   source = "git::https://github.com/Nosmoht/talos-platform-base.git//tofu/modules/talos-cluster?ref=<tag>"
 
   cluster_name       = "example-cluster"
-  talos_version      = "v1.12.6"
-  kubernetes_version = "v1.35.0"
+  talos_version      = "v1.13.9"
+  kubernetes_version = "v1.36.3"
   cluster_endpoint   = "https://api.example:6443"
 
   images = {
-    intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucode", "siderolabs/nvme-cli"] } # baseline (every node of the image)
-    pi    = { architecture = "arm64", cpu_vendor = "arm", extensions = [], overlay = { name = "rpi_generic", image = "siderolabs/sbc-raspberrypi" } }
+    amd64     = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucode", "siderolabs/nvme-cli"] } # baseline (every node of the image)
+    arm64-sbc = { architecture = "arm64", cpu_vendor = "arm", extensions = [], overlay = { name = "rpi_generic", image = "siderolabs/sbc-raspberrypi" } }
   }
 
   # Consumer composites (tool-agnostic). requires_features (scheduling/labels) and
@@ -251,10 +256,10 @@ module "complete" {
   # Keyed by node name — the key IS the Talos hostname / Kubernetes node name.
   # One node, one definition place. The controlplane count must be ODD.
   nodes = {
-    node-cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["storage-replicated"] }
-    node-gpu-1 = { ip = "192.0.2.31", role = "worker", image = "intel", hardware_capabilities = ["storage-replicated", "compute-gpu-nvidia"],
-    config_patches = [file("${path.module}/patches/gpu-nic.yaml")] } # per-node NIC binding
-    node-pi-1 = { ip = "192.0.2.41", role = "worker", image = "pi", hardware_capabilities = [] } # arm64
+    node-cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "amd64", hardware_capabilities = ["storage-replicated"] }
+    node-gpu-1 = { ip = "192.0.2.31", role = "worker", image = "amd64", hardware_capabilities = ["storage-replicated", "compute-gpu-nvidia"],
+    config_patches = [file("${path.module}/patches/gpu-nic.yaml")] } # per-node NIC binding — shares the amd64 image yet gets its own schematic, because nvidia-lts bakes the driver extensions
+    node-sbc-1 = { ip = "192.0.2.41", role = "worker", image = "arm64-sbc", hardware_capabilities = [] } # arm64
   }
 
   # Cluster-wide patches the caller owns (NTP, registry mirrors, install disk).
@@ -262,17 +267,21 @@ module "complete" {
 }
 ```
 
-A runnable-shaped `tofu validate` fixture covering this exact topology lives in
-[`examples/complete/`](examples/complete).
+A runnable-shaped `tofu validate` fixture lives in
+[`examples/complete/`](examples/complete) — the same composition paths plus an
+odd controlplane count and a per-image `extra_kernel_args`.
 
 The caller owns the `provider "talos" {}` block and the (encrypted) backend.
 Example root `versions.tf`:
 
 ```hcl
 terraform {
-  required_version = ">= 1.7.0"
+  required_version = ">= 1.9.0"
   required_providers {
-    talos = { source = "siderolabs/talos", version = ">= 0.7.0, < 1.0.0" }
+    # The module pins this exact prerelease and it wins the intersection, so a
+    # range here still resolves to it. Spelling it out keeps the resolved version
+    # visible in the root. See §Talos 1.14.
+    talos = { source = "siderolabs/talos", version = "0.12.0-beta.0" }
   }
   # State holds machine_secrets — the backend MUST be encrypted.
   encryption {
@@ -331,8 +340,8 @@ provider "talos" {}
 | `deploy_argocd` | bool | `true` | deliver ArgoCD as a controlplane `inlineManifest`. Requires `sops_age_key` when true. |
 | `sops_age_key` | string (sensitive) | `""` | age private key (`keys.txt`) for the ArgoCD **ksops** repoServer, seeded as the `sops-age-key` Secret. **Required** when `deploy_argocd = true`. Lands in (encrypted) state. |
 | `argocd_namespace` | string | `"argocd"` | namespace for the bootstrap ArgoCD install |
-| `argocd_chart_version` | string | `"9.4.5"` | `argo-cd` Helm chart version (argoproj.github.io/argo-helm) |
-| `argocd_values_override` | string | `""` | full replacement of the bootstrap Helm values (YAML). Empty = the shipped `helm/argocd-values.yaml` (slim, ksops). |
+| `argocd_chart_version` | string | `"10.6.0"` | `argo-cd` Helm chart version (argoproj.github.io/argo-helm) |
+| `argocd_values_override` | string | `""` | consumer Helm values **merged** on top of the shipped `helm/argocd-values.yaml` (helm merges value files; later wins) — not a wholesale replacement. **SEED-ONLY**: the steady-state component does not read it, so anything it sets that the steady state also declares is overwritten on the first sync. Empty = just the shipped values (slim, ksops). |
 | `cert_approver_provider_regex` | string | `".*"` | `postfinance/kubelet-csr-approver` `PROVIDER_REGEX` — regex every kubelet-serving CSR's **SAN DNS name** must additionally match. Match the **full DNS SAN string**, which may be an FQDN (e.g. `node-1.internal.example.com`), not just the bare node name — a pattern too restrictive to match the actual SAN (e.g. `^node-[0-9]+$` against an FQDN SAN) denies those CSRs. `^node-.*$` is a safe permissive form. **SEED knob** (create-only). The always-on per-node DNS-SAN hostname-prefix binding applies regardless. Validated: non-empty/non-whitespace (empty crashes the approver; whitespace-only denies all), compiles, no `---`, no newline (protects the split-based audit outputs). |
 | `cert_approver_provider_ip_prefixes` | list(string) | `["0.0.0.0/0", "::/0"]` | `PROVIDER_IP_PREFIXES` — CIDRs a CSR's IP SANs must fall within. Default is the **safe floor** (all IPs); **never `[]`** (an empty set denies every serving CSR). Tighten to node subnets for an IP-SAN-to-subnet binding. **SEED knob.** Every entry must be a valid CIDR. |
 | `cert_approver_replicas` | number | `1` | approver Deployment replica count (`>= 1`). `> 1` derives leader-election + a namespaced `coordination.k8s.io/leases` Role/RoleBinding so the HA config is coherent; `1` keeps least privilege (no leases rule). **SEED knob.** |
@@ -421,6 +430,119 @@ per node flow through), then a consumer Taskfile target reads `tfplan.json` and
 runs `talosctl upgrade --image …:<version>` idempotently per node, and finally
 `tofu apply` updates state. Tofu owns the declarative state; the consumer
 Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
+
+## Talos 1.14: the pinned provider, and what it reaches
+
+Talos 1.14.0 is generally available since 2026-09-03. The module pins the
+`siderolabs/talos` provider **exactly** to `0.12.0-beta.0`, the only release
+bundling the 1.14 machinery ([ADR-0027](../../../knowledge/decisions/0027-talos-provider-prerelease-pin.md)).
+The example and fixture pins deliberately stay on Talos 1.13.9; both version
+inputs are consumer-supplied with no default.
+
+**The pin is a prerelease, and it wins over your root's range.** OpenTofu never
+selects a prerelease from a range, so only an exact `=` reaches this version —
+and because provider constraints intersect across the whole configuration, that
+exact pin is what the configuration resolves to even when your root still
+declares `>= 0.7.0, < 1.0.0`. Measured: such a root initializes normally and
+installs `0.12.0-beta.0`, as do `~> 0.11.0`, a bare `source` with no `version`,
+and a root that never names the provider. Two things do fail: any root
+constraint that EXCLUDES this version — a different exact pin (`0.11.0`), or a
+lower bound above it (`>= 0.12.0`, since the prerelease sorts below the
+release) — and a plain `tofu init` against a committed lock still recording
+`0.11.0`, which needs `tofu init -upgrade`. So most roots need no edit, but
+every one of them inherits a prerelease provider, named or not. `UPGRADING.md`
+carries the table and the migration.
+
+**The 1.14 document kinds are reachable.** The provider decodes every
+`config_patches` entry against its own bundled Talos machinery before rendering,
+and that machinery is now 1.14's: a patch carrying `SecurityProfileConfig`,
+`FilesystemTrimConfig`, `KubeNodeConfig`, `UnattendedInstallConfig` or
+`BGPInstanceConfig` renders, while a kind that machinery does not know is still
+a hard plan-time error (`"<kind>" "v1alpha1": not registered`), not a
+passthrough. Patching a kind the provider also generates MERGES into the
+generated document rather than appending a second one.
+`scripts/check-provider-document-kinds.sh` fixes the boundary mechanically and
+turns red when it moves.
+
+> The new documents do not reuse the v1alpha1 field names. `KubeNodeConfig`
+> carries `labels:` and `taints:`, not the `machine.nodeLabels` /
+> `machine.nodeTaints` spelling this module still writes — a patch using the old
+> key is rejected with `unknown keys found`.
+
+**Both 1.14 defaults are now generated.** At a `v1.14.0` pin the provider emits
+the full 1.14 document set, `SecurityProfileConfig` with `workloadIsolation:
+true` and `FilesystemTrimConfig` with a 168h interval included. A patch
+overrides either. At the 1.13.9 pin the examples carry, neither is generated —
+that pin renders the 1.13-shaped configuration it always did.
+
+**A 1.14 pin generates a second, conflicting install description.** The module
+writes `machine.install` (v1alpha1, the deprecated spelling). At a 1.14 pin the
+provider ALSO emits an `UnattendedInstallConfig` built from its own defaults —
+a `disk.dev_path == "/dev/sda"` selector and an installer image tagged
+`v1.14.0-rc.2`, the Talos version its machinery bundles — and it does **not**
+follow your `machine.install` patch: patching the disk to `/dev/nvme0n1` leaves
+the generated selector on `/dev/sda`. Which document a 1.14 node honours is
+UNVERIFIED here and needs a 1.14 node to answer. Two consequences follow while
+it is unanswered:
+
+- That generated installer reference does not come from the Image Factory, so it
+  carries none of your schematic — no system extensions, no `extra_kernel_args`,
+  no SBC overlay — and the module's code-level SecureBoot guarantee, which
+  applies to the URL it selects, does not reach it.
+- Patching the document directly does work and is measured (case G of the
+  fence): the patch merges into the generated document and produces exactly one
+  of them. Keep both install descriptions consistent:
+
+  ```yaml
+  # controlplane_config_patches / worker_config_patches, alongside your machine.install patch
+  apiVersion: v1alpha1
+  kind: UnattendedInstallConfig
+  provisioning:
+    diskSelector:
+      match: disk.dev_path == "/dev/nvme0n1"
+  installer:
+    image: <the same Image Factory installer URL the module derives for that node>
+  ```
+
+This is why the examples and fixtures stay on 1.13.9
+([issue #252](https://github.com/Nosmoht/talos-platform-base/issues/252)).
+
+**One rendered value changes on the 1.13 line too.** The provider's DEFAULT
+`machine.install.image` moved from `ghcr.io/siderolabs/installer:v1.13.0` to a
+`factory.talos.dev/metal-installer/…:v1.14.0-rc.2` URL, because the old image is
+no longer published. That default is the only byte that differs in a rendered
+`v1.13.9` configuration between the old provider and this one — and the module
+overrides it per node with the Image Factory URL, so the image a node installs
+is unchanged. What does change is `machine_configuration_input` on every
+`talos_machine_configuration_apply` resource, so your first plan after the bump
+shows an update for every node. See `UPGRADING.md`.
+
+**Patch kinds that match the version you pin.** Reachability is a property of
+the provider, not of `talos_version`: at a 1.13.9 pin the provider accepts a
+`SecurityProfileConfig` patch and renders it into the configuration, producing a
+document a 1.13 node does not know. The module does not police patch contents.
+
+**Behaviour changes that reach you regardless of this module:**
+
+- `apply-config` no longer reboots on its own, and `talosctl apply-config`
+  accepts only `auto`, `no-reboot`, `staged` and `try`. `reboot` is gone from the
+  command. This module still accepts `reboot` for both `*_apply_mode` inputs
+  because it mirrors the provider's value set; whether a 1.14 node still honours
+  the provider's REBOOT request over the API is UNVERIFIED here — treat that
+  value as untested on 1.14 and prefer `staged` plus an out-of-band reboot. See
+  §"Staged machine-config roll (Day-2)".
+- etcd serves `/metrics` and the HTTP health endpoint on port `2383`; port
+  `2379` is gRPC only. A scrape configuration or firewall rule pinned to `2379`
+  stops working.
+- etcd and kube-apiserver run with a TLS 1.3 minimum, and custom cipher-suite
+  settings are ignored and removed.
+- `ghcr.io/siderolabs/installer` is no longer published. This module already
+  derives the installer from the Image Factory, so nothing changes here.
+- The in-tree Kubernetes volume plugins, iSCSI in particular, stop working once
+  workload isolation is on. Use a CSI driver — though a driver reaching
+  `machined`'s namespace through `hostPID` plus `nsenter`, the Talos-native iSCSI
+  shape, gets the sandbox's PID namespace instead. Whether such a driver still
+  works is UNVERIFIED here and needs a 1.14 node with the driver installed.
 
 ## ArgoCD delivery + health gate
 

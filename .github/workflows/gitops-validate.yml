@@ -131,12 +131,17 @@ jobs:
         run: ./scripts/verify-rendered.sh
 
       - name: Check shared ArgoCD substrate invariants (both render paths)
-        # Gates the shared bootstrap/steady-state invariants (bundled Dex
-        # disabled; no server.dex.server* cmd-params) across BOTH the tofu
+        # Gates the shared bootstrap/steady-state invariants (identity-free
+        # defaults and the exact NetworkPolicy posture) across BOTH the tofu
         # bootstrap seed values and the steady-state values — rendering each
         # fresh with the pinned chart. Closes the silent-drift class from #153.
         # Uses the helm + yq already installed above; runs on every PR.
         run: ./scripts/check-argocd-substrate-invariants.sh
+
+      - name: Prove the ArgoCD NetworkPolicy gate bites
+        # Mutates copies of the real committed render and requires I6 to reject
+        # empty/wrong selectors, unsafe ingress drift and a missing policy.
+        run: ./scripts/check-argocd-network-policy-gate-bites.sh
 
       - name: Check Cilium reference values against the pinned chart schema
         # kubernetes/bootstrap/cilium/values.yaml ships in the OCI artifact and is

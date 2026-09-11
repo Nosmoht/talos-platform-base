@@ -21,7 +21,10 @@ name: docs-lint
 # can run. Its honest scope is this file against .tool-versions — it does not
 # observe the installed binary, and it does not reach tofu-validate.yml's pins.
 on:
+  # `edited` for the same reason as hard-constraints-check.yml: spec:check-staleness
+  # below runs against origin/$BASE_REF, and a base retarget fires no other event.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -90,6 +93,12 @@ jobs:
         # topical home but is not required, and a red bite-check there would not
         # block a merge.
         run: task supply-chain:check-release-guard
+
+      - name: task supply-chain:check-release-step
+        # Same reasoning as the guard above: the release steps only ever run on
+        # a tag push, where a defect costs a version rather than a re-run, so
+        # their bite-check has to block the PR that changes them.
+        run: task supply-chain:check-release-step
 
       - name: task spec:validate
         run: task spec:validate

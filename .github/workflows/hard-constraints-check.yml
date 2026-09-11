@@ -2,11 +2,21 @@ name: Hard Constraints Check
 
 # Enforces cluster-wide invariants from AGENTS.md §Hard Constraints.
 # Runs on PR diffs only — does not scan the entire repo history.
-# Must be added as a required status check in Branch Protection Rules.
-# Settings → Branches → main → Require status checks → "Hard Constraints Check / hard-constraints"
+# github.base_ref is env-bound as BASE_REF below, never inline-interpolated
+# into `run:` — a branch name is untrusted input and may carry shell
+# metacharacters. Same convention as docs-lint.yml.
+#
+# The required branch-protection context on main is the bare check-run name
+# "Hard Constraints" — jobs.hard-constraints.name below. The same string is
+# hard-coded in scripts/preflight-checks.sh Check 1, so a rename has three
+# sites: that job name, the protection setting, and that script.
 
 on:
+  # `edited` is not a default type. It is the only event a base retarget fires,
+  # and every check below diffs against the base, so without it a retargeted PR
+  # keeps a result computed against its old base.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 # Note: paths: filter intentionally removed. Path-filtered required-checks
 # count as "skipped/successful" in branch protection — a PR touching only
@@ -33,10 +43,12 @@ jobs:
        # explain why it is forbidden is not a violation and must not trigger.
       - name: Check forbidden Kubernetes kinds (Ingress, Endpoints)
         shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           FAIL=0
-          CHANGED_K8S=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' ':(exclude,glob)kubernetes/**/*.md' 2>/dev/null || true)
+          CHANGED_K8S=$(git diff --name-only origin/"$BASE_REF"...HEAD -- 'kubernetes/**' ':(exclude,glob)kubernetes/**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_K8S" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do
@@ -56,13 +68,15 @@ jobs:
 
       - name: Check forbidden Talos installer image (SecureBoot)
         shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           FAIL=0
           # The Talos cluster-lifecycle path now lives in tofu/ (the OpenTofu
           # module renders installer images + carries config_patches). Scan
           # tofu/ for forbidden SecureBoot installer references.
-          CHANGED_TALOS=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'tofu/**' ':(exclude,glob)**/*.md' 2>/dev/null || true)
+          CHANGED_TALOS=$(git diff --name-only origin/"$BASE_REF"...HEAD -- 'tofu/**' ':(exclude,glob)**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_TALOS" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do
@@ -86,10 +100,12 @@ jobs:
 
       - name: Check forbidden kernel boot parameter (debugfs=off)
         shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           FAIL=0
-          CHANGED_ALL=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'kubernetes/**' 'tofu/**' ':(exclude,glob)**/*.md' 2>/dev/null || true)
+          CHANGED_ALL=$(git diff --name-only origin/"$BASE_REF"...HEAD -- 'kubernetes/**' 'tofu/**' ':(exclude,glob)**/*.md' 2>/dev/null || true)
           [ -n "$CHANGED_ALL" ] || exit 0
           MATCHES=""
           while IFS= read -r f; do

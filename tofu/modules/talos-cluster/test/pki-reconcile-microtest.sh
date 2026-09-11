@@ -56,11 +56,13 @@ log "generated throwaway PKI bundle"
 #    so the import sets the provider default.
 cat > "${WORKDIR}/versions.tf" <<'EOF'
 terraform {
-  required_version = ">= 1.7.0"
+  required_version = ">= 1.9.0"
   required_providers {
     talos = {
       source  = "siderolabs/talos"
-      version = ">= 0.7.0, < 1.0.0"
+      # Tracks the module's own exact pin — the property under test is a
+      # behaviour of THAT provider, not of whatever a range resolves to.
+      version = "0.12.0-beta.0"
     }
   }
 }

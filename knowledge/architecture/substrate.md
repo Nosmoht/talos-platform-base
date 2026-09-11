@@ -3,7 +3,7 @@ type: architecture
 title: Substrate Boundary
 description: What talos-platform-base is and ships — the three-pillar substrate, the base/apps/consumer layer model, the tracked repo layout, and the fail-closed OCI artifact allowlist.
 tags: [substrate, layer-model, oci-artifact, boundaries]
-generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-02T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-07-17T00:00:00Z" }
@@ -146,7 +146,7 @@ fails the publish. The same check runs locally via
 `task supply-chain:oci-allowlist`. The allowlist is the authoritative record
 of what ships; prose "what ships" summaries elsewhere are non-normative.
 
-The 19 shipped entries:
+The 24 shipped entries:
 
 ```text
 kubernetes/bootstrap/cilium/extras.yaml
@@ -158,11 +158,16 @@ kubernetes/substrate/argocd/namespace.yaml
 platform-hardware-features.yaml
 schemas/hardware-features.schema.json
 tofu/modules/talos-cluster/README.md
+tofu/modules/talos-cluster/cilium-values.tf
+tofu/modules/talos-cluster/composition.tf
 tofu/modules/talos-cluster/helm/argocd-values.yaml
 tofu/modules/talos-cluster/helm/cilium-values.yaml
+tofu/modules/talos-cluster/kubeconfig-refresh.tf
 tofu/modules/talos-cluster/main.tf
 tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
+tofu/modules/talos-cluster/nodes.tf
 tofu/modules/talos-cluster/outputs.tf
+tofu/modules/talos-cluster/profiles.tf
 tofu/modules/talos-cluster/test/README.md
 tofu/modules/talos-cluster/test/pki-reconcile-microtest.sh
 tofu/modules/talos-cluster/test/run-adoption-proof.sh
@@ -170,10 +175,11 @@ tofu/modules/talos-cluster/variables.tf
 tofu/modules/talos-cluster/versions.tf
 ```
 
-That is: a talos-cluster module subset (four of its `.tf` files, the helm
-value floors, the chart-rendered cert-approver seed, the adoption/PKI proof
-scripts), the Cilium Day-2 reference values + GatewayClass extra, the argocd
-component as a **buildable unit**, and the hardware-capability vocabulary
+That is: the complete talos-cluster runtime module (every root-level `.tf`
+implementation file, the helm value floors, the chart-rendered cert-approver
+seed, and the explicitly allowlisted adoption/PKI proof scripts), the Cilium
+Day-2 reference values + GatewayClass extra, the argocd component as a
+**buildable unit**, and the hardware-capability vocabulary
 (`platform-hardware-features.yaml` at the repo root plus its schema under
 `schemas/`).
 
@@ -182,14 +188,13 @@ manifests and the namespace alone would leave a vendoring consumer to
 reconstruct the resource list by hand, so `kustomization.yaml` ships with them
 and `scripts/check-substrate-consumability.sh` requires it for every renderable
 component. That is what makes the component's own spec claim — consumable as a
-single kustomization — true at a published tag rather than only in-repo. Note
-the allowlist does NOT
-ship `composition.tf` and `profiles.tf`, although `main.tf` requires locals
-defined there — the tarball-vendored module tree alone does not
-`tofu validate`; consumers currently need the git checkout at the pinned
-tag for a runnable module (tracked as a maintainer follow-up). The
-vocabulary's equivalence with the module's provisioning catalog is enforced
-by a CI cross-reference gate, not read by the module at plan time
+single kustomization — true at a published tag rather than only in-repo. The
+module side is bound independently: `scripts/check-substrate-consumability.sh`
+requires every tracked root-level `.tf` file to appear in the allowlist, and
+`task supply-chain:oci-module-validate` extracts the allowlist-built payload and
+runs `tofu validate` against it. The vocabulary's equivalence with the module's
+provisioning catalog is enforced by a CI cross-reference gate, not read by the
+module at plan time
 ([capability-composition](capability-composition.md)).
 
 ### What stays git-only
@@ -201,7 +206,9 @@ shipped outputs ([manifest-pipeline](../reference/manifest-pipeline.md)), the
 worked consumer overlay under `kubernetes/examples/`, the
 `kubernetes/bootstrap/argocd/*.tmpl` root seeds, `Taskfile.yml`
 ([tasks](../reference/tasks.md)), `schemas/cluster.schema.json`, and
-`cluster.yaml.example`.
+`cluster.yaml.example`. The `tofu/modules/talos-cluster/examples/` authoring
+tree is also git-only; the OCI payload carries the runnable module, not its
+worked caller.
 
 ### What never ships anywhere
 

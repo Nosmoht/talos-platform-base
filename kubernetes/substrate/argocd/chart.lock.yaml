@@ -2,8 +2,8 @@
 chart:
   repo: https://argoproj.github.io/argo-helm
   name: argo-cd
-  version: 9.4.5
-  tgz_sha256: 4079dfd1d811058a64ea939483adfd0bbb437f4cb4fa3529e0bc211d53348384
+  version: 10.6.0
+  tgz_sha256: 5cf2184bcccd3ae5bd1e3abf35342553fdba5c4ff8bee1aefdd6e76ee7b00e4d
 release:
   name: argocd
   namespace: argocd

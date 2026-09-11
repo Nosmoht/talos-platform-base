@@ -1,13 +1,21 @@
 # Complete worked cluster definition — the declarative SoT consumed by the OpenTofu
-# shim in main.tf (yamldecode). Mixed amd64 + arm64 topology:
-#   3 controlplane (intel) · 4 kubevirt workers (intel) · 1 GPU worker (intel) ·
-#   1 Raspberry-Pi worker (arm64).
+# shim in main.tf (yamldecode).
 #
-# Kubernetes roles are ONLY controlplane / worker; storage / compute-virt / GPU
-# are composable hardware_capabilities, NOT roles. A node holds a SET of
-# capabilities (e.g. storage + virt). The arm64 Pi worker is the case the
-# pre-composition module could not express. IPs are RFC5737 documentation
-# addresses (192.0.2.0/24) — a tofu validate/plan fixture, not a runnable apply.
+# This is a COVERAGE MATRIX, not a deployment: one node per distinct composition
+# path, so every branch the shim and the module take is exercised exactly once.
+# It describes no particular cluster and its hardware choices are illustrative —
+# copy the SHAPE, not the values.
+#
+#   3 controlplane   odd count (etcd quorum), plain amd64 image
+#   1 worker         image-level extra_kernel_args + a SET of two capabilities
+#   1 worker         a capability that bakes its own extensions + a per-node patch
+#   1 worker         arm64 with an SBC overlay — the case the pre-composition
+#                    module could not express
+#
+# Kubernetes roles are ONLY controlplane / worker; storage, virtualisation and
+# GPU are composable hardware_capabilities, NOT roles. IPs are RFC5737
+# documentation addresses (192.0.2.0/24) — a tofu validate/plan fixture, not a
+# runnable apply.
 
 cluster:
   name: example-cluster
@@ -27,46 +35,35 @@ repo:
   url: https://github.com/your-org/your-cluster-repo.git
 
 talos:
-  version: v1.12.6 # schema pin (fixed at bootstrap)
-  install_version: v1.12.7 # installer tag bumped for an OS upgrade (exercises the split)
+  version: v1.13.8 # schema pin (fixed at bootstrap)
+  install_version: v1.13.9 # installer tag bumped for an OS upgrade (exercises the split)
 kubernetes:
-  version: v1.35.0
+  version: v1.36.3
 
 # Base images — the non-composable axis: arch + CPU vendor + BASELINE extensions
 # baked on every node of the image regardless of capabilities (CPU microcode,
-# GPU/NIC firmware, base tooling, default runtime sandbox). drbd + nvidia are
-# capabilities, not baseline, so they are NOT listed here.
+# base tooling, default runtime sandbox). drbd + nvidia are capabilities, not
+# baseline, so they are NOT listed here.
 images:
-  intel:
+  amd64:
     architecture: amd64
     cpu_vendor: intel
     extensions:
       - siderolabs/gvisor
-      - siderolabs/i915
       - siderolabs/intel-ucode
       - siderolabs/nvme-cli
-  intel-virt: # the KubeVirt workers: same base as `intel` plus consumer boot tuning
+  amd64-hugepages: # same baseline; the distinguishing fact is the kernel arg
     architecture: amd64
     cpu_vendor: intel
     extensions:
       - siderolabs/gvisor
-      - siderolabs/i915
       - siderolabs/intel-ucode
       - siderolabs/nvme-cli
     extra_kernel_args: [hugepagesz=1G] # unioned with the iommu profile's intel_iommu=on
-  intel-gpu: # the GPU node additionally carries Realtek NIC firmware
-    architecture: amd64
-    cpu_vendor: intel
-    extensions:
-      - siderolabs/gvisor
-      - siderolabs/i915
-      - siderolabs/intel-ucode
-      - siderolabs/nvme-cli
-      - siderolabs/realtek-firmware
-  rpi:
+  arm64-sbc:
     architecture: arm64
     cpu_vendor: arm
-    extensions: [] # the RPi schematic carries the board overlay, not extensions
+    extensions: [] # the SBC schematic carries the board overlay, not extensions
     overlay:
       name: rpi_generic
       image: siderolabs/sbc-raspberrypi
@@ -95,22 +92,21 @@ hardware-capabilities:
 # Keyed by node name: one node, one definition place. Three controlplanes —
 # the count must be ODD (etcd quorum).
 nodes:
-  node-cp-1: { ip: 192.0.2.11, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
-  node-cp-2: { ip: 192.0.2.12, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
-  node-cp-3: { ip: 192.0.2.13, role: controlplane, image: intel, hardware_capabilities: [storage-replicated] }
-  node-w-1: { ip: 192.0.2.21, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
-  node-w-2: { ip: 192.0.2.22, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
-  node-w-3: { ip: 192.0.2.23, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
-  node-w-4: { ip: 192.0.2.24, role: worker, image: intel-virt, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  node-cp-1: { ip: 192.0.2.11, role: controlplane, image: amd64, hardware_capabilities: [storage-replicated] }
+  node-cp-2: { ip: 192.0.2.12, role: controlplane, image: amd64, hardware_capabilities: [storage-replicated] }
+  node-cp-3: { ip: 192.0.2.13, role: controlplane, image: amd64, hardware_capabilities: [storage-replicated] }
+  node-w-1: { ip: 192.0.2.21, role: worker, image: amd64-hugepages, hardware_capabilities: [storage-replicated, compute-virt-passthrough] }
+  # The GPU node shares the `amd64` image with the controlplanes yet resolves to
+  # its OWN schematic: nvidia-lts bakes two extensions from the profile catalog.
+  # Capability extensions come from the profile, never from the image.
   node-gpu-1:
     ip: 192.0.2.31
     role: worker
-    image: intel-gpu
+    image: amd64
     hardware_capabilities: [storage-replicated, compute-gpu-nvidia]
     config_patches:
-      # per-node NIC binding (the value the old ${NIC_NAME} placeholder carried)
-      - machine: { network: { interfaces: [{ interface: enp0s20f0u2, dhcp: true }] } }
-  node-pi-1: { ip: 192.0.2.41, role: worker, image: rpi, hardware_capabilities: [] }
+      - machine: { network: { interfaces: [{ interface: eth0, dhcp: true }] } } # per-node NIC binding
+  node-sbc-1: { ip: 192.0.2.41, role: worker, image: arm64-sbc, hardware_capabilities: [] }
 
 # Cluster-wide patches the caller owns (NTP here; the module injects none).
 config_patches:

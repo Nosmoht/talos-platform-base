@@ -3,7 +3,7 @@ type: project
 title: OpenSSF Best Practices Self-Assessment
 description: Self-assessment against the OpenSSF Best Practices Passing-level criteria, serving as the source of truth for the external enrolment answers.
 tags: [project, supply-chain]
-generated: { by: human:nosmoht, at: "2026-07-15T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-08-31T00:00:00Z" }
 migrated_from: docs/openssf-best-practices.md (deleted in the OKF migration; see git history)
 sources:
   - resource: .github/workflows/gitops-validate.yml
@@ -122,7 +122,7 @@ source of truth for the answers that get submitted.
 | --- | --- | --- |
 | Static code analysis | met | conftest Rego policies (`policies/conftest/`) over rendered Kubernetes manifests is the load-bearing static check for a YAML-based repo; supplemented by markdownlint, gitleaks, and the per-component schema validation |
 | Static analysis common vulnerabilities | met | gitleaks (credentials) + conftest Rego policy checks (structural correctness) |
-| Static analysis fixed | met | main branch protection requires the `validate`, `Secret Scan (gitleaks)`, `Hard Constraints`, `preflight`, and `docs-lint` status checks; other CI workflows run but are not merge-blocking, and admin enforcement (`enforce_admins`) is disabled |
+| Static analysis fixed | met | main branch protection requires the `validate`, `Secret Scan (gitleaks)`, `Hard Constraints`, `docs-lint`, and `lint-pr-title` status checks; other CI workflows run but are not merge-blocking, and admin enforcement (`enforce_admins`) is disabled |
 | Dynamic analysis | n/a | Repo ships YAML manifests + Helm bases, not executable code. Dynamic analysis applies at the consumer-cluster runtime, not at the base. Documented as explicit n/a per Best-Practices guidance for non-executable-code repos. |
 
 > [2026-07-11 verification] "All CI checks required; broken main is
@@ -146,6 +146,17 @@ source of truth for the answers that get submitted.
 > single-maintainer repo the second is largely moot — GitHub does not let an
 > author approve their own PR — but the distinction matters for any claim that
 > CODEOWNERS is an enforcement control. It is not.
+>
+> [2026-08-31 verification] Re-read via the branch-protection API. Still five
+> required contexts, but not the same five: `lint-pr-title` was added, and
+> `preflight` was removed together with its workflow. `preflight` ran
+> `scripts/preflight-checks.sh` with the default `GITHUB_TOKEN`, which cannot
+> read branch protection, the Actions permissions, release immutability or the
+> merge settings — every check skipped and the required context reported
+> success without having read anything it asserts. The script now runs weekly
+> from `policy-audit.yml` with a GitHub App token holding `Administration:read`,
+> and treats an unreadable setting as a failure. The two limits above are
+> unchanged.
 
 ## External enrolment
 

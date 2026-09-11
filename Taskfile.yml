@@ -249,6 +249,27 @@ tasks:
     desc: "CI fence: the Cilium operator replica count keeps its chart key spelling on both sides (computed contributor + floor), and `operator` stays a single merge term"
     cmd: scripts/check-cilium-operator-replicas-key.sh
 
+  tofu:check:provider-document-kinds-bites:
+    # The fence below has one exit code for many assertions and reads text an
+    # external provider renders, so an assertion that stopped matching would
+    # report OK forever. Full rationale in the script header; the convention it
+    # follows is scripts/check-argocd-gate-bites.sh's.
+    desc: "CI fence: prove the document-kind fence actually bites (mutation bite-check over a copy of the script)"
+    cmd: scripts/check-provider-document-kinds-bites.sh
+
+  tofu:check:provider-document-kinds:
+    # Full rationale in scripts/check-provider-document-kinds.sh. The module's
+    # four opaque config_patches lists read as "any machine-config field is
+    # reachable", but the provider decodes every patch against its OWN bundled
+    # Talos machinery, so the reachable surface is bounded by the provider
+    # version rather than by the consumer's talos_version. Nothing else observes
+    # that coupling. Two assertions state what the provider does NOT do, so this
+    # fence still EXPIRES: it turns red when the 1.14 documents reach the 1.13.9
+    # pin the examples carry, or when the generated install document starts
+    # following machine.install — both signals to revisit those pins (#252).
+    desc: "CI fence: which Talos machine-config document kinds the PINNED provider accepts in config_patches, and which documents a Talos version pin makes it generate"
+    cmd: scripts/check-provider-document-kinds.sh
+
   tofu:check:shim-key-parity:
     # Full rationale in scripts/check-shim-key-parity.sh. The worked example's
     # shim reads cluster.yaml through try(), which is total: a mistyped key
@@ -285,10 +306,11 @@ tasks:
         -filter=tests/apply-mode.tftest.hcl
 
   tofu:ci:
-    desc: "Full local tofu validation: fmt:check + validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + test:offline — mirrors CI, stays offline"
+    desc: "Full local tofu validation: fmt:check + validate + vendored OCI module validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + check:provider-document-kinds-bites + check:provider-document-kinds + test:offline — mirrors CI; provider init may use the registry, no live Image Factory"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
+      - task: supply-chain:oci-module-validate
       - task: tofu:lint
       - task: tofu:check:render-determinism
       - task: tofu:check:argocd-day0-apply-shape
@@ -298,13 +320,15 @@ tasks:
       - task: tofu:check:node-projection-wiring
       - task: tofu:check:shim-key-parity
       - task: tofu:check:cilium-operator-replicas-key
+      - task: tofu:check:provider-document-kinds-bites
+      - task: tofu:check:provider-document-kinds
       - task: tofu:test:offline
 
   # ===========================================================================
   # gitops:* — kustomize manifest validation + rendered-manifests pipeline
   # ===========================================================================
   gitops:validate:
-    desc: kustomize-render + SOPS check + conftest + kubeconform + ArgoCD substrate invariants across all rendered manifests
+    desc: kustomize-render + SOPS check + conftest + kubeconform + ArgoCD substrate invariants and gate bite-checks across all rendered manifests
     cmd: |
       set -e
       ./scripts/discover_kustomize_targets.sh
@@ -329,6 +353,7 @@ tasks:
       done
       echo "conftest bite-check OK: all three source-classification/pinning denies fire"
       ./scripts/check-argocd-substrate-invariants.sh
+      ./scripts/check-argocd-network-policy-gate-bites.sh
       # The bootstrap render is part of what this repo delivers to a consumer,
       # so its gate belongs in the target AGENTS.md §Testing Guidelines names as
       # the pre-PR requirement. Wired in CI only, a contributor following the
@@ -569,6 +594,23 @@ tasks:
         exit 1
       }
 
+  supply-chain:check-release-step:
+    desc: "CI fence: oci-publish.yml's release steps attach the assets before the release is published, and refuse every state that cannot"
+    # The steps under test run ONLY on a tag push, and a published release is
+    # immutable -- a defect there costs a version rather than a re-run. The
+    # bite-check extracts them from the workflow and drives them against a stub
+    # `gh`, so the PR that changes them is where they are exercised.
+    cmd: |
+      set -e
+      bite_out="$(./scripts/check-release-step-bites.sh 2>&1)" || { printf '%s\n' "$bite_out"; exit 1; }
+      printf '%s\n' "$bite_out"
+      # A two-digit count, not `[0-9]+`: the zero-scenario case is exactly what
+      # this marker exists to reject. The script asserts its own, higher floor.
+      printf '%s\n' "$bite_out" | grep -qE '^release-step bite-check OK \([0-9]{2,} scenarios\)$' || {
+        echo "ERROR: the bite-check did not report a two-digit scenario count — it may have been narrowed" >&2
+        exit 1
+      }
+
   supply-chain:relock-release-guard:
     desc: "Re-lock the release guard's data files after a DELIBERATE change to what it protects"
     # Never chained into another target: the lock exists so that narrowing the
@@ -602,6 +644,32 @@ tasks:
       fi
       rm -f .work/oci-check.tar.gz
       ./scripts/check-substrate-consumability.sh
+
+  supply-chain:oci-module-validate:
+    desc: Extract the allowlist-built OCI payload and validate the vendored talos-cluster module
+    cmd: |
+      set -e
+      command -v tofu >/dev/null 2>&1 || { echo "ERROR: tofu is required" >&2; exit 2; }
+      work="$(mktemp -d)"
+      trap 'rm -rf "$work"' EXIT
+      tar -czf "$work/base.tar.gz" --files-from=.ci-oci-tarball-include.txt
+      mkdir "$work/extracted"
+      tar -xzf "$work/base.tar.gz" -C "$work/extracted"
+      module="$work/extracted/tofu/modules/talos-cluster"
+      [ -d "$module" ] || { echo "ERROR: vendored talos-cluster module missing" >&2; exit 1; }
+      (
+        cd "$module"
+        # tofu:ci runs this after tofu:validate. Reuse that verified provider
+        # set instead of making a second registry request; a standalone run
+        # still resolves providers normally.
+        provider_dir="{{.ROOT_DIR}}/tofu/modules/talos-cluster/.terraform/providers"
+        if [ -d "$provider_dir" ]; then
+          tofu init -backend=false -input=false -plugin-dir="$provider_dir" >/dev/null
+        else
+          tofu init -backend=false -input=false >/dev/null
+        fi
+        tofu validate
+      )
 
   # ===========================================================================
   # knowledge:* — OKF knowledge bundle (knowledge/) authoring + validation

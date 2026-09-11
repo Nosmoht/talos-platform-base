@@ -3,7 +3,7 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-02T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
@@ -15,6 +15,8 @@ sources:
   - resource: kubernetes/bootstrap/cilium/values.yaml
   - resource: Taskfile.yml
   - resource: scripts/check-argocd-substrate-invariants.sh
+  - resource: scripts/check-argocd-network-policy-invariants.sh
+  - resource: scripts/check-argocd-network-policy-gate-bites.sh
   - resource: cluster.yaml.example
   - resource: AGENTS.md
 ---
@@ -242,6 +244,15 @@ and CI):
   consumer's overlay merges onto, so a principal shipped there would become a
   standing grant in every consuming cluster
   ([argocd-sso-contract](../reference/argocd-sso-contract.md)).
+- **I5** (steady-state render only) — `argocd-rbac-cm` carries no non-empty
+  `policy.default`, which would otherwise grant the named role to every
+  authenticated principal without naming a subject.
+- **I6** (shared across both render paths) — both renders carry the exact five
+  component NetworkPolicies, including their selectors, ingress callers and
+  ports. The server stays reachable from a consumer gateway while redis and
+  repo-server remain restricted to their chart-documented callers.
+- **P** (cross-path) — the module's Day-0 chart-version default equals the
+  steady-state `chart.lock.yaml` version.
 
 Both paths render from the same chart tarball, pinned and sha256-verified
 against `kubernetes/substrate/argocd/chart.lock.yaml`. Consumer

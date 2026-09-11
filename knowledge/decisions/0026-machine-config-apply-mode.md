@@ -191,3 +191,71 @@ the machine configuration.
 - Requirement text: `openspec/specs/cluster-bootstrap-lifecycle/spec.md`
   §Apply mode per role, `openspec/specs/module-interface-contract/spec.md`
   §Grouped typed input surface.
+
+## Addendum 2026-09-04 — the unbound mirror is now half bound, and `reboot` is untested on Talos 1.14
+
+Talos 1.14.0 reached general availability on 2026-09-03, which turns two of this
+decision's forward-looking statements into observations.
+
+**The provider coupling is now gated, one layer up.** §Validation records that
+nothing compares the module's accepted `apply_mode` set against the provider's,
+because the offline runs use `mock_provider`. That specific mirror is still
+unbound, but the adjacent and larger one is not: `scripts/check-provider-document-kinds.sh`
+(`task tofu:check:provider-document-kinds`, in `tofu:ci`) probes the pinned
+provider with the real thing and asserts which Talos machine-config document
+kinds it accepts. It exists because the same failure shape bites the four
+`config_patches` inputs far harder than it bites `apply_mode`: the provider
+decodes patches against its own bundled Talos machinery, so the module's
+"arbitrary machine-config" escape hatch reaches the provider's document surface
+and not Talos'. Measured on provider `0.11.0`: `UserVolumeConfig` renders,
+while `SecurityProfileConfig`, `FilesystemTrimConfig`, `KubeNodeConfig`,
+`UnattendedInstallConfig` and `BGPInstanceConfig` are each refused with
+`"<kind>" "v1alpha1": not registered`.
+
+**`reboot` is now a value the operating system no longer offers.** The Talos
+1.14 CLI reference lists `auto`, `no-reboot`, `staged` and `try` as the
+`talosctl apply-config --mode` values; `reboot` was removed. This module keeps
+accepting `reboot` because its value set mirrors the provider's, and the
+provider still exposes it. Whether a 1.14 node honours the provider's REBOOT
+request over the machined API is UNVERIFIED — the CLI flag removal is not
+evidence about the API enum, and answering it needs a 1.14 cluster. Until it is
+answered, `reboot` is untested on 1.14 and `staged` plus an out-of-band reboot
+is the supported way to force one. The decision's four-value set is unchanged:
+narrowing it would break consumers on 1.13 and below for a value that may still
+work.
+
+## Addendum 2026-09-05 — the provider is pinned to 0.12.0-beta.0; the four-value set stands on a different reason
+
+The module now pins `siderolabs/talos` exactly to `0.12.0-beta.0`
+([ADR-0027](0027-talos-provider-prerelease-pin.md)). Two statements above rest
+on the superseded `>= 0.7.0, < 1.0.0` range and are corrected here rather than
+rewritten in place.
+
+**Option 3's REVISIT TRIGGER has fired, and the option still loses.** Its third
+con recorded that the 0.12.x line "resolves and then fails signature
+verification". That is no longer reproducible — see
+[ADR-0027](0027-talos-provider-prerelease-pin.md) §Context for the measurement —
+and the module resolves the version. The `talos_machine` resource is therefore available.
+The option is still not adopted: its first two cons are the durable ones — the
+resource carries no `apply_mode` and hardcodes `ApplyConfigurationRequest_AUTO`,
+so adopting it would remove the capability this decision adds, and it sequences
+only via `depends_on`, which the module's `for_each` over the node set cannot
+express. Reopening that trade is #129's work, not this record's.
+
+**Option 2's availability con is superseded; its dependability cons are not.**
+"It is not available across the provider range this module declares" described
+a range that no longer exists — with a single pinned version, that version's
+value set IS the range, and `staged_if_needing_reboot` is in it. The module
+keeps the four-value 0.7.0 set anyway, on the remaining cons: the mode resolves
+by dry-running the apply and falls back to `auto` silently, and from this pinned
+version the provider gates it on its bundled Talos SDK and warns it "will always
+resolve to 'auto' on Talos 1.14+". Admitting a fifth value that degrades to the
+default on the version line the pin exists to reach would buy a spelling, not a
+behaviour.
+
+**The 0.11.0 document-kind measurement above is now history.** On the pinned
+provider the same probe renders `SecurityProfileConfig`, `FilesystemTrimConfig`,
+`KubeNodeConfig` and `UnattendedInstallConfig`, and `config_patches` reaches the
+first three by value; an unregistered kind is still refused with
+`"<kind>" "v1alpha1": not registered`. The gate that measures it was rewritten
+with the pin — see ADR-0027 §Validation.

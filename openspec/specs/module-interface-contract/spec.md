@@ -152,15 +152,18 @@ newline, the module's does not — no plain YAML scalar carries one).
 
 ### Requirement: Apply-mode input validation
 
-Each apply-mode input SHALL be constrained to the value set supported across the
-whole provider range the module declares — not the set the newest provider
-accepts — so that neither an unsupported spelling nor a mode newer than a
-consumer's in-range provider reaches an apply against a node.
+Each apply-mode input SHALL be constrained to the four values the provider has
+carried since 0.7.0 — `auto`, `reboot`, `no-reboot`, `staged` — so that no
+spelling reaches an apply against a node that the node or the provider does not
+act on as written. `staged_if_needing_reboot` SHALL stay outside that set even
+though the pinned provider offers it: the provider gates the mode on its bundled
+Talos SDK and resolves it to `auto` on Talos 1.14+, which is the version line the
+pin exists to reach.
 
 #### Scenario: An out-of-set apply mode is rejected
 
 - **WHEN** either apply-mode input carries a value outside that set — including
-  a mode the newest provider accepts but the declared floor does not
+  `staged_if_needing_reboot`, which the pinned provider accepts but degrades
 - **THEN** the plan fails on that variable's validation, naming the accepted
   values
 
@@ -354,17 +357,23 @@ rather than leaving it to be inferred.
 ### Requirement: Version constraints and backend agnosticism
 
 The module SHALL require OpenTofu/Terraform `>= 1.9.0` and constrain its
-providers to `siderolabs/talos` `>= 0.7.0, < 1.0.0`, `hashicorp/helm`
-`>= 2.12, < 3.0.0` (local template rendering only — no Helm release or
-apply), and `hashicorp/local` `>= 2.4` plus `hashicorp/null` `>= 3.2`
-(used only for the ArgoCD CRD apply path). The `>= 1.9.0` floor (raised
-from `>= 1.7.0`) is required because the `cilium_self_management` guard
-validations below reference OTHER variables in their `condition` — a
-cross-variable `validation` feature OpenTofu introduced at 1.9 — and is
-parsed at module load regardless of any toggle's value, so it is a
-permanent, consumer-visible compatibility floor for one opt-in,
-default-off feature. The module SHALL declare no state backend — the
-backend is the caller's concern and must be encrypted, because the
+providers to `siderolabs/talos` `0.12.0-beta.0` (an EXACT prerelease pin),
+`hashicorp/helm` `>= 2.12, < 3.0.0` (local template rendering only — no Helm
+release or apply), and `hashicorp/local` `>= 2.4` plus `hashicorp/null`
+`>= 3.2` (used only for the ArgoCD CRD apply path). The talos pin SHALL be
+exact because only the 0.12 line bundles the Talos 1.14 machinery the module's
+`config_patches` surface is decoded against, that line has no final release,
+and a version constraint matches a prerelease only through an exact `=`. Provider constraints intersect
+across a configuration and the exact pin wins that intersection, so a consumer
+root declaring a version RANGE, no `version` key, or no talos entry SHALL still
+resolve to the pinned version; only a root pinning a DIFFERENT exact version
+fails to resolve. The `>= 1.9.0` floor (raised from `>= 1.7.0`)
+is required because the `cilium_self_management` guard validations below
+reference OTHER variables in their `condition` — a cross-variable `validation`
+feature OpenTofu introduced at 1.9 — and is parsed at module load regardless of
+any toggle's value, so it is a permanent, consumer-visible compatibility floor
+for one opt-in, default-off feature. The module SHALL declare no state backend
+— the backend is the caller's concern and must be encrypted, because the
 machine secrets land in state.
 
 #### Scenario: No backend is imposed on the caller
@@ -379,6 +388,26 @@ machine secrets land in state.
   `< 1.9.0`
 - **THEN** module load fails on the `required_version` constraint,
   regardless of whether `cilium_self_management` is set
+
+#### Scenario: A caller root declaring a provider range still resolves
+
+- **WHEN** a consumer root declares a `siderolabs/talos` version RANGE
+  alongside this module
+- **THEN** initialization succeeds and resolves to the module's exact
+  prerelease pin, because the pin wins the constraint intersection
+
+#### Scenario: A caller root constraint that excludes the pin does not resolve
+
+- **WHEN** a consumer root declares a `siderolabs/talos` constraint that
+  excludes the pinned version — a different exact pin, or a lower bound above it
+- **THEN** initialization fails, because no release satisfies both constraints
+
+#### Scenario: A caller root's existing lock must be upgraded
+
+- **WHEN** a consumer root carries a dependency lock recording an older
+  `siderolabs/talos` selection
+- **THEN** a plain initialization fails on that locked selection and the lock
+  must be refreshed before the pinned version is installed
 
 ### Requirement: Image kernel-argument input validation
 
@@ -631,3 +660,39 @@ what was baked in, this reports which rule decided it.
 - **THEN** the audit output carries the resolved count together with one of
   the three origins — pin, node-count derivation, or floor — and its shape
   and value types do not vary with the delivery toggle
+
+### Requirement: Chart-version default bumps carry their render-side delta
+
+Because a chart-version input's declared default is the single source of truth
+for the pinned chart and the shipped examples leave the key unset, moving that
+default is a **consumer-visible change**, not a version literal. What it reaches,
+stated precisely, because the seed renders are frozen: a **fresh bootstrap** and
+a **deliberate replacement** of the frozen render seed whatever the new chart
+emits, including defaults the base does not override; an already-bootstrapped
+consumer's machine configuration does NOT change, because
+`terraform_data.{argocd,cilium}_render` ignore input changes and the machine
+config consumes their frozen outputs. The separately live-reconciled paths — the
+steady-state component a consumer syncs, and the CRD apply whose
+`triggers_replace` carries the chart version — are what reach a running cluster.
+
+A change moving one of those defaults SHALL therefore carry the behavioural delta
+on the capability that describes what the pin delivers — the render or seed
+capability, not this one, which owns only the input's presence, its
+`nullable = false` contract and its validation. This spec cannot host that delta:
+the file describing the seed's contents is not the file a version bump touches, so
+the staleness gate cannot reach the render-side spec on its own.
+
+#### Scenario: A bump without its render-side delta is not ready
+
+- **WHEN** a change moves `cilium_chart_version` or `argocd_chart_version`'s
+  declared default
+- **THEN** the change carries a spec delta on the capability describing what that
+  pin renders or seeds
+
+#### Scenario: A bump does not re-seed a running cluster
+
+- **WHEN** an already-bootstrapped consumer vendors a tag whose chart-version
+  default moved and re-plans
+- **THEN** the frozen render output is unchanged and no machine-config re-push
+  results; the new chart reaches the cluster only through the steady-state
+  component's next sync, and the CRD apply re-fires on the version change alone

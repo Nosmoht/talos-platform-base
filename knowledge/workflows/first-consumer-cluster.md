@@ -81,12 +81,14 @@ every re-vendor and CI verification runs against the same immutable release.
 
 Tarball membership is allowlist-driven (fail-closed) by
 `.ci-oci-tarball-include.txt`: the `tofu/modules/talos-cluster` module tree
-(with its `helm/` values floor and the `manifests/kubelet-csr-approver.yaml` seed),
+(every root-level `.tf` implementation file, its `helm/` values floor, and the
+`manifests/kubelet-csr-approver.yaml` seed),
 the reference Cilium values under `kubernetes/bootstrap/cilium/`, and the
 Layer-C hardware-features vocabulary (`platform-hardware-features.yaml` +
 `schemas/hardware-features.schema.json`). The task runner (`Taskfile.yml`),
-`cluster.yaml.example`, and the ArgoCD bootstrap templates are repo files —
-run steps 3 and 5 from the base checkout at the same pinned tag.
+`cluster.yaml.example`, the worked `examples/complete` shim, and the ArgoCD
+bootstrap templates are repo files — run steps 3–5 from the base checkout at
+the same pinned tag while sourcing the module itself from `vendor/base/`.
 
 ## Step 3 — Seed the cluster Source-of-Truth
 

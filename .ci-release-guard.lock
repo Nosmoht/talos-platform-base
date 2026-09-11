@@ -3,4 +3,4 @@
 # an entry removed there would delete its own test and the suite would stay green.
 # Regenerate deliberately: task supply-chain:relock-release-guard
 6c5a2118c8b093367346798a5e6b44d98d41019cf424859c1133c63411935771  .ci-release-guard-pathspec.txt
-37266b0a92cdfaa3d6e0b9627b0544a4ed73913c27e0873a06762622d5623016  .ci-release-guard-exempt.txt
+a1475a1a4e99a6c6e65d27e7e8a51b1c183e3ae915db0e0ced78c744e2bc4ecc  .ci-release-guard-exempt.txt
