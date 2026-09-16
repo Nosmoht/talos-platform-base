@@ -296,6 +296,114 @@ mechanically armed, because this repo has no live cluster
   nothing, the surface needs a validating gate rather than a narrower one. The
   symptom is attributed upstream as readily as here, so the trigger is weak.
 
+## Addendum 2026-09-09 — implementing §(b) changed the shape, and corrected §(d)
+
+Recorded when the Cilium half was built (#265). The decision stands; three of
+its statements were wrong or incomplete, and the record is corrected here rather
+than rewritten above.
+
+**§(b)'s candidate shape was not implementable as written.** It proposed
+emitting floor ⊕ computed as "a values file the consumer commits alongside the
+`Application`", referenced from `spec.source.helm.valueFiles`. Verified against
+Argo CD `v3.5.2` source: the precondition §(b) flagged does hold —
+`valuesObject` is appended as the last `--values` argument, after every
+`valueFiles` entry — but a second, unflagged precondition does not.
+`$values/<path>` resolves ONLY through a sibling `spec.sources[]` entry carrying
+`ref` (`util/argo/argo.go`, `GetRefSources`), so a single-source chart
+`Application` cannot address a consumer-committed file at all. §(b)'s stated
+fallback — both layers as ordered `valueFiles` entries — needs the same sibling
+source. The emitted `Application` therefore becomes MULTI-SOURCE when the
+consumer configures a values source, and stays single-source otherwise. Two
+further readings that constrain the shape: `values` and `valuesObject` are ONE
+slot, not two layers (`ValuesYAML()` returns `valuesObject` when set and ignores
+`values`), and a `ref`-only source generates no manifests.
+
+**The override rides in a `valueFiles` entry, not in `valuesObject`.** §(b)
+assumed `valuesObject` as the override's slot. It is instead the module's own:
+the override is the second of two ordered `valueFiles`, which puts the
+precedence in the list rather than in a slot assumption, and keeps the emitted
+manifest secret-free — the module never re-emits the string, so the "second
+sink" §(b) accepted shrinks to a file the consumer writes.
+
+`var.cilium_values_override` is marked `sensitive`, at the cost that `tofu plan`
+no longer shows the override's diff (`output cilium_values_override_digest` is
+the replacement change detector). That narrows the INPUT's exposure; it does not
+answer the confidentiality question §(g) re-opened, and an earlier draft of this
+addendum claimed it did by saying the consumer "can put the file behind their own
+SOPS gate". That is retracted: Argo CD applies no decryption to a Helm
+`valueFiles` source — documented behavior, with argoproj/argo-cd#3024 the standing
+request — so a SOPS-encrypted file is not a Helm values document at all. Making
+it one requires a config-management plugin (helm-secrets in a custom repo-server
+image, or equivalent) that this base neither ships nor configures. Key material
+at `override_path` is therefore PLAINTEXT in git until the consumer builds that
+path, and §(g) stays open on this arm rather than closed by it.
+
+**§(d)'s "this costs no capability" was false for two of its three keys.** Only
+`kubeProxyReplacement` had a typed input; `k8sServiceHost` / `k8sServicePort`
+were hardcoded to Talos KubePrism. Cilium documents those two as derived from
+the reachable API-server endpoint, so a cluster where KubePrism is not that
+endpoint had no way to say so, and #227's request was real rather than
+substitutable by the override — which §(d) forbids naming them anyway. Typed
+`cilium_k8s_service_host` / `cilium_k8s_service_port` ship with the guard, per
+§(f)'s own rule that a value feeding two sinks needs a typed field. §(f)'s
+reframing of #227 as "reachable through the override" is retracted; #265 closes
+it by shipping the inputs.
+
+**§(d) is a footgun guard, not a boundary.** The rejection matches key NAMES in
+the override. The chart's own `extraConfig` passthrough writes raw
+`cilium-config` keys, and a caller `config_patches` entry reaches the Talos half
+directly — `base_cni_patch` writes `cluster.proxy.disabled` only when the
+toggle is true, so it does not win over a caller patch that sets it while the
+toggle is false. Both reach the same unbootable state around the guard. §(d)'s
+claim that the module "needs to recognise only key names it owns" holds for the
+mechanism, not for the outcome.
+
+**§(f)'s two-engine-drift obligation GREW; it is not unchanged.** ADR-0022 §(f)
+bound the collision set over keys the MODULE writes. On the multi-source arm the
+module's floor ⊕ computed merge is pre-flattened before an arbitrary consumer
+document merges over it, so the falsification surface now extends to keys the
+module does not enumerate and cannot test. The clause-(i)/(ii) obligation still
+binds every new key under a shared parent; what changed is that a violation can
+now originate consumer-side.
+
+**One new hazard the decision did not model.** Moving the module-set layer into
+a consumer-committed file makes `kubeProxyReplacement` / `k8sServiceHost` /
+`k8sServicePort` losable by OMISSION — they are produced by the computed layer
+alone — which re-opens §(d)'s unbootable state on a RUNNING cluster, delivered
+by a sync, unrepairable by a create-only seed. The three keys are therefore
+re-asserted in `valuesObject` as the last layer.
+
+That re-assertion is sound for the INPUT and only best-effort for the FILE, and
+the difference is worth stating precisely. §(d) forbids `cilium_values_override`
+from naming the three keys, so nothing a consumer writes THROUGH THE MODULE is
+overwritten. But on this arm the Helm layer ArgoCD actually reads is the file at
+`override_path`, which the module never reads, never validates and never writes
+— so a consumer who names one of the three in that FILE is silently overruled by
+`valuesObject`, with no plan-time signal. That is the intended precedence (the
+whole point is that a joint key cannot be set from a values layer alone), but it
+is not the "no consumer value is overwritten" this addendum first claimed. It is
+disclosed where the consumer meets it: the generated values file's own header
+names the three keys and points at the typed inputs.
+
+The remaining module-set keys can still be lost to a stale file. That is
+recoverable for the module's tunables and NOT benign for the floor: an empty or
+truncated file also drops `ipam.mode: kubernetes`, `cni.exclusive: false`,
+`cgroup.autoMount.enabled: false` and the withheld-`SYS_MODULE` capability list,
+whose chart defaults are `cluster-pool` IPAM and exclusive CNI — a cluster-wide
+pod re-IP on a running cluster. `ignoreMissingValueFiles: false` is what keeps a
+WRONG path loud; nothing keeps a present-but-truncated file from syncing.
+
+The two artifacts are bound only by a `talos-platform-base.io/values-digest`
+annotation matching the emitted document's header, which a consumer-side gate or
+a reviewer must compare — Argo CD compares neither. Two limits on that binding,
+recorded rather than papered over: it rotates on inputs OUTSIDE
+`substrate.cilium` (operator replicas derive from the node count, and the pod
+CIDR and dual-stack shape enter the same layer), so a node scale-out staleness
+the consumer has no reason to expect; and the comparison is between two
+working-tree artifacts, while Argo CD renders the file at
+`sources[0].targetRevision` — a third object neither side of the comparison
+touches.
+
 ## Links
 
 - [The ArgoCD/Cilium Helm value surface](../reference/helm-values-surface.md) —

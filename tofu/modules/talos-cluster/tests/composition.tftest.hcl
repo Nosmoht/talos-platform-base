@@ -781,3 +781,52 @@ run "cilium_seed_render_carries_the_pinned_operator_replicas" {
     error_message = "render layer: a pinned cilium_operator_replicas = 3 must reach the seed's cilium-operator Deployment — 3 is produced by neither the floor (1), the chart default (2), nor the node-count derivation (2), so this value can only come from the pin actually arriving at the render"
   }
 }
+
+# RENDER-layer binding for the two typed endpoint inputs (issue #265, closing
+# #227). The class rule this file already states: Helm merges values without
+# --strict, so a key the chart does not recognise is discarded silently — every
+# assertion on the values MAP stays green while the rendered object keeps the
+# chart's own default. cilium_k8s_service_host is exactly that risk, and it is
+# the endpoint Cilium reaches the API server through before the CNI is up, on a
+# render frozen into a create-only machine config.
+#
+# The sink is MEASURED, not assumed: chart 1.20.0 renders k8sServiceHost/Port into
+# the container env vars KUBERNETES_SERVICE_HOST / _PORT (quoted), NOT into a
+# cilium-config key — which is why tests/fixtures/cilium-config-keys.txt carries
+# neither. Red-green: change the values key the module writes (e.g. to
+# `k8sServiceHostname`) and the values-map assertions elsewhere stay green while
+# this run fails.
+run "cilium_seed_render_carries_the_typed_api_server_endpoint" {
+  command = plan
+  variables {
+    deploy_cilium                 = true
+    cilium_kube_proxy_replacement = true
+    cilium_k8s_service_host       = "api.cluster.example"
+    cilium_k8s_service_port       = "6443"
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+
+  assert {
+    condition = anytrue(flatten([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : [
+        for c in try(yamldecode(doc).spec.template.spec.containers, []) : anytrue([
+          for e in try(c.env, []) : try(e.name, "") == "KUBERNETES_SERVICE_HOST" && try(e.value, "") == "api.cluster.example"
+        ])
+      ] if try(yamldecode(doc).kind, "") == "DaemonSet"
+    ]))
+    error_message = "cilium-cni-delivery render-layer rule: cilium_k8s_service_host must reach the rendered agent DaemonSet as KUBERNETES_SERVICE_HOST — a values-map assertion alone cannot tell a recognised key from a discarded one"
+  }
+
+  assert {
+    condition = anytrue(flatten([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : [
+        for c in try(yamldecode(doc).spec.template.spec.containers, []) : anytrue([
+          for e in try(c.env, []) : try(e.name, "") == "KUBERNETES_SERVICE_PORT" && try(e.value, "") == "6443"
+        ])
+      ] if try(yamldecode(doc).kind, "") == "DaemonSet"
+    ]))
+    error_message = "cilium-cni-delivery render-layer rule: cilium_k8s_service_port must reach the rendered agent DaemonSet as KUBERNETES_SERVICE_PORT — the string shape the module emits is the shape the chart consumes"
+  }
+}

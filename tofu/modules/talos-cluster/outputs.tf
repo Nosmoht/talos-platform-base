@@ -351,12 +351,27 @@ output "controlplane_base_is_prefix_of_final" {
 
 output "cilium_self_management_app" {
   description = <<-EOT
-    The opt-in emitted Cilium ArgoCD Application manifest (YAML string) — the
-    sole self-management deliverable a consumer commits into their own
-    app-of-apps repo. "" when cilium_self_management = false (default). NEVER
-    applied by the module (AGENTS.md §Hard Constraints — no kubectl apply of
-    ArgoCD-managed resources); the consumer's own GitOps is the single writer.
-    See knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
+    The opt-in emitted Cilium ArgoCD Application manifest (YAML string), which a
+    consumer commits into their own app-of-apps repo. "" when
+    cilium_self_management = false (default). NEVER applied by the module
+    (AGENTS.md §Hard Constraints — no kubectl apply of ArgoCD-managed
+    resources); the consumer's own GitOps is the single writer.
+
+    NO LONGER THE SOLE DELIVERABLE. With cilium_self_management_values_source
+    set, this manifest is a MULTI-SOURCE Application reading two ordered
+    `valueFiles`, and the FIRST of them is the separate
+    `cilium_self_management_values` output. The two artifacts are committed
+    independently and ArgoCD compares neither: commit the values file FIRST or
+    together with this manifest, never after it, and keep them in step on every
+    later change to a typed cilium_* input. The manifest's
+    `talos-platform-base.io/values-digest` annotation is the mechanical link —
+    it must equal the digest in the values file's own header.
+
+    Secret-free by construction on both arms, hence not `sensitive`: the module
+    does not put cilium_values_override (which IS sensitive) into the manifest,
+    only a `$values/...` path pointing at a file the consumer commits themselves.
+    See knowledge/decisions/0028-consumer-free-helm-value-surface.md §(b) and
+    knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
   EOT
   value       = local.cilium_self_management_app
 
@@ -368,6 +383,105 @@ output "cilium_self_management_app" {
     condition     = !var.cilium_self_management || local.cilium_self_management_app != ""
     error_message = "cilium_self_management is true but the emitted Application rendered empty — refusing to emit a hollow Cilium Application. Check cilium-values.tf's cilium_self_management_app local."
   }
+
+  precondition {
+    # Values-layer guard for the multi-source arm. The single-source arm's floor
+    # merge is covered by the guard above; on the multi-source arm the module-set
+    # layer has left the manifest, so what has to hold instead is that the first
+    # valueFiles entry actually ADDRESSES the consumer's file. A bare `length > 0`
+    # would be a tautology — the first entry is appended unconditionally on this
+    # arm — so the predicate is the `$values/<path>` shape itself, which a future
+    # edit dropping `ref = "values"`, the `$values/` prefix or values_path from the
+    # interpolation breaks: without the ref source the reference does not resolve,
+    # and ArgoCD reports a missing value file rather than rendering the floor.
+    # Ternary plus try(), not an `||` chain: on OpenTofu 1.9 — the versions.tf
+    # floor — `||` evaluates every operand, so the index raises "Invalid index"
+    # on the empty single-source list. Only the conditional skips the arm.
+    condition = var.cilium_self_management && local.cilium_self_management_multi_source ? (
+      startswith(try(local.cilium_self_management_value_files[0], ""), "$values/") &&
+      length(try(local.cilium_self_management_value_files[0], "")) > length("$values/")
+    ) : true
+    error_message = "cilium_self_management_values_source is set but the emitted Application's first valueFiles entry is not a non-empty $values/<path> reference — refusing to emit an Application that would render the chart without the module-set values layer. Check cilium-values.tf's cilium_self_management_value_files local."
+  }
+}
+
+output "cilium_self_management_values" {
+  description = <<-EOT
+    The module-set Helm values layer (floor ⊕ computed) as a YAML document, for
+    the consumer to commit at cilium_self_management_values_source.values_path —
+    the FIRST `valueFiles` entry of the multi-source emitted Application. "" on
+    the single-source arm, where the same content rides inline in the manifest's
+    valuesObject instead.
+
+    Write it with `tofu output -raw cilium_self_management_values`, ideally
+    through a `local_file` resource in your own root so that `tofu plan` shows
+    this file and the Application manifest changing TOGETHER — a forgotten
+    re-commit is then a dirty working tree rather than silent drift. Its header
+    carries the values-digest that must match the Application's
+    `talos-platform-base.io/values-digest` annotation.
+
+    Secret-free: cilium_values_override is NOT part of this layer. The override
+    is the SECOND valueFiles entry, a file the consumer authors and commits
+    themselves — and one Argo CD reads as a PLAIN Helm values document, so key
+    material there is plaintext in git (see var.cilium_values_override's SECURITY
+    note; ArgoCD does not decrypt a Helm valueFiles source).
+  EOT
+  value       = local.cilium_self_management_values_file
+
+  precondition {
+    # Bind the output to the arm in both directions, so neither an empty file on
+    # the multi-source arm nor a stray file on the single-source arm can ship.
+    condition     = (local.cilium_self_management_values_file != "") == (var.cilium_self_management && local.cilium_self_management_multi_source)
+    error_message = "cilium_self_management_values must be non-empty exactly when cilium_self_management is true AND cilium_self_management_values_source is set. Check cilium-values.tf's cilium_self_management_values_file local."
+  }
+}
+
+output "cilium_values_override_digest" {
+  description = <<-EOT
+    SHA-256 of `cilium_values_override`, or "" when it is empty. Audit surface
+    and the plan-time change detector the input's `sensitive` marking otherwise
+    removes: a sensitive input shows no diff, and this override now reaches a
+    RUNNING cluster through the Day-2 Application rather than only a create-only
+    seed, so "did the override change" has to be answerable from somewhere.
+
+    Declassified deliberately — a digest carries no part of the value. It is a
+    change detector, not a secrecy claim: a digest confirms a guessed document.
+    For a values file carrying key material that is not a realistic disclosure
+    path, but it is stated rather than assumed.
+  EOT
+  value       = local.cilium_values_override_digest
+}
+
+locals {
+  # Seed observability markers, a local rather than an inline
+  # comprehension so the output below can name it twice — nonsensitive(x) errors
+  # when x is NOT sensitive, so the output's try() needs the raw value as its
+  # second arm, and a hoisted local is the only way to write the same expression
+  # twice without duplicating it. It lives in THIS file, not beside
+  # terraform_data.cilium_render in main.tf, because cilium-values.tf is
+  # symlinked into the offline test fixture, which declares no such resource (see that output's declassification comment). Split on the DOCUMENT
+  # boundary ("\n---\n"), not the bare literal: several consumer-controlled
+  # strings reach this render — cilium_values_override above all, which is
+  # free-form YAML the module cannot introspect — and a "---" occurring
+  # mid-scalar (PEM material carries it too) would split a document in half.
+  # Both halves then fail yamldecode, the comprehension yields nothing, and the
+  # output's outer try() reports {} — "nothing enabled" rather than an error. An
+  # audit output that goes silent on malformed input is exactly the wrong failure
+  # direction, which is why the output keeps that fallback LAST.
+  cilium_seed_observability_markers = try(
+    [
+      for doc in split("\n---\n", try(terraform_data.cilium_render[0].output, "")) : {
+        agent_metrics          = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
+        agent_metric_overrides = contains(keys(yamldecode(doc).data), "metrics")
+        operator_metrics       = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")
+        hubble                 = try(yamldecode(doc).data["enable-hubble"], "false") == "true"
+        hubble_metrics         = contains(keys(yamldecode(doc).data), "hubble-metrics-server")
+        hubble_open_metrics    = try(yamldecode(doc).data["enable-hubble-open-metrics"], "false") == "true"
+      }
+      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
+    ][0],
+    {}
+  )
 }
 
 output "cilium_seed_observability_markers" {
@@ -411,27 +525,32 @@ output "cilium_seed_observability_markers" {
     dimension"), so these booleans answer "what was baked in at bootstrap", never
     "what is live now".
   EOT
+  # DECLASSIFICATION, and why the expression tolerates being wrong about it.
+  # var.cilium_values_override is sensitive and reaches this render, so a value
+  # derived from terraform_data.cilium_render MAY carry the mark — in which case
+  # a non-sensitive root output is refused and nonsensitive() is required. Marks
+  # propagate through HCL interpolation for certain (the cilium_ipsec_key
+  # precedent above); whether they survive the round trip through
+  # data.helm_template's COMPUTED manifest attribute is NOT verified here, and
+  # cannot be: it needs a real plan against the Image Factory, which this
+  # repository has no path to (AGENTS.md §Testing Guidelines) and the offline
+  # fixture cannot reproduce (it carries no terraform_data.cilium_render).
+  #
+  # So the expression is written to be correct either way. nonsensitive() errors
+  # when its argument is NOT sensitive, so the try() takes the raw value as its
+  # second arm. Without that arm, an unmarked render would make nonsensitive()
+  # error into the outer {} fallback and this audit output would go silently
+  # empty — the failure direction the comprehension's own comment calls wrong.
+  #
+  # What is declassified is sound in the marked case: six BOOLEAN fields — four
+  # key-presence checks (agent_metrics, agent_metric_overrides, operator_metrics,
+  # hubble_metrics) and two values compared to the literal "true" (hubble,
+  # hubble_open_metrics) — none of which can carry override bytes. The channel is
+  # at most six bits about the override's EFFECT, and no byte of its content.
   value = try(
-    [
-      # Split on the DOCUMENT boundary ("\n---\n"), not the bare literal. Several
-      # consumer-controlled strings reach this render — cilium_values_override
-      # above all, which is free-form YAML the module cannot introspect — and a
-      # "---" occurring mid-scalar (PEM material carries it too) would split a
-      # document in half. Both halves then fail yamldecode, the comprehension
-      # yields nothing, and the outer try() reports {} — "nothing enabled" rather
-      # than an error. An audit output that goes silent on malformed input is
-      # exactly the wrong failure direction.
-      for doc in split("\n---\n", try(terraform_data.cilium_render[0].output, "")) : {
-        agent_metrics          = contains(keys(yamldecode(doc).data), "prometheus-serve-addr")
-        agent_metric_overrides = contains(keys(yamldecode(doc).data), "metrics")
-        operator_metrics       = contains(keys(yamldecode(doc).data), "operator-prometheus-serve-addr")
-        hubble                 = try(yamldecode(doc).data["enable-hubble"], "false") == "true"
-        hubble_metrics         = contains(keys(yamldecode(doc).data), "hubble-metrics-server")
-        hubble_open_metrics    = try(yamldecode(doc).data["enable-hubble-open-metrics"], "false") == "true"
-      }
-      if try(yamldecode(doc).kind, "") == "ConfigMap" && try(yamldecode(doc).metadata.name, "") == "cilium-config"
-    ][0],
-    {}
+    nonsensitive(local.cilium_seed_observability_markers),
+    local.cilium_seed_observability_markers,
+    {},
   )
 }
 

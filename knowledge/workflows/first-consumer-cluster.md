@@ -3,7 +3,7 @@ type: workflow
 title: First Consumer Cluster
 description: End-to-end walk-through from verifying a published base release to a reconciling App-of-Apps root on a freshly provisioned Talos cluster.
 tags: [bootstrap, consumer, day-zero]
-generated: { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-09T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
 sources:
@@ -243,7 +243,9 @@ kubectl -n argocd get applications.argoproj.io root
 
 The `root` Application should report `Synced`/`Healthy` once your overlay
 renders cleanly. From here on, never `kubectl apply` ArgoCD-managed resources
-— commit to git and let ArgoCD reconcile.
+— commit to git and let ArgoCD reconcile. The single exception is the datapath
+break-glass in `AGENTS.md` §Hard Constraints, for a broken CNI that leaves
+ArgoCD unable to reconcile at all.
 
 ## Related
 

@@ -55,6 +55,397 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
+## Unreleased (next MAJOR) — `cilium_values_override` reaches Day-2, and three Helm keys move to typed inputs (action required for consumers who override those keys, or who self-manage Cilium)
+
+The heading takes the tag when the release is cut. Two independent changes ship
+here; read §1 even if you never self-manage Cilium.
+
+### 1. `values_override` may no longer name three keys (affects EVERY consumer who names one)
+
+`substrate.cilium.values_override` is now REJECTED at plan time when its
+top-level keys include `kubeProxyReplacement`, `k8sServiceHost` or
+`k8sServicePort`. Each has a Talos-side counterpart the module writes — the
+kube-proxy replacement pairs with `cluster.proxy.disabled`, and the endpoint is
+how Cilium reaches the API server before the CNI is up — so setting one half
+alone leaves a cluster with no ClusterIP datapath and no cluster DNS.
+
+The replacement is typed keys, new in this release:
+
+```yaml
+substrate:
+  cilium:
+    kube_proxy_replacement: true
+    k8s_service_host: localhost # default: Talos KubePrism
+    k8s_service_port: "7445"    # default: the KubePrism port
+```
+
+Move each key from `values_override` to the typed key of the same name; the
+rendered value is identical. Your `cluster.yaml` then says what the cluster
+runs, which under the old shape it could not — the seed is frozen after
+bootstrap, so deleting the key from the override to unblock a plan would NOT
+have changed the running cluster.
+
+`values_override` is also rejected now when it is not a YAML MAPPING — a
+comment-only block (`values_override: "# nothing yet"`) decodes to null. Use
+`""`.
+
+### 2. `values_override` is now `sensitive` (affects every consumer's plan output)
+
+Cilium values legitimately carry key material (IPsec keys, Hubble and
+clustermesh TLS, BGP peer passwords), so the input is marked `sensitive`. The
+cost is real: **`tofu plan` no longer shows the override's diff**. What
+replaces it is the `cilium_values_override_digest` output — a SHA-256 that
+carries no part of the value, so "the override changed" stays visible in plan
+output and in whatever you write it to. On the multi-source arm the override's
+effective content is the file you commit at `override_path`, which no
+`tofu plan` reads at all; the git diff of that file is the review surface
+there.
+
+### 3. The emitted self-management Application can now carry the override (opt-in)
+
+The old hard reject — `cilium_self_management = true` while `values_override`
+is non-empty — is GONE. In its place the override reaches the emitted
+`Application` as the LAST of two ordered `valueFiles` entries, which requires
+telling the module where those files live:
+
+```yaml
+substrate:
+  cilium:
+    self_management: true
+    self_management_values_source:
+      values_path: cilium/module-values.yaml   # the module writes this content
+      override_path: cilium/values-override.yaml # you write this one
+      # repo_url / revision default to this file's repo.url and
+      # cluster.target_revision — set them only if the values live elsewhere
+```
+
+Leaving `self_management_values_source` unset keeps the previous single-source
+`Application` byte-identical, so this release moves nothing for a consumer who
+does not opt in. With it set, `cilium_self_management = true` plus a non-empty
+override is now accepted — and with the override non-empty and NO values
+source, the plan is rejected, because the emitted Application would fall back
+to the single-source shape and silently drop the override.
+
+**You now commit TWO artifacts, and they must stay in step.** The
+`Application` reads the module-set values layer from a file in your repo, so a
+values file left behind by a later change reverts module-set values into a live
+cluster with nothing reporting it. The trigger set is wider than
+`substrate.cilium`: the layer folds `operator.replicas` (derived from the NODE
+COUNT), `ipv4NativeRoutingCIDR`/`clusterPoolIPv4PodCIDRList` (from
+`cluster.pod_cidr`) and the dual-stack shape, so an ordinary node scale-out with
+no Cilium edit at all rotates the digest. Write both artifacts from your root so
+`tofu plan` shows them changing together:
+
+```hcl
+resource "local_file" "cilium_module_values" {
+  filename = "${path.module}/../cilium/module-values.yaml"
+  content  = module.cluster.cilium_self_management_values
+}
+
+resource "local_file" "cilium_application" {
+  filename = "${path.module}/../apps/cilium.yaml"
+  content  = module.cluster.cilium_self_management_app
+}
+```
+
+A forgotten re-commit is then a dirty working tree, not silent drift. The
+mechanical check is the digest: the `Application` carries
+`talos-platform-base.io/values-digest` and the values file's header carries the
+same value. If they differ, the values file is stale.
+
+**Know what the digest does not prove.** It compares two artifacts in YOUR
+working tree (or two files at one commit). ArgoCD resolves `$values/<path>`
+against `sources[0].targetRevision` — so with a pinned revision, a matching pair
+on your branch says nothing about the file ArgoCD actually renders, which is a
+third object neither side of the comparison touches. Advance the revision in the
+same commit that moves the files, or the digest is checking the wrong pair.
+ArgoCD itself compares nothing: the annotation is inert metadata, and a stale
+values file syncs green.
+
+**A synced override does not reach the running agents by itself.** Most Cilium
+settings land only in the `cilium-config` ConfigMap, and changing one leaves the
+agent DaemonSet's pod template untouched — measured on the pinned 1.20.0 chart,
+`routingMode: tunnel` and `routingMode: native` render a byte-identical pod
+template. ArgoCD reports the sync as successful and the agents keep running the
+old configuration. Cilium's own documentation says the same and ships a metric
+for the gap, `cilium_drift_checker_config_delta`.
+
+Two ways to close it, and the choice is yours because both interrupt the
+datapath node by node:
+
+- Restart deliberately after a sync that changed such a setting:
+  `kubectl -n kube-system rollout restart daemonset/cilium`, then
+  `rollout status`.
+- Or put `rollOutCiliumPods: true` in your own override file. The chart then
+  stamps a ConfigMap checksum into the pod template, so every ConfigMap change
+  rolls the agents automatically — including changes you did not intend to roll
+  for. The base does not set it: the emitted `Application` carries no
+  `syncPolicy` for the same reason, that rolling the CNI is an operator-timed
+  decision.
+
+**The first sync on the new arm touches the live CNI.** Until now your override
+reached only the create-only seed; on this arm ArgoCD applies it to a running
+Cilium, which depending on its content rolls the `cilium` DaemonSet on every
+node and interrupts the datapath per node. The emitted `Application` carries no
+`syncPolicy` precisely so that sync is yours to time — do it in a window, and
+keep §6 to hand.
+
+**Ordering matters on the cutover.** Commit the values file and the override
+file BEFORE (or in the same commit as) the `Application`. The reverse order
+gives ArgoCD an `Application` pointing at files that do not exist, which is a
+sync error rather than a silent one — `ignoreMissingValueFiles` is explicitly
+`false` in the emitted manifest, and you should not set it true to clear such
+an error. Doing so turns a missing values file into a silent render against
+chart defaults.
+
+**Scope the `AppProject` — this is the boundary, not a nicety.** On this arm
+the `Application` names a git repo of its own, and `spec.project` is what bounds
+which repos it may read. The always-present `default` project carries
+`sourceRepos: ['*']`, so a one-line `repo_url` edit in `cluster.yaml` can point
+the privileged, host-networked `cilium` DaemonSet's Helm values at any repo, with
+nothing but PR review in the way. The module **warns at plan time when a values
+source is set while `self_management_project` is still `default`**; it cannot read
+your `AppProject`, so the warning is on the permissive state rather than on a
+verified one.
+
+A scoped project's `sourceRepos` must list BOTH your values repository and
+`chart_repository`, and the values repository must be registered in ArgoCD.
+Missing either leaves the adopted Cilium `Application` degraded on a running
+cluster — so land the `AppProject` before the cutover, not after.
+
+**Pin the revision.** A branch name in `self_management_values_source.revision`
+lets the values half of the `Application` float against the branch tip while
+the chart half stays pinned — and leaves no revision pair to roll back to.
+
+### 4. What the module still guarantees when the values file is wrong
+
+`kubeProxyReplacement`, `k8sServiceHost` and `k8sServicePort` are re-asserted
+in the emitted `Application`'s `valuesObject`, which Helm applies after both
+`valueFiles`. So a missing, truncated or stale values file does not leave a
+running cluster with a Cilium that does not replace kube-proxy while Talos
+already has `cluster.proxy.disabled` — the one failure in this area that a
+create-only seed cannot repair.
+
+**That is a guard against a wrong file, not against a hostile one.** The
+re-assertion sets three chart VALUES; it does not own the ConfigMap keys,
+container arguments and environment variables they render into. An override file
+carrying `extraConfig`, `extraArgs` or `extraEnv` reaches those sinks directly
+and can still turn the replacement off, and the module never reads that file, so
+no plan-time guard sees it. The same limit is stated for the override INPUT at
+`cilium_values_override` in the module README, and it applies with more force
+here: review the file at `override_path` as datapath configuration.
+
+**Nothing else is re-asserted, and "everything else" includes the Talos floor.**
+A stale file loses the module's tunables (routing mode, native-routing CIDR, MTU,
+operator replicas, the observability keys) — annoying, and repaired by fixing the
+file and resyncing. But a file that resolves EMPTY or truncated also loses
+`ipam.mode: kubernetes`, `cni.exclusive: false`, `cgroup.autoMount.enabled:
+false` and the withheld-`SYS_MODULE` `securityContext.capabilities` list, which
+are invariants for every Talos cluster, not preferences. Their chart defaults are
+`cluster-pool` IPAM and exclusive CNI, so that state is a cluster-wide pod re-IP
+and a CNI takeover on a running cluster — recoverable in the sense that git
+revert plus a resync restores the values, NOT in the sense that the cluster rides
+through it. Treat "the values file is present and complete" as a precondition of
+this arm: that is what the `ignoreMissingValueFiles: false` in the emitted
+manifest and the digest header are both there to protect.
+
+### 5. Rollback
+
+**Reverting the override.** Emptying `values_override` drops the second
+`valueFiles` entry, so the next sync reconciles Cilium WITHOUT the Day-2 values
+it carried. That is a one-line manifest diff and easy to miss; the module warns
+at plan time when the override is empty while the values source is still set.
+Re-home the values in your own `Application` first if you still need them.
+
+**Returning to the single-source shape (same base tag).** Empty
+`values_override` FIRST, per the paragraph above — the module rejects
+`self_management` with a non-empty override and no values source, so unsetting
+the source while the override is still set fails the plan before you have a
+manifest to re-commit. Then unset `self_management_values_source`, re-commit the
+emitted `Application`, and sync.
+The emitted manifest then carries `spec.source` and no `spec.sources` — but the
+module cannot REMOVE `spec.sources` from the live object, and whether your apply
+does depends on its field-manager history. Verify before deleting the committed
+values file:
+
+```sh
+kubectl -n argocd get application cilium -o jsonpath='{.spec.sources}'
+```
+
+Empty output means the field is gone. A non-empty result means it survived, and
+the live `Application` is still reading `$values/` files you are about to
+delete — remove it explicitly first:
+
+```sh
+kubectl -n argocd patch application cilium --type=json \
+  -p '[{"op":"remove","path":"/spec/sources"}]'
+```
+
+**Reverting to an older base tag.** A pre-MAJOR tag re-arms the OLD hard reject
+(`self_management` with any non-empty override), so a downgrade plan fails
+until you empty the override — which drops the same values. Order it as:
+re-home the values in your own `Application`, empty `values_override`, unset
+`self_management_values_source`, then move the pin. The committed values file
+becomes orphaned; delete it after the downgrade, not before.
+
+### 6. Break-glass — if a Cilium sync breaks the datapath
+
+An arbitrary-depth consumer document now reaches the reconciled CNI, and ArgoCD
+itself runs over the datapath Cilium provides, so a bad sync can leave the
+GitOps engine unable to reconcile the fix. This is the one exception in
+`AGENTS.md` §Hard Constraints that lets an operator apply an ArgoCD-managed
+resource by hand — bounded to restoring service, and not the end state.
+
+Nothing else restores it for you: Talos' inline-manifest controller only
+CREATES missing resources and never updates or deletes, so the frozen seed does
+not heal a broken Cilium, and ArgoCD's own disaster-recovery documentation
+covers only `argocd admin export`/`import` of its CRDs — not a down datapath.
+
+1. Revert the offending commit in your values or override file. If ArgoCD can
+   still sync, that is the whole procedure.
+2. **If you added a `syncPolicy`, disable automated sync and self-heal first —
+   at BOTH levels.** The emitted `Application` deliberately carries none, so by
+   default nothing fights a hand-apply; with self-heal on, ArgoCD reverts your
+   recovery to the Git-declared state — the broken one — as soon as it can
+   reconcile again. Patching the Cilium `Application` alone is not enough: it is
+   a file in the overlay your ROOT `Application` reconciles, and the root shipped
+   by this base carries `automated: {prune: true, selfHeal: true}`, so it reads
+   your patch as drift and restores the `syncPolicy` git still declares. Suspend
+   the root first, then the child.
+
+   ```sh
+   kubectl -n argocd patch application root --type=merge \
+     -p '{"spec":{"syncPolicy":{"automated":null}}}'
+   kubectl -n argocd patch application cilium --type=merge \
+     -p '{"spec":{"syncPolicy":{"automated":null}}}'
+   ```
+
+   Step 5 re-enables both, in the reverse order.
+
+3. Apply the chart directly against the API server, which is host-network and
+   unaffected by ClusterIP loss.
+
+   ```sh
+   helm repo add cilium <substrate.cilium.chart_repository> && helm repo update
+   helm template cilium cilium/cilium --version <your chart pin> \
+     -f cilium/module-values.yaml -f cilium/values-override.yaml \
+     --set kubeProxyReplacement=<substrate.cilium.kube_proxy_replacement> \
+     --set-string k8sServiceHost=<substrate.cilium.k8s_service_host> \
+     --set-string k8sServicePort=<substrate.cilium.k8s_service_port> \
+     --namespace kube-system | kubectl apply -n kube-system -f -
+   ```
+
+   The three `--set` values are NOT optional and they come from `cluster.yaml`'s
+   typed keys, not from the values file — the values file may be the thing that
+   is wrong, and these three are what the emitted `Application` re-asserts in
+   `valuesObject` precisely so a bad values file cannot drop them. Helm applies
+   `--set` after every `--values`, which mirrors that position. Omitting them
+   re-applies the outage by hand.
+
+   **Substituting the placeholders.** `cluster.yaml.example` omits
+   `k8s_service_host` and `k8s_service_port` on purpose, so the common case has
+   nothing to copy: omitted means the module defaults, `localhost` and `7445`
+   (Talos KubePrism). `chart_repository` defaults to `https://helm.cilium.io`;
+   take your own value if you run a mirror, and use
+   `helm template cilium oci://<registry>/cilium --version <pin>` instead of
+   `helm repo add` if it is an OCI reference. `--set-string` keeps the port a
+   string, which is the shape the module emits. Both `--namespace` and
+   `kubectl apply -n` name the namespace the emitted `Application` targets —
+   `kube-system` unless you call the module directly with a different
+   `cilium_namespace`.
+
+4. **Restart the agents, and verify.** Applying the corrected chart is not
+   enough on its own. Most Cilium settings live only in the `cilium-config`
+   ConfigMap, and changing one leaves the DaemonSet's pod template untouched —
+   measured against the pinned 1.20.0 chart, switching `routingMode` between
+   `tunnel` and `native` produces a byte-identical pod template. The agents keep
+   the configuration that caused the outage until they restart, and Cilium's own
+   documentation says many options need a restart to take effect.
+
+   ```sh
+   kubectl -n kube-system rollout restart daemonset/cilium
+   kubectl -n kube-system rollout status daemonset/cilium --timeout=5m
+   kubectl -n kube-system get configmap cilium-config \
+     -o jsonpath='{.data.routing-mode}{"\n"}{.data.kube-proxy-replacement}{"\n"}'
+   ```
+
+   Then confirm the datapath is actually back before calling it restored: a
+   ClusterIP reaches its backend and cluster DNS resolves. The rollout is
+   per-node and interrupts that node's datapath while it runs — which is the
+   point of doing it deliberately rather than leaving it to a sync.
+
+5. Once the datapath is back, **land the same fix in git and sync the
+   `Application`** — this step is not optional, it is the condition the
+   exception is granted under. The hand-applied state is NOT reconciled; the
+   next sync replaces it, and because there is no `syncPolicy` that sync is
+   operator-timed and easy to forget. Re-enable any automated sync you disabled
+   in step 2 only after git and the cluster agree, child first and root last —
+   the reverse of step 2, so the root does not resume reconciling an overlay
+   whose Cilium `Application` is still suspended.
+
+6. Do NOT expect the frozen seed to restore the previous values on reboot —
+   `inlineManifests` are create-only, the render resource carries
+   `ignore_changes`, and Talos' controller never updates a manifest it already
+   created.
+
+7. If you reach this procedure twice for the same cause, the fix belongs
+   upstream of it — in the values you commit, or in a review gate on them — not
+   in a faster break-glass.
+
+**One residual, named rather than solved.** `kubectl apply` takes field
+ownership under Server-Side Apply, and how ArgoCD's own field manager resolves
+that on the next reconcile is not something this repository has measured. Expect
+the adopting sync to report differences and possibly restart the agent, the same
+seed-to-GitOps takeover behaviour §3 describes.
+
+### Validation steps after upgrade
+
+1. `tofu plan` — expect a rejection if any of the three joint keys is still in
+   `values_override`; move it to the typed key and re-plan.
+2. On the single-source path, diff the emitted `Application` against what you
+   have committed: it must be byte-identical to the previous release's.
+3. On the multi-source path, compare the values file's `values-digest` header
+   against the `Application`'s `talos-platform-base.io/values-digest`
+   annotation before committing either — wire this into your own pre-commit
+   rather than eyeballing 64 hex characters:
+
+   ```sh
+   diff <(grep -o 'values-digest: [0-9a-f]\{64\}' cilium/module-values.yaml | cut -d' ' -f2) \
+        <(yq '.metadata.annotations["talos-platform-base.io/values-digest"]' apps/cilium.yaml)
+   ```
+
+4. After the first sync, confirm the running `cilium-config` ConfigMap carries
+   your override's keys. Then check `kube-proxy-replacement` — but know what that
+   key does and does not prove: it is present whenever EITHER the values file
+   rendered correctly OR the `valuesObject` re-assertion fired, so it does not
+   discriminate between them (the same non-discriminating-marker trap the module
+   documents for `operator-prometheus-serve-addr`). To see the re-assertion
+   itself, read the live `Application` instead:
+
+   ```sh
+   kubectl -n argocd get application cilium \
+     -o jsonpath='{.spec.sources[1].helm.valuesObject}'
+   ```
+
+   It must carry exactly the three joint keys. An empty result means the field
+   was dropped on apply, which the `cilium-config` check cannot see.
+
+5. Confirm your ArgoCD is new enough for this arm. The safety property above
+   depends on `valuesObject` being applied AFTER every `valueFiles` entry, which
+   was read from the Argo CD **v3.5.2** repo-server (chart 10.6.0, this base's
+   pin) — it is an implementation detail of the merge order, not an API
+   guarantee. `argocd_chart_version` is a SEED knob and the seed is create-only,
+   so a cluster bootstrapped on an older base tag is still running the ArgoCD
+   that tag shipped. Read the running version before the cutover and upgrade
+   ArgoCD first if it is older:
+
+   ```sh
+   kubectl -n argocd get deploy argocd-repo-server \
+     -o jsonpath='{.spec.template.spec.containers[0].image}'
+   ```
+
+---
+
 ## Unreleased (next MAJOR) — the `siderolabs/talos` provider becomes an exact prerelease pin (every consumer inherits it; most roots need no edit)
 
 The heading takes the tag when the release is cut, in the same by-hand pass that

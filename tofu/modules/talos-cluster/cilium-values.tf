@@ -45,9 +45,10 @@ locals {
 
   # The effective operator replica count, or null for "leave it to the floor".
   # An explicit cilium_operator_replicas pin wins — on BOTH delivery paths, which
-  # is why it is a typed input and not an override key: cilium_values_override
-  # reaches only the seed, and the module hard-rejects it alongside
-  # cilium_self_management. Unpinned, the node count decides.
+  # is why it is a typed input and not an override key: the module cannot
+  # introspect the override, so nothing there validates the count against the
+  # node set or reports which mechanism produced it. Unpinned, the node count
+  # decides.
   #
   # Why 2 is the derived value at >= 2 nodes: it is the CHART'S OWN default, from
   # which the floor's 1 diverged without that ever being a multi-node decision.
@@ -124,9 +125,46 @@ locals {
     var.cilium_hubble_open_metrics ? { enableOpenMetrics = true } : {},
   )
 
+  # --- adr-0028 §(d) joint keys, hoisted -------------------------------------
+  #
+  # The three keys whose Talos-side counterpart the module writes, and which
+  # var.cilium_values_override is therefore forbidden to name (variables.tf).
+  # Hoisted into their own locals because they are emitted TWICE: into the
+  # computed layer below (both delivery paths), and re-asserted as the LAST Helm
+  # values layer of the multi-source emitted Application.
+  #
+  # WHY THE RE-ASSERTION EXISTS. On the multi-source arm the whole module-set
+  # layer lives in a consumer-committed file. These three keys appear nowhere
+  # else — not in helm/cilium-values.yaml (whose header says so) and not in the
+  # chart's defaults, which are kubeProxyReplacement=false and no endpoint. So
+  # any state where `$values/<values_path>` resolves empty — wrong path,
+  # truncated commit, an operator setting ignoreMissingValueFiles to clear a
+  # "values file not found" sync error — renders a Cilium that does NOT replace
+  # kube-proxy while Talos already carries cluster.proxy.disabled: no ClusterIP
+  # datapath, no cluster DNS, on a RUNNING cluster, delivered by a sync, and the
+  # create-only seed does not repair it. Re-asserting them in valuesObject (the
+  # last layer — verified against ArgoCD v3.5.2's repo-server, which appends it
+  # after every valueFiles entry) makes that state unreachable.
+  #
+  # It creates no silent overwrite of a consumer value, which is the thing
+  # adr-0028 exists to prevent: the override may not name these keys at all, so
+  # there is never a consumer value here to overwrite. routingMode and
+  # ipv4NativeRoutingCIDR are deliberately NOT re-asserted — they must stay
+  # consumer-overridable, and losing them is recoverable by fixing the file and
+  # resyncing.
+  cilium_joint_keys_endpoint = {
+    k8sServiceHost = var.cilium_k8s_service_host
+    k8sServicePort = var.cilium_k8s_service_port
+  }
+
+  cilium_joint_keys = merge(
+    { kubeProxyReplacement = var.cilium_kube_proxy_replacement },
+    var.cilium_kube_proxy_replacement ? local.cilium_joint_keys_endpoint : {},
+  )
+
   # Module-computed Cilium values from the typed inputs, layered between the
   # shipped floor (helm/cilium-values.yaml) and the consumer override. kube-proxy
-  # replacement + the KubePrism host/port are emitted HERE (not the floor), gated
+  # replacement + the API-server endpoint are emitted HERE (not the floor), gated
   # on the toggle, so the Cilium side and Talos proxy.disabled stay in sync.
   #
   # A MAP local (not pre-yamlencoded): this is the single data-flow both the
@@ -139,7 +177,7 @@ locals {
       routingMode          = var.cilium_routing_mode
       kubeProxyReplacement = var.cilium_kube_proxy_replacement
     },
-    var.cilium_kube_proxy_replacement ? { k8sServiceHost = "localhost", k8sServicePort = "7445" } : {},
+    var.cilium_kube_proxy_replacement ? local.cilium_joint_keys_endpoint : {},
     var.cilium_routing_mode == "native" ? { ipv4NativeRoutingCIDR = local.cilium_native_v4 } : {},
     (var.cilium_routing_mode == "native" && var.dual_stack && length(local.cilium_pod_v6) > 0) ? { ipv6NativeRoutingCIDR = local.cilium_pod_v6[0] } : {},
     var.dual_stack ? { ipv6 = { enabled = true } } : {},
@@ -266,10 +304,92 @@ locals {
   # (the consumer controls sync timing for the graceful-restart-gated Hubble
   # DaemonSet roll — see README). spec.project defaults to "default" (the
   # always-present permissive AppProject — see var.cilium_self_management_project).
-  cilium_self_management_app = var.cilium_self_management ? yamlencode({
-    apiVersion = "argoproj.io/v1alpha1"
-    kind       = "Application"
-    metadata = {
+  # --- Multi-source arm (adr-0028 §(b)) --------------------------------------
+  #
+  # Whether the emitted Application reads its values layers from git instead of
+  # carrying the module-set layer inline. Keyed on the values-source INPUT, never
+  # on the content of cilium_values_override: the arm decides the manifest's
+  # schema (spec.source vs spec.sources), which AppProject sourceRepos must
+  # allow, and how many artifacts the consumer commits — a mode that big is named
+  # by a mode input, not flipped by adding a character to an opaque YAML string.
+  cilium_self_management_multi_source = var.cilium_self_management_values_source != null
+
+  # Whether an override exists — declassified deliberately. var.cilium_values_override
+  # is sensitive, and in OpenTofu ANY value derived from a sensitive one inherits
+  # the mark, so a bare `override != ""` predicate would taint the whole emitted
+  # Application and make the (secret-free) manifest output unexportable. What is
+  # declassified here is one boolean: whether the string is empty. It carries no
+  # part of the value, and it is already public in every other observable —
+  # the presence of a second valueFiles entry, the check block below, the guard
+  # message a consumer sees. nonsensitive() on the CONTENT would be the defect;
+  # this is emptiness only.
+  cilium_values_override_present = nonsensitive(var.cilium_values_override != "")
+
+  # Digest of the override, declassified for the same reason and on the same
+  # argument as the emptiness boolean above: it carries no part of the value.
+  # It exists because marking the input sensitive removed the one plan-time
+  # signal that the override CHANGED — and the override now reaches a running
+  # cluster, not only a create-only seed. A digest restores "it changed" without
+  # disclosing what. It is a change detector, not a secrecy claim: a digest
+  # confirms a guessed document, which for a high-entropy values file carrying
+  # key material is not a realistic disclosure path but is stated rather than
+  # assumed. "" when there is no override, so an unset input reads as unset
+  # rather than as the hash of the empty string.
+  cilium_values_override_digest = local.cilium_values_override_present ? nonsensitive(sha256(var.cilium_values_override)) : ""
+
+  # Null-safe view of the source object. Terraform's conditional evaluates BOTH
+  # arms and its `||` is not documented as short-circuiting, so every attribute
+  # read below goes through this local instead of behind a null check.
+  cilium_values_source = coalesce(var.cilium_self_management_values_source, {
+    repo_url      = ""
+    revision      = ""
+    values_path   = ""
+    override_path = ""
+  })
+
+  # The module-set layer as the consumer commits it, and a digest over it. The
+  # digest is the ONLY mechanical link between the two independently-committed
+  # artifacts: ArgoCD compares neither, and a values file left behind by a later
+  # typed-input change reverts module-set values into a live cluster with nothing
+  # reporting it. Annotating the Application with the digest lets a consumer-side
+  # gate or a reviewer catch that; it does not prevent it.
+  cilium_self_management_values_digest = sha256(yamlencode(local.cilium_effective_values))
+
+  cilium_self_management_values_file = var.cilium_self_management && local.cilium_self_management_multi_source ? join("", [
+    "# GENERATED by talos-platform-base tofu/modules/talos-cluster — DO NOT EDIT.\n",
+    "# Regenerate with: tofu output -raw cilium_self_management_values\n",
+    "# Commit it at ${replace(local.cilium_values_source.values_path, "\n", " ")} in ${replace(local.cilium_values_source.repo_url, "\n", " ")}.\n",
+    "# It is the FIRST valueFiles entry of the emitted Cilium Application; your own\n",
+    "# override document is the second and wins over this file at any depth —\n",
+    "# EXCEPT kubeProxyReplacement, k8sServiceHost and k8sServicePort, which the\n",
+    "# Application re-asserts in helm.valuesObject as the last layer. Naming one of\n",
+    "# those three in your override FILE does not take effect and is not reported:\n",
+    "# the module rejects them in cilium_values_override, but it never reads the\n",
+    "# file. Set them through cilium_k8s_service_host / cilium_k8s_service_port /\n",
+    "# cilium_kube_proxy_replacement, which move the Talos side with them.\n",
+    "# cilium chart: ${replace(var.cilium_chart_version, "\n", " ")}\n",
+    "# values-digest: ${local.cilium_self_management_values_digest}\n",
+    "#   (must equal the emitted Application's talos-platform-base.io/values-digest\n",
+    "#   annotation — if it does not, this file is stale, re-run the output above.)\n",
+    yamlencode(local.cilium_effective_values),
+  ]) : ""
+
+  # The chart source's ordered values layers. `valueFiles` is where the ORDER of
+  # precedence lives, so the consumer's override wins over the module-set layer
+  # without depending on any slot-precedence assumption; the override entry is
+  # absent when the override is empty. ignoreMissingValueFiles stays explicitly
+  # false: it is the switch that turns a wrong path from a loud sync error into a
+  # silent render against chart defaults, and having it in the manifest makes
+  # flipping it a reviewable git change rather than an ArgoCD-UI-only one.
+  cilium_self_management_value_files = concat(
+    local.cilium_self_management_multi_source ? ["$values/${local.cilium_values_source.values_path}"] : [],
+    local.cilium_self_management_multi_source && local.cilium_values_override_present ? ["$values/${local.cilium_values_source.override_path}"] : [],
+  )
+
+  # metadata / spec hoisted so each arm is one readable merge() term instead of a
+  # nested conditional inside yamlencode().
+  cilium_self_management_metadata = merge(
+    {
       name      = "cilium"
       namespace = var.argocd_namespace
       labels = {
@@ -280,9 +400,28 @@ locals {
         "app.kubernetes.io/part-of"    = "talos-platform-base"
         "app.kubernetes.io/managed-by" = "argocd"
       }
-    }
-    spec = {
+    },
+    # Annotation ONLY on the multi-source arm: it describes the values file the
+    # consumer commits, which the single-source arm does not have, and adding a
+    # key there would move the emitted manifest of every existing consumer.
+    local.cilium_self_management_multi_source ? {
+      annotations = {
+        "talos-platform-base.io/values-digest" = local.cilium_self_management_values_digest
+      }
+    } : {},
+  )
+
+  cilium_self_management_spec = merge(
+    {
       project = var.cilium_self_management_project
+      destination = {
+        server    = "https://kubernetes.default.svc"
+        namespace = var.cilium_namespace
+      }
+    },
+    # SINGLE-source arm — unchanged from before the values-source input existed:
+    # the whole module-set layer rides inline in valuesObject.
+    !local.cilium_self_management_multi_source ? {
       source = {
         repoURL        = var.cilium_chart_repository
         chart          = "cilium"
@@ -291,11 +430,44 @@ locals {
           valuesObject = local.cilium_effective_values
         }
       }
-      destination = {
-        server    = "https://kubernetes.default.svc"
-        namespace = var.cilium_namespace
-      }
-    }
+    } : {},
+    # MULTI-SOURCE arm. sources[0] is a ref-only source: it generates no
+    # manifests (ArgoCD evaluates its changes through the source referencing
+    # it) and exists solely so `$values/...` resolves. sources[1] is the chart,
+    # whose ORDERED valueFiles carry module-set-then-override, with the joint
+    # keys re-asserted in valuesObject as the last layer.
+    #
+    # `source` is ABSENT rather than empty here: ArgoCD treats source and
+    # sources as mutually exclusive. The module cannot remove that field from a
+    # LIVE object though — whether a previously single-source Application drops
+    # it depends on the consumer's apply and field-manager history, which is
+    # why UPGRADING prescribes the transition order rather than assuming it.
+    local.cilium_self_management_multi_source ? {
+      sources = [
+        {
+          repoURL        = local.cilium_values_source.repo_url
+          targetRevision = local.cilium_values_source.revision
+          ref            = "values"
+        },
+        {
+          repoURL        = var.cilium_chart_repository
+          chart          = "cilium"
+          targetRevision = var.cilium_chart_version
+          helm = {
+            valueFiles              = local.cilium_self_management_value_files
+            ignoreMissingValueFiles = false
+            valuesObject            = local.cilium_joint_keys
+          }
+        },
+      ]
+    } : {},
+  )
+
+  cilium_self_management_app = var.cilium_self_management ? yamlencode({
+    apiVersion = "argoproj.io/v1alpha1"
+    kind       = "Application"
+    metadata   = local.cilium_self_management_metadata
+    spec       = local.cilium_self_management_spec
   }) : ""
 }
 
@@ -358,5 +530,73 @@ check "cilium_hubble_open_metrics_effective" {
   assert {
     condition     = !var.cilium_hubble_open_metrics || (var.deploy_cilium && var.cilium_hubble_enabled && length(var.cilium_hubble_metrics) > 0)
     error_message = "cilium_hubble_open_metrics is true but cannot take effect: it needs deploy_cilium = true, cilium_hubble_enabled = true, AND a non-empty cilium_hubble_metrics — the chart gates the OpenMetrics key on the metrics list being non-empty, so it changes the exposition format of an endpoint that exports nothing. Disregard the Hubble half of this if you enable Hubble through cilium_values_override; the module cannot introspect that string."
+  }
+}
+
+check "cilium_k8s_service_endpoint_effective" {
+  # Both endpoint inputs in ONE predicate, like the operator-replicas check and
+  # unlike the one-block-per-predicate rule: they name one endpoint, they go inert
+  # together, and a consumer hitting either needs the same paragraph.
+  #
+  # The condition compares against the DEFAULTS rather than testing the gate
+  # alone: leaving both at localhost:7445 with kube-proxy replacement off is the
+  # ordinary configuration, and a warning there would cry wolf on correct usage.
+  assert {
+    condition = (
+      var.cilium_k8s_service_host == "localhost" && var.cilium_k8s_service_port == "7445"
+      ) || (
+      var.deploy_cilium && var.cilium_kube_proxy_replacement
+    )
+    error_message = "cilium_k8s_service_host / cilium_k8s_service_port are set away from the KubePrism default but cannot take effect: they need deploy_cilium = true AND cilium_kube_proxy_replacement = true. The module emits k8sServiceHost/k8sServicePort only alongside kubeProxyReplacement, because each has a Talos-side half (cluster.proxy.disabled) that moves with it — with the replacement off, Cilium reaches the API server through the in-cluster Service that kube-proxy provides, and the endpoint you set reaches nothing."
+  }
+}
+
+check "cilium_self_management_values_source_is_inert" {
+  # A values source with self-management off reaches NOTHING: both deliverables
+  # are empty, every precondition passes vacuously, and the plan is otherwise
+  # silent — the consumer has configured the Day-2 path and will commit nothing.
+  # Same class and same tier as the three inert-input warnings above.
+  assert {
+    condition     = var.cilium_self_management_values_source == null || var.cilium_self_management
+    error_message = "cilium_self_management_values_source is set but cannot take effect: it needs cilium_self_management = true. With self-management off the module emits no Application and no values file, so the values source reaches nothing."
+  }
+}
+
+check "cilium_self_management_values_source_on_permissive_project" {
+  # The values source decides where ArgoCD FETCHES the Helm values for a
+  # privileged, host-networked DaemonSet from. spec.project is what bounds that:
+  # the always-present "default" AppProject carries `sourceRepos: ['*']`, so it
+  # accepts any repo the manifest names, and a cluster.yaml edit pointing
+  # repo_url at a foreign repo then delivers arbitrary Cilium values with nothing
+  # rejecting it. A scoped project listing exactly cilium_chart_repository and the
+  # consumer's own repo turns that edit into a sync error.
+  #
+  # Warning rather than rejection, and on the PERMISSIVE shape rather than the
+  # hardened one: "default" is the documented starting point and the module cannot
+  # know whether a scoped project exists in the cluster yet. But the single-source
+  # arm names no repo of its own, so this is a boundary the multi-source arm adds,
+  # and it must not be the quiet half.
+  assert {
+    condition     = var.cilium_self_management_values_source == null || !var.cilium_self_management || var.cilium_self_management_project != "default"
+    error_message = "cilium_self_management_values_source is set while cilium_self_management_project is \"default\": that AppProject allows every source repo (sourceRepos: ['*']), so nothing but PR review stops a repo_url edit from feeding attacker-chosen Helm values to the privileged cilium DaemonSet. Scope the Application to a dedicated AppProject whose sourceRepos lists exactly cilium_chart_repository and this values repo (README, the Cilium Self-Management section)."
+  }
+}
+
+check "cilium_values_override_emptied_while_day2_wired" {
+  # The silent-revert direction of the removed hard reject. Emptying the override
+  # is an ordinary cluster.yaml edit, and it drops the second valueFiles entry
+  # from the emitted Application: at the next sync ArgoCD reconciles Cilium
+  # WITHOUT the Day-2 config the override was carrying. Nothing else in the plan
+  # says so — the manifest diff is one list element.
+  #
+  # Gated on override_path being SET, not merely on the values source existing:
+  # "multi-source arm with the module-set layer only" is a supported shape with
+  # its own spec scenario and test leg, and warning on it would cry wolf on
+  # correct usage — the one thing this tier must not do (see the operator-replicas
+  # block above). An override_path configured with no override is the state that
+  # actually says an override was REMOVED rather than never authored.
+  assert {
+    condition     = !(var.cilium_self_management && trimspace(try(var.cilium_self_management_values_source.override_path, "")) != "" && !local.cilium_values_override_present)
+    error_message = "cilium_values_override is empty while cilium_self_management_values_source is still set: the emitted Application drops its override valueFiles entry, so the next ArgoCD sync reconciles Cilium WITHOUT the Day-2 values the override carried. If that is the intent, this is expected — otherwise restore the override, or unset cilium_self_management_values_source to return to the single-source shape deliberately. See UPGRADING, the Cilium self-management rollback section."
   }
 }

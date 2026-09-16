@@ -319,10 +319,12 @@ provider "talos" {}
 | `cilium_chart_version` | string | `"1.20.0"` | cilium Helm chart version. **SEED knob** (inlineManifests are create-only), not an upgrade knob. |
 | `cilium_chart_repository` | string | `"https://helm.cilium.io"` | Helm repo for the cilium chart (override for a private mirror / air-gap). |
 | `cilium_namespace` | string | `"kube-system"` | namespace Cilium renders into. |
-| `cilium_values_override` | string | `""` | consumer Helm values merged on the floor + computed values (long tail: Hubble, L2/BGP, bpf). |
+| `cilium_values_override` | string (sensitive) | `""` | consumer Helm values merged on the floor + computed values (long tail: Hubble, L2/BGP, bpf). Reaches BOTH delivery paths: the seed as the last of three Helm layers, and — with `cilium_self_management_values_source` set — the emitted Day-2 Application as the last `valueFiles` entry. **Rejected** when it names `kubeProxyReplacement`, `k8sServiceHost` or `k8sServicePort` (each has a Talos-side half the module writes; use the typed inputs) or when it is not a YAML mapping. `sensitive` because Cilium values legitimately carry key material — the consequence is that `tofu plan` does not show its diff. |
 | `cilium_routing_mode` | string | `"tunnel"` | `tunnel` / `native`. Install-time-fixed. |
 | `cilium_native_routing_cidr` | string | `""` | `ipv4NativeRoutingCIDR` for native mode; empty = first `pod_cidr`. Must be empty or a well-formed CIDR — the chart renders it raw into `cilium-config`, which is baked into the machine config. |
 | `cilium_kube_proxy_replacement` | bool | `true` | Cilium kube-proxy replacement (also sets Talos `proxy.disabled`). |
+| `cilium_k8s_service_host` | string | `"localhost"` | `k8sServiceHost` — the endpoint Cilium reaches the API server through before the CNI is up. Default is Talos KubePrism. Set a VIP or load-balancer address on a cluster where KubePrism is not the intended path. Only emitted when `cilium_kube_proxy_replacement=true`. Must be a bare DNS name/IPv4 literal, or an **unbracketed** IPv6 literal in canonical form (`2001:db8::1`) — no scheme, no `:port` (that is its own input), no brackets. The IPv6 half is decided by a parse, not a pattern, so `1:2:3` and a nine-group string are rejected, and a non-canonical (`2001:0db8::1`) or IPv4-embedded (`::ffff:192.0.2.1`) spelling is rejected too — write the form it normalizes to, the same rule `nodes[].ip` follows. Brackets are rejected on purpose: the chart passes this to `KUBERNETES_SERVICE_HOST`, and client-go joins host and port with `net.JoinHostPort`, which brackets a colon-bearing host again, so `[2001:db8::1]` would reach the API server as `[[2001:db8::1]]:6443`. Install-time-fixed on the seed; measured sink: chart 1.20.0 renders it into the containers' `KUBERNETES_SERVICE_HOST` env var, and on the seed path that render is frozen into a create-only machine config, so a malformed host is a bootstrap deadlock. |
+| `cilium_k8s_service_port` | string | `"7445"` | `k8sServicePort`, paired with the host above. Default is the KubePrism port. A decimal port as a string, 1-65535. |
 | `cilium_mtu` | number | `0` | datapath MTU (0 = chart auto). |
 | `cilium_encryption` | object | `{type="none"}` | `type` ∈ {none, wireguard, ipsec}. ipsec requires `cilium_ipsec_key`. |
 | `cilium_ipsec_key` | string (sensitive) | `""` | IPsec PSK seeded as the `cilium-ipsec-keys` Secret; required for `type=ipsec` (wireguard is keyless). Lands in (encrypted) state. |
@@ -330,13 +332,14 @@ provider "talos" {}
 | `cilium_gateway_api_crds_url` | string | `""` (no boot seed) | **OPT-IN** bootstrap seeding of the Gateway API CRDs via `cluster.extraManifests`. Empty = CRDs are a Day-1 GitOps concern (air-gap-safe). Set to the GW-API **v1.6.1 standard** bundle URL (or an internal mirror) for a connected cluster — Cilium 1.20 requires v1.6.1 at a minimum, and TLSRoute is in the standard channel as of v1.6.1. Use the **experimental** bundle only if you carry pre-existing `v1alpha2` TLSRoute objects. ⚠️ a failed fetch crashloops Talos' ExtraManifestController and blocks clean bootstrap. |
 | `cilium_agent_metrics` | bool | `false` | enable Cilium **agent** Prometheus metrics (`prometheus.enabled`). Default off. |
 | `cilium_operator_metrics` | bool | `false` | enable Cilium **operator** Prometheus metrics (`operator.prometheus.enabled`). Default off. Note: the upstream chart's OWN default for this value is already `true`, so the rendered `cilium-config` ConfigMap's `operator-prometheus-serve-addr` key is present regardless of this toggle — it does not discriminate at the render layer (a pre-existing chart-default fact, not introduced by this input). |
-| `cilium_operator_replicas` | number | `null` | Cilium operator Deployment replica count (`operator.replicas`). `null` derives it from the node count — `2` at two or more nodes (the chart's own default), nothing at exactly one node, where the shipped floor's `1` stays effective. Set a number to pin it; this is the **only** knob that pins on both delivery paths, because `cilium_values_override` reaches the seed alone and is hard-rejected alongside `cilium_self_management`. **Rejected** when it exceeds the declared node count (the `podAntiAffinity` is per-hostname, so the surplus can never place, and the value lands in a create-only seed). **Warns** when `deploy_cilium` is off. **SEED knob** on the default path. |
+| `cilium_operator_replicas` | number | `null` | Cilium operator Deployment replica count (`operator.replicas`). `null` derives it from the node count — `2` at two or more nodes (the chart's own default), nothing at exactly one node, where the shipped floor's `1` stays effective. Set a number to pin it; unlike `cilium_values_override` — which the module cannot introspect, so it can neither re-assert nor validate what it carries — a typed pin lands deterministically on both delivery paths. **Rejected** when it exceeds the declared node count (the `podAntiAffinity` is per-hostname, so the surplus can never place, and the value lands in a create-only seed). **Warns** when `deploy_cilium` is off. **SEED knob** on the default path. |
 | `cilium_hubble_enabled` | bool | `false` | enable Hubble flow/metrics observability. **Forces `hubble.tls.enabled=false`** (metrics-only scope — no Relay/UI; the Hubble metrics endpoint is independent of observer-API TLS since Cilium 1.16). Default off. |
 | `cilium_hubble_metrics` | list(string) | `[]` | Hubble metrics to export (`hubble.metrics.enabled`), e.g. `["dns", "drop", "tcp"]`. Scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side. An empty list with `cilium_hubble_enabled=true` is a valid **half-on** state (server on, no metrics exported). Entries must carry no newline and no `---`; the guard is an exclusion rule rather than an allowlist because Hubble's context syntax (`flow:sourceContext=pod;destinationContext=pod`) uses punctuation freely. |
 | `cilium_agent_metric_overrides` | list(string) | `[]` | agent metric **delta** list (`prometheus.metrics`): `+name` adds a metric to the chart's default set, `-name` removes one — NOT a replacement of that set, and unrelated to `cilium_values_override` despite the name. Entries must match `^[+-][a-zA-Z_][a-zA-Z0-9_]*$`; the chart renders them raw into `cilium-config`, which is baked into the machine config. **Warns** (plan-time `check`, not a rejection) when `cilium_agent_metrics` is off. |
 | `cilium_hubble_open_metrics` | bool | `false` | export the Hubble metrics endpoint in OpenMetrics format (`hubble.metrics.enableOpenMetrics`). **No DaemonSet roll**: only the `cilium-config` ConfigMap changes, so a running cluster keeps the old exposition format until `kubectl -n kube-system rollout restart ds/cilium`. **Warns** when `cilium_hubble_enabled` is off. |
-| `cilium_self_management` | bool | `false` | **opt-in**: emit a Cilium ArgoCD `Application` (module OUTPUT only — see `cilium_self_management_app` — never applied by the module) as the Day-2 delivery path. Requires `deploy_argocd=true` AND `deploy_cilium=true`. **HARD-REJECTED at plan time** while `cilium_values_override` is non-empty — see the Cilium Self-Management section below. |
+| `cilium_self_management` | bool | `false` | **opt-in**: emit a Cilium ArgoCD `Application` (module OUTPUT only — see `cilium_self_management_app` — never applied by the module) as the Day-2 delivery path. Requires `deploy_argocd=true` AND `deploy_cilium=true`. **HARD-REJECTED at plan time** with a non-empty `cilium_values_override` and no `cilium_self_management_values_source` — the emitted Application would then be single-source and silently drop the override. See the Cilium Self-Management section below. |
 | `cilium_self_management_project` | string | `"default"` | ArgoCD `AppProject` the emitted Application targets. Default `"default"` (the always-present permissive project) — scope to a dedicated project for hardening (see below). |
+| `cilium_self_management_values_source` | object | `null` | the git source the emitted Day-2 Application reads its Helm values layers from: `{repo_url, revision, values_path, override_path}`. `null` keeps today's SINGLE-source shape (module-set layer inline in `valuesObject`). Set it and the Application becomes **MULTI-SOURCE**: `sources[0]` is a `ref` source for that repo, `sources[1]` the chart with two ordered `valueFiles` — the `cilium_self_management_values` output first, `cilium_values_override` second, so **Helm** merges them and the consumer's layer wins at arbitrary depth. Required with a non-empty override. Paths are **normalized** repo-root-relative (no leading `/`, no `..`, `.` or empty segment, and the two must differ — `./x` beside `x` names one file); `repo_url` must be a git remote form ArgoCD resolves (`https://`, `ssh://user@host[:port]/path`, `git@host:path`) with no embedded password (an SSH username is fine); pin `revision` rather than tracking a branch tip. A scoped `cilium_self_management_project` must list BOTH this repo and `cilium_chart_repository` in `sourceRepos` — and the module **warns** when a values source is set while the project is still `"default"`, whose `sourceRepos: ['*']` accepts any repo the manifest names. The file at `override_path` is read as a PLAIN Helm values document: ArgoCD decrypts nothing there. |
 | `deploy_argocd` | bool | `true` | deliver ArgoCD as a controlplane `inlineManifest`. Requires `sops_age_key` when true. |
 | `sops_age_key` | string (sensitive) | `""` | age private key (`keys.txt`) for the ArgoCD **ksops** repoServer, seeded as the `sops-age-key` Secret. **Required** when `deploy_argocd = true`. Lands in (encrypted) state. |
 | `argocd_namespace` | string | `"argocd"` | namespace for the bootstrap ArgoCD install |
@@ -383,7 +386,9 @@ overlay's job.
 | `distinct_schematic_count` | no | number of distinct schematics after content-hash dedup |
 | `talos_install_version` | no | effective installer version |
 | `cluster_health` | no | `"healthy (…)"` — references `data.talos_cluster_health`, so any consumer reading it blocks until the cluster is online |
-| `cilium_self_management_app` | no | the emitted Cilium ArgoCD `Application` manifest (raw YAML string) when `cilium_self_management=true`; `""` otherwise. Module OUTPUT only — never applied by the module (see the Cilium Self-Management section below). Secret-free (no `cilium_values_override` term). |
+| `cilium_self_management_app` | no | the emitted Cilium ArgoCD `Application` manifest (raw YAML string) when `cilium_self_management=true`; `""` otherwise. Module OUTPUT only — never applied by the module (see the Cilium Self-Management section below). Secret-free on both arms: the override is never inlined, only referenced as a `$values/…` path. On the multi-source arm it is **no longer the sole deliverable** — commit `cilium_self_management_values` alongside it. |
+| `cilium_self_management_values` | no | the module-set Helm values layer (floor ⊕ computed) as a YAML document, for the consumer to commit at `cilium_self_management_values_source.values_path` — the first `valueFiles` entry of the multi-source Application. `""` on the single-source arm, where the same content rides inline in `valuesObject`. Its header carries a `values-digest` that must equal the Application's `talos-platform-base.io/values-digest` annotation; that pair is the only mechanical check against a stale values file. |
+| `cilium_values_override_digest` | no | SHA-256 of `cilium_values_override`, `""` when empty. The plan-time change detector the input's `sensitive` marking removes — a sensitive input shows no diff, and the override now reaches a running cluster through the Day-2 Application. A digest carries no part of the value; it detects change, it does not claim secrecy. |
 
 Audit-shaped outputs. These exist as binding points for the composition
 regression suite (`tests/composition.tftest.hcl`, via `task tofu:test` —
@@ -687,11 +692,11 @@ plan time — the surplus can never place, and the value lands in a create-only
 seed no later apply can walk back. `cilium_operator_replicas_effective` reports
 which of the three mechanisms produced the number.
 
-`cilium_values_override` still pins on the **seed** path, and the difference is
-easy to miss: on the **self-management** path it is not available — the emitted
-Application's `valuesObject` does not inherit `cilium_values_override` (see the
-override-drop guard below), and the module
-hard-rejects the two together.
+`cilium_values_override` can also set the count on the seed path, and — with
+`cilium_self_management_values_source` configured — on the self-management path
+too (see below). The typed input is still the better shape for this one value:
+the module cannot introspect the override, so nothing validates the count
+against the node set or reports which mechanism produced it.
 
 Grafana dashboards are deliberately NOT typed here. Cilium's chart ships them as
 static ConfigMaps whose `namespace` and sidecar `label` decide whether anything
@@ -713,37 +718,126 @@ emitted manifest carries **no `syncPolicy`** — the consumer controls sync
 timing, since enabling Hubble triggers a graceful-restart-gated DaemonSet roll.
 Requires **OpenTofu ≥ 1.9** (cross-variable `validation` blocks).
 
-**Coupling + guard.** `cilium_self_management` requires `deploy_argocd=true` AND
-`deploy_cilium=true` (self-management hands the Day-2 config off from the
-module-delivered seed to the consumer's ArgoCD — there is nothing to hand off
-otherwise). Separately, the emitted `valuesObject` does **NOT** inherit
-`cilium_values_override` — the module **HARD-REJECTS** `cilium_self_management=true`
-while `cilium_values_override` is non-empty at plan time: a seed-active
-datapath-critical override (BGP control-plane, L2 announcements, bpf tuning)
-would otherwise be silently **DROPPED** the moment ArgoCD adopts Cilium.
-Migrate the override into your own Cilium `Application` first, then empty
-`cilium_values_override` in the SoT to enable self-management.
+**Two emitted shapes.** `cilium_self_management_values_source` decides which:
 
-**Bootstrap-window datapath gap (accepted trade-off, no code fix).** The guard
-above and the module's create-only seed (`terraform_data.cilium_render`,
-`ignore_changes=[input]`) interact in two ways that are in tension and must both
-be understood: (a) while `cilium_values_override` stays set in the SoT, the
-guard blocks `cilium_self_management` outright — you cannot self-manage with a
-seed-active override still declared; (b) once you empty
-`cilium_values_override` to enable self-management, a **future** fresh bootstrap
-or a `-replace` re-seed of the frozen render brings a node up with
-**plain-floor Cilium only** (no BGP/L2/bpf) until ArgoCD's first sync adopts and
-re-applies the override via the self-managed `Application` — a bootstrap-window
-datapath gap on BGP/L2 clusters. This is the mirror image of the existing
-re-bootstrapped-node caveat (a stale seed that still carries a since-migrated
-override): one state has a gap on the seed side, the other has a gap on the
-migration side. There is no code fix for either; plan around the window on
-BGP-dependent clusters (e.g. hold reboots until ArgoCD sync is confirmed).
+- **unset (default)** — a SINGLE-source `Application` whose
+  `spec.source.helm.valuesObject` carries the module-set layer (floor ⊕
+  computed) inline. `cilium_values_override` does not reach it. Byte-identical
+  to what the module emitted before this input existed.
+- **set** — a MULTI-SOURCE `Application`. `sources[0]` is a `ref`-only source
+  for the consumer's git repo; `sources[1]` is the chart, whose `valueFiles`
+  are the module-set layer FIRST and `cilium_values_override` SECOND. The list
+  ORDER is the precedence: Helm merges later files over earlier ones at
+  arbitrary depth, which is why the merge belongs to Helm — the override is an
+  opaque YAML document and HCL has no generic recursive merge. `$values/<path>`
+  resolves only through a sibling `sources[]` entry carrying `ref`, which is
+  why the shape is multi-source rather than a `valueFiles` entry on the
+  existing single source.
+
+On the multi-source arm the consumer commits **two** artifacts: the
+`cilium_self_management_values` output at `values_path`, and their own override
+document at `override_path`. Nothing at sync time compares them, so write both
+from `local_file` resources in one root and check the values file's
+`values-digest` header against the `Application`'s
+`talos-platform-base.io/values-digest` annotation. That digest rotates on more
+than `substrate.cilium`: the module-set layer folds the operator replica count
+(derived from the NODE COUNT) and the pod CIDR, so a node scale-out staleness the
+comparison catches and nothing else does. It also compares two working-tree
+artifacts, while ArgoCD renders the file at `sources[0].targetRevision`.
+
+`values_path` and `override_path` must be different files — one path for both is
+rejected at plan time, because the `local_file` write above would then overwrite
+the override with the module-set layer while every other guard stays green.
+
+**A synced override does not reach the running agents by itself.** Most Cilium
+settings land only in the `cilium-config` ConfigMap, and changing one leaves the
+agent DaemonSet's pod template untouched — measured on the pinned 1.20.0 chart,
+`routingMode: tunnel` and `routingMode: native` render a byte-identical pod
+template. ArgoCD reports the sync as successful while the agents keep the old
+configuration; Cilium exposes `cilium_drift_checker_config_delta` for exactly
+this gap. Either restart deliberately after such a sync
+(`kubectl -n kube-system rollout restart daemonset/cilium`) or set
+`rollOutCiliumPods: true` in your override file, which makes the chart stamp a
+ConfigMap checksum into the pod template so every ConfigMap change rolls the
+agents. The base sets neither — rolling the CNI interrupts the datapath node by
+node, the same reason the emitted `Application` carries no `syncPolicy`.
+
+**The override file is NOT confidential.** ArgoCD reads it as a plain Helm values
+document and applies no decryption to a Helm `valueFiles` source, so SOPS does not
+apply without a config-management plugin this base neither ships nor configures.
+Key material at `override_path` is plaintext in git until the consumer builds that
+path themselves.
+
+**Coupling + guards.** `cilium_self_management` requires `deploy_argocd=true`
+AND `deploy_cilium=true` (self-management hands the Day-2 config off from the
+module-delivered seed to the consumer's ArgoCD — there is nothing to hand off
+otherwise). It is additionally **HARD-REJECTED** with a non-empty
+`cilium_values_override` and NO `cilium_self_management_values_source`: the
+emitted `Application` would then be single-source and a datapath-critical
+override (BGP control-plane, L2 announcements, bpf tuning) would be silently
+**DROPPED** the moment ArgoCD adopts Cilium. Configure the values source, or
+migrate the override into your own `Application` and empty it.
+
+**What survives a wrong values file.** `kubeProxyReplacement`,
+`k8sServiceHost` and `k8sServicePort` are re-asserted in the multi-source
+`valuesObject`, which Helm applies after both `valueFiles`. They are produced
+by the computed layer alone — never by the floor file — so without that
+re-assertion a missing, truncated or stale values file would render a Cilium
+that does not replace kube-proxy while Talos already carries
+`cluster.proxy.disabled`: no ClusterIP datapath, no cluster DNS, on a running
+cluster, unrepairable by a create-only seed. `ignoreMissingValueFiles` is
+explicitly `false` in the emitted manifest for the same reason; do not set it
+true to clear a "values file not found" sync error.
+
+The re-assertion is also a PRECEDENCE, not only a safety net: naming one of the
+three in your override FILE has no effect and is not reported, because the module
+never reads that file. The generated values document's header says so at the
+point of use; set them through `cilium_k8s_service_host`,
+`cilium_k8s_service_port` and `cilium_kube_proxy_replacement`, which move the
+Talos half with them.
+
+Everything else in the module-set layer CAN be lost to a stale file. That is
+recoverable for the tunables (routing mode, MTU, replicas, observability keys) —
+but a file that resolves EMPTY or truncated also drops the shipped floor's
+`ipam.mode: kubernetes`, `cni.exclusive: false`, `cgroup.autoMount.enabled:
+false` and the withheld-`SYS_MODULE` capability list, whose chart defaults are
+`cluster-pool` IPAM and exclusive CNI. Treat "the values file is present and
+complete" as a precondition of this arm, not as something the re-assertion
+covers.
+
+**The merge order is an implementation detail, not an API guarantee.**
+`valuesObject` being applied after every `valueFiles` entry was read from the
+Argo CD **v3.5.2** repo-server (chart `10.6.0`, this module's pin).
+`argocd_chart_version` is a SEED knob and the seed is create-only, so a cluster
+bootstrapped on an older base tag still runs the ArgoCD that tag shipped — read
+the running repo-server version before adopting this arm (UPGRADING, the
+validation steps).
+
+**Seed/Application override divergence (accepted, no code fix).** On the
+multi-source arm the override reaches both paths, so the bootstrap-window gap
+the old guard produced is gone — a fresh bootstrap or a `-replace` re-seed
+brings the node up WITH the override, because the seed's values list still
+carries it. What replaces that gap is divergence: the frozen seed holds whatever
+the override said at capture time while the `Application` reconciles whatever it
+says now, and the two may differ indefinitely. Whether a Talos manifest
+reconcile updates objects it already created, and whether it does so to objects
+an `Application` now owns, is UNVERIFIED — this repository has no live cluster.
+Treat a `-replace` of the render on a self-managing cluster as an unmeasured
+operation, and see UPGRADING for the break-glass path.
 
 **`spec.project` posture.** Defaults to `"default"` (the always-present
-permissive AppProject) so the feature works out of the box. **Strongly
+permissive AppProject) so the feature works out of the box. On the MULTI-SOURCE
+arm that default is a security boundary left open, and the module **warns at plan
+time** about it: the `Application` names a values repo of its own, `default`
+carries `sourceRepos: ['*']`, and so a one-line `repo_url` edit can point the
+privileged, host-networked `cilium` DaemonSet's Helm values at any repo, with
+nothing but PR review in the way. `repo_url` itself is constrained only to the git
+remote forms ArgoCD resolves (`https://`, `ssh://user@host[:port]/path`,
+`git@host:path`, no embedded password) — that is well-formedness, not
+authorization. **Strongly
 recommended hardening**: set `cilium_self_management_project` to a
-consumer-created, scoped `AppProject` that grants destination namespace
+consumer-created, scoped `AppProject` whose `sourceRepos` lists exactly
+`cilium_chart_repository` and your values repo, that grants destination namespace
 `kube-system` at `https://kubernetes.default.svc`, plus Cilium's cluster-scoped
 resources (its CRDs, ClusterRoles, ClusterRoleBindings) in
 `clusterResourceWhitelist` — without that whitelist, the adopted `Application`

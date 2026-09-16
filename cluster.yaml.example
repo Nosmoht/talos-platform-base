@@ -132,12 +132,25 @@ substrate:
     chart_repository: https://helm.cilium.io # override for a private mirror / air-gap
     routing_mode: tunnel # tunnel | native (native needs native_routing_cidr or pod_cidr)
     kube_proxy_replacement: true # Cilium replaces kube-proxy (Talos cluster.proxy.disabled)
+    # k8s_service_host / k8s_service_port: OMITTED ON PURPOSE — omitting them
+    # (an IPv6 endpoint goes in UNBRACKETED and CANONICAL: "2001:db8::1", not
+    # "[2001:db8::1]", not "2001:0db8::1" — it is parsed, like a node IP)
+    # takes Talos KubePrism (localhost:7445), which is what Talos' own Cilium
+    # guide documents. Set them only on a cluster where KubePrism is not the
+    # endpoint Cilium should reach the API server through before the CNI is up
+    # (a VIP, a load balancer). They are typed keys, not values_override keys,
+    # because each has a Talos-side half the module writes.
     gateway_api: true # Hard Constraint: Gateway API only — no Ingress
     gateway_api_crds_url: "" # "" = CRDs via Day-1 GitOps (air-gap-safe); URL = boot-seed (connected only)
     mtu: 0 # 0 = chart auto-detect; set for jumbo-frame fabrics
     native_routing_cidr: "" # ipv4NativeRoutingCIDR for routing_mode: native ("" = derive from pod_cidr)
     encryption: { type: none } # none | wireguard | ipsec (ipsec needs cilium_ipsec_key via tfvar/env)
-    values_override: "" # long tail: Hubble, L2/BGP, bpf, VLAN bypass (Helm values, merged on the floor)
+    # Long tail: Hubble, L2/BGP, bpf, VLAN bypass. Merged on the floor + computed
+    # values, later wins. It reaches the bootstrap seed always, and an
+    # already-bootstrapped cluster through self_management_values_source below.
+    # It may NOT name kubeProxyReplacement / k8sServiceHost / k8sServicePort —
+    # use the typed keys above, which set the Talos half with them.
+    values_override: ""
     agent_metrics: false # Cilium agent Prometheus metrics (prometheus.enabled)
     operator_metrics: false # Cilium operator Prometheus metrics (operator.prometheus.enabled)
     # operator_replicas: OMITTED ON PURPOSE — omitting it derives the count from
@@ -150,8 +163,29 @@ substrate:
     hubble_metrics: [] # e.g. ["dns", "drop", "tcp"] — scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side
     agent_metric_overrides: [] # e.g. ["+cilium_bpf_map_pressure"] — +add/-remove against the chart's DEFAULT metric set; needs agent_metrics
     hubble_open_metrics: false # OpenMetrics exposition format; needs hubble_enabled + a rollout restart to take effect on a running cluster
-    self_management: false # opt-in: emit a Cilium ArgoCD Application output (module-emitted only, never applied). HARD-REJECTED with values_override non-empty
+    self_management: false # opt-in: emit a Cilium ArgoCD Application output (module-emitted only, never applied)
     self_management_project: default # ArgoCD AppProject the emitted Application targets — scope to a dedicated project for hardening
+    # self_management_values_source: OMITTED ON PURPOSE — omitting it emits the
+    # SINGLE-source Application, whose values ride inline in the manifest. Set it
+    # (REQUIRED once values_override is non-empty alongside self_management) and
+    # the Application becomes MULTI-SOURCE: it reads two ordered valueFiles from
+    # your repo, so Helm merges them and YOUR layer wins at arbitrary depth.
+    # You then commit TWO artifacts and keep them in step — the module's
+    # cilium_self_management_values output at values_path, and your own
+    # values_override document at override_path. repo_url and revision default to
+    # this file's repo.url and cluster.target_revision. The two paths must differ
+    # and must be normalized (no "./", no "..", no doubled "/").
+    #
+    # SCOPE self_management_project above before using this: the Application then
+    # names a values repo of its own, and the "default" AppProject accepts every
+    # source repo, so a one-line repo_url edit would decide where the privileged
+    # cilium DaemonSet's Helm values come from. The module warns at plan time.
+    # The file at override_path is a PLAIN Helm values document — ArgoCD decrypts
+    # nothing there, so key material in it is plaintext in git.
+    #
+    #   self_management_values_source:
+    #     values_path: cilium/module-values.yaml
+    #     override_path: cilium/values-override.yaml
   argocd:
     enabled: true # false opts out of ArgoCD delivery
     # chart_version: omitted on purpose — see the cilium block above.

@@ -42,15 +42,24 @@ for f in "${SCHEMA}" "${SHIM}"; do
   [ -f "$f" ] || { echo "::error::check-shim-key-parity: ${f} not found" >&2; exit 2; }
 done
 
-# Emit "<object> <key>" for every property of every CLOSED substrate object.
-# An object without `properties` contributes nothing (see SCOPE above).
+# Emit "<object> <key>" for every property of every CLOSED substrate object, and
+# "<object> <key>.<nested>" for one level of nesting under a closed object-valued
+# key. An object without `properties` contributes nothing (see SCOPE above).
+#
+# ONE level, deliberately: the shim reads a nested key as
+# `local.<obj>.<key>.<nested>`, which the same grep can bind. Deeper nesting
+# would need the shim's restructuring to be modelled, which is the reason
+# sections outside `substrate` are out of scope at all.
 pairs="$(jq -r '
   .properties.substrate.properties
   | to_entries[]
   | . as $o
   | ($o.value.properties // {})
-  | keys[]
-  | "\($o.key) \(.)"
+  | to_entries[]
+  | . as $k
+  | [ "\($o.key) \($k.key)" ]
+    + [ ($k.value.properties // {} | keys[]) | "\($o.key) \($k.key).\(.)" ]
+  | .[]
 ' "${SCHEMA}")"
 
 [ -n "${pairs}" ] || {
@@ -65,8 +74,11 @@ while read -r obj key; do
   [ -n "${obj}" ] || continue
   checked=$((checked + 1))
   # The shim aliases each substrate object to a local of the same name
-  # (local.cilium, local.cert_approver), then reads keys off it.
-  if ! grep -qE "local\.${obj}\.${key}([^a-zA-Z0-9_]|$)" "${SHIM}"; then
+  # (local.cilium, local.cert_approver), then reads keys off it. `key` may carry
+  # one dotted nesting level, which is the shim's own spelling for a nested read
+  # — quote the dots so they match literally rather than as any character.
+  key_re="${key//./\\.}"
+  if ! grep -qE "local\.${obj}\.${key_re}([^a-zA-Z0-9_]|$)" "${SHIM}"; then
     echo "::error::check-shim-key-parity: ${SHIM} never reads local.${obj}.${key}, but schemas/cluster.schema.json declares substrate.${obj}.${key} — a consumer writing that key passes lint and plan while the value silently never reaches the module" >&2
     fail=1
   fi

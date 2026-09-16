@@ -1,8 +1,10 @@
 # INTENTIONALLY INVALID cluster.yaml — negative fixture for lint-cluster-yaml.sh
 # (issue #136 Task 3; issue #169 added the four kernel-arg lexical-rule
-# violations). Valid in every respect EXCEPT eleven offending entries binding
-# TWELVE schema rules red-green — entry 10 breaks two rules at once, and CI
-# asserts all twelve are named in the output, one needle per rule:
+# violations; issue #265 added the two endpoint keys and the two values-source
+# paths). Valid in every respect EXCEPT fourteen offending entries binding
+# NINETEEN schema rules red-green — entry 10 breaks two rules at once and entry
+# 13 breaks three, and CI asserts all nineteen are named in the output, one
+# needle per rule:
 #   0. nodes key CP_2 — uppercase + underscore; a name Talos ACCEPTS and then
 #      silently rewrites, so the schema rejects what the platform would rewrite.
 #   1. node role: master — violates the node.role enum (controlplane | worker).
@@ -28,7 +30,19 @@
 #      by its own CI needle. A single-conjunct value would leave the other free
 #      to be relaxed with the step still green, since the needles match the
 #      linter's distinct messages rather than the bare path.
-#  11. cluster.worker_apply_mode: staged_if_needing_reboot — a real provider mode
+#  11. substrate.cilium.k8s_service_host — a BRACKETED IPv6 literal, the
+#      spelling issue #265 made illegal: the value is the endpoint Cilium
+#      reaches the API server through BEFORE the CNI is up, frozen into the
+#      create-only machine config, and client-go re-brackets it.
+#  12. substrate.cilium.k8s_service_port — above 65535, binding the range half
+#      of the port mirror (the digit-shape half is a separate module conjunct).
+#  13. substrate.cilium.self_management_values_source.values_path — a `..`
+#      segment, a `.` segment and a doubled separator at once. The three are
+#      separate `not` sub-schemas carrying a title, so each gets its own needle;
+#      one merged pattern would let two of them be relaxed with CI still green.
+#  14. substrate.cilium.self_management_values_source.override_path — absolute,
+#      binding the leading-`/` half of the path charset rule.
+#  15. cluster.worker_apply_mode: staged_if_needing_reboot — a real provider mode
 #      the module deliberately does NOT accept: the pinned provider offers it but
 #      resolves it to "auto" on Talos 1.14+, the line the pin exists to reach. The
 #      enum is the only thing keeping it out.
@@ -98,3 +112,19 @@ substrate:
     # `minimum: 1`. Mirrors the module's own two validation conjuncts so the
     # declarative path rejects both at lint time, not only at plan time.
     operator_replicas: 0.5
+    # INVALID: a BRACKETED IPv6 literal, the spelling issue #265 made illegal.
+    # client-go joins host and port with net.JoinHostPort, which brackets a
+    # colon-bearing host again, so this value reaches the API server as
+    # "[[2001:db8::1]]:6443". Mirrors var.cilium_k8s_service_host.
+    k8s_service_host: "[2001:db8::1]"
+    # INVALID: above the TCP range. The schema mirrors BOTH module conjuncts —
+    # digit shape and 1-65535 — because a port range is non-relational.
+    k8s_service_port: "99999"
+    self_management_values_source:
+      # INVALID three times over, one per normalization sub-rule, so each is
+      # bound by its own CI needle: a `..` segment, a `.` segment and a doubled
+      # separator. ArgoCD resolves this against the repo root, and a malformed
+      # path stops ALL Cilium reconciliation with no plan-time signal.
+      values_path: "./evil/../a//module-values.yaml"
+      # INVALID: absolute. The charset rule's first character rejects a leading "/".
+      override_path: "/etc/cilium/values-override.yaml"

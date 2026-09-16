@@ -3,7 +3,7 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-generated: { by: human:nosmoht, at: "2026-09-02T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-09T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
@@ -189,11 +189,23 @@ initial admin password (rotate after first login).
 ## The direct-apply exception
 
 The standing rule is: **never `kubectl apply` ArgoCD-managed resources** —
-commit to git and let ArgoCD reconcile. The one documented exception is
-one-time bootstrap content under `kubernetes/bootstrap/` (exactly what
-`task bootstrap:argocd` applies). The module's server-side CRD apply is
-tofu-executed, not an operator workflow, and stays inside that spirit: it
-delivers only what the seed cannot carry.
+commit to git and let ArgoCD reconcile. There are two documented exceptions.
+The first is one-time bootstrap content under `kubernetes/bootstrap/` (exactly
+what `task bootstrap:argocd` applies). The second is the **datapath
+break-glass**: a consumer-side operator restoring a broken CNI on a running
+cluster, where ArgoCD cannot reconcile the fix because it runs over the
+datapath Cilium provides, and no other mechanism restores it — Talos'
+inline-manifest controller only creates missing resources and never updates
+one it already made. It is bounded to restoring service and owes a follow-up
+commit; the procedure and its conditions live in `UPGRADING.md` §Break-glass,
+and the authorization in `AGENTS.md` §Hard Constraints.
+
+The module's server-side CRD apply is tofu-executed, not an operator workflow,
+and stays inside the first exception's spirit: it delivers only what the seed
+cannot carry. Note what the break-glass does NOT authorize — a module or any
+automation in this repository applying cluster-side. That stays forbidden, and
+is why the emitted self-management `Application` is an output the consumer
+commits rather than something the module applies.
 
 That scope is now literal. The apply used to cover the chart's **full**
 default render — the data source behind it carries no values block — and used

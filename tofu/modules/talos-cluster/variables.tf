@@ -654,9 +654,82 @@ variable "cilium_values_override" {
     floor). Carries the long tail the typed inputs do not name (Hubble, L2/BGP
     announcements, bpf tuning, VLAN bypass, secretsNamespaceLabels for the PNI
     contract). Empty = the minimal agnostic floor + the typed inputs only.
+
+    Reaches BOTH delivery paths (adr-0028 §(a)/§(b)): the bootstrap seed as the
+    last of three Helm values layers, and — with
+    cilium_self_management_values_source set — the emitted Day-2 Application as
+    the last `valueFiles` entry, a file the CONSUMER commits. The module never
+    re-emits the string, so the emitted manifest stays secret-free.
+
+    SECURITY: marked sensitive because Cilium values legitimately carry secret
+    material (IPsec keys, Hubble/clustermesh TLS, BGP peer passwords). The mark
+    covers the VARIABLE, and what it buys is bounded — state it rather than
+    over-read it:
+
+      - `tofu plan` no longer shows this input's diff, so a datapath-relevant
+        change to it is invisible in plan output. `output
+        cilium_values_override_digest` is the replacement change detector.
+      - The CONTENT still reaches the rendered cilium-config ConfigMap, the
+        controlplane machine config and therefore STATE — encrypt the backend,
+        exactly as for cilium_ipsec_key and sops_age_key. adr-0007 §5 scopes its
+        mitigation to operator discipline behind the gitleaks gate, not to a
+        structural guarantee, and that is unchanged here.
+      - The Day-2 path does NOT answer the confidentiality question, and the
+        earlier "put it behind your own SOPS gate" framing was wrong. Argo CD
+        reads the file at override_path as a plain Helm values document and
+        applies no decryption to a Helm `valueFiles` source (documented behavior;
+        argoproj/argo-cd#3024 is the standing request), so a SOPS-encrypted file
+        is not a values document and does not render. Making it work needs a
+        config-management plugin — helm-secrets in a custom repo-server image, or
+        an equivalent — which this base neither ships nor configures. Until the
+        consumer has built that, key material at override_path is PLAINTEXT in
+        git. If the override carries IPsec keys or TLS material, either build
+        that path first or keep the values out of git entirely (a Secret the
+        chart references, delivered by the consumer's own sealed/SOPS pipeline).
   EOT
   type        = string
   default     = ""
+  sensitive   = true
+
+  # Map-shape guard. yamldecode admits documents this variable cannot be: a
+  # comment-only string decodes to null and a list-rooted one to a tuple, and
+  # both would reach the seed's values list — and the consumer's own committed
+  # override file on the Day-2 path — as a non-object Helm rejects at render
+  # time. Rejecting at plan time puts the message on the input instead of on the
+  # rendered artifact.
+  validation {
+    condition     = var.cilium_values_override == "" || can(keys(yamldecode(var.cilium_values_override)))
+    error_message = "cilium_values_override must be a YAML MAPPING (top-level `key: value` pairs) — a comment-only document decodes to null and a list-rooted one to a sequence, neither of which is a Helm values document."
+  }
+
+  # Joint-key HARD-REJECT (adr-0028 §(d)). These three keys have a Talos-side
+  # counterpart the module writes: kubeProxyReplacement pairs with
+  # cluster.proxy.disabled (main.tf base_cni_patch), and k8sServiceHost/Port name
+  # the endpoint Cilium reaches the API server through before the CNI is up.
+  # Overriding either half alone yields no ClusterIP datapath and no cluster DNS
+  # — at bootstrap baked into a create-only seed, at Day-2 delivered by a sync.
+  #
+  # This costs no capability BECAUSE all three have typed inputs that set both
+  # halves together: cilium_kube_proxy_replacement, cilium_k8s_service_host and
+  # cilium_k8s_service_port (the latter two shipped with this guard — closes #227,
+  # and adr-0028 §(f) is why they are typed fields rather than override keys).
+  #
+  # It is a footgun guard, NOT a boundary: the chart's `extraConfig` passthrough
+  # and a caller `config_patches` entry both reach the same unbootable state
+  # around it (base_cni_patch writes `proxy.disabled` only when the toggle is
+  # true, so it does not win over a caller patch that sets it while the toggle is
+  # false). Recorded in adr-0028's addendum rather than claimed as closure.
+  #
+  # SEPARATE validation block from the map-shape guard above, per the isolation
+  # rule on cilium_self_management below: expect_failures matches the VARIABLE,
+  # so a merged condition would let either half rot untested.
+  validation {
+    condition = var.cilium_values_override == "" || length(setintersection(
+      try(keys(yamldecode(var.cilium_values_override)), []),
+      ["kubeProxyReplacement", "k8sServiceHost", "k8sServicePort"],
+    )) == 0
+    error_message = "cilium_values_override must not name kubeProxyReplacement, k8sServiceHost or k8sServicePort: each has a Talos-side counterpart the module writes (cluster.proxy.disabled / the pre-CNI API-server endpoint), and setting one half alone leaves the cluster with no ClusterIP datapath and no cluster DNS. Use the typed inputs cilium_kube_proxy_replacement, cilium_k8s_service_host and cilium_k8s_service_port, which set both halves together."
+  }
 }
 
 variable "cilium_routing_mode" {
@@ -695,6 +768,115 @@ variable "cilium_kube_proxy_replacement" {
   description = "Run Cilium as the kube-proxy replacement (against Talos KubePrism). When true the module also sets Talos cluster.proxy.disabled. Install-time-fixed."
   type        = bool
   default     = true
+}
+
+# k8sServiceHost / k8sServicePort — typed because the value feeds two sinks that
+# must agree (adr-0028 §(f)): the chart's pre-CNI API-server endpoint, and the
+# kube-proxy-replacement pairing with Talos' cluster.proxy.disabled. They are
+# therefore joint keys under adr-0028 §(d) and rejected inside
+# cilium_values_override; these inputs are what makes that rejection cost no
+# capability. Closes #227.
+#
+# The defaults are Talos KubePrism, which is what Talos' own Cilium guide
+# documents — but Cilium documents these values as endpoint-derived in general
+# (docs.cilium.io "Kubernetes Without kube-proxy" sets them from the real
+# kubernetes endpoint in every example), and KubePrism is not always the right or
+# available endpoint, so the values must be settable.
+variable "cilium_k8s_service_host" {
+  description = <<-EOT
+    Cilium's `k8sServiceHost` — the endpoint Cilium reaches the API server
+    through BEFORE the CNI is up. Default "localhost", i.e. Talos KubePrism on
+    the node. Set it to a cluster VIP or load-balancer address on a cluster where
+    KubePrism is not the intended path. Only emitted when
+    cilium_kube_proxy_replacement = true (with kube-proxy present Cilium reaches
+    the API server through the ClusterIP kube-proxy provides).
+
+    An IPv6 endpoint goes in UNBRACKETED ("2001:db8::1") — client-go joins this
+    value with the port through net.JoinHostPort, which brackets it itself.
+
+    Install-time-fixed on the seed; reaches an already-bootstrapped cluster only
+    through cilium_self_management. An endpoint that does not exist until the CNI
+    is up deadlocks a fresh bootstrap — the reason this is a typed input rather
+    than an override key (adr-0028 §(d)).
+  EOT
+  type        = string
+  default     = "localhost"
+  nullable    = false
+
+  # Well-formedness guard. The sink is MEASURED, not assumed: chart 1.20.0 renders
+  # this value into the container env var KUBERNETES_SERVICE_HOST on the agent, the
+  # operator, the Envoy DaemonSet and the init containers — NOT into a cilium-config
+  # key (which is why tests/fixtures/cilium-config-keys.txt carries neither
+  # `k8s-service-host` nor `KUBERNETES_SERVICE*`), and it renders it QUOTED, so a
+  # newline-bearing value cannot inject a sibling YAML key the way
+  # cilium_native_routing_cidr can. This guard is therefore well-formedness rather
+  # than injection closure: the value is the endpoint Cilium reaches the API server
+  # through before the CNI is up, and on the seed path it is frozen into a
+  # create-only machine config, so a malformed host is a bootstrap deadlock that no
+  # later apply repairs. A host is a DNS name or an IP literal: no whitespace, no
+  # ":" (the port is its own input), non-empty.
+  # Two accepted shapes, as an alternation rather than one permissive class:
+  #
+  #   (1) a DNS name or IPv4 literal — no ":" at all, so "host:port" is rejected
+  #       (the port is its own input);
+  #   (2) an UNBRACKETED IPv6 literal in CANONICAL form, decided by the cidrhost()
+  #       round trip var.nodes already uses — a parse, not a shape match, so
+  #       "1:2:3", "fffff:1:2" and a nine-group string are rejected rather than
+  #       admitted by a character class. Its two consequences are deliberate and
+  #       shared with var.nodes: a non-canonical spelling ("2001:0db8::1") and an
+  #       IPv4-embedded one ("::ffff:192.0.2.1", "64:ff9b::192.0.2.33") normalize
+  #       to something else and are rejected — write the normalized form.
+  #       Bracketing is REJECTED, and that direction is measured rather than
+  #       stylistic: the chart puts this value in KUBERNETES_SERVICE_HOST, and
+  #       client-go's rest.InClusterConfig() builds the API-server URL as
+  #       net.JoinHostPort(<that env var>, <the port env var>) — JoinHostPort
+  #       brackets any host containing a colon and does not special-case one that
+  #       is already bracketed, so "[2001:db8::1]" reaches the API server as
+  #       "[[2001:db8::1]]:6443", which does not parse. Bare is also the form
+  #       kubelet itself injects for a ClusterIP.
+  #
+  # A zone index ("fe80::1%eth0") is out: link-local is not an endpoint a whole
+  # cluster shares.
+  #
+  # try() rather than the `can(f(x)) && f(x)` pair var.nodes uses: on the
+  # versions.tf floor `&&` evaluates both operands, so the second cidrhost() call
+  # raises on a non-address instead of yielding this message (issue #271).
+  validation {
+    condition = can(regex("^[a-zA-Z0-9._-]+$", var.cilium_k8s_service_host)) || (
+      try(cidrhost("${var.cilium_k8s_service_host}/128", 0), "") == var.cilium_k8s_service_host
+    )
+    error_message = "cilium_k8s_service_host must be a bare host — a DNS name, an IPv4 literal, or an UNBRACKETED IPv6 literal in canonical form such as \"2001:db8::1\" — with no whitespace, no scheme, no brackets and no \":port\" (use cilium_k8s_service_port). An IPv6 value is parsed, not pattern-matched, so a non-canonical spelling (\"2001:0db8::1\") or an IPv4-embedded one (\"::ffff:192.0.2.1\") is rejected — write the form it normalizes to. Brackets are rejected on purpose: the chart passes this value to KUBERNETES_SERVICE_HOST, and client-go joins host and port with net.JoinHostPort, which brackets a colon-bearing host again — \"[2001:db8::1]\" would reach the API server as \"[[2001:db8::1]]:6443\"."
+  }
+}
+
+variable "cilium_k8s_service_port" {
+  description = <<-EOT
+    Cilium's `k8sServicePort`, paired with cilium_k8s_service_host. Default
+    "7445", the Talos KubePrism port. A STRING because that is the shape the
+    module has always emitted into the chart and into cilium-config; the chart
+    accepts either.
+  EOT
+  type        = string
+  default     = "7445"
+  nullable    = false
+
+  # Two blocks, not one merged condition, per the isolation rule on
+  # cilium_self_management below: expect_failures matches the VARIABLE, so a merged
+  # condition passes its leg whichever conjunct rejected the value — and HCL's `&&`
+  # is not documented as short-circuiting, so a merged condition would additionally
+  # evaluate tonumber() on a non-numeric value and fail with an evaluation error
+  # instead of this message.
+  validation {
+    condition     = can(regex("^[0-9]{1,5}$", var.cilium_k8s_service_port))
+    error_message = "cilium_k8s_service_port must be a decimal TCP port as a string — digits only, no whitespace, no scheme, no host (e.g. \"7445\")."
+  }
+
+  # try() so a non-numeric value has already been rejected by the block above
+  # rather than crashing this one.
+  validation {
+    condition     = try(tonumber(var.cilium_k8s_service_port), 0) > 0 && try(tonumber(var.cilium_k8s_service_port), 0) < 65536
+    error_message = "cilium_k8s_service_port must be in the TCP port range 1-65535 (e.g. \"7445\", the Talos KubePrism port)."
+  }
 }
 
 variable "cilium_mtu" {
@@ -826,11 +1008,11 @@ variable "cilium_operator_replicas" {
     requiredDuringScheduling on kubernetes.io/hostname and a second replica would
     stay Pending forever.
 
-    Set a number to pin the count instead. It wins on BOTH delivery paths, which
-    is the reason this input exists: cilium_values_override reaches only the seed
-    render, and the module hard-rejects that override together with
-    cilium_self_management — so before this input a self-managing consumer could
-    not pin the count at all.
+    Set a number to pin the count instead. It wins on BOTH delivery paths, and
+    deterministically, which is the reason this input exists: the override can
+    now reach both paths too (adr-0028 §(b)), but the module cannot introspect
+    an opaque YAML string, so nothing there validates the count against the node
+    set or reports which mechanism produced it.
 
     Pinning MORE replicas than there are declared nodes is REJECTED at plan time.
     The operator's podAntiAffinity is requiredDuringScheduling on
@@ -1015,10 +1197,23 @@ variable "cilium_self_management" {
     already-bootstrapped cluster — the frozen bootstrap inlineManifest seed is
     create-only and does not reconcile.
 
-    The emitted Application's Helm valuesObject is the MODULE-SET layer (floor
-    + computed-incl-observability) ONLY — it does NOT inherit
-    cilium_values_override (see that variable). Default false. Requires
-    deploy_argocd = true AND deploy_cilium = true (first validation below).
+    Two emitted shapes, selected by cilium_self_management_values_source
+    (adr-0028 §(b)):
+
+      - unset (default) — a SINGLE-source Application whose
+        `spec.source.helm.valuesObject` is the module-set layer (floor +
+        computed-incl-observability) only. Byte-identical to what this module
+        emitted before the values-source input existed.
+      - set — a MULTI-SOURCE Application: the module-set layer and
+        cilium_values_override are two ordered `valueFiles` entries read from the
+        consumer's git repo, so HELM performs the merge at arbitrary depth
+        (HCL has no generic recursive merge, and $values/… resolves only through
+        spec.sources[].ref). `valuesObject` then carries the adr-0028 §(d) joint
+        keys alone, re-asserted last so a missing or stale values file cannot
+        strand the cluster without a kube-proxy replacement.
+
+    Default false. Requires deploy_argocd = true AND deploy_cilium = true (first
+    validation below).
   EOT
   type        = bool
   default     = false
@@ -1030,13 +1225,16 @@ variable "cilium_self_management" {
     error_message = "cilium_self_management requires deploy_argocd = true AND deploy_cilium = true (self-management hands the Day-2 config off from the module-delivered Cilium seed to the consumer's ArgoCD)."
   }
 
-  # Override-drop HARD-REJECT guard (ADR-0022): the emitted Application's
-  # valuesObject does NOT inherit cilium_values_override — a seed-active
-  # datapath override (BGP control-plane / L2 announcements / bpf tuning)
-  # would be SILENTLY DROPPED on ArgoCD adoption if this guard did not fire.
-  # Hard-reject (not a `check`-warn) because cilium_values_override is an
-  # opaque free-form YAML string the module cannot introspect to tell a
-  # datapath-critical override from a benign one — fail safe.
+  # Override-drop HARD-REJECT guard, adr-0028 §(b) rewriting adr-0022's: the
+  # override now REACHES the emitted Application, but only through the
+  # multi-source arm, which needs a values source to read the two `valueFiles`
+  # from. Without one the emitted Application falls back to the single-source
+  # shape whose valuesObject carries no override term — the same SILENT DROP of a
+  # datapath override (BGP control-plane / L2 announcements / bpf tuning) the old
+  # guard existed to prevent, so the reject stays, pointed at the missing input
+  # instead of at the combination. Hard-reject (not a `check`-warn) because
+  # cilium_values_override is an opaque free-form YAML string the module cannot
+  # introspect to tell a datapath-critical override from a benign one — fail safe.
   #
   # KEEP THIS AS A SEPARATE validation block from the one above — merging the
   # two conditions into one `condition` would collapse the deploy-prereq guard
@@ -1047,8 +1245,8 @@ variable "cilium_self_management" {
   # the merged predicate were silently deleted. See tests/input-validation.tftest.hcl
   # guard legs A/B/C.
   validation {
-    condition     = !(var.cilium_self_management && var.cilium_values_override != "")
-    error_message = "cilium_self_management cannot be enabled while cilium_values_override is non-empty: the emitted Application's valuesObject does NOT inherit cilium_values_override, so a datapath-critical override (BGP control-plane / L2 announcements / bpf tuning) would be silently dropped when ArgoCD adopts Cilium. Migrate the override into your own Cilium Application first, then empty cilium_values_override on the SoT."
+    condition     = !(var.cilium_self_management && var.cilium_values_override != "" && var.cilium_self_management_values_source == null)
+    error_message = "cilium_self_management with a non-empty cilium_values_override requires cilium_self_management_values_source: without it the emitted Application is single-source and its valuesObject carries no override term, so a datapath-critical override (BGP control-plane / L2 announcements / bpf tuning) would be silently dropped when ArgoCD adopts Cilium. Set cilium_self_management_values_source to the git repo, revision and two file paths the Application should read its values layers from."
   }
 }
 
@@ -1066,6 +1264,166 @@ variable "cilium_self_management_project" {
   EOT
   type        = string
   default     = "default"
+}
+
+variable "cilium_self_management_values_source" {
+  description = <<-EOT
+    The git source the emitted Day-2 Application reads its Helm values layers
+    from. Setting it switches cilium_self_management's emitted manifest from the
+    single-source shape to a MULTI-SOURCE one; leaving it null keeps today's
+    shape byte-identical. Required whenever cilium_values_override is non-empty
+    alongside cilium_self_management (see that guard).
+
+    Why a git source at all: composing two values layers so the consumer's wins
+    means letting HELM merge them, and ArgoCD only orders `valueFiles` entries
+    that resolve against a source — `$values/…` resolves ONLY through a sibling
+    `spec.sources[]` entry carrying `ref`. A single-source chart Application
+    cannot address a consumer-committed file at all.
+
+    Attributes — all caller-supplied, the module dereferences none of them:
+      repo_url      git repo ArgoCD reads the values from. Normally the consumer's
+                    own app-of-apps repo (their cluster.yaml `repo.url`). It must
+                    be registered in ArgoCD, and a scoped
+                    cilium_self_management_project must list it in sourceRepos
+                    ALONGSIDE cilium_chart_repository.
+      revision      targetRevision for that source. The shipped shim inherits
+                    cluster.target_revision, which is normally a branch — the
+                    same branch the consumer's own root Application tracks, so
+                    the values half of this Application moves the way every
+                    other manifest in that repo does, and `git revert` is the
+                    rollback. Understand the trade-off before changing it: a
+                    branch means the values half follows the branch tip while
+                    the chart half stays pinned to cilium_chart_version, so
+                    "which values did this Application have last Tuesday" is
+                    answerable only from git history. A tag or a SHA makes the
+                    pair explicit at the cost of a second thing to bump.
+      values_path   repo-root-relative path the consumer commits the
+                    `cilium_self_management_values` output to.
+      override_path repo-root-relative path the consumer commits their
+                    cilium_values_override document to. Required when the
+                    override is non-empty. The module never writes this file —
+                    which keeps the override out of the emitted manifest, but does
+                    NOT make it confidential: ArgoCD reads it as a plain Helm
+                    values document and decrypts nothing (see the SECURITY note on
+                    cilium_values_override). Must differ from values_path.
+
+    The two artifacts are committed independently and nothing at sync time
+    compares them: the emitted Application carries a
+    `talos-platform-base.io/values-digest` annotation over the module-set layer
+    so a consumer-side gate (or a reviewer) can catch a stale values_path file.
+  EOT
+  type = object({
+    repo_url      = string
+    revision      = string
+    values_path   = string
+    override_path = optional(string, "")
+  })
+  default = null
+
+  # Coordinate completeness. One predicate per validation block throughout —
+  # expect_failures matches the VARIABLE, so a merged condition would let any
+  # half rot untested (the isolation rule on cilium_self_management above).
+  #
+  # try() rather than a bare attribute access behind the null check: Terraform's
+  # `||` is not documented as short-circuiting, so `x == null || x.attr` can
+  # still evaluate the right operand and fail with "attribute from null value".
+  validation {
+    condition = var.cilium_self_management_values_source == null || alltrue([
+      for f in ["repo_url", "revision", "values_path"] :
+      trimspace(try(var.cilium_self_management_values_source[f], "")) != ""
+    ])
+    error_message = "cilium_self_management_values_source needs a non-empty repo_url, revision and values_path — they become spec.sources[0].repoURL, its targetRevision, and the first $values/… valueFiles entry of the emitted Application."
+  }
+
+  # Character-set guard, the raw-render class rule (see cilium_native_routing_cidr
+  # and cilium_k8s_service_host): repo_url and both paths are interpolated into
+  # the generated values document's `#` header lines by bare string join, not
+  # through yamlencode, so a value carrying a newline breaks out of the comment
+  # and injects a TOP-LEVEL key into the module-set values layer — the first
+  # valueFiles entry of an Application that renders a privileged, host-networked
+  # DaemonSet. An allowlist is correct here because both value spaces are narrow
+  # tokens: a repo-relative path, and a git URL. The emitted header additionally
+  # collapses newlines defensively, so this guard and that are belt and braces.
+  validation {
+    condition = var.cilium_self_management_values_source == null || alltrue([
+      for p in compact([
+        try(var.cilium_self_management_values_source.values_path, ""),
+        try(var.cilium_self_management_values_source.override_path, ""),
+        ]) : can(regex("^[A-Za-z0-9._/-]+$", p)) && alltrue([
+        # No empty or "." segment either: those are not a character-set question
+        # but the same one — a non-normalized spelling. ".." is the traversal
+        # block's below, so it is not re-checked here.
+        for seg in split("/", p) : seg != "" && seg != "."
+      ])
+    ])
+    error_message = "cilium_self_management_values_source paths must be normalized repo-relative paths: only letters, digits, dot, underscore, dash and \"/\", and no empty or \".\" segment. Whitespace or a newline injects a top-level values key into the emitted Helm values document's header, and a non-normalized spelling (\"./cilium/values.yaml\") would let two paths naming ONE file pass the distinctness guard below."
+  }
+
+  validation {
+    condition     = var.cilium_self_management_values_source == null || can(regex("^[^[:space:]]+$", try(var.cilium_self_management_values_source.repo_url, "")))
+    error_message = "cilium_self_management_values_source.repo_url must carry no whitespace — it is interpolated into an emitted Helm values document's header, where a newline injects a top-level values key. It must also carry no userinfo (no \"https://user:token@host\"): ArgoCD repository credentials belong in the repository registration, and this URL is written into a file the consumer commits to git."
+  }
+
+  # Scheme allowlist. repo_url becomes spec.sources[0].repoURL verbatim, and that
+  # source decides where ArgoCD fetches the Helm values for a privileged,
+  # host-networked DaemonSet from — so the value space is narrowed to the three
+  # forms ArgoCD actually resolves for a git source: https://, ssh://, and scp-like
+  # `git@host:path`. It rejects `file://` and any bare token, and it rejects
+  # userinfo (`https://user:token@host`) in every accepted form, which the message
+  # above promises and no other block enforces.
+  #
+  # This is NOT an authorization control and does not try to be one: the repo it
+  # names is still whatever the caller wrote. What keeps a FOREIGN values repo out
+  # of the Application is the AppProject's sourceRepos list, which is why a values
+  # source on the permissive "default" project warns (cilium-values.tf, check
+  # "cilium_self_management_values_source_on_permissive_project").
+  validation {
+    condition = var.cilium_self_management_values_source == null || can(regex(
+      "^(https://[^@[:space:]]+|ssh://([A-Za-z0-9._-]+@)?[^@:[:space:]]+(:[0-9]+)?/[^@[:space:]]*|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^@[:space:]]+)$",
+      try(var.cilium_self_management_values_source.repo_url, ""),
+    ))
+    error_message = "cilium_self_management_values_source.repo_url must be a git remote ArgoCD can resolve — \"https://host/org/repo.git\", \"ssh://git@host[:port]/org/repo.git\" or \"git@host:org/repo.git\" — and must carry no embedded PASSWORD (no \"https://user:token@host\", no \"ssh://user:pass@host\"): ArgoCD repository credentials belong in the repository registration, not in a manifest committed to git. An SSH USERNAME is fine, and is the documented form."
+  }
+
+  # Distinctness. The two paths address two DIFFERENT layers of the same Helm
+  # merge; pointing them at one file makes the same $values/ entry appear twice
+  # and, with the local_file write UPGRADING prescribes, overwrites the consumer's
+  # override document with the module-set layer. Every other guard stays green on
+  # that state — the override variable is still non-empty, so the emptied-override
+  # check does not fire, and the values-digest pair still matches, because the
+  # digest covers the module-set layer only.
+  validation {
+    condition = var.cilium_self_management_values_source == null || (
+      trimspace(try(var.cilium_self_management_values_source.override_path, "")) == "" ||
+      trimspace(try(var.cilium_self_management_values_source.override_path, "")) != trimspace(try(var.cilium_self_management_values_source.values_path, ""))
+    )
+    error_message = "cilium_self_management_values_source.values_path and .override_path must be different files — they are two ordered layers of one Helm merge, and one path for both means the module-set layer overwrites your override document (the values-digest check stays green on that state, because the digest covers the module-set layer only)."
+  }
+
+  # Path traversal. Both paths are resolved by ArgoCD's repo-server against the
+  # ref source's checkout root, so a leading "/" or a ".." segment either escapes
+  # that root or fails manifest generation — which stops ALL Cilium
+  # reconciliation with no plan-time signal.
+  validation {
+    condition = var.cilium_self_management_values_source == null || alltrue([
+      for p in compact([
+        try(var.cilium_self_management_values_source.values_path, ""),
+        try(var.cilium_self_management_values_source.override_path, ""),
+      ]) : !startswith(p, "/") && !contains(split("/", p), "..")
+    ])
+    error_message = "cilium_self_management_values_source paths must be repo-root-relative with no leading \"/\" and no \"..\" segment — they are interpolated into $values/<path> and resolved against the ref source's checkout root."
+  }
+
+  # override_path is what carries the override into the emitted Application. With
+  # the override non-empty and no path for it, the Application would render from
+  # the module-set layer alone: the silent drop again, one layer down from the
+  # cilium_self_management guard.
+  validation {
+    condition = var.cilium_self_management_values_source == null || var.cilium_values_override == "" || (
+      trimspace(try(var.cilium_self_management_values_source.override_path, "")) != ""
+    )
+    error_message = "cilium_self_management_values_source.override_path is required while cilium_values_override is non-empty: it is the second valueFiles entry, the one that carries the override into the emitted Application. Without it the Application renders from the module-set layer alone and the override is silently dropped."
+  }
 }
 
 # ---------------------------------------------------------------------------

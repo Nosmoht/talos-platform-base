@@ -3,7 +3,7 @@ type: reference
 title: Helm Value Surface — ArgoCD and Cilium
 description: Which Helm values a consumer cluster can actually set for the two substrate charts, on which of the five delivery paths, in which lifecycle phase — and the three places where the surface closes.
 tags: [argocd, cilium, helm, values, consumer-contract, delivery-paths]
-generated: { by: human:nosmoht, at: "2026-09-06T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-09T00:00:00Z" }
 sources:
   - resource: tofu/modules/talos-cluster/main.tf
   - resource: tofu/modules/talos-cluster/variables.tf
@@ -63,7 +63,7 @@ component READMEs; that is an open item, not something this page discharges.
 | B | ArgoCD CRDs — `data "helm_template" "argocd_crds"`, `tofu/modules/talos-cluster/main.tf:869` | none — no `values` block at all, only `set crds.install=true` | none |
 | C | ArgoCD steady state — `kubernetes/substrate/argocd/` | `values.yaml`, rendered at authoring time by `scripts/render-component.sh` into `_rendered/` | none in the published payload |
 | D | Cilium seed — `data "helm_template" "cilium"`, `tofu/modules/talos-cluster/main.tf:359` | `helm/cilium-values.yaml`, then the module-computed layer, then `var.cilium_values_override` (`main.tf:374-378`) | free-form, fresh bootstrap only |
-| E | Cilium self-management — `local.cilium_self_management_app`, `tofu/modules/talos-cluster/cilium-values.tf:269` | floor and computed layer only; no `values_override` term (`cilium-values.tf:201-203`, `:251-260`) | typed inputs only |
+| E | Cilium self-management — `local.cilium_self_management_app`, `tofu/modules/talos-cluster/cilium-values.tf` | single-source arm: floor and computed layer inline in `valuesObject`. Multi-source arm (`cilium_self_management_values_source` set): the module-set layer and `cilium_values_override` as two ordered `valueFiles`, joint keys re-asserted in `valuesObject` | typed inputs, plus free-form on the multi-source arm |
 
 Paths A and D are OpenTofu renders baked into the Talos machine config; path E
 is an OpenTofu render emitted as a module output and never applied. Path C is
@@ -110,8 +110,7 @@ behaviour is owned by a spec, and the spec is the authority on disagreement:
 merge/later-wins semantics of `argocd_values_override`),
 `openspec/specs/argocd-substrate/spec.md` for path C,
 `openspec/specs/cilium-cni-delivery/spec.md` for paths D and E (the three value
-layers, the frozen seed, and the emitted Application not inheriting
-`cilium_values_override`), and
+layers, the frozen seed, and the emitted Application's two shapes), and
 `openspec/specs/module-interface-contract/spec.md` for the typed variable
 surface with its guard validations.
 
@@ -120,7 +119,7 @@ surface with its guard validations.
 | Component | Day-0 seed | Day-0 CRDs | Steady state / Day-2 |
 |---|---|---|---|
 | ArgoCD | free-form (`argocd_values_override`, path A) | none (path B) | none through the published component (path C) |
-| Cilium | free-form (`cilium_values_override`, path D) | n/a — CRDs ride the seed render | typed inputs only through the base (path E) |
+| Cilium | free-form (`cilium_values_override`, path D) | n/a — CRDs ride the seed render | typed inputs, plus free-form once a values source is configured (path E) |
 
 "Free-form" means an arbitrary YAML values document merged over the shipped
 layers by Helm's own multi-file merge: later wins, lists replace, maps merge.
@@ -194,47 +193,73 @@ gated as a supported consumer path, and it forfeits the base's own render
 reproducibility, but it is not impossible, and §1 must not be read as saying it
 is.
 
-### 2. Cilium's long tail has no base-delivered Day-2 path
+### 2. Cilium's long tail now has a base-delivered Day-2 path, opt-in
 
-`var.cilium_values_override` reaches the render in exactly one place —
-`tofu/modules/talos-cluster/main.tf:377`, the seed's values list. (It is read
-once more, at `variables.tf:1050`, by the guard below, and it reaches
-`output "cilium_seed_observability_markers"` transitively through the frozen
-render — `tofu/modules/talos-cluster/outputs.tf` calls that coupling out by
-name.)
+CLOSED as of the change implementing adr-0028 §(b) (2026-09-09). What follows
+records the finding and what replaced it; the finding itself is history, not
+current behaviour.
 
-The seed is bootstrap-only, per §The five delivery paths. And enabling
-`cilium_self_management` while the override is non-empty is a hard plan-time
-rejection (`tofu/modules/talos-cluster/variables.tf:1049-1052`). Both
-properties are normative:
-`openspec/specs/cilium-cni-delivery/spec.md` §"Requirement: Opt-in emitted
-self-management Application for Day-2 delivery" requires that the emitted
-`valuesObject` not inherit the override, and
-`openspec/specs/module-interface-contract/spec.md` §"Requirement: Cilium
-self-management guard validations" requires the rejection.
+**What was closed.** `var.cilium_values_override` reached the render in exactly
+one place — the seed's values list in `tofu/modules/talos-cluster/main.tf`. The
+seed is bootstrap-only, and enabling `cilium_self_management` while the override
+was non-empty was a hard plan-time rejection. So the long tail the override
+exists to carry — Hubble beyond the typed inputs, L2 and BGP announcements, bpf
+tuning, VLAN bypass, `secretsNamespaceLabels` — had no route into an
+already-bootstrapped cluster that the base itself delivered. The only route was
+the consumer's own: re-home the values in their own Application, then empty the
+override.
 
-So the long tail the override exists to carry — Hubble beyond the typed inputs,
-L2 and BGP announcements, bpf tuning, VLAN bypass, `secretsNamespaceLabels`
-(`variables.tf:654-656`) — has no route into an already-bootstrapped cluster
-that the base itself delivers.
+**What replaced it.** With `cilium_self_management_values_source` set, the
+emitted Application is MULTI-SOURCE and the override is the second of two
+ordered `helm.valueFiles` entries, so Helm merges it over the module-set layer
+at arbitrary depth. Unset, the single-source shape and its inline
+`valuesObject` are unchanged. The hard reject survives in a narrower form: a
+non-empty override with NO values source is still rejected, because the
+Application would fall back to the single-source shape and drop it silently.
 
-**There is a route, and it is the consumer's own.** The rejection message names
-it: migrate the override into your own Cilium Application first, then empty
-`cilium_values_override` on the SoT (`variables.tf:1051`). The emitted
-Application is a module output the consumer commits into their own app-of-apps
-repo, where their GitOps is the single writer
-(`tofu/modules/talos-cluster/outputs.tf`, the
-`cilium_self_management_app` description), so its `valuesObject` is theirs to
-extend. `kubernetes/bootstrap/cilium/values.yaml:6` is copy-ready input for
-exactly that, and its key paths are validated against the pinned chart's
-`values.schema.json` on every PR by `scripts/check-cilium-reference-values.py`.
-`deploy_cilium = false` plus the consumer's own delivery is the other opt-out.
+**Why a Multi-Source Application, and not a `valueFiles` entry on the existing
+one.** Verified against Argo CD `v3.5.2` source before the shape was built:
 
-What is missing is therefore not a route but base support for one: the handoff
-is manual, the base carries no mechanism that moves an override across it, and
-the reference file diverges from the live floor (it enables Hubble and
-WireGuard strict mode and sets two operator replicas, none of which the floor
-does) so a copy is a starting point, not a migration.
+- `valuesObject` is written to one temp file and appended as the LAST
+  `--values` argument, after every `valueFiles` entry
+  (`reposerver/repository/repository.go`, `util/helm/cmd.go`), so it wins.
+- `values` and `valuesObject` are ONE slot, not two layers —
+  `ApplicationSourceHelm.ValuesYAML()` returns `valuesObject` when set and
+  ignores `values` entirely (`pkg/apis/application/v1alpha1/values.go`).
+- `$values/<path>` resolves ONLY through a sibling `spec.sources[]` entry
+  carrying `ref` (`util/argo/argo.go`, `GetRefSources`). A single-source chart
+  Application therefore cannot address a consumer-committed file at all, which
+  is the constraint adr-0028 §(b) had not anticipated when it proposed emitting
+  the module-set layer as "a values file the consumer commits alongside the
+  Application".
+- A `ref`-only source generates no manifests; its changes are evaluated through
+  the source referencing it (`controller/state.go`).
+
+**What the shape costs, and what protects against it.** The module-set layer
+leaves the manifest on the multi-source arm, and `kubeProxyReplacement` /
+`k8sServiceHost` / `k8sServicePort` are produced by the computed layer alone —
+never by `helm/cilium-values.yaml`, whose header says so. A missing, truncated
+or stale values file would therefore render a Cilium that does not replace
+kube-proxy while Talos already carries `cluster.proxy.disabled`: no ClusterIP
+datapath, no cluster DNS, on a RUNNING cluster, unrepairable by a create-only
+seed. Those three keys are re-asserted in `valuesObject` as the last layer,
+which creates no silent overwrite because adr-0028 §(d) forbids the override
+from naming them. Everything else in the module-set layer can still be lost to
+a stale file, recoverably.
+
+The pairing of the two committed artifacts is checkable but not enforced: the
+Application carries a `talos-platform-base.io/values-digest` annotation over
+the module-set layer, matching a digest in the emitted document's own header.
+Argo CD compares neither, so a consumer-side gate or a reviewer is what closes
+it; `UPGRADING.md` prescribes writing both through `local_file` so a forgotten
+re-commit shows up as a dirty tree.
+
+`kubernetes/bootstrap/cilium/values.yaml` remains copy-ready input for a
+consumer running their own Cilium Application instead, and its key paths are
+still validated against the pinned chart's `values.schema.json` on every PR by
+`scripts/check-cilium-reference-values.py`. It diverges from the live floor (it
+enables Hubble and WireGuard strict mode and sets two operator replicas), so a
+copy is a starting point, not a migration.
 
 ### 3. Seed/steady-state collisions are documented case by case, never enumerated
 
@@ -261,9 +286,10 @@ either, because the steady-state values file is not in the payload they receive
 bootstrap is a clean-plan no-op regardless.
 
 Precedent for what a signal could look like: the module hard-rejects the
-analogous Cilium hazard rather than letting it pass
-(`variables.tf:1049-1052`), and ADR-0022 records why a warning was judged
-insufficient there.
+analogous Cilium hazards rather than letting them pass — a non-empty override
+with no Day-2 values source to carry it, and an override naming one of the
+adr-0028 §(d) joint keys (`tofu/modules/talos-cluster/variables.tf`). ADR-0022
+records why a warning was judged insufficient for the first of those.
 
 ## What works today instead
 
@@ -272,10 +298,13 @@ insufficient there.
   local path), plus strategic-merge patches on the rendered ConfigMaps. The
   worked, CI-built example is `kubernetes/examples/argocd-consumer-sso/`; the
   full contract is [ArgoCD SSO Wiring Contract](argocd-sso-contract.md).
-- **Cilium before self-management:** `substrate.cilium.values_override` in
-  `cluster.yaml`, at a fresh bootstrap.
-- **Cilium after self-management:** the consumer's own Cilium Application, which
-  owns its values entirely — the migration is manual (§2).
+- **Cilium, Day-0:** `substrate.cilium.values_override` in `cluster.yaml`, at a
+  fresh bootstrap.
+- **Cilium, Day-2:** the same override, once
+  `substrate.cilium.self_management_values_source` names where the emitted
+  Application reads its two values files from (§2). The consumer's own Cilium
+  Application, owning its values entirely, stays the alternative for anyone who
+  does not want the base's emitted manifest at all.
 
 Where this stops for ArgoCD: a chart value that produces no rendered object to
 patch, and any change to the chart's own rendering. On the published path there
@@ -290,16 +319,31 @@ The narrow typed surface is a recorded decision, not an oversight.
   escape hatches for the long tail — explicitly "do not type every Talos/Cilium
   knob".
 - [ADR-0022](../decisions/0022-cilium-observability-and-argocd-self-management.md)
-  §(c) declines an unbounded override merge into the emitted `valuesObject`,
+  §(c) declined an unbounded override merge into the emitted `valuesObject`,
   because a seed escape hatch would then flow into a continuously reconciled
   resource with no plan-time visibility into its contents. The replacement it
-  names is the bounded merge in §(f) plus the hard-reject guard — not a
-  substitute route for the override's own contents.
-- The same ADR's 2026-08-15 addendum records the typed-input answer for one
+  named was the bounded merge in §(f) plus the hard-reject guard.
+  **SUPERSEDED** by
+  [ADR-0028](../decisions/0028-consumer-free-helm-value-surface.md) §(b): the
+  override does reach the emitted Application, but as a Helm values LAYER the
+  module never merges itself. Read §(c)'s own words before reading that as
+  vindication: the objection was that the override "would flow silently into a
+  resource ArgoCD reconciles continuously, with no plan-time visibility into what
+  that override actually contains". ADR-0028 §(b) accepts the first half
+  DELIBERATELY — that flow is the feature — and makes the second half stricter,
+  not looser: the effective content moves to a file in another repo at another
+  revision that no `tofu plan` reads, and the local string is now `sensitive`, so
+  plan output masks it. ADR-0022's supersession note is the honest framing — the
+  lost plan-time visibility "stands as a recorded cost rather than as a reason to
+  close the path" — and the compensations are the git diff of the consumer's own
+  file, the values-digest annotation, and `output cilium_values_override_digest`.
+- The same ADR's 2026-08-15 addendum recorded the typed-input answer for one
   narrower case, the operator replica count: `cilium_values_override` "cannot
   be that escape hatch, because it reaches only the seed", and "a typed input
-  closes it on both paths at once". That reasoning was applied to a single
-  value, not to the long tail.
+  closes it on both paths at once". ADR-0028 §(f) retires the SUBSTITUTION
+  claim — a per-key remedy does not answer a surface problem — while keeping
+  typed fields as the right shape for a value feeding two sinks, which is what
+  `cilium_k8s_service_host` / `cilium_k8s_service_port` are.
 - The same ADR §(l) records closing `substrate.cilium` to a typed key set.
 
 ## Open findings
@@ -343,7 +387,9 @@ The narrow typed surface is a recorded decision, not an oversight.
    whose audit note records that a clean plan is not evidence the override
    survived a chart bump. That the module cannot introspect
    the opaque string, and why its prerequisite checks therefore warn instead of
-   reject, is at `tofu/modules/talos-cluster/cilium-values.tf:302-323`. The
+   reject, is in `tofu/modules/talos-cluster/cilium-values.tf`, in the
+   `# --- Inert-input warnings ---` comment block above the file's `check`
+   blocks. The
    reference file has a schema gate; the two overrides have none.
 6. The `substrate.argocd` asymmetry in finding 4 is documented as deliberate in
    `openspec/specs/cluster-yaml-sot/spec.md` §"Requirement: Untyped escape
