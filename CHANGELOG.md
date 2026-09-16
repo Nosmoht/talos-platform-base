@@ -67,6 +67,16 @@ under the new version heading; the historical backfill below it stays put.
   `override_path` must also differ and be normalized (no `./`, no `..`, no
   doubled `/`) — one path for both, in either spelling, silently overwrites the
   override with the module-set layer.
+  **A synced override does not reach the running agents by itself.** Most Cilium
+  settings land only in the `cilium-config` ConfigMap, and changing one leaves
+  the agent DaemonSet's pod template untouched — measured on the pinned 1.20.0
+  chart, `routingMode: tunnel` and `routingMode: native` render a byte-identical
+  pod template. Argo CD reports the sync as successful while the agents keep the
+  old configuration. Either restart deliberately
+  (`kubectl -n kube-system rollout restart daemonset/cilium`) or set
+  `rollOutCiliumPods: true` in your override file; the base sets neither,
+  because rolling the CNI interrupts the datapath node by node. `UPGRADING.md`
+  carries both, including the restart step in the break-glass procedure.
   **The override file is not confidential.** Argo CD reads it as a plain Helm
   values document and applies no decryption to a Helm `valueFiles` source, so
   SOPS does not apply there without a config-management plugin this base neither

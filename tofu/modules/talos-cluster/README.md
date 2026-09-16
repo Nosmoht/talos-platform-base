@@ -749,6 +749,19 @@ artifacts, while ArgoCD renders the file at `sources[0].targetRevision`.
 rejected at plan time, because the `local_file` write above would then overwrite
 the override with the module-set layer while every other guard stays green.
 
+**A synced override does not reach the running agents by itself.** Most Cilium
+settings land only in the `cilium-config` ConfigMap, and changing one leaves the
+agent DaemonSet's pod template untouched — measured on the pinned 1.20.0 chart,
+`routingMode: tunnel` and `routingMode: native` render a byte-identical pod
+template. ArgoCD reports the sync as successful while the agents keep the old
+configuration; Cilium exposes `cilium_drift_checker_config_delta` for exactly
+this gap. Either restart deliberately after such a sync
+(`kubectl -n kube-system rollout restart daemonset/cilium`) or set
+`rollOutCiliumPods: true` in your override file, which makes the chart stamp a
+ConfigMap checksum into the pod template so every ConfigMap change rolls the
+agents. The base sets neither — rolling the CNI interrupts the datapath node by
+node, the same reason the emitted `Application` carries no `syncPolicy`.
+
 **The override file is NOT confidential.** ArgoCD reads it as a plain Helm values
 document and applies no decryption to a Helm `valueFiles` source, so SOPS does not
 apply without a config-management plugin this base neither ships nor configures.

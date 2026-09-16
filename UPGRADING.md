@@ -162,6 +162,27 @@ same commit that moves the files, or the digest is checking the wrong pair.
 ArgoCD itself compares nothing: the annotation is inert metadata, and a stale
 values file syncs green.
 
+**A synced override does not reach the running agents by itself.** Most Cilium
+settings land only in the `cilium-config` ConfigMap, and changing one leaves the
+agent DaemonSet's pod template untouched — measured on the pinned 1.20.0 chart,
+`routingMode: tunnel` and `routingMode: native` render a byte-identical pod
+template. ArgoCD reports the sync as successful and the agents keep running the
+old configuration. Cilium's own documentation says the same and ships a metric
+for the gap, `cilium_drift_checker_config_delta`.
+
+Two ways to close it, and the choice is yours because both interrupt the
+datapath node by node:
+
+- Restart deliberately after a sync that changed such a setting:
+  `kubectl -n kube-system rollout restart daemonset/cilium`, then
+  `rollout status`.
+- Or put `rollOutCiliumPods: true` in your own override file. The chart then
+  stamps a ConfigMap checksum into the pod template, so every ConfigMap change
+  rolls the agents automatically — including changes you did not intend to roll
+  for. The base does not set it: the emitted `Application` carries no
+  `syncPolicy` for the same reason, that rolling the CNI is an operator-timed
+  decision.
+
 **The first sync on the new arm touches the live CNI.** Until now your override
 reached only the create-only seed; on this arm ArgoCD applies it to a running
 Cilium, which depending on its content rolls the `cilium` DaemonSet on every
@@ -299,19 +320,39 @@ covers only `argocd admin export`/`import` of its CRDs — not a down datapath.
    `--set` after every `--values`, which mirrors that position. Omitting them
    re-applies the outage by hand.
 
-4. Once the datapath is back, **land the same fix in git and sync the
+4. **Restart the agents, and verify.** Applying the corrected chart is not
+   enough on its own. Most Cilium settings live only in the `cilium-config`
+   ConfigMap, and changing one leaves the DaemonSet's pod template untouched —
+   measured against the pinned 1.20.0 chart, switching `routingMode` between
+   `tunnel` and `native` produces a byte-identical pod template. The agents keep
+   the configuration that caused the outage until they restart, and Cilium's own
+   documentation says many options need a restart to take effect.
+
+   ```sh
+   kubectl -n kube-system rollout restart daemonset/cilium
+   kubectl -n kube-system rollout status daemonset/cilium --timeout=5m
+   kubectl -n kube-system get configmap cilium-config \
+     -o jsonpath='{.data.routing-mode}{"\n"}{.data.kube-proxy-replacement}{"\n"}'
+   ```
+
+   Then confirm the datapath is actually back before calling it restored: a
+   ClusterIP reaches its backend and cluster DNS resolves. The rollout is
+   per-node and interrupts that node's datapath while it runs — which is the
+   point of doing it deliberately rather than leaving it to a sync.
+
+5. Once the datapath is back, **land the same fix in git and sync the
    `Application`** — this step is not optional, it is the condition the
    exception is granted under. The hand-applied state is NOT reconciled; the
    next sync replaces it, and because there is no `syncPolicy` that sync is
    operator-timed and easy to forget. Re-enable any automated sync you disabled
    in step 2 only after git and the cluster agree.
 
-5. Do NOT expect the frozen seed to restore the previous values on reboot —
+6. Do NOT expect the frozen seed to restore the previous values on reboot —
    `inlineManifests` are create-only, the render resource carries
    `ignore_changes`, and Talos' controller never updates a manifest it already
    created.
 
-6. If you reach this procedure twice for the same cause, the fix belongs
+7. If you reach this procedure twice for the same cause, the fix belongs
    upstream of it — in the values you commit, or in a review gate on them — not
    in a faster break-glass.
 
