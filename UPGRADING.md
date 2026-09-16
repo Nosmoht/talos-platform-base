@@ -221,10 +221,19 @@ the chart half stays pinned — and leaves no revision pair to roll back to.
 
 `kubeProxyReplacement`, `k8sServiceHost` and `k8sServicePort` are re-asserted
 in the emitted `Application`'s `valuesObject`, which Helm applies after both
-`valueFiles`. So a missing, truncated or stale values file cannot leave a
+`valueFiles`. So a missing, truncated or stale values file does not leave a
 running cluster with a Cilium that does not replace kube-proxy while Talos
 already has `cluster.proxy.disabled` — the one failure in this area that a
 create-only seed cannot repair.
+
+**That is a guard against a wrong file, not against a hostile one.** The
+re-assertion sets three chart VALUES; it does not own the ConfigMap keys,
+container arguments and environment variables they render into. An override file
+carrying `extraConfig`, `extraArgs` or `extraEnv` reaches those sinks directly
+and can still turn the replacement off, and the module never reads that file, so
+no plan-time guard sees it. The same limit is stated for the override INPUT at
+`cilium_values_override` in the module README, and it applies with more force
+here: review the file at `override_path` as datapath configuration.
 
 **Nothing else is re-asserted, and "everything else" includes the Talos floor.**
 A stale file loses the module's tunables (routing mode, native-routing CIDR, MTU,
@@ -248,8 +257,12 @@ it carried. That is a one-line manifest diff and easy to miss; the module warns
 at plan time when the override is empty while the values source is still set.
 Re-home the values in your own `Application` first if you still need them.
 
-**Returning to the single-source shape (same base tag).** Unset
-`self_management_values_source`, re-commit the emitted `Application`, and sync.
+**Returning to the single-source shape (same base tag).** Empty
+`values_override` FIRST, per the paragraph above — the module rejects
+`self_management` with a non-empty override and no values source, so unsetting
+the source while the override is still set fails the plan before you have a
+manifest to re-commit. Then unset `self_management_values_source`, re-commit the
+emitted `Application`, and sync.
 The emitted manifest then carries `spec.source` and no `spec.sources` — but the
 module cannot REMOVE `spec.sources` from the live object, and whether your apply
 does depends on its field-manager history. Verify before deleting the committed
@@ -290,27 +303,36 @@ covers only `argocd admin export`/`import` of its CRDs — not a down datapath.
 
 1. Revert the offending commit in your values or override file. If ArgoCD can
    still sync, that is the whole procedure.
-2. **If you added a `syncPolicy`, disable automated sync and self-heal first.**
-   The emitted `Application` deliberately carries none, so by default nothing
-   fights a hand-apply; with self-heal on, ArgoCD reverts your recovery to the
-   Git-declared state — the broken one — as soon as it can reconcile again.
+2. **If you added a `syncPolicy`, disable automated sync and self-heal first —
+   at BOTH levels.** The emitted `Application` deliberately carries none, so by
+   default nothing fights a hand-apply; with self-heal on, ArgoCD reverts your
+   recovery to the Git-declared state — the broken one — as soon as it can
+   reconcile again. Patching the Cilium `Application` alone is not enough: it is
+   a file in the overlay your ROOT `Application` reconciles, and the root shipped
+   by this base carries `automated: {prune: true, selfHeal: true}`, so it reads
+   your patch as drift and restores the `syncPolicy` git still declares. Suspend
+   the root first, then the child.
 
    ```sh
+   kubectl -n argocd patch application root --type=merge \
+     -p '{"spec":{"syncPolicy":{"automated":null}}}'
    kubectl -n argocd patch application cilium --type=merge \
      -p '{"spec":{"syncPolicy":{"automated":null}}}'
    ```
+
+   Step 5 re-enables both, in the reverse order.
 
 3. Apply the chart directly against the API server, which is host-network and
    unaffected by ClusterIP loss.
 
    ```sh
-   helm repo add cilium https://helm.cilium.io && helm repo update
+   helm repo add cilium <substrate.cilium.chart_repository> && helm repo update
    helm template cilium cilium/cilium --version <your chart pin> \
      -f cilium/module-values.yaml -f cilium/values-override.yaml \
      --set kubeProxyReplacement=<substrate.cilium.kube_proxy_replacement> \
-     --set k8sServiceHost=<substrate.cilium.k8s_service_host> \
-     --set k8sServicePort=<substrate.cilium.k8s_service_port> \
-     --namespace kube-system | kubectl apply -f -
+     --set-string k8sServiceHost=<substrate.cilium.k8s_service_host> \
+     --set-string k8sServicePort=<substrate.cilium.k8s_service_port> \
+     --namespace kube-system | kubectl apply -n kube-system -f -
    ```
 
    The three `--set` values are NOT optional and they come from `cluster.yaml`'s
@@ -319,6 +341,18 @@ covers only `argocd admin export`/`import` of its CRDs — not a down datapath.
    `valuesObject` precisely so a bad values file cannot drop them. Helm applies
    `--set` after every `--values`, which mirrors that position. Omitting them
    re-applies the outage by hand.
+
+   **Substituting the placeholders.** `cluster.yaml.example` omits
+   `k8s_service_host` and `k8s_service_port` on purpose, so the common case has
+   nothing to copy: omitted means the module defaults, `localhost` and `7445`
+   (Talos KubePrism). `chart_repository` defaults to `https://helm.cilium.io`;
+   take your own value if you run a mirror, and use
+   `helm template cilium oci://<registry>/cilium --version <pin>` instead of
+   `helm repo add` if it is an OCI reference. `--set-string` keeps the port a
+   string, which is the shape the module emits. Both `--namespace` and
+   `kubectl apply -n` name the namespace the emitted `Application` targets —
+   `kube-system` unless you call the module directly with a different
+   `cilium_namespace`.
 
 4. **Restart the agents, and verify.** Applying the corrected chart is not
    enough on its own. Most Cilium settings live only in the `cilium-config`
@@ -345,7 +379,9 @@ covers only `argocd admin export`/`import` of its CRDs — not a down datapath.
    exception is granted under. The hand-applied state is NOT reconciled; the
    next sync replaces it, and because there is no `syncPolicy` that sync is
    operator-timed and easy to forget. Re-enable any automated sync you disabled
-   in step 2 only after git and the cluster agree.
+   in step 2 only after git and the cluster agree, child first and root last —
+   the reverse of step 2, so the root does not resume reconciling an overlay
+   whose Cilium `Application` is still suspended.
 
 6. Do NOT expect the frozen seed to restore the previous values on reboot —
    `inlineManifests` are create-only, the render resource carries

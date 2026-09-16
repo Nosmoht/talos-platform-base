@@ -31,9 +31,13 @@ under the new version heading; the historical backfill below it stays put.
   The replacement is three typed keys, two of them new:
   `kube_proxy_replacement`, `k8s_service_host` and `k8s_service_port`
   (defaulting to Talos KubePrism `localhost` / `"7445"`), which set both halves
-  together. An IPv6 endpoint goes in **unbracketed** (`2001:db8::1`): the chart
-  passes the value to `KUBERNETES_SERVICE_HOST`, and client-go joins host and
-  port with `net.JoinHostPort`, which brackets a colon-bearing host itself — closing #227, whose typed-input request this answers rather than
+  together. An IPv6 endpoint goes in **unbracketed and canonical**
+  (`2001:db8::1`): the chart passes the value to `KUBERNETES_SERVICE_HOST`, and
+  client-go joins host and port with `net.JoinHostPort`, which brackets a
+  colon-bearing host itself. The value is PARSED rather than pattern-matched, so
+  a non-canonical (`2001:0db8::1`) or IPv4-embedded (`::ffff:192.0.2.1`)
+  spelling is rejected with the normalized form to use — the rule `nodes[].ip`
+  already follows — closing #227, whose typed-input request this answers rather than
   dismisses. The override is also rejected when it does not decode to a YAML
   mapping, and it is now `sensitive`: `tofu plan` no longer shows its diff.
   **Opt-in, and unchanged if you do not opt in:** leaving the new

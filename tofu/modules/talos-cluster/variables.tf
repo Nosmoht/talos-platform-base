@@ -819,26 +819,33 @@ variable "cilium_k8s_service_host" {
   #
   #   (1) a DNS name or IPv4 literal — no ":" at all, so "host:port" is rejected
   #       (the port is its own input);
-  #   (2) an UNBRACKETED IPv6 literal: hex groups and ":" only, at least two
-  #       colons. Bracketing it is REJECTED, and that direction is measured
-  #       rather than stylistic. The chart puts this value in
-  #       KUBERNETES_SERVICE_HOST, and client-go's rest.InClusterConfig() builds
-  #       the API-server URL as net.JoinHostPort(<that env var>, <the port env
-  #       var>) — JoinHostPort brackets any host containing a colon and does not
-  #       special-case one that is already bracketed, so "[2001:db8::1]" reaches
-  #       the API server as "[[2001:db8::1]]:6443", which does not parse. Bare is
-  #       also the form kubelet itself injects for a ClusterIP. The two-colon
-  #       floor separates a literal from a "host:port" pair whose halves happen
-  #       to be hex ("abc:6443").
+  #   (2) an UNBRACKETED IPv6 literal in CANONICAL form, decided by the cidrhost()
+  #       round trip var.nodes already uses — a parse, not a shape match, so
+  #       "1:2:3", "fffff:1:2" and a nine-group string are rejected rather than
+  #       admitted by a character class. Its two consequences are deliberate and
+  #       shared with var.nodes: a non-canonical spelling ("2001:0db8::1") and an
+  #       IPv4-embedded one ("::ffff:192.0.2.1", "64:ff9b::192.0.2.33") normalize
+  #       to something else and are rejected — write the normalized form.
+  #       Bracketing is REJECTED, and that direction is measured rather than
+  #       stylistic: the chart puts this value in KUBERNETES_SERVICE_HOST, and
+  #       client-go's rest.InClusterConfig() builds the API-server URL as
+  #       net.JoinHostPort(<that env var>, <the port env var>) — JoinHostPort
+  #       brackets any host containing a colon and does not special-case one that
+  #       is already bracketed, so "[2001:db8::1]" reaches the API server as
+  #       "[[2001:db8::1]]:6443", which does not parse. Bare is also the form
+  #       kubelet itself injects for a ClusterIP.
   #
   # A zone index ("fe80::1%eth0") is out: link-local is not an endpoint a whole
   # cluster shares.
+  #
+  # try() rather than the `can(f(x)) && f(x)` pair var.nodes uses: on the
+  # versions.tf floor `&&` evaluates both operands, so the second cidrhost() call
+  # raises on a non-address instead of yielding this message (issue #271).
   validation {
     condition = can(regex("^[a-zA-Z0-9._-]+$", var.cilium_k8s_service_host)) || (
-      can(regex("^[0-9a-fA-F:]+$", var.cilium_k8s_service_host)) &&
-      length(split(":", var.cilium_k8s_service_host)) >= 3
+      try(cidrhost("${var.cilium_k8s_service_host}/128", 0), "") == var.cilium_k8s_service_host
     )
-    error_message = "cilium_k8s_service_host must be a bare host — a DNS name, an IPv4 literal, or an UNBRACKETED IPv6 literal such as \"2001:db8::1\" — with no whitespace, no scheme, no brackets and no \":port\" (use cilium_k8s_service_port). Brackets are rejected on purpose: the chart passes this value to KUBERNETES_SERVICE_HOST, and client-go joins host and port with net.JoinHostPort, which brackets a colon-bearing host again — \"[2001:db8::1]\" would reach the API server as \"[[2001:db8::1]]:6443\"."
+    error_message = "cilium_k8s_service_host must be a bare host — a DNS name, an IPv4 literal, or an UNBRACKETED IPv6 literal in canonical form such as \"2001:db8::1\" — with no whitespace, no scheme, no brackets and no \":port\" (use cilium_k8s_service_port). An IPv6 value is parsed, not pattern-matched, so a non-canonical spelling (\"2001:0db8::1\") or an IPv4-embedded one (\"::ffff:192.0.2.1\") is rejected — write the form it normalizes to. Brackets are rejected on purpose: the chart passes this value to KUBERNETES_SERVICE_HOST, and client-go joins host and port with net.JoinHostPort, which brackets a colon-bearing host again — \"[2001:db8::1]\" would reach the API server as \"[[2001:db8::1]]:6443\"."
   }
 }
 

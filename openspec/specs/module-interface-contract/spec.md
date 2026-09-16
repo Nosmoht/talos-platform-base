@@ -280,8 +280,12 @@ and is already observable in that manifest — MAY be declassified so the
 secret-free outputs stay exportable; the override's CONTENT SHALL NOT be.
 
 `cilium_k8s_service_host` SHALL be constrained to a bare DNS name or IPv4
-literal, or an UNBRACKETED IPv6 literal — no scheme, no `:port`, no
-whitespace, no brackets —
+literal, or an UNBRACKETED IPv6 literal in CANONICAL form — no scheme, no
+`:port`, no whitespace, no brackets. The IPv6 half SHALL be decided by a parse
+rather than a character class, so a string that merely looks like a literal
+("1:2:3", a nine-group string) is rejected; normalization is part of that
+decision, so a non-canonical or IPv4-embedded spelling is rejected too, as it
+already is for `var.nodes` —
 and `cilium_k8s_service_port` to a decimal port in 1-65535, each conjunct in its
 OWN validation block so a test binding one cannot pass on the other's rejection.
 The measured sink is not the one the raw-render class rule below covers: chart

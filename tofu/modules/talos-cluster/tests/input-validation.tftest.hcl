@@ -2551,3 +2551,81 @@ run "values_source_rejects_a_doubled_path_separator" {
   }
   expect_failures = [var.cilium_self_management_values_source]
 }
+
+# The IPv6 branch is a cidrhost() round trip, not a character class, so a string
+# that merely LOOKS like a literal is rejected. Each leg below passes the old
+# shape guard (`^[0-9a-fA-F:]+$` plus two colons) and fails the parse.
+run "k8s_service_host_rejects_a_non_parsing_hex_colon_string" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "1:2:3"
+  }
+  expect_failures = [var.cilium_k8s_service_host]
+}
+
+run "k8s_service_host_rejects_an_oversized_hex_group" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "fffff:1:2"
+  }
+  expect_failures = [var.cilium_k8s_service_host]
+}
+
+run "k8s_service_host_rejects_a_nine_group_literal" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "1:2:3:4:5:6:7:8:9"
+  }
+  expect_failures = [var.cilium_k8s_service_host]
+}
+
+# The round trip normalizes, so a non-canonical spelling does not equal its
+# input. Deliberate and shared with var.nodes (ipv4_mapped_ipv6_is_rejected):
+# the accepted value is the one the parser prints back.
+run "k8s_service_host_rejects_a_non_canonical_spelling" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "2001:0db8::1"
+  }
+  expect_failures = [var.cilium_k8s_service_host]
+}
+
+run "k8s_service_host_rejects_an_ipv4_embedded_literal" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_k8s_service_host = "::ffff:192.0.2.1"
+  }
+  expect_failures = [var.cilium_k8s_service_host]
+}
+
+# The endpoint inputs are emitted only alongside kubeProxyReplacement, so a
+# non-default value with the toggle off reaches nothing. Warning tier, not a
+# reject: the configuration still works, it just does not carry the endpoint.
+run "k8s_service_endpoint_without_kube_proxy_replacement_warns" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_kube_proxy_replacement = false
+    cilium_k8s_service_host       = "api.cluster.example"
+  }
+  expect_failures = [check.cilium_k8s_service_endpoint_effective]
+}
+
+# Negative space for the check: the DEFAULT endpoint with the toggle off is the
+# ordinary configuration and must NOT warn.
+run "default_endpoint_without_kube_proxy_replacement_is_silent" {
+  command = plan
+  module { source = "./tests/fixtures/colliding-catalog" }
+  variables {
+    cilium_kube_proxy_replacement = false
+  }
+  assert {
+    condition     = output.cilium_effective_values.kubeProxyReplacement == false
+    error_message = "with kube-proxy replacement off the computed layer must still carry the toggle itself — only the endpoint keys drop out"
+  }
+}

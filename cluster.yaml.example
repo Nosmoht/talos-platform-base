@@ -133,7 +133,8 @@ substrate:
     routing_mode: tunnel # tunnel | native (native needs native_routing_cidr or pod_cidr)
     kube_proxy_replacement: true # Cilium replaces kube-proxy (Talos cluster.proxy.disabled)
     # k8s_service_host / k8s_service_port: OMITTED ON PURPOSE — omitting them
-    # (an IPv6 endpoint goes in UNBRACKETED: "2001:db8::1", not "[2001:db8::1]")
+    # (an IPv6 endpoint goes in UNBRACKETED and CANONICAL: "2001:db8::1", not
+    # "[2001:db8::1]", not "2001:0db8::1" — it is parsed, like a node IP)
     # takes Talos KubePrism (localhost:7445), which is what Talos' own Cilium
     # guide documents. Set them only on a cluster where KubePrism is not the
     # endpoint Cilium should reach the API server through before the CNI is up

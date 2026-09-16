@@ -533,6 +533,24 @@ check "cilium_hubble_open_metrics_effective" {
   }
 }
 
+check "cilium_k8s_service_endpoint_effective" {
+  # Both endpoint inputs in ONE predicate, like the operator-replicas check and
+  # unlike the one-block-per-predicate rule: they name one endpoint, they go inert
+  # together, and a consumer hitting either needs the same paragraph.
+  #
+  # The condition compares against the DEFAULTS rather than testing the gate
+  # alone: leaving both at localhost:7445 with kube-proxy replacement off is the
+  # ordinary configuration, and a warning there would cry wolf on correct usage.
+  assert {
+    condition = (
+      var.cilium_k8s_service_host == "localhost" && var.cilium_k8s_service_port == "7445"
+      ) || (
+      var.deploy_cilium && var.cilium_kube_proxy_replacement
+    )
+    error_message = "cilium_k8s_service_host / cilium_k8s_service_port are set away from the KubePrism default but cannot take effect: they need deploy_cilium = true AND cilium_kube_proxy_replacement = true. The module emits k8sServiceHost/k8sServicePort only alongside kubeProxyReplacement, because each has a Talos-side half (cluster.proxy.disabled) that moves with it — with the replacement off, Cilium reaches the API server through the in-cluster Service that kube-proxy provides, and the endpoint you set reaches nothing."
+  }
+}
+
 check "cilium_self_management_values_source_is_inert" {
   # A values source with self-management off reaches NOTHING: both deliverables
   # are empty, every precondition passes vacuously, and the plan is otherwise

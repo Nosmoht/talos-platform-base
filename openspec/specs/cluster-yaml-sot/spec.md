@@ -308,13 +308,19 @@ rejection.
 
 The object SHALL further admit `k8s_service_host` and `k8s_service_port`
 (strings, defaulting in the module to Talos KubePrism) — the API-server
-endpoint Cilium reaches before the CNI is up. Each SHALL carry a COMPLETE
-mirror of the module's guard, not a shape approximation: the host pattern
-admits a bare DNS name or IPv4 literal, or an UNBRACKETED IPv6 literal, and
-nothing else — brackets are rejected because client-go joins this value with
-the port through `net.JoinHostPort`, which brackets a colon-bearing host itself; the port pattern mirrors BOTH module conjuncts, digit shape and
-the 1-65535 range, since a port range is non-relational and therefore
-expressible in a single-document schema. On the seed path the resulting render
+endpoint Cilium reaches before the CNI is up. The port pattern SHALL be a
+COMPLETE mirror of the module's guard, digit shape and the 1-65535 range both,
+since a port range is non-relational and therefore expressible in a
+single-document schema. The host pattern SHALL be a CONSERVATIVE PRE-FILTER
+instead: it rejects a scheme, a `:port`, whitespace and brackets — brackets
+because client-go joins this value with the port through `net.JoinHostPort`,
+which brackets a colon-bearing host itself — but it SHALL NOT reject a value the
+module accepts. A complete mirror is unavailable here by construction: the
+module decides an IPv6 value by PARSING it (the `cidrhost` round trip
+`var.nodes` uses), which admits only the canonical spelling and which no JSON
+Schema pattern expresses. The module therefore stays the authoritative gate for
+that shape, and the schema catches the classes a reader gets wrong at authoring
+time. On the seed path the resulting render
 is frozen into a create-only machine configuration, so a malformed endpoint is
 a bootstrap deadlock rather than a repairable misconfiguration.
 

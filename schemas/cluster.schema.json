@@ -206,7 +206,7 @@
               "type": "boolean"
             },
             "k8s_service_host": {
-              "description": "Cilium's k8sServiceHost — the endpoint Cilium reaches the API server through BEFORE the CNI is up. Default \"localhost\" (Talos KubePrism on the node); set a VIP or load-balancer address on a cluster where KubePrism is not the intended path. Only emitted when kube_proxy_replacement is true. A bare host: no scheme, no \":port\", and an IPv6 literal UNBRACKETED (\"2001:db8::1\") \u2014 client-go joins this value with the port through net.JoinHostPort, which brackets a colon-bearing host itself, so a pre-bracketed value reaches the API server as \"[[2001:db8::1]]:6443\". Mirrors variables.tf var.cilium_k8s_service_host so a malformed value is caught at lint time too, not only at plan time — chart 1.20.0 renders it into the KUBERNETES_SERVICE_HOST container env var (quoted), and on the seed path that render is baked into the create-only machine config, where a malformed host is a bootstrap deadlock no later apply repairs.",
+              "description": "Cilium's k8sServiceHost — the endpoint Cilium reaches the API server through BEFORE the CNI is up. Default \"localhost\" (Talos KubePrism on the node); set a VIP or load-balancer address on a cluster where KubePrism is not the intended path. Only emitted when kube_proxy_replacement is true. A bare host: no scheme, no \":port\", and an IPv6 literal UNBRACKETED (\"2001:db8::1\") \u2014 client-go joins this value with the port through net.JoinHostPort, which brackets a colon-bearing host itself, so a pre-bracketed value reaches the API server as \"[[2001:db8::1]]:6443\". A conservative PRE-FILTER for variables.tf var.cilium_k8s_service_host, not a complete mirror: the module decides an IPv6 value by parsing it (canonical form only), which no pattern expresses, so this catches the classes a reader gets wrong at authoring time and the module stays the authoritative gate — chart 1.20.0 renders it into the KUBERNETES_SERVICE_HOST container env var (quoted), and on the seed path that render is baked into the create-only machine config, where a malformed host is a bootstrap deadlock no later apply repairs.",
               "type": "string",
               "pattern": "^([a-zA-Z0-9._-]+|[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7})$"
             },
@@ -317,8 +317,9 @@
               "required": ["values_path"],
               "properties": {
                 "repo_url": {
-                  "description": "Git repo ArgoCD reads the values files from. Omit to inherit repo.url.",
-                  "type": "string"
+                  "description": "Git repo ArgoCD reads the values files from. Omit to inherit repo.url. Must be a git remote ArgoCD resolves — \"https://host/org/repo.git\", \"ssh://git@host[:port]/org/repo.git\" or \"git@host:org/repo.git\" — and must carry no embedded password: this URL is written into a manifest you commit to git, so a credential here is disclosed at authoring time, which is why the rule is mirrored HERE and not left to the module's plan-time guard alone. An SSH username is fine.",
+                  "type": "string",
+                  "pattern": "^(https://[^@\\s]+|ssh://([A-Za-z0-9._-]+@)?[^@:\\s]+(:[0-9]+)?/[^@\\s]*|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^@\\s]+)$"
                 },
                 "revision": {
                   "description": "targetRevision for that source. Omit to inherit cluster.target_revision — normally the same branch the root Application tracks, so the values half moves with the rest of the repo and git revert is the rollback. A tag or SHA makes the values/chart revision pair explicit instead, at the cost of a second thing to bump.",
@@ -328,13 +329,21 @@
                   "description": "Repo-root-relative path you commit the cilium_self_management_values output to. No leading \"/\" and no \"..\" segment.",
                   "type": "string",
                   "pattern": "^[A-Za-z0-9._-][A-Za-z0-9._/-]*$",
-                  "not": { "pattern": "(^|/)\\.{1,2}($|/)|//" }
+                  "allOf": [
+                    { "not": { "title": "no-parent-segment", "pattern": "(^|/)\\.\\.($|/)" } },
+                    { "not": { "title": "no-dot-segment", "pattern": "(^|/)\\.($|/)" } },
+                    { "not": { "title": "no-doubled-separator", "pattern": "//" } }
+                  ]
                 },
                 "override_path": {
                   "description": "Repo-root-relative path you commit your values_override document to. Required when values_override is non-empty. The module never writes this file. It is read as a PLAIN Helm values document: Argo CD applies no decryption to a Helm valueFiles source, so a SOPS-encrypted file does not work here without a config-management plugin this base neither ships nor configures. Key material committed at this path is plaintext in git unless you have built that path yourself.",
                   "type": "string",
                   "pattern": "^[A-Za-z0-9._-][A-Za-z0-9._/-]*$",
-                  "not": { "pattern": "(^|/)\\.{1,2}($|/)|//" }
+                  "allOf": [
+                    { "not": { "title": "no-parent-segment", "pattern": "(^|/)\\.\\.($|/)" } },
+                    { "not": { "title": "no-dot-segment", "pattern": "(^|/)\\.($|/)" } },
+                    { "not": { "title": "no-doubled-separator", "pattern": "//" } }
+                  ]
                 }
               }
             }
