@@ -394,11 +394,13 @@ output "cilium_self_management_app" {
     # edit dropping `ref = "values"`, the `$values/` prefix or values_path from the
     # interpolation breaks: without the ref source the reference does not resolve,
     # and ArgoCD reports a missing value file rather than rendering the floor.
-    condition = !var.cilium_self_management || !local.cilium_self_management_multi_source || (
-      length(local.cilium_self_management_value_files) > 0 &&
-      startswith(local.cilium_self_management_value_files[0], "$values/") &&
-      length(local.cilium_self_management_value_files[0]) > length("$values/")
-    )
+    # Ternary plus try(), not an `||` chain: on OpenTofu 1.9 — the versions.tf
+    # floor — `||` evaluates every operand, so the index raises "Invalid index"
+    # on the empty single-source list. Only the conditional skips the arm.
+    condition = var.cilium_self_management && local.cilium_self_management_multi_source ? (
+      startswith(try(local.cilium_self_management_value_files[0], ""), "$values/") &&
+      length(try(local.cilium_self_management_value_files[0], "")) > length("$values/")
+    ) : true
     error_message = "cilium_self_management_values_source is set but the emitted Application's first valueFiles entry is not a non-empty $values/<path> reference — refusing to emit an Application that would render the chart without the module-set values layer. Check cilium-values.tf's cilium_self_management_value_files local."
   }
 }
