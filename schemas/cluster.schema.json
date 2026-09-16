@@ -299,7 +299,7 @@
               }
             },
             "hubble_open_metrics": {
-              "description": "Export the Hubble metrics endpoint in OpenMetrics format (hubble.metrics.enableOpenMetrics). Changes only the cilium-config ConfigMap, but the floor sets rollOutCiliumPods: true, so the chart rolls the agents on the next sync. A manual `kubectl -n kube-system rollout restart ds/cilium` is still needed if you set rollOutCiliumPods: false, on the frozen seed, and on the multi-source arm until the committed values file is regenerated. Default off. Requires a NON-EMPTY hubble_metrics: the chart gates the OpenMetrics key on the metrics list, so it is inert on an endpoint that exports nothing. Same seed-freeze caveat as agent_metric_overrides. Warns when it cannot take effect.",
+              "description": "Export the Hubble metrics endpoint in OpenMetrics format (hubble.metrics.enableOpenMetrics). Changes only the cilium-config ConfigMap, but the floor sets rollOutCiliumPods: true, so the chart rolls the agents on the next sync. A manual `kubectl -n kube-system rollout restart ds/cilium` is needed only if you set rollOutCiliumPods: false. On the frozen seed and on the multi-source arm before its values file is regenerated, the live ConfigMap has not changed at all, so the change is undelivered rather than unapplied and a restart does nothing. Default off. Requires a NON-EMPTY hubble_metrics: the chart gates the OpenMetrics key on the metrics list, so it is inert on an endpoint that exports nothing. Same seed-freeze caveat as agent_metric_overrides. Warns when it cannot take effect.",
               "type": "boolean"
             },
             "self_management": {

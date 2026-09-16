@@ -141,17 +141,33 @@ case where a silently ineffective change is worst.
 
 ### 6. What this does NOT retire
 
-`kubectl -n kube-system rollout restart ds/cilium` is still the required step in
-three places, so the instruction is narrowed rather than deleted:
+A restart helps only where the ConfigMap has ALREADY changed and the pod template
+has not. Two different situations are easy to confuse here, and only the first is
+a restart:
 
-- after setting `rollOutCiliumPods: false` — you opted out of the automatic roll;
-- on the frozen create-only seed, which no ConfigMap change re-triggers;
-- on the multi-source arm until §3 is done.
+**Restart it.** You set `rollOutCiliumPods: false`, a sync then changed
+`cilium-config`, and the pod template deliberately did not move:
 
-It also remains **mandatory** in the break-glass procedure of the previous
-section (§6 step 4). The operator there applies a chart by hand, mid-outage,
-possibly from a render that predates this tag — no checksum moves on that path,
-so no roll follows.
+```sh
+kubectl -n kube-system rollout restart ds/cilium
+```
+
+**Do NOT restart — deliver it first.** On these paths the live ConfigMap has not
+changed at all, so a restart reloads the SAME configuration and buys an
+unnecessary CNI rollout:
+
+- the frozen create-only seed. `inlineManifests` are create-only and the render
+  carries `ignore_changes`, so a module-input change never reaches the live
+  ConfigMap. Delivery is the emitted Application, a fresh bootstrap, or a
+  deliberate `-replace` — not a restart.
+- the multi-source arm before §3. Until you regenerate and commit the module-set
+  values file and Argo CD syncs it, nothing has been delivered; once it syncs,
+  the checksum moves and the roll happens on its own.
+
+The break-glass procedure of the previous section (§6 step 4) is the one place
+the restart stays **mandatory**. There the operator has already applied a
+corrected chart by hand, mid-outage, possibly from a render predating this tag —
+so the ConfigMap did change while no checksum moved.
 
 ## Unreleased (next MAJOR) — `cilium_values_override` reaches Day-2, and three Helm keys move to typed inputs (action required for consumers who override those keys, or who self-manage Cilium)
 

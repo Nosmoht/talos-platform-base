@@ -1179,9 +1179,12 @@ variable "cilium_hubble_open_metrics" {
     rollOutCiliumPods: true (issue #270), so the chart stamps a ConfigMap
     checksum into the agent pod template and the change lands on the next sync.
     A manual `kubectl -n kube-system rollout restart ds/cilium` is STILL needed
-    on three paths: a consumer who set rollOutCiliumPods: false in their
-    override; the frozen create-only seed; and the multi-source arm until the
-    committed module-set values file is regenerated. See UPGRADING.md.
+    in ONE case: a consumer who set rollOutCiliumPods: false in their override,
+    where the ConfigMap changes and the pod template deliberately does not. On
+    the frozen seed and on the multi-source arm before its values file is
+    regenerated, the live ConfigMap has not changed at all — a restart there
+    reloads the same configuration, so deliver the change first (see the
+    seed-freeze note above). UPGRADING.md separates the two.
   EOT
   type        = bool
   default     = false
