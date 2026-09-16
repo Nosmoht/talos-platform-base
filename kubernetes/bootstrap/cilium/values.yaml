@@ -159,6 +159,11 @@ secretsNamespaceLabels:
   pod-security.kubernetes.io/warn: restricted
   pod-security.kubernetes.io/warn-version: latest
 
+# --- Roll the agents when cilium-config changes ---
+# Matches the module floor. Without it a Day-2 values change reaches only the
+# cilium-config ConfigMap and the running agents keep the old configuration.
+rollOutCiliumPods: true
+
 # --- Operator ---
 operator:
   replicas: 2

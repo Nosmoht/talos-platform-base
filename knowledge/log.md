@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-16
+
+- `reference/helm-values-surface.md`: §2 gains the delivery-vs-effect half —
+  reaching `cilium-config` is not reaching the running agents — recorded as
+  CLOSED by the floor's `rollOutCiliumPods: true`, with the opt-out scoped to the
+  seed path and the multi-source arm. The "unset, the single-source shape is
+  unchanged" sentence is bound to the INPUT rather than reading as a promise
+  across revisions, and the single-source arm's absent opt-out is named.
+
 ## 2026-09-09
 
 - `architecture/day-zero-bootstrap.md`: §The direct-apply exception now records

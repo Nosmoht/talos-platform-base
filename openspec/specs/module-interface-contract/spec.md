@@ -741,11 +741,16 @@ The module SHALL additionally expose `cilium_values_override_digest` — the
 SHA-256 of `cilium_values_override`, `""` when empty, and NOT `sensitive` — as
 the plan-time change detector the input's `sensitive` marking removes.
 
-The single-source shape SHALL be unchanged from the shape that preceded the
-values-source input, and that promise SHALL be bound by a whole-document
-comparison against a golden captured from the preceding revision, since presence
+Configuring or not configuring `cilium_self_management_values_source` SHALL NOT
+move the single-source document at one base revision, and that promise SHALL be
+bound by a whole-document comparison against a committed golden, since presence
 and absence assertions cannot observe a field added, renamed or reordered
-elsewhere in the manifest.
+elsewhere in the manifest. The golden detects MOVEMENT and certifies no key's
+correctness — it reports only that a byte moved, and a deliberate refresh
+silences it — so the facts a reader depends on SHALL additionally carry named
+per-key assertions that a refresh cannot silence. The promise does not extend across revisions: a
+floor or computed-layer change moves this document for every consumer on this
+arm, and SHALL be released as a MAJOR with the golden refreshed deliberately.
 
 #### Scenario: Output is empty by default
 
@@ -758,12 +763,12 @@ elsewhere in the manifest.
 - **THEN** `cilium_self_management_app` is non-empty, or the plan fails on
   the output's precondition rather than emitting a hollow Application
 
-#### Scenario: The single-source manifest is byte-identical to the previous release
+#### Scenario: The values-source input moves nothing for a consumer who does not opt in
 
 - **WHEN** `cilium_self_management_values_source` is left unset
-- **THEN** the emitted Application is byte-for-byte the document the preceding
-  revision emitted for the same inputs, so the values-source input moves nothing
-  for a consumer who does not opt in
+- **THEN** the emitted Application is byte-for-byte the golden committed for this
+  input set at this revision, so introducing the values-source input moved
+  nothing for a consumer who does not configure one
 
 #### Scenario: The override digest tracks a sensitive input
 

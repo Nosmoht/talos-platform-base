@@ -1,12 +1,17 @@
 # Minimal, cluster-agnostic Cilium values for the Talos bootstrap inlineManifest
 # seed (data.helm_template.cilium → cluster.inlineManifests, rendered locally).
 #
-# DELIBERATELY a floor: only what makes Cilium the CNI on ANY Talos cluster.
+# DELIBERATELY a floor: what makes Cilium the CNI on ANY Talos cluster, plus the
+# one rollout-policy default below (rollOutCiliumPods) — admitted because a
+# ConfigMap-only change otherwise never reaches the running agents on ANY cluster.
 # Per-cluster, install-time-fixed configuration (routing mode, encryption,
 # pod-CIDR-derived native-routing CIDR, Gateway API, MTU) is layered on TOP of
 # this file by the module from the typed var.cilium_* inputs; the long tail
 # (Hubble, L2/BGP announcements, bpf tuning) arrives via var.cilium_values_override.
-# Helm merges value layers, later wins — so a consumer override replaces any key here.
+# Helm merges value layers, later wins — so a consumer override replaces any key
+# here on the seed path and on the MULTI-SOURCE self-management arm. It does NOT
+# on the single-source arm: var.cilium_values_override is rejected there
+# (variables.tf), so this file is final for that consumer.
 #
 # Merge semantics: Helm DEEP-MERGES value layers per key (later wins). List
 # values are REPLACED wholesale; map values are MERGED — you cannot null-out a
@@ -120,3 +125,9 @@ operator:
 # Day-2 GitOps that diffs the rendered manifest.
 hubble:
   enabled: false
+
+# --- Roll the agents when cilium-config changes ---
+# Without this the chart stamps no checksum into the agent pod template, so a
+# Day-2 values change syncs green and the running agents keep the old config.
+# Turning it off is a consumer override; UPGRADING.md says on which arms that works.
+rollOutCiliumPods: true

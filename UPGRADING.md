@@ -55,6 +55,104 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
+## Unreleased (next MAJOR) — the Cilium floor sets `rollOutCiliumPods: true` (action required for consumers who self-manage Cilium)
+
+**Type:** MAJOR. `tofu/modules/talos-cluster/helm/cilium-values.yaml` gains one
+key, `rollOutCiliumPods: true`, and the same key is added to the Day-2 reference
+values at `kubernetes/bootstrap/cilium/values.yaml`. Closes issue #270.
+
+### 1. Why
+
+Most Cilium settings land only in the `cilium-config` ConfigMap. Without a
+pod-template checksum the agent DaemonSet is untouched by such a change, so
+ArgoCD reports Synced/Healthy while the running agents keep the previous
+configuration — measured on the pinned 1.20.0 chart, `routingMode: tunnel` and
+`routingMode: native` render a byte-identical pod template. The Day-2 delivery
+path opened in the previous MAJOR made that gap reachable by every value a
+consumer overrides. With the key set the chart stamps
+`cilium.io/cilium-configmap-checksum` into the pod template, so the change lands
+on the next sync.
+
+### 2. Who is affected, and who is not
+
+- **Already bootstrapped, `substrate.cilium.self_management: false`** — nothing
+  moves. No `Application` is emitted, and the seed render is frozen
+  (`terraform_data.cilium_render` carries `ignore_changes`, `inlineManifests`
+  are create-only). Adopting the tag changes the plan and nothing in the cluster.
+- **Self-managing, SINGLE-SOURCE arm (no `self_management_values_source`)** —
+  the emitted `Application`'s `valuesObject` gains the key, and the next sync
+  rolls `ds/cilium` once. This is the arm with no opt-out: see §4.
+- **Self-managing, MULTI-SOURCE arm** — the module-set layer is a file YOU
+  commit, so the key does not reach your cluster until you regenerate it: see §3.
+- **Fresh bootstraps** — the seed render moves. The annotation is inert there
+  (Talos never updates a manifest it created), so nothing rolls at bootstrap.
+
+### 3. Multi-source arm: regenerate your committed values file
+
+Adopting the tag moves `cilium_self_management_values_digest`, and with it the
+`talos-platform-base.io/values-digest` annotation on the emitted `Application` —
+while the file you committed at `values_path` does not move. Your own digest
+check goes red for a change you did not make, and `rollOutCiliumPods` does not
+reach ArgoCD's render until you re-commit:
+
+```sh
+tofu output -raw cilium_self_management_values > <your-repo>/<values_path>
+```
+
+Commit that in the same change as the `Application`, as §3 of the previous
+section already prescribes.
+
+### 4. The roll, and how to time it
+
+The rollout is `RollingUpdate` with `maxUnavailable: 2` — a fixed chart value,
+not derived from your node count — so on a two- or three-node control plane two
+agents are down simultaneously. Cilium documents an agent restart as "minimal
+impact … networking connectivity, policy enforcement and load balancing will
+remain functional in general"; what is actively disrupted is L7/proxy-enforced
+connections, which reset because the proxy runs inside the agent pod, and Hubble,
+which has a brief outage.
+
+Timing stays with you on the module's side: the emitted `Application` carries no
+`syncPolicy`, so the roll follows a sync you trigger. **That is a statement about
+what this module emits, not about your cluster.** If you added
+`syncPolicy.automated` (or `selfHeal`) yourself, then from this tag on any commit
+touching Cilium values rolls the whole agent DaemonSet unattended. Decide that
+deliberately before adopting.
+
+Sync when you can watch it, and confirm the datapath afterwards:
+
+```sh
+kubectl -n kube-system rollout status daemonset/cilium --timeout=5m
+```
+
+### 5. Declining it
+
+Put `rollOutCiliumPods: false` in your override file. Helm applies it as a later
+layer, so it wins over the floor.
+
+**This works on the bootstrap seed and on the multi-source arm only.** On the
+single-source arm `cilium_values_override` is rejected at plan time — that
+consumer has no override file at all, and the floor is final for them. To gain
+the choice, configure `substrate.cilium.self_management_values_source` and move
+to the multi-source arm (previous section, §3). Named rather than solved: the
+single-source arm is also the arm with no free-form values channel by
+construction, so every Cilium change it receives is module-driven — which is the
+case where a silently ineffective change is worst.
+
+### 6. What this does NOT retire
+
+`kubectl -n kube-system rollout restart ds/cilium` is still the required step in
+three places, so the instruction is narrowed rather than deleted:
+
+- after setting `rollOutCiliumPods: false` — you opted out of the automatic roll;
+- on the frozen create-only seed, which no ConfigMap change re-triggers;
+- on the multi-source arm until §3 is done.
+
+It also remains **mandatory** in the break-glass procedure of the previous
+section (§6 step 4). The operator there applies a chart by hand, mid-outage,
+possibly from a render that predates this tag — no checksum moves on that path,
+so no roll follows.
+
 ## Unreleased (next MAJOR) — `cilium_values_override` reaches Day-2, and three Helm keys move to typed inputs (action required for consumers who override those keys, or who self-manage Cilium)
 
 The heading takes the tag when the release is cut. Two independent changes ship
@@ -162,26 +260,30 @@ same commit that moves the files, or the digest is checking the wrong pair.
 ArgoCD itself compares nothing: the annotation is inert metadata, and a stale
 values file syncs green.
 
-**A synced override does not reach the running agents by itself.** Most Cilium
-settings land only in the `cilium-config` ConfigMap, and changing one leaves the
-agent DaemonSet's pod template untouched — measured on the pinned 1.20.0 chart,
-`routingMode: tunnel` and `routingMode: native` render a byte-identical pod
-template. ArgoCD reports the sync as successful and the agents keep running the
-old configuration. Cilium's own documentation says the same and ships a metric
-for the gap, `cilium_drift_checker_config_delta`.
+**A synced values change now reaches the running agents.** Most Cilium settings
+land only in the `cilium-config` ConfigMap, and on a chart without a pod-template
+checksum, changing one leaves the agent DaemonSet untouched — measured on the
+pinned 1.20.0 chart, `routingMode: tunnel` and `routingMode: native` render a
+byte-identical pod template. ArgoCD reported such a sync as successful while the
+agents kept running the old configuration; Cilium ships
+`cilium_drift_checker_config_delta` for exactly that gap.
 
-Two ways to close it, and the choice is yours because both interrupt the
-datapath node by node:
+The floor sets `rollOutCiliumPods: true`, so the chart stamps a `cilium-config`
+checksum into the pod template and any ConfigMap-affecting change rolls the
+agents on the next sync — including changes you did not intend to roll for. The
+rollout is `RollingUpdate` with `maxUnavailable: 2`, so on a two- or three-node
+control plane two agents are down at once.
 
-- Restart deliberately after a sync that changed such a setting:
-  `kubectl -n kube-system rollout restart daemonset/cilium`, then
-  `rollout status`.
-- Or put `rollOutCiliumPods: true` in your own override file. The chart then
-  stamps a ConfigMap checksum into the pod template, so every ConfigMap change
-  rolls the agents automatically — including changes you did not intend to roll
-  for. The base does not set it: the emitted `Application` carries no
-  `syncPolicy` for the same reason, that rolling the CNI is an operator-timed
-  decision.
+Timing stays with you on the module's side: the emitted `Application` carries no
+`syncPolicy`, so the roll follows a sync you trigger. That describes what this
+module emits, not your cluster — if you added `syncPolicy.automated` yourself,
+the roll is unattended.
+
+To decline it, put `rollOutCiliumPods: false` in your override file. That works
+on the bootstrap seed and on the MULTI-SOURCE arm. It does **not** work on the
+single-source arm: `cilium_values_override` is rejected at plan time there, so
+that consumer either configures `cilium_self_management_values_source` or
+accepts the roll. See the dedicated section on adopting this tag.
 
 **The first sync on the new arm touches the live CNI.** Until now your override
 reached only the create-only seed; on this arm ArgoCD applies it to a running
@@ -370,9 +472,12 @@ covers only `argocd admin export`/`import` of its CRDs — not a down datapath.
    ```
 
    Then confirm the datapath is actually back before calling it restored: a
-   ClusterIP reaches its backend and cluster DNS resolves. The rollout is
-   per-node and interrupts that node's datapath while it runs — which is the
-   point of doing it deliberately rather than leaving it to a sync.
+   ClusterIP reaches its backend and cluster DNS resolves. This step stays
+   MANDATORY even though the floor now sets `rollOutCiliumPods: true`: you are
+   applying by hand here, possibly from a render that predates that tag, so no
+   pod-template checksum moves and no roll follows. The rollout runs at
+   `maxUnavailable: 2` and resets L7/proxy-enforced connections — do it
+   deliberately rather than leaving it to a sync.
 
 5. Once the datapath is back, **land the same fix in git and sync the
    `Application`** — this step is not optional, it is the condition the
@@ -395,7 +500,10 @@ covers only `argocd admin export`/`import` of its CRDs — not a down datapath.
 **One residual, named rather than solved.** `kubectl apply` takes field
 ownership under Server-Side Apply, and how ArgoCD's own field manager resolves
 that on the next reconcile is not something this repository has measured. Expect
-the adopting sync to report differences and possibly restart the agent, the same
+the adopting sync to report differences and restart the agent — the seed render
+layers `cilium_values_override` and `cilium_effective_values` deliberately does
+not, so the two pod templates carry different `cilium-config` checksums and the
+adopting sync always produces a roll. This is the same
 seed-to-GitOps takeover behaviour §3 describes.
 
 ### Validation steps after upgrade
