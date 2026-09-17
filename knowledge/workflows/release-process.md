@@ -396,9 +396,10 @@ non-idempotence warning above. It does NOT apply to a draft with missing assets:
 the job's own guard refuses to publish one, and so should a human.
 
 `v14.0.0` was recovered this way. The run failed because the publish step
-re-enumerates the release it just created and filters on `tag_name`, which the
-listing did not yet report for it; the artifact, signature, attestations and
-`:latest` were all already in place. Tracked as issue #276.
+looked the release up in a listing that had not yet caught up with the creation;
+the artifact, signature, attestations and `:latest` were all already in place.
+That lookup now retries before giving up (#276), so this section applies to a
+run that fails for some other reason at the same point.
 
 ## A release that shipped without assets
 

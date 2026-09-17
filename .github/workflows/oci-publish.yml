@@ -353,16 +353,33 @@ jobs:
             "${prerelease_args[@]}" \
             "${assets[@]}"
 
-          created="$(find_releases)"
-          # The draft LINE, not the first line: the listing can carry more than
-          # one release for the tag, so `${created%% *}` would happily hand back
-          # the id of a published one that appeared in the meantime — and the
-          # PATCH below would then aim at it. Both checks are re-applied here
-          # for that reason, not out of symmetry with the block above.
-          if printf '%s\n' "$created" | grep -q ' false$'; then
-            echo "::error::a published release for ${TAG} appeared while this job was creating its draft; refusing to publish anything. Recovery: knowledge/workflows/release-process.md, section \"When the publish job fails\"."
-            exit 1
-          fi
+          # The listing is eventually consistent with the create above: it
+          # reported NO release for v14.0.0 immediately after creating its
+          # draft, and the step failed with the artifact, its signature, its
+          # attestations and `:latest` already in place (#276). So an absent
+          # draft is retried rather than treated as fatal.
+          #
+          # ONLY absence is retried. A published release for the tag is a real
+          # interleaving that more waiting cannot improve, so it still exits on
+          # the first sight of one — the draft LINE, not the first line: the
+          # listing can carry more than one release for the tag, so
+          # `${created%% *}` would happily hand back the id of a published one
+          # and the PATCH below would aim at it.
+          created=""
+          for attempt in 1 2 3 4 5; do
+            created="$(find_releases)"
+            if printf '%s\n' "$created" | grep -q ' false$'; then
+              echo "::error::a published release for ${TAG} appeared while this job was creating its draft; refusing to publish anything. Recovery: knowledge/workflows/release-process.md, section \"When the publish job fails\"."
+              exit 1
+            fi
+            if [ "$(printf '%s\n' "$created" | grep -c ' true$')" -eq 1 ]; then
+              break
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              echo "the release listing does not report the draft for ${TAG} yet (attempt ${attempt}); retrying"
+              sleep 2
+            fi
+          done
           if [ "$(printf '%s\n' "$created" | grep -c ' true$')" -ne 1 ]; then
             echo "::error::expected exactly one draft release for ${TAG} after creating it, found: ${created:-none}"
             exit 1

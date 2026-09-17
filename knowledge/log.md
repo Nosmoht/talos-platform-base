@@ -2,6 +2,9 @@
 
 ## 2026-09-17
 
+- `workflows/release-process.md`: the v14.0.0 note records the draft-lookup
+  race as fixed — the post-create listing now retries — rather than as the
+  standing cause of that section.
 - `workflows/release-process.md`: §When the publish job fails splits the
   unpublished-draft row into a complete and an incomplete case, and gains
   §Publishing the draft the job built — the `draft=false` recovery for a run

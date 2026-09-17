@@ -141,6 +141,8 @@ fi
 #
 #   $STATE     none | draft | published — the release object for $TAG
 #   $EXTRA     a second "<id> <draft>" line the release listing also returns
+#   $LIST_LAG  how many post-create listings report nothing before the draft
+#              shows up — the eventual consistency that cost v14.0.0 (#276)
 #   $DROP      an asset basename `gh release create` silently fails to upload
 #   $UPLOADED  what the stub has actually attached, one basename per line
 #   $LOG       every call, in order
@@ -154,6 +156,14 @@ printf '%s\n' "$*" >> "$LOG"
 
 # the release listing
 if [ "$1" = "api" ] && [ "$2" = "--paginate" ]; then
+  # the listing has not caught up with the create yet
+  if [ -n "${LIST_LAG:-}" ] && [ -f "$CREATED_FLAG" ]; then
+    seen="$(cat "$LAG_SEEN" 2>/dev/null || printf '0')"
+    if [ "$seen" -lt "$LIST_LAG" ]; then
+      printf '%s\n' "$((seen + 1))" > "$LAG_SEEN"
+      exit 0
+    fi
+  fi
   case "$state" in
     draft) printf '%s\n' "4242 true" ;;
     published) printf '%s\n' "4242 false" ;;
@@ -208,11 +218,16 @@ exit 0
 STUB
 chmod +x "$WORK/bin/gh"
 
+# The retry under test backs off between attempts. Stubbing `sleep` keeps the
+# suite instant without giving the workflow a test-only knob to honour.
+printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/bin/sleep"
+chmod +x "$WORK/bin/sleep"
+
 export PATH="$WORK/bin:$PATH"
 export GITHUB_REPOSITORY="owner/talos-platform-base"
 export GH_TOKEN="stub-token-not-a-credential"
 export LOG="$WORK/log" STATE="$WORK/state" UPLOADED="$WORK/uploaded"
-export CREATED_FLAG="$WORK/created"
+export CREATED_FLAG="$WORK/created" LAG_SEEN="$WORK/lag-seen"
 
 cd "$WORK/repo"
 printf '# Changelog\n\n## v9.9.9 — 2026-01-01\n\nthe section for this tag\n\n## v9.9.8 — 2025-12-01\n\nolder\n' > CHANGELOG.md
@@ -236,7 +251,7 @@ run_create() {
   printf '%s\n' "$start_state" > "$STATE"
   : > "$LOG"
   : > "$UPLOADED"
-  rm -f "$CREATED_FLAG"
+  rm -f "$CREATED_FLAG" "$LAG_SEEN"
   export TAG="$tag"
   rm -f _release/*
   touch "_release/talos-platform-base-${tag}.tar.gz" "_release/checksums.txt" \
@@ -245,7 +260,7 @@ run_create() {
   bash "$WORK/create.sh" > "$WORK/out" 2>&1
 }
 
-unset EXTRA DROP
+unset EXTRA DROP LIST_LAG
 
 # --- 1) no release yet: draft, assets, verified, published last -------------
 if run_create none v9.9.9; then
@@ -271,6 +286,60 @@ if run_create none v9.9.9; then
 else
   note "the create step failed on a tag with no existing release: $(cat "$WORK/out")"
 fi
+
+# --- 1b) the listing lags behind the create: retried, not fatal --------------
+#
+# v14.0.0: `gh release create` returned, the listing reported nothing, and the
+# step exited with the artifact already pushed, signed, attested and tagged
+# `:latest` — a half-released tag whose documented recovery is expensive
+# (#276). The draft is the same object either way, so the only correct
+# response to "not there yet" is to look again.
+export LIST_LAG=2
+if run_create none v9.9.9; then
+  order="$(call_order)"
+  [ "$order" = "LCLLLAP" ] \
+    && ok "a listing that lags the create is retried until the draft appears ($order)" \
+    || note "expected call order LCLLLAP with a two-listing lag, got '$order'"
+  [ "$(cat "$STATE")" = "published" ] \
+    && ok "the release still ends up published after the lag" \
+    || note "the release was left in state '$(cat "$STATE")' after a listing lag"
+else
+  note "a listing that had not caught up with the create failed the step, leaving the tag half-released: $(cat "$WORK/out")"
+fi
+unset LIST_LAG
+
+# --- 1c) ... but the retry is bounded, and publishes nothing when it runs out
+export LIST_LAG=99
+if run_create none v9.9.9; then
+  note "the step published a release it never located — the PATCH aimed at nothing"
+else
+  ok "a draft that never appears exhausts the retry and fails"
+  grep -q -- '--method PATCH' "$LOG" \
+    && note "the step published a release anyway after failing to locate the draft" \
+    || ok "nothing is published when the draft cannot be located"
+  grep -q 'expected exactly one draft release' "$WORK/out" \
+    && ok "the exhausted retry fails with the missing-draft error, not a masked one" \
+    || note "the exhausted retry failed for an unstated reason: $(cat "$WORK/out")"
+fi
+unset LIST_LAG
+
+# --- 1d) a published release is NOT waited out ------------------------------
+#
+# Retrying absence must not turn into retrying a real interleaving: more
+# waiting cannot unpublish a release, and the step has to refuse on first
+# sight rather than five listings later.
+export LIST_LAG=2 EXTRA_AFTER="4243 false"
+if run_create none v9.9.9; then
+  note "a release published mid-run was ignored once the listing also lagged"
+else
+  ok "a published release is refused even while the listing is lagging"
+  order="$(call_order)"
+  case "$order" in
+    *P*) note "the step published a release anyway (order '$order')" ;;
+    *) ok "nothing is published when the interleaving is detected ($order)" ;;
+  esac
+fi
+unset LIST_LAG EXTRA_AFTER
 
 # --- 2) leftover draft from a failed run: discarded and rebuilt --------------
 if run_create draft v9.9.9; then
