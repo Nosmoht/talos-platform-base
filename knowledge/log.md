@@ -2,6 +2,9 @@
 
 ## 2026-09-17
 
+- `workflows/release-process.md`: new §Which endpoint can see a draft release —
+  measured behaviour of the tags endpoint, the release list and `gh release
+  view` on a draft, and why a tag is not an identity for the publish step.
 - `workflows/release-process.md`: the v14.0.0 note records the draft-lookup
   race as fixed — the post-create listing now retries — rather than as the
   standing cause of that section.

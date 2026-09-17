@@ -435,6 +435,36 @@ The five tags that shipped asset-less this way (`v9.2.2`, `v9.2.3`, `v10.0.0`,
 different, worse state. Both groups, and what a consumer should do with each,
 are in [verify-release](verify-release.md) §Releases without assets.
 
+## Which endpoint can see a draft release
+
+Three lookups behave differently on a DRAFT, and the difference is not
+documented by GitHub. Measured against this repository's own API on
+2026-09-17, by creating a draft and deleting it again:
+
+| Lookup | On a draft |
+|---|---|
+| `GET /repos/{repo}/releases/tags/{tag}` | **404** — the tags endpoint does not return drafts |
+| `GET /repos/{repo}/releases` (the list) | returns it, but **not immediately**: a draft read back by id straight after creation was still absent from the list |
+| `gh release view {tag} --json ...` | returns it, via GraphQL — so the id is a `node_id` (`RE_kwD…`), not the REST `databaseId` |
+
+Two consequences for anyone editing `oci-publish.yml`:
+
+**The list endpoint is not a mistake to be cleaned up.** It is there precisely
+because the tags endpoint cannot see the state the publish flow lives in. An
+edit that "simplifies" it to `GET /releases/tags/{tag}` fails every run, on a
+tag push, where the cost is a version.
+
+**A tag is not an identity.** Every tag-keyed lookup — the list filtered on
+`tag_name`, `gh release view {tag}` — resolves to a SET, and more than one
+draft can exist for one tag. Combined with the list's lag, a lookup by tag can
+return somebody else's draft while this run's own has not landed, which is why
+the step addresses its release by the `html_url` that `gh release create`
+printed. See §Publishing the draft the job built and issue #276.
+
+GitHub states no read-after-write guarantee for the list endpoint either way —
+the entry above is measurement, not a documented contract, so treat the window
+as unbounded rather than as the sub-second one that happened to be observed.
+
 ## End-to-end summary
 
 1. Author commits per conventional-commit rules; PR title linted by
