@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-17
+
+- `workflows/release-process.md`: §When the publish job fails splits the
+  unpublished-draft row into a complete and an incomplete case, and gains
+  §Publishing the draft the job built — the `draft=false` recovery for a run
+  that failed only on its last step, with the verification a consumer can
+  repeat. The non-idempotent re-run stays the answer for an incomplete draft.
+
 ## 2026-09-16
 
 - `reference/helm-values-surface.md`: §2 gains the delivery-vs-effect half —
