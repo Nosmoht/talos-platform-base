@@ -3,9 +3,8 @@
 # `client_configuration`) do not change when only the advertised cluster
 # endpoint moves — a VIP move, a DNS rename, or a control-plane node re-IP
 # on a single-control-plane cluster where `cluster_endpoint` is expressed
-# as that node's own IP (the seeder's `api_vip: ""` fallback is exactly
-# this case, and is the strongest evidence this fix closes the #168/#186
-# incident; on a VIP/DNS endpoint a plain node re-IP is correctly inert) —
+# as that node's own IP (on a VIP or DNS endpoint a plain node re-IP is
+# correctly inert) —
 # so the provider never re-fetches `kubeconfig_raw` and the emitted
 # `server:` (which Talos derives from `var.cluster_endpoint` baked into
 # the machine config at main.tf:674,684) goes stale. This marker's tracked
