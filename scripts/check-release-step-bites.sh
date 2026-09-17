@@ -141,6 +141,10 @@ fi
 #
 #   $STATE     none | draft | published — the release object for $TAG
 #   $EXTRA     a second "<id> <draft>" line the release listing also returns
+#   $LIST_LAG  how many post-create attempts report nothing for THIS run's own
+#              release before it shows up — the eventual consistency that cost
+#              v14.0.0 (#276). A foreign release stays visible throughout.
+#   $LIST_FAIL how many post-create listings fail outright before succeeding
 #   $DROP      an asset basename `gh release create` silently fails to upload
 #   $UPLOADED  what the stub has actually attached, one basename per line
 #   $LOG       every call, in order
@@ -154,10 +158,48 @@ printf '%s\n' "$*" >> "$LOG"
 
 # the release listing
 if [ "$1" = "api" ] && [ "$2" = "--paginate" ]; then
-  case "$state" in
-    draft) printf '%s\n' "4242 true" ;;
-    published) printf '%s\n' "4242 false" ;;
+  # The listing has not caught up with the create yet. The lag hides only THIS
+  # run's own release (4242): a foreign release the listing already knows about
+  # stays visible, which is the state that separates "wait for ours" from
+  # "publish somebody else's".
+  # the listing call itself fails — a 5xx from a degraded replica, a secondary
+  # rate limit. Indistinguishable from a lag in its effect on the step, and it
+  # must not be distinguishable in its outcome either.
+  if [ -n "${LIST_FAIL:-}" ] && [ -f "$CREATED_FLAG" ]; then
+    failed="$(cat "$FAIL_SEEN" 2>/dev/null || printf '0')"
+    if [ "$failed" -lt "$LIST_FAIL" ]; then
+      printf '%s\n' "$((failed + 1))" > "$FAIL_SEEN"
+      printf 'gh: the release listing is unavailable\n' >&2
+      exit 1
+    fi
+  fi
+
+  lagging=0
+  if [ -n "${LIST_LAG:-}" ] && [ -f "$CREATED_FLAG" ]; then
+    seen="$(cat "$LAG_SEEN" 2>/dev/null || printf '0')"
+    [ "$seen" -lt "$LIST_LAG" ] && lagging=1
+  fi
+
+  # the html_url lookup — by construction only this run's own release matches
+  case "$*" in
+    *html_url*)
+      # one attempt consumed; the tag lookup above it in the same attempt reads
+      # this counter without advancing it
+      [ "$lagging" = 1 ] && printf '%s\n' "$((seen + 1))" > "$LAG_SEEN"
+      if [ "$lagging" = 0 ] && [ "$state" = "draft" ]; then
+        printf '%s\n' "4242 true"
+      fi
+      exit 0
+      ;;
   esac
+
+  # the tag lookup — this run's release, plus anything else on the same tag
+  if [ "$lagging" = 0 ]; then
+    case "$state" in
+      draft) printf '%s\n' "4242 true" ;;
+      published) printf '%s\n' "4242 false" ;;
+    esac
+  fi
   [ -n "${EXTRA:-}" ] && printf '%s\n' "$EXTRA"
   # a release that appears only AFTER `gh release create` has run — the
   # interleaving the post-create checks exist for
@@ -191,6 +233,9 @@ if [ "$1" = "release" ] && [ "$2" = "create" ]; then
     *" --draft "*) printf 'draft\n' > "$STATE" ;;
     *) printf 'published\n' > "$STATE" ;;   # the pre-fix behaviour
   esac
+  # the real `gh` prints the release url, and a draft's url carries the
+  # per-release `untagged-<hash>` slug the step addresses it by
+  printf 'https://example.invalid/releases/tag/untagged-4242\n'
   exit 0
 fi
 
@@ -208,11 +253,19 @@ exit 0
 STUB
 chmod +x "$WORK/bin/gh"
 
+# The retry under test backs off between attempts. Stubbing `sleep` keeps the
+# suite instant without giving the workflow a test-only knob to honour — and
+# recording each call keeps the backoff itself assertable, so deleting it is
+# not a silent change.
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$SLEEP_LOG"\nexit 0\n' > "$WORK/bin/sleep"
+chmod +x "$WORK/bin/sleep"
+
 export PATH="$WORK/bin:$PATH"
 export GITHUB_REPOSITORY="owner/talos-platform-base"
 export GH_TOKEN="stub-token-not-a-credential"
 export LOG="$WORK/log" STATE="$WORK/state" UPLOADED="$WORK/uploaded"
-export CREATED_FLAG="$WORK/created"
+export CREATED_FLAG="$WORK/created" LAG_SEEN="$WORK/lag-seen"
+export SLEEP_LOG="$WORK/slept" FAIL_SEEN="$WORK/fail-seen"
 
 cd "$WORK/repo"
 printf '# Changelog\n\n## v9.9.9 — 2026-01-01\n\nthe section for this tag\n\n## v9.9.8 — 2025-12-01\n\nolder\n' > CHANGELOG.md
@@ -236,7 +289,8 @@ run_create() {
   printf '%s\n' "$start_state" > "$STATE"
   : > "$LOG"
   : > "$UPLOADED"
-  rm -f "$CREATED_FLAG"
+  rm -f "$CREATED_FLAG" "$LAG_SEEN" "$FAIL_SEEN"
+  : > "$SLEEP_LOG"
   export TAG="$tag"
   rm -f _release/*
   touch "_release/talos-platform-base-${tag}.tar.gz" "_release/checksums.txt" \
@@ -245,14 +299,16 @@ run_create() {
   bash "$WORK/create.sh" > "$WORK/out" 2>&1
 }
 
-unset EXTRA DROP
+unset EXTRA DROP LIST_LAG LIST_FAIL
 
 # --- 1) no release yet: draft, assets, verified, published last -------------
 if run_create none v9.9.9; then
   order="$(call_order)"
-  [ "$order" = "LCLAP" ] \
+  # two listings per attempt: the tag lookup that runs the guards, then the
+  # html_url lookup that identifies this run's own release
+  [ "$order" = "LCLLAP" ] \
     && ok "no release yet → create draft, verify its assets, publish last ($order)" \
-    || note "expected call order LCLAP (list, create, list, assets, publish), got '$order'"
+    || note "expected call order LCLLAP (list, create, list, locate, assets, publish), got '$order'"
   grep -q -- '--draft' "$LOG" \
     && ok "the release is created as a draft" \
     || note "the release was not created with --draft — a published release refuses assets"
@@ -272,12 +328,123 @@ else
   note "the create step failed on a tag with no existing release: $(cat "$WORK/out")"
 fi
 
+# --- 1b) the listing lags behind the create: retried, not fatal --------------
+#
+# v14.0.0: `gh release create` returned, the listing reported nothing, and the
+# step exited with the artifact already pushed, signed, attested and tagged
+# `:latest` — a half-released tag whose documented recovery is expensive
+# (#276). The draft is the same object either way, so the only correct
+# response to "not there yet" is to look again.
+export LIST_LAG=2
+if run_create none v9.9.9; then
+  ok "a listing that lags the create is retried until the draft appears"
+  [ "$(cat "$STATE")" = "published" ] \
+    && ok "the release still ends up published after the lag" \
+    || note "the release was left in state '$(cat "$STATE")' after a listing lag"
+  grep -q 'releases/4242' "$LOG" \
+    && ok "the publish call targets the release this run created" \
+    || note "the publish call did not target the created release: $(grep 'PATCH' "$LOG" || echo none)"
+  [ -s "$SLEEP_LOG" ] \
+    && ok "the retry actually backs off between attempts" \
+    || note "the retry made its attempts without waiting, so it cannot outlast a real lag"
+else
+  note "a listing that had not caught up with the create failed the step, leaving the tag half-released: $(cat "$WORK/out")"
+fi
+unset LIST_LAG
+
+# --- 1c) ... but the retry is bounded, and publishes nothing when it runs out
+export LIST_LAG=99
+if run_create none v9.9.9; then
+  note "the step published a release it never located — the PATCH aimed at nothing"
+else
+  ok "a draft that never appears exhausts the retry and fails"
+  grep -q -- '--method PATCH' "$LOG" \
+    && note "the step published a release anyway after failing to locate the draft" \
+    || ok "nothing is published when the draft cannot be located"
+  grep -q 'is not readable as exactly one draft release' "$WORK/out" \
+    && ok "the exhausted retry fails with the missing-draft error, not a masked one" \
+    || note "the exhausted retry failed for an unstated reason: $(cat "$WORK/out")"
+fi
+unset LIST_LAG
+
+# --- 1d) a published release is NOT waited out ------------------------------
+#
+# Retrying absence must not turn into retrying a real interleaving: more
+# waiting cannot unpublish a release, and the step has to refuse rather than
+# sample until the listing happens to omit it.
+export LIST_LAG=2 EXTRA_AFTER="4243 false"
+if run_create none v9.9.9; then
+  note "a release published mid-run was ignored once the listing also lagged"
+else
+  ok "a published release is refused even while the listing is lagging"
+  grep -q -- '--method PATCH' "$LOG" \
+    && note "the step published something anyway after detecting the interleaving" \
+    || ok "nothing is published when the interleaving is detected"
+  [ -z "$(cat "$SLEEP_LOG")" ] \
+    && ok "the published release is refused on first sight, not waited out" \
+    || note "the step slept before refusing a published release"
+fi
+unset LIST_LAG EXTRA_AFTER
+
+# --- 1e) a FOREIGN draft while ours lags: never published -------------------
+#
+# The attack the `html_url` lookup exists for. A second writer — another
+# maintainer drafting notes in the UI, another workflow, a stolen token —
+# creates a draft on the tag about to be pushed, with the three expected asset
+# NAMES. The listing then shows their draft while ours has not landed yet.
+# Addressing the release by tag would publish theirs under this repository's
+# release identity, immutably, and exit 0.
+export LIST_LAG=2 EXTRA_AFTER="4243 true"
+if run_create none v9.9.9; then
+  grep -q 'releases/4243' "$LOG" \
+    && note "the step published a draft this run did not create — foreign content shipped as an official release" \
+    || ok "the step published only the release it created, despite a foreign draft being visible first"
+else
+  ok "a foreign draft beside ours is refused rather than published"
+  grep -q -- '--method PATCH' "$LOG" \
+    && note "the step published something after detecting a second draft" \
+    || ok "nothing is published when a second draft is present"
+fi
+unset LIST_LAG EXTRA_AFTER
+
+# --- 1e2) a second draft appears with no lag: refused, and named as such ----
+#
+# The `html_url` lookup already keeps the step off the foreign draft, so this
+# refusal is defence in depth — but it is also the state the recovery table
+# keys on ("Two drafts for the tag → delete them by hand"), and that row is
+# only reachable if the message says so.
+export EXTRA_AFTER="4243 true"
+if run_create none v9.9.9; then
+  note "a second draft appearing beside ours was published over rather than refused"
+else
+  ok "a second draft for the tag is refused after the create too"
+  grep -qi 'more than one draft' "$WORK/out" \
+    && ok "the post-create refusal names the two-draft state the recovery table keys on" \
+    || note "the post-create two-draft refusal does not match the recovery table's row: $(cat "$WORK/out")"
+  grep -q -- '--method PATCH' "$LOG" \
+    && note "the step published something despite two drafts" \
+    || ok "nothing is published when a second draft appears after the create"
+fi
+unset EXTRA_AFTER
+
+# --- 1f) the listing itself errors: retried, not fatal ----------------------
+export LIST_FAIL=2
+if run_create none v9.9.9; then
+  ok "a listing that cannot be read at all is retried rather than half-releasing the tag"
+  [ "$(cat "$STATE")" = "published" ] \
+    && ok "the release still ends up published after a failed listing" \
+    || note "the release was left in state '$(cat "$STATE")' after a failed listing"
+else
+  note "a transient listing error failed the step, leaving the tag half-released: $(cat "$WORK/out")"
+fi
+unset LIST_FAIL
+
 # --- 2) leftover draft from a failed run: discarded and rebuilt --------------
 if run_create draft v9.9.9; then
   order="$(call_order)"
-  [ "$order" = "LDCLAP" ] \
+  [ "$order" = "LDCLLAP" ] \
     && ok "leftover draft → discarded, rebuilt, published ($order)" \
-    || note "expected call order LDCLAP on a leftover draft, got '$order'"
+    || note "expected call order LDCLLAP on a leftover draft, got '$order'"
 else
   note "the create step failed on a leftover draft, so a re-run cannot recover: $(cat "$WORK/out")"
 fi
@@ -401,7 +568,7 @@ fi
 [ "$rc" -eq 0 ] || exit 1
 # A floor, not a description: narrowing the suite has to fail here rather than
 # quietly report a smaller number.
-if [ "$scenarios" -lt 25 ]; then
+if [ "$scenarios" -lt 47 ]; then
   printf 'FAIL: only %d scenarios ran; the suite has been narrowed\n' "$scenarios" >&2
   exit 1
 fi

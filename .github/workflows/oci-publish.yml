@@ -314,6 +314,16 @@ jobs:
               --jq '.[] | select(.tag_name == env.TAG) | "\(.id) \(.draft)"'
           }
 
+          # The release THIS run created, addressed by the `html_url` that
+          # `gh release create` printed. A draft's url carries a per-release
+          # `untagged-<hash>` slug, so it identifies one release object where
+          # `tag_name` identifies a set — and a set is what lets an
+          # inconsistent listing hand back somebody else's draft.
+          find_created() {
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+              --jq '.[] | select(.html_url == env.CREATE_URL) | "\(.id) \(.draft)"'
+          }
+
           # Names as GitHub stores them: it rewrites every character outside
           # [A-Za-z0-9._-] in an asset filename, so a tag carrying one would
           # make a correct release compare unequal.
@@ -346,28 +356,63 @@ jobs:
             gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${existing%% *}"
           fi
 
-          gh release create "$TAG" \
+          CREATE_URL="$(gh release create "$TAG" \
             --draft \
             --title "$TAG" \
             "${notes_args[@]}" \
             "${prerelease_args[@]}" \
-            "${assets[@]}"
+            "${assets[@]}")"
+          export CREATE_URL
+          if [ -z "$CREATE_URL" ]; then
+            echo "::error::gh release create printed no release url for ${TAG}; the release it made cannot be identified and nothing will be published"
+            exit 1
+          fi
 
-          created="$(find_releases)"
-          # The draft LINE, not the first line: the listing can carry more than
-          # one release for the tag, so `${created%% *}` would happily hand back
-          # the id of a published one that appeared in the meantime — and the
-          # PATCH below would then aim at it. Both checks are re-applied here
-          # for that reason, not out of symmetry with the block above.
-          if printf '%s\n' "$created" | grep -q ' false$'; then
-            echo "::error::a published release for ${TAG} appeared while this job was creating its draft; refusing to publish anything. Recovery: knowledge/workflows/release-process.md, section \"When the publish job fails\"."
+          # The listing is eventually consistent with the create above: a probe
+          # against this repository's own API created a draft and read it back
+          # by id immediately, and the listing did not report it — the same
+          # window that left v14.0.0 with its artifact, signature, attestations
+          # and `:latest` in place and no published release (#276).
+          #
+          # Retried: ONLY a listing that does not yet report the release this
+          # run created, including one that could not be read at all. The
+          # lookup is by `html_url`, so re-sampling can return this run's draft
+          # or nothing — never a different release.
+          #
+          # Decided on the spot, because re-sampling a SET would let an
+          # inconsistent listing pick the wrong member: a published release for
+          # the tag, and a second draft beside ours. Waiting improves neither.
+          created=""
+          mine=""
+          for attempt in 1 2 3 4 5; do
+            if ! created="$(find_releases)"; then
+              created=""
+              echo "the release listing for ${TAG} could not be read (attempt ${attempt})"
+            fi
+            if printf '%s\n' "$created" | grep -q ' false$'; then
+              echo "::error::a published release for ${TAG} appeared while this job was creating its draft; refusing to publish anything. Recovery: knowledge/workflows/release-process.md, section \"When the publish job fails\"."
+              exit 1
+            fi
+            # `|| true`: `grep -c` exits 1 on a zero count, and this is a simple
+            # assignment, where `set -e` would take that as the step failing.
+            if [ "$(printf '%s\n' "$created" | grep -c ' true$' || true)" -gt 1 ]; then
+              echo "::error::more than one draft release exists for ${TAG}; discarding one would orphan the others. Delete them by hand, then re-run this workflow."
+              exit 1
+            fi
+            mine="$(find_created || true)"
+            if [ -n "$mine" ]; then
+              break
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              echo "the release listing does not report the draft this run created for ${TAG} yet (attempt ${attempt}); retrying"
+              sleep 2
+            fi
+          done
+          if [ "$(printf '%s\n' "$mine" | grep -c ' true$' || true)" -ne 1 ]; then
+            echo "::error::the draft this run created for ${TAG} (${CREATE_URL}) is not readable as exactly one draft release; found: ${mine:-none}"
             exit 1
           fi
-          if [ "$(printf '%s\n' "$created" | grep -c ' true$')" -ne 1 ]; then
-            echo "::error::expected exactly one draft release for ${TAG} after creating it, found: ${created:-none}"
-            exit 1
-          fi
-          release_id="$(printf '%s\n' "$created" | grep ' true$' | cut -d' ' -f1)"
+          release_id="$(printf '%s\n' "$mine" | cut -d' ' -f1)"
 
           # Asserted on the DRAFT, before the release is published. The draft is
           # still mutable, so a missing asset ends the run with something a
