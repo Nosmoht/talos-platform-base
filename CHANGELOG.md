@@ -792,9 +792,8 @@ under the new version heading; the historical backfill below it stays put.
   (controlplane) and `:684` (worker); a later `var.cluster_endpoint` change
   (a VIP move, a DNS rename, or a control-plane node re-IP on a
   single-control-plane cluster where `cluster_endpoint` is expressed as
-  that node's own IP — the seeder's `api_vip: ""` fallback is exactly this
-  case, and is the strongest evidence this fix closes the #168/#186
-  incident; on a VIP/DNS endpoint a plain node re-IP is correctly inert
+  that node's own IP; on a VIP or DNS endpoint a plain node re-IP is
+  correctly inert
   and does not trigger regeneration) left the resource's own arguments
   unchanged, so it
   never re-read and the module kept emitting the stale `server:`. A new
