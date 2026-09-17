@@ -10,6 +10,54 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 
+- **Changed (BREAKING, MAJOR) — the Cilium floor sets `rollOutCiliumPods: true`,
+  so a Day-2 values change reaches the running agents.** Most Cilium settings
+  land only in the `cilium-config` ConfigMap, and without a pod-template
+  checksum the agent DaemonSet is untouched by such a change: measured on the
+  pinned 1.20.0 chart, `routingMode: tunnel` and `routingMode: native` render a
+  byte-identical pod template, so Argo CD reported the sync as successful while
+  the agents kept the previous configuration. The previous MAJOR opened the
+  Day-2 delivery path for `substrate.cilium.values_override` and thereby made
+  that gap reachable by every value a consumer overrides. The key is set in
+  `tofu/modules/talos-cluster/helm/cilium-values.yaml` and in the Day-2
+  reference values at `kubernetes/bootstrap/cilium/values.yaml`, so the
+  documented copy path does not silently keep the defect.
+  **Who is affected:** an already-bootstrapped consumer with
+  `substrate.cilium.self_management: false` sees nothing move — no `Application`
+  is emitted and the seed render is frozen. A self-managing consumer's emitted
+  `Application` gains the key and the next sync rolls `ds/cilium` once, at the
+  chart's `maxUnavailable: 2`. A fresh bootstrap gets a moved seed baseline,
+  where the annotation is inert because Talos never updates a manifest it
+  created. On the MULTI-SOURCE arm the key does not reach the cluster at all
+  until the committed module-set values file is regenerated — adopting the tag
+  moves `cilium_self_management_values_digest` first, so the consumer's own
+  digest check goes red before the change lands.
+  **The opt-out is not universal, and the docs say so rather than implying it.**
+  `rollOutCiliumPods: false` in an override wins over the floor on the seed path
+  and on the multi-source arm. On the single-source arm `cilium_values_override`
+  is rejected at plan time, so the floor is final there; that consumer either
+  configures `self_management_values_source` or accepts the roll.
+  **What this retires, and what it does not.** The manual
+  `kubectl -n kube-system rollout restart ds/cilium` that
+  `cilium_hubble_open_metrics` prescribed is narrowed, not deleted: it still
+  applies after an opt-out, on the frozen seed, on the multi-source arm before
+  regeneration, and — unchanged — in the break-glass procedure, where the
+  operator applies by hand from a render that may predate this tag. Timing stays
+  operator-owned on the module's side, because the emitted `Application` still
+  carries no `syncPolicy`; a consumer who added `syncPolicy.automated` themselves
+  now gets an unattended roll and `UPGRADING.md` states that explicitly.
+  **Byte-identity, re-scoped rather than retracted.** The previous MAJOR's
+  promise was worded as "byte-for-byte the document the preceding revision
+  emitted". It binds to the INPUT, not to the revision: setting or leaving unset
+  `cilium_self_management_values_source` at one base revision does not move the
+  single-source document. A floor change moves it deliberately, which is what
+  makes this a MAJOR. The golden fixture and the spec scenarios say that now.
+  Bound by `scripts/check-cilium-rollout-pods-key.sh` (offline, rides
+  `task tofu:ci`), a named `cilium_effective_values` assertion in
+  `tests/input-validation.tftest.hcl`, and two render runs in
+  `tests/composition.tftest.hcl` — one asserting the annotation is stamped, one
+  asserting an override removes it again. Closes #270.
+
 - **Changed (BREAKING, MAJOR) — `cilium_values_override` reaches Day-2, and the
   API-server endpoint moves to typed inputs.** The override reached exactly one
   place, the create-only bootstrap seed, and enabling `cilium_self_management`

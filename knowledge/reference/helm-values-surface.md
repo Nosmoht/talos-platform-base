@@ -3,7 +3,7 @@ type: reference
 title: Helm Value Surface — ArgoCD and Cilium
 description: Which Helm values a consumer cluster can actually set for the two substrate charts, on which of the five delivery paths, in which lifecycle phase — and the three places where the surface closes.
 tags: [argocd, cilium, helm, values, consumer-contract, delivery-paths]
-generated: { by: human:nosmoht, at: "2026-09-09T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-16T00:00:00Z" }
 sources:
   - resource: tofu/modules/talos-cluster/main.tf
   - resource: tofu/modules/talos-cluster/variables.tf
@@ -213,9 +213,23 @@ override.
 emitted Application is MULTI-SOURCE and the override is the second of two
 ordered `helm.valueFiles` entries, so Helm merges it over the module-set layer
 at arbitrary depth. Unset, the single-source shape and its inline
-`valuesObject` are unchanged. The hard reject survives in a narrower form: a
-non-empty override with NO values source is still rejected, because the
-Application would fall back to the single-source shape and drop it silently.
+`valuesObject` are unchanged BY THAT INPUT — a floor change still moves them for
+every consumer on that arm, and issue #270 did exactly that. The hard reject
+survives in a narrower form: a non-empty override with NO values source is still
+rejected, because the Application would fall back to the single-source shape and
+drop it silently. That reject is also why the single-source arm has NO opt-out
+from a floor key: the consumer there has no override file at all.
+
+**Delivery is not effect, and that half was closed separately.** Reaching the
+`cilium-config` ConfigMap is not the same as reaching the running agents: most
+Cilium settings render only into that ConfigMap, so without the chart's
+pod-template checksum the agent DaemonSet is untouched and the agents keep the
+previous configuration while the sync reports success — measured on the pinned
+1.20.0 chart, `routingMode: tunnel` and `native` render a byte-identical pod
+template. CLOSED by issue #270 (2026-09-16): the floor and the Day-2 reference
+values both set `rollOutCiliumPods: true`. The opt-out
+(`rollOutCiliumPods: false` in an override) exists on the seed path and on the
+multi-source arm only.
 
 **Why a Multi-Source Application, and not a `valueFiles` entry on the existing
 one.** Verified against Argo CD `v3.5.2` source before the shape was built:

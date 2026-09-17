@@ -527,39 +527,6 @@ run "cilium_seed_render_carries_observability_markers" {
     ])
     error_message = "chart-key spelling: cilium_hubble_open_metrics must set the rendered cilium-config enable-hubble-open-metrics=true — if this is the only red assert, the Helm path `hubble.metrics.enableOpenMetrics` is misspelled in cilium-values.tf and the input is a silent no-op"
   }
-
-  # The agent DaemonSet must be byte-identical to its no-OpenMetrics form: the
-  # chart emits no config checksum for this key, so enabling it does NOT roll the
-  # pods. That is a documented operational obligation (a rollout restart is
-  # required to make the exposition-format switch effective — see variables.tf and
-  # UPGRADING.md), and this assert is what keeps the claim true across chart bumps:
-  # if a future chart DOES add a checksum annotation, this goes red and the docs
-  # need updating rather than silently misleading an operator.
-  # Existence anchor for the universal assert below. That one is an alltrue() over
-  # an implication, which an EMPTY match set satisfies — a chart rename or a
-  # mis-split would make it assert nothing while staying green. Every other assert
-  # in this run is anytrue() and therefore self-anchoring; this one is not.
-  assert {
-    condition = anytrue([
-      for doc in split("---", data.helm_template.cilium[0].manifest) : (
-        try(yamldecode(doc).kind, "") == "DaemonSet" &&
-        try(yamldecode(doc).metadata.name, "") == "cilium"
-      )
-    ])
-    error_message = "anchor for the no-roll assert: the render must contain a DaemonSet named `cilium` — without this the universal assert below is satisfied by an empty match set and proves nothing"
-  }
-  assert {
-    condition = alltrue([
-      for doc in split("---", data.helm_template.cilium[0].manifest) : (
-        try(yamldecode(doc).kind, "") != "DaemonSet" ||
-        try(yamldecode(doc).metadata.name, "") != "cilium" ||
-        !anytrue([
-          for k in keys(try(yamldecode(doc).spec.template.metadata.annotations, {})) : strcontains(k, "checksum")
-        ])
-      )
-    ])
-    error_message = "no-roll claim: the cilium DaemonSet pod template must carry no checksum annotation — if the chart gained one, cilium_hubble_open_metrics now DOES roll the agents and both variables.tf and UPGRADING.md must stop telling operators to restart manually"
-  }
 }
 
 # The negative half of the two marker/spelling oracles above, and the chart-default
@@ -607,6 +574,70 @@ run "cilium_seed_render_metric_inputs_default_off" {
       )
     ])
     error_message = "chart-default sentinel: with Hubble on and cilium_hubble_open_metrics off, the rendered enable-hubble-open-metrics must be \"false\" — if the chart default flips, the ON-state spelling oracle turns green-forever and stops discriminating"
+  }
+}
+
+# Agent-roll binding for the floor's rollOutCiliumPods (issue #270). Most Cilium
+# settings land only in the cilium-config ConfigMap, so without the checksum
+# annotation a Day-2 values change syncs green while the agents keep the old
+# configuration. The floor sets the key; these two runs are what keep the claim
+# every operator-facing document now rests on true across chart bumps.
+#
+# Own runs rather than an assert appended to an existing one: the property holds
+# for EVERY render regardless of any observability input, so a failure must name
+# helm/cilium-values.yaml and not whichever run it was boarding.
+#
+# Red-green: drop rollOutCiliumPods from helm/cilium-values.yaml -> the ON run
+# fails. Note the OFF run below is what keeps the ON run discriminating: a chart
+# that started emitting the annotation unconditionally, or flipped the value's
+# default to true, would leave the ON run green-forever with the floor key gone.
+run "cilium_seed_render_rolls_agents_on_configmap_change" {
+  command = plan
+  variables {
+    deploy_cilium = true
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "DaemonSet" &&
+        try(yamldecode(doc).metadata.name, "") == "cilium" &&
+        contains(
+          keys(try(yamldecode(doc).spec.template.metadata.annotations, {})),
+          "cilium.io/cilium-configmap-checksum",
+        )
+      )
+    ])
+    error_message = "roll claim: the cilium DaemonSet pod template must carry cilium.io/cilium-configmap-checksum — without it a ConfigMap-only Day-2 change syncs green and never reaches the agents, and every document that stopped telling operators to restart manually (variables.tf, README.md, schemas/cluster.schema.json, UPGRADING.md) is now wrong"
+  }
+}
+
+# The OFF state, which is also the opt-out UPGRADING.md documents for the seed
+# and multi-source arms. An override is the LAST values layer on the seed path
+# (main.tf), so it wins over the floor.
+run "cilium_seed_render_roll_is_overridable" {
+  command = plan
+  variables {
+    deploy_cilium          = true
+    cilium_values_override = "rollOutCiliumPods: false\n"
+    nodes = {
+      cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] },
+    }
+  }
+  assert {
+    condition = anytrue([
+      for doc in split("---", data.helm_template.cilium[0].manifest) : (
+        try(yamldecode(doc).kind, "") == "DaemonSet" &&
+        try(yamldecode(doc).metadata.name, "") == "cilium" &&
+        !contains(
+          keys(try(yamldecode(doc).spec.template.metadata.annotations, {})),
+          "cilium.io/cilium-configmap-checksum",
+        )
+      )
+    ])
+    error_message = "opt-out: rollOutCiliumPods: false in cilium_values_override must remove the pod-template checksum annotation — if it does not, the opt-out UPGRADING.md documents for the seed and multi-source arms does not exist, and the run above has stopped discriminating"
   }
 }
 

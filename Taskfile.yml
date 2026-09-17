@@ -249,6 +249,16 @@ tasks:
     desc: "CI fence: the Cilium operator replica count keeps its chart key spelling on both sides (computed contributor + floor), and `operator` stays a single merge term"
     cmd: scripts/check-cilium-operator-replicas-key.sh
 
+  tofu:check:cilium-rollout-pods-key:
+    # Full rationale in scripts/check-cilium-rollout-pods-key.sh. Same class as
+    # the operator-replicas fence above: Helm discards an unrecognised or
+    # mis-nested `rollOutCiliumPods` silently, and the rendered agent DaemonSet
+    # then carries no configmap-checksum annotation — so a Day-2 values change
+    # syncs green and never reaches the running agents (issue #270), with every
+    # offline test still passing.
+    desc: "CI fence: rollOutCiliumPods: true stays a top-level key in the Cilium floor and in the Day-2 reference values"
+    cmd: scripts/check-cilium-rollout-pods-key.sh
+
   tofu:check:provider-document-kinds-bites:
     # The fence below has one exit code for many assertions and reads text an
     # external provider renders, so an assertion that stopped matching would
@@ -306,7 +316,7 @@ tasks:
         -filter=tests/apply-mode.tftest.hcl
 
   tofu:ci:
-    desc: "Full local tofu validation: fmt:check + validate + vendored OCI module validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + check:provider-document-kinds-bites + check:provider-document-kinds + test:offline — mirrors CI; provider init may use the registry, no live Image Factory"
+    desc: "Full local tofu validation: fmt:check + validate + vendored OCI module validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + check:cilium-rollout-pods-key + check:provider-document-kinds-bites + check:provider-document-kinds + test:offline — mirrors CI; provider init may use the registry, no live Image Factory"
     cmds:
       - task: tofu:fmt:check
       - task: tofu:validate
@@ -320,6 +330,7 @@ tasks:
       - task: tofu:check:node-projection-wiring
       - task: tofu:check:shim-key-parity
       - task: tofu:check:cilium-operator-replicas-key
+      - task: tofu:check:cilium-rollout-pods-key
       - task: tofu:check:provider-document-kinds-bites
       - task: tofu:check:provider-document-kinds
       - task: tofu:test:offline

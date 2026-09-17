@@ -1174,14 +1174,17 @@ variable "cilium_hubble_open_metrics" {
     exposition format of an endpoint that exports nothing. A plan-time check
     warns about both conditions.
 
-    NO ROLLING RESTART: unlike cilium_hubble_enabled, this changes ONLY the
-    cilium-config ConfigMap (enable-hubble-open-metrics). Verified against the
-    pinned chart: the cilium DaemonSet pod template is byte-identical with the
-    flag on and off, and the chart emits no checksum/config annotation. So
-    ArgoCD reports Synced/Healthy while running agents keep the OLD exposition
-    format, and the switch would otherwise land at the next unrelated restart —
-    a scrape-format change at an unpredictable time. Make it effective with
-    `kubectl -n kube-system rollout restart ds/cilium`. See UPGRADING.md.
+    ROLLS THE AGENTS, on the paths where the chart re-renders. This changes only
+    the cilium-config ConfigMap (enable-hubble-open-metrics), but the floor sets
+    rollOutCiliumPods: true (issue #270), so the chart stamps a ConfigMap
+    checksum into the agent pod template and the change lands on the next sync.
+    A manual `kubectl -n kube-system rollout restart ds/cilium` is STILL needed
+    in ONE case: a consumer who set rollOutCiliumPods: false in their override,
+    where the ConfigMap changes and the pod template deliberately does not. On
+    the frozen seed and on the multi-source arm before its values file is
+    regenerated, the live ConfigMap has not changed at all — a restart there
+    reloads the same configuration, so deliver the change first (see the
+    seed-freeze note above). UPGRADING.md separates the two.
   EOT
   type        = bool
   default     = false

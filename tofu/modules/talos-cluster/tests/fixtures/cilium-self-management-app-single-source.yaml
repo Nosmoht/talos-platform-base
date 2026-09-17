@@ -1,16 +1,18 @@
 # GOLDEN — the SINGLE-SOURCE emitted Cilium Application, byte for byte.
 #
 # Why it exists: the values-source input of issue #265 makes the module emit two
-# different manifest schemas, and the compatibility promise of that MAJOR release
-# is that leaving the input unset keeps the emitted document unchanged. Presence
-# and absence assertions cannot carry that promise — a field added, renamed or
-# reordered anywhere else satisfies every one of them.
+# different manifest schemas, and the promise is that SETTING OR LEAVING UNSET
+# `cilium_self_management_values_source`, at one base revision, does not move the
+# single-source document. Presence and absence assertions cannot carry that — a
+# field added, renamed or reordered anywhere else satisfies every one of them.
 #
-# PROVENANCE: captured by rendering this fixture module at the commit BEFORE the
-# values-source change (git worktree at that commit, `tofu output -raw
-# cilium_self_management_app`) with the input set the binding run uses, and the
-# post-change tree reproduces it byte for byte. So this file is evidence about
-# the previous release, not a snapshot of the change's own output.
+# PROVENANCE: the baseline moved DELIBERATELY at issue #270, which added
+# `rollOutCiliumPods: true` to helm/cilium-values.yaml so a Day-2 values change
+# reaches the running agents. Before that, this file was captured at the commit
+# preceding the values-source change and was evidence about the PREVIOUS release;
+# it is no longer. It is now a change-detector for byte moves in the single-source
+# document, captured from this tree — which is why the named per-key assertions in
+# tests/input-validation.tftest.hcl, and not this file, are what state the facts.
 #
 # Input set (tests/input-validation.tftest.hcl, run
 # "cilium_self_management_single_source_arm_is_unchanged"): the file's global
@@ -61,6 +63,7 @@
         "kubeProxyReplacement": true
         "operator":
           "replicas": 1
+        "rollOutCiliumPods": true
         "routingMode": "tunnel"
         "securityContext":
           "capabilities":
