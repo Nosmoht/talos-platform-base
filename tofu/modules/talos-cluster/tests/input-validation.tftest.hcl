@@ -263,6 +263,16 @@ run "cilium_all_off_default_carries_no_observability_keys" {
     condition     = output.cilium_effective_values.operator.replicas == 1
     error_message = "default-off: the floor's operator.replicas=1 must survive into cilium_effective_values when no observability input is set"
   }
+  # The named predicate for issue #270. The golden-fixture comparison further
+  # down also moves on this key, but it reports only THAT a byte moved — never
+  # which, nor whether the key is one the chart recognises — and refreshing the
+  # fixture silences it in one line. This assert names the key, and
+  # scripts/check-cilium-rollout-pods-key.sh is the static gate a fixture refresh
+  # cannot silence; the render layer is bound in tests/composition.tftest.hcl.
+  assert {
+    condition     = try(output.cilium_effective_values.rollOutCiliumPods, null) == true
+    error_message = "default-off: the floor's rollOutCiliumPods=true must survive into cilium_effective_values — without it a Day-2 values change reaches the emitted Application's cilium-config and never the running agents"
+  }
   # The single-node arm of the node-count-derived replicas leg. This fixture
   # declares ONE node, so local.cilium_operator_values is empty and the computed
   # layer must emit NO `operator` key at all — that absence is what leaves the
@@ -1671,11 +1681,14 @@ run "override_digest_is_empty_without_an_override" {
   }
 }
 
-# Negative-space control for the arm switch. The single-source shape is what
-# every existing consumer has, and it must stay byte-identical: no sources[], no
-# annotation, and the module-set layer still inline in valuesObject. Red-green:
-# key the bifurcation on the override's content instead of on the values-source
-# input and this run fails the moment an override is set.
+# Negative-space control for the arm switch. The single-source shape is what a
+# consumer who configures no values source gets, and setting or leaving unset
+# `cilium_self_management_values_source` must not move it AT ONE BASE REVISION:
+# no sources[], no annotation, and the module-set layer still inline in
+# valuesObject. It is NOT a promise across revisions — a floor change moves this
+# document on purpose, and issue #270 did (rollOutCiliumPods). Red-green: key the
+# bifurcation on the override's content instead of on the values-source input and
+# this run fails the moment an override is set.
 run "cilium_self_management_single_source_arm_is_unchanged" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }
@@ -1701,14 +1714,16 @@ run "cilium_self_management_single_source_arm_is_unchanged" {
     error_message = "single-source arm: cilium_self_management_values must be empty — the module-set layer rides inline in valuesObject, there is no file to commit"
   }
 
-  # Whole-document identity against the golden captured at the pre-change commit.
-  # The presence/absence assertions above name the facts a reader cares about;
-  # this one is what actually carries the MAJOR-release promise, because it fails
-  # on any byte the others do not look at. yamlencode's own output is stable for a
-  # given value, so this is a value comparison, not a formatting one.
+  # Whole-document identity against the golden. The presence/absence assertions
+  # above name the facts a reader cares about; this one fails on any byte the
+  # others do not look at, which is what makes an unnoticed manifest move
+  # impossible. yamlencode's own output is stable for a given value, so this is a
+  # value comparison, not a formatting one. It detects MOVEMENT and certifies no
+  # key's correctness, and a fixture refresh silences it — the per-key assertions
+  # and scripts/check-cilium-rollout-pods-key.sh are what survive that.
   assert {
     condition     = output.cilium_self_management_app == replace(file("tests/fixtures/cilium-self-management-app-single-source.yaml"), "/(?m)^#.*\n/", "")
-    error_message = "single-source arm: the emitted Application must be BYTE-IDENTICAL to tests/fixtures/cilium-self-management-app-single-source.yaml, the document the previous release emitted for this input set. A byte moved — decide whether that is a consumer-visible change for CHANGELOG/UPGRADING before refreshing the fixture."
+    error_message = "single-source arm: the emitted Application must be BYTE-IDENTICAL to tests/fixtures/cilium-self-management-app-single-source.yaml for this input set. A byte moved — every single-source consumer's manifest moved with it, so decide whether that belongs in CHANGELOG/UPGRADING and the next MAJOR before refreshing the fixture."
   }
 }
 

@@ -336,7 +336,7 @@ provider "talos" {}
 | `cilium_hubble_enabled` | bool | `false` | enable Hubble flow/metrics observability. **Forces `hubble.tls.enabled=false`** (metrics-only scope — no Relay/UI; the Hubble metrics endpoint is independent of observer-API TLS since Cilium 1.16). Default off. |
 | `cilium_hubble_metrics` | list(string) | `[]` | Hubble metrics to export (`hubble.metrics.enabled`), e.g. `["dns", "drop", "tcp"]`. Scrape wiring (ServiceMonitor/PodMonitor) stays consumer-side. An empty list with `cilium_hubble_enabled=true` is a valid **half-on** state (server on, no metrics exported). Entries must carry no newline and no `---`; the guard is an exclusion rule rather than an allowlist because Hubble's context syntax (`flow:sourceContext=pod;destinationContext=pod`) uses punctuation freely. |
 | `cilium_agent_metric_overrides` | list(string) | `[]` | agent metric **delta** list (`prometheus.metrics`): `+name` adds a metric to the chart's default set, `-name` removes one — NOT a replacement of that set, and unrelated to `cilium_values_override` despite the name. Entries must match `^[+-][a-zA-Z_][a-zA-Z0-9_]*$`; the chart renders them raw into `cilium-config`, which is baked into the machine config. **Warns** (plan-time `check`, not a rejection) when `cilium_agent_metrics` is off. |
-| `cilium_hubble_open_metrics` | bool | `false` | export the Hubble metrics endpoint in OpenMetrics format (`hubble.metrics.enableOpenMetrics`). **No DaemonSet roll**: only the `cilium-config` ConfigMap changes, so a running cluster keeps the old exposition format until `kubectl -n kube-system rollout restart ds/cilium`. **Warns** when `cilium_hubble_enabled` is off. |
+| `cilium_hubble_open_metrics` | bool | `false` | export the Hubble metrics endpoint in OpenMetrics format (`hubble.metrics.enableOpenMetrics`). Changes only the `cilium-config` ConfigMap, but the floor's `rollOutCiliumPods: true` makes the chart roll the agents on the next sync — a manual `kubectl -n kube-system rollout restart ds/cilium` is needed only after opting out with `rollOutCiliumPods: false` (see `variables.tf`; on the frozen seed and the un-regenerated multi-source arm the change is undelivered, not unapplied). **Warns** when `cilium_hubble_enabled` is off. |
 | `cilium_self_management` | bool | `false` | **opt-in**: emit a Cilium ArgoCD `Application` (module OUTPUT only — see `cilium_self_management_app` — never applied by the module) as the Day-2 delivery path. Requires `deploy_argocd=true` AND `deploy_cilium=true`. **HARD-REJECTED at plan time** with a non-empty `cilium_values_override` and no `cilium_self_management_values_source` — the emitted Application would then be single-source and silently drop the override. See the Cilium Self-Management section below. |
 | `cilium_self_management_project` | string | `"default"` | ArgoCD `AppProject` the emitted Application targets. Default `"default"` (the always-present permissive project) — scope to a dedicated project for hardening (see below). |
 | `cilium_self_management_values_source` | object | `null` | the git source the emitted Day-2 Application reads its Helm values layers from: `{repo_url, revision, values_path, override_path}`. `null` keeps today's SINGLE-source shape (module-set layer inline in `valuesObject`). Set it and the Application becomes **MULTI-SOURCE**: `sources[0]` is a `ref` source for that repo, `sources[1]` the chart with two ordered `valueFiles` — the `cilium_self_management_values` output first, `cilium_values_override` second, so **Helm** merges them and the consumer's layer wins at arbitrary depth. Required with a non-empty override. Paths are **normalized** repo-root-relative (no leading `/`, no `..`, `.` or empty segment, and the two must differ — `./x` beside `x` names one file); `repo_url` must be a git remote form ArgoCD resolves (`https://`, `ssh://user@host[:port]/path`, `git@host:path`) with no embedded password (an SSH username is fine); pin `revision` rather than tracking a branch tip. A scoped `cilium_self_management_project` must list BOTH this repo and `cilium_chart_repository` in `sourceRepos` — and the module **warns** when a values source is set while the project is still `"default"`, whose `sourceRepos: ['*']` accepts any repo the manifest names. The file at `override_path` is read as a PLAIN Helm values document: ArgoCD decrypts nothing there. |
@@ -651,13 +651,16 @@ layer. Two things about them are easy to get wrong:
   without it — but a consumer may enable the prerequisite through
   `cilium_values_override`, which the module cannot introspect. A hard rejection
   would refuse a configuration that works, so these are plan-time `check` blocks.
-- **`cilium_hubble_open_metrics` does not restart anything.** It changes only the
-  `cilium-config` ConfigMap; the agent DaemonSet's pod template is byte-identical
-  either way and the chart emits no config checksum. ArgoCD reports
-  Synced/Healthy while the running agents keep serving the previous exposition
-  format. Finish the change with
-  `kubectl -n kube-system rollout restart ds/cilium`, or the scrape format flips
-  at the next unrelated restart instead.
+- **`cilium_hubble_open_metrics` rolls the agents on the re-rendering paths.**
+  It changes only the `cilium-config` ConfigMap, but the floor sets
+  `rollOutCiliumPods: true`, so the chart stamps a ConfigMap checksum into the
+  pod template and the change lands on the next sync. A manual
+  `kubectl -n kube-system rollout restart ds/cilium` is still required in ONE
+  case — an override setting `rollOutCiliumPods: false`, where the ConfigMap
+  changes and the pod template deliberately does not. On the frozen seed and on
+  the multi-source arm before its values file is regenerated, the live ConfigMap
+  has not changed at all, so a restart reloads the same configuration: deliver
+  the change first.
 
 **Operator replicas: derived from the node count, pinnable with
 `cilium_operator_replicas`.** The same computed layer emits `operator.replicas: 2`
@@ -722,8 +725,10 @@ Requires **OpenTofu ≥ 1.9** (cross-variable `validation` blocks).
 
 - **unset (default)** — a SINGLE-source `Application` whose
   `spec.source.helm.valuesObject` carries the module-set layer (floor ⊕
-  computed) inline. `cilium_values_override` does not reach it. Byte-identical
-  to what the module emitted before this input existed.
+  computed) inline. `cilium_values_override` does not reach it — and is rejected
+  at plan time on this arm, so the module-set layer is final here. Setting or
+  leaving this input unset does not move this document at a given base revision;
+  a floor change does, deliberately, and is a MAJOR release.
 - **set** — a MULTI-SOURCE `Application`. `sources[0]` is a `ref`-only source
   for the consumer's git repo; `sources[1]` is the chart, whose `valueFiles`
   are the module-set layer FIRST and `cilium_values_override` SECOND. The list
@@ -749,18 +754,25 @@ artifacts, while ArgoCD renders the file at `sources[0].targetRevision`.
 rejected at plan time, because the `local_file` write above would then overwrite
 the override with the module-set layer while every other guard stays green.
 
-**A synced override does not reach the running agents by itself.** Most Cilium
-settings land only in the `cilium-config` ConfigMap, and changing one leaves the
-agent DaemonSet's pod template untouched — measured on the pinned 1.20.0 chart,
+**A synced values change reaches the running agents, because the floor sets
+`rollOutCiliumPods: true`.** Most Cilium settings land only in the
+`cilium-config` ConfigMap, and on a chart without that key changing one leaves
+the agent pod template untouched — measured on the pinned 1.20.0 chart,
 `routingMode: tunnel` and `routingMode: native` render a byte-identical pod
-template. ArgoCD reports the sync as successful while the agents keep the old
-configuration; Cilium exposes `cilium_drift_checker_config_delta` for exactly
-this gap. Either restart deliberately after such a sync
-(`kubectl -n kube-system rollout restart daemonset/cilium`) or set
-`rollOutCiliumPods: true` in your override file, which makes the chart stamp a
-ConfigMap checksum into the pod template so every ConfigMap change rolls the
-agents. The base sets neither — rolling the CNI interrupts the datapath node by
-node, the same reason the emitted `Application` carries no `syncPolicy`.
+template, and ArgoCD reports such a sync as successful while the agents keep the
+old configuration. With the key set the chart stamps a `cilium-config` checksum
+into the pod template, so any ConfigMap-affecting change rolls the agents
+(`maxUnavailable: 2`) — including changes you did not intend to roll for.
+
+Timing stays with you on the module's side: the emitted `Application` carries no
+`syncPolicy`, so the roll follows a sync you trigger. That is a property of what
+this module emits, not of your cluster — if you added `syncPolicy.automated`
+yourself, the roll is unattended.
+
+To decline it, set `rollOutCiliumPods: false` in your override file. That works
+on the seed path and on the multi-source arm. It does **not** work on the
+single-source arm, where an override is rejected at plan time; a consumer there
+either configures `cilium_self_management_values_source` or accepts the roll.
 
 **The override file is NOT confidential.** ArgoCD reads it as a plain Helm values
 document and applies no decryption to a Helm `valueFiles` source, so SOPS does not
