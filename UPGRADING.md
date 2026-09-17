@@ -106,7 +106,8 @@ section already prescribes.
 
 The rollout is `RollingUpdate` with `maxUnavailable: 2` — a fixed chart value,
 not derived from your node count — so on a two- or three-node control plane two
-agents are down simultaneously. Cilium documents an agent restart as "minimal
+agents are down simultaneously, and on a single-node cluster its one agent is
+down for the length of its own restart. Cilium documents an agent restart as "minimal
 impact … networking connectivity, policy enforcement and load balancing will
 remain functional in general"; what is actively disrupted is L7/proxy-enforced
 connections, which reset because the proxy runs inside the agent pod, and Hubble,
@@ -288,7 +289,8 @@ The floor sets `rollOutCiliumPods: true`, so the chart stamps a `cilium-config`
 checksum into the pod template and any ConfigMap-affecting change rolls the
 agents on the next sync — including changes you did not intend to roll for. The
 rollout is `RollingUpdate` with `maxUnavailable: 2`, so on a two- or three-node
-control plane two agents are down at once.
+control plane two agents are down at once, and on a single-node cluster its one
+agent is down for the length of its own restart.
 
 Timing stays with you on the module's side: the emitted `Application` carries no
 `syncPolicy`, so the roll follows a sync you trigger. That describes what this
