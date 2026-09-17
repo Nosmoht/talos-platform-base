@@ -3,7 +3,7 @@ type: workflow
 title: Release Process
 description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-generated: { by: human:nosmoht, at: "2026-09-05T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-09-17T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
   - resource: scripts/release-major-bump-guard.sh
@@ -345,7 +345,8 @@ only the last one costs a version.
 | What the run left | How to tell | Recovery |
 |---|---|---|
 | No GitHub Release at all | `gh release view <tag>` fails | Re-run the workflow for the tag |
-| An unpublished draft | the release shows as Draft, or `gh api repos/<repo>/releases --jq '.[] \| select(.tag_name=="<tag>") \| .draft'` says `true` | Re-run: it discards the draft and rebuilds a complete one |
+| An unpublished draft, complete | the release shows as Draft AND carries all three assets, and every step before `Create GitHub Release` succeeded | Publish that draft — see §Publishing the draft the job built |
+| An unpublished draft, incomplete | the release shows as Draft with assets missing, or an earlier step failed | Re-run: it discards the draft and rebuilds a complete one |
 | Two drafts for the tag | the job says so and refuses | Delete them by hand, then re-run |
 | `:latest` on a tag with no release | `oras manifest fetch …:latest --descriptor` against the tag's digest | Re-run; if the tag is defective instead, move `:latest` per §Rollback |
 | A published release with no assets | see the section below | Forward-only — a new tag |
@@ -370,6 +371,34 @@ Consumers who pinned the digest (which
 reason) keep resolving the first artifact and must re-pin deliberately; anyone
 resolving the tag silently moves. Say so in the release notes or `UPGRADING.md`
 when a re-run happens after consumers could already have vendored the tag.
+
+## Publishing the draft the job built
+
+When every step before `Create GitHub Release` succeeded and the draft carries
+all three assets, the work is done and only the final `draft=false` never ran.
+Publish that draft instead of re-running:
+
+```sh
+id="$(gh api --paginate repos/<repo>/releases \
+  --jq '.[] | select(.tag_name=="<tag>" and .draft) | .id')"
+gh api --method PATCH "repos/<repo>/releases/${id}" \
+  -F draft=false -f make_latest=legacy --jq .html_url
+```
+
+That is the call the failed step would have made last, `make_latest=legacy`
+included. Then verify what a consumer sees: `shasum -a 256 -c checksums.txt`
+against the attached tarball, and `oras pull` of the same tag compared byte-wise
+against it.
+
+**Prefer this over a re-run when it applies**, because a re-run remaps the tag
+to a new digest and mints a second signature and provenance — see the
+non-idempotence warning above. It does NOT apply to a draft with missing assets:
+the job's own guard refuses to publish one, and so should a human.
+
+`v14.0.0` was recovered this way. The run failed because the publish step
+re-enumerates the release it just created and filters on `tag_name`, which the
+listing did not yet report for it; the artifact, signature, attestations and
+`:latest` were all already in place. Tracked as issue #276.
 
 ## A release that shipped without assets
 
