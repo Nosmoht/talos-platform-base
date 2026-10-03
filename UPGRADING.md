@@ -986,7 +986,7 @@ Reach for the smallest move first.
    downgrade against live `Application` objects besides.
 
    `tofu state rm` does **not** avoid it. Both resources stay declared in
-   `main.tf` behind `count = var.deploy_argocd ? 1 : 0`, so forgetting them makes
+   `argocd-crds.tf` behind `count = var.deploy_argocd ? 1 : 0`, so forgetting them makes
    the next apply *recreate* them and run the `9.4.5` apply anyway. The only
    configuration-level lever is `deploy_argocd = false`, which drops the whole
    ArgoCD seed — namespace, age-key Secret and render — and is not a rollback of

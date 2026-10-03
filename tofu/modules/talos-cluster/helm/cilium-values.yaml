@@ -117,7 +117,7 @@ operator:
 # machineConfig re-push: the structural coupling is fixed — data.helm_template.cilium
 # is consumed through terraform_data.cilium_render (lifecycle ignore_changes), so the
 # render is frozen in state at first capture regardless of per-render cert churn
-# (Cilium AND ArgoCD; see main.tf). The helm-provider render-ordering-instability
+# (see cilium-seed.tf and argocd-seed.tf). The helm-provider render-ordering-instability
 # hypothesis (#123 item 4) is moot for the apply for the same reason — a single
 # capture is frozen as-is, so intra-render ordering cannot drift the machineConfig.
 # Still prefer tls.auto.method=cronJob (or pre-provisioned certs) in such overrides

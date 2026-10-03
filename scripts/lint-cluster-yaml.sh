@@ -36,9 +36,6 @@ esac
 [ -f "$CLUSTER_FILE" ] || { echo "ERROR: cluster file not found: $CLUSTER_FILE" >&2; exit 2; }
 [ -f "$SCHEMA_FILE" ] || { echo "ERROR: schema not found: $SCHEMA_FILE" >&2; exit 2; }
 
-# Resolve check-jsonschema. Prefer a PATH binary (CI image installs it via pip);
-# fall back to `uvx --from check-jsonschema check-jsonschema` for local dev where
-# the Python binary isn't installed system-wide.
 if command -v check-jsonschema >/dev/null 2>&1; then
   RUNNER=(check-jsonschema)
 elif command -v uvx >/dev/null 2>&1; then
@@ -50,7 +47,6 @@ fi
 
 "${RUNNER[@]}" --default-filetype yaml --schemafile "$SCHEMA_FILE" "$CLUSTER_FILE"
 
-# Summary line (best-effort: skip if yq is unavailable — validation already passed).
 if command -v yq >/dev/null 2>&1; then
   echo "OK: $CLUSTER_FILE passes schema ($(yq -r '.nodes | length' "$CLUSTER_FILE") nodes, $(yq -r '.images | length' "$CLUSTER_FILE") images)"
 else

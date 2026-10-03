@@ -24,7 +24,7 @@ its own.
 it is provider-less, pure `var.nodes`-derived, and holds the node
 identity model — the keyed views that make the two node identifiers
 structurally unique, and the name-ordered projections the Talos
-arguments in `main.tf` consume.
+arguments in the module implementation consume.
 
 ## Requirements
 
@@ -39,7 +39,7 @@ pin, `kubernetes_version`); topology (`nodes`, `images`,
 per-node lists); substrate delivery (the ArgoCD and Cilium toggles with
 their chart-version, namespace, values-override and secret-material
 knobs, plus a chart-repository knob for Cilium only — the ArgoCD chart
-repository is hardcoded in `main.tf` — together with the always-on
+repository is hardcoded in `argocd-seed.tf` — together with the always-on
 cert-approver seed's three tuning knobs: `cert_approver_provider_regex`
 (default `".*"`), `cert_approver_provider_ip_prefixes` (default
 `["0.0.0.0/0", "::/0"]`, non-empty), and `cert_approver_replicas` (default

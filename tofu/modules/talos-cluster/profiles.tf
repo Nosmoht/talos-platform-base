@@ -1,32 +1,5 @@
-# Base-owned provisioning-profile catalog (ADR base:node-capability-composition).
-#
-# MODULE-LOCAL constant — NOT a `var`, so a consumer can select profiles by id
-# from a composite's `provisioning_profiles` but cannot author or redefine one
-# (closes the consumer-redefine vector mechanically). It lives in tofu/** so the
-# hard-constraints-check greps (SecureBoot, debugfs) cover any kernel_args it
-# carries. A profile binds the parts of a PROVISIONED hardware feature so they
-# cannot drift:
-#
-#   provides       the talos-machine-config atom this profile satisfies (drives
-#                  label emission + the symmetry check; [] for a profile that
-#                  provisions content for an NFD-DETECTED atom, e.g. nvidia)
-#   extensions     Image-Factory system extensions      -> schematic
-#   kernel_args    boot-time kernel cmdline args         -> schematic
-#                  customization.extraKernelArgs (the v1.10+ UKI-correct sink).
-#                  Carries ONLY the args the provided atom's presence_predicate
-#                  names (platform-hardware-features.yaml). Host tuning is
-#                  consumer policy and does not belong in a capability profile:
-#                  a profile karg is base-owned and a consumer cannot override
-#                  it, so every arg here is a freedom the consumer loses.
-#   kernel_modules modules to load                       -> machine.kernel.modules
-#   sysctls        sysctl key/values                     -> machine.sysctls
-#   variants       vendor-specific kernel_args, resolved by the node image's
-#                  cpu_vendor; a profile with variants ignores its top-level
-#                  kernel_args and uses the matched variant's (no match -> hard
-#                  error, see composition.tf).
-#
-# Every profile carries the full key set (empty where unused) so the map has a
-# uniform object type for the for-expressions in composition.tf.
+# Base-owned catalog: consumers select profiles but cannot redefine them.
+# Keep every profile structurally uniform; kernel args express hardware predicates, not host tuning.
 
 locals {
   provisioning_profiles = {
@@ -55,11 +28,7 @@ locals {
     }
 
     nvidia-lts = {
-      # No `provides`: nvidia-gpu is an NFD-DETECTED presence atom, not a
-      # provisioned one — this profile bakes the driver stack but does not emit a
-      # platform.io/hardware-feature label (the device plugin / NFD owns it).
-      # Extension name MUST match the device-plugin nodeAffinity selector
-      # (extensions.talos.dev/nvidia-open-gpu-kernel-modules-lts).
+      # NFD detects GPU presence; installing drivers alone must not emit a hardware-feature label.
       provides    = []
       extensions  = ["siderolabs/nvidia-open-gpu-kernel-modules-lts", "siderolabs/nvidia-container-toolkit-lts"]
       kernel_args = []
@@ -74,9 +43,5 @@ locals {
     }
   }
 
-  # An atom is "provisioned" iff some catalog profile `provides` it (self-contained;
-  # equal by construction to the registry's discovery_source: talos-machine-config
-  # set — a CI cross-reference gate guards the equivalence). The module does NOT
-  # read platform-hardware-features.yaml at plan time.
   provisioned_atoms = distinct(flatten([for p in local.provisioning_profiles : p.provides]))
 }

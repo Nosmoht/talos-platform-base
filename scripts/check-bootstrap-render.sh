@@ -1,24 +1,4 @@
 #!/usr/bin/env bash
-# Mechanical binding for the bootstrap render's spec scenarios.
-#
-# Binds `openspec/specs/argocd-day-zero-bootstrap/spec.md` — the requirements
-# "Bootstrap-identity subset read from cluster.yaml" and "Envsubst containment
-# of cluster.yaml values" — to `Taskfile.yml#bootstrap:render-root`.
-#
-# WHY THIS EXISTS: those requirements describe behavior that is INVISIBLE in the
-# rendered output for well-formed input. Nothing else in CI renders the
-# bootstrap templates, so before this script a refactor could drop the `$`
-# guard, the newline guard, or the envsubst allowlist and every gate stayed
-# green. `knowledge/decisions/0016-capability-profiles-predicate-only.md` is the
-# repo's record of that exact failure mode: an authoring contract with no
-# mechanical binding is a comment.
-#
-# The render is pure `yq` + `envsubst` (kubectl lives only in bootstrap:argocd's
-# own cmds, AFTER this dep), so every scenario below runs offline.
-#
-# Exit: 0 all scenarios hold, 1 a scenario failed (the assertion), 2
-# environment/toolchain error (no runner, missing fixture) — never conflated, so
-# a broken toolchain cannot pass vacuously.
 set -uo pipefail
 
 FIXTURES="schemas/fixtures/bootstrap"
@@ -38,7 +18,6 @@ command -v task >/dev/null 2>&1 || die_env "task not on PATH"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# Render a fixture. Echoes the render's combined output; returns its exit code.
 render() {
   rm -rf "$OUT"
   task bootstrap:render-root ENV="$1" 2>&1
@@ -47,10 +26,6 @@ render() {
 pass() { printf '  ok   — %s\n' "$1"; }
 bad()  { printf '  FAIL — %s\n' "$1" >&2; fail=1; }
 
-# ---------------------------------------------------------------------------
-# Scenario: The four identity fields reach the render
-# Scenario: Absent target_revision defaults to main
-# ---------------------------------------------------------------------------
 printf 'happy path\n'
 [ -f "$FIXTURES/valid.yaml" ] || die_env "missing $FIXTURES/valid.yaml"
 if ! out=$(render "$FIXTURES/valid.yaml"); then
@@ -62,28 +37,19 @@ else
   if [ ! -f "$app" ] || [ ! -f "$proj" ]; then
     bad "render reported success but did not write both manifests"
   else
-    # `if`, not `A && pass || bad`: in the latter, a non-zero from `pass`
-    # itself would run `bad` and report a false failure.
-    want_in() { # want_in <file> <literal> <description>
+    want_in() {
       if grep -qF "$2" "$1"; then pass "$3"; else bad "$3 — not found: $2"; fi
     }
     want_in "$app"  'repoURL: https://example.invalid/consumer-repo.git' "repo.url reaches the root Application"
     want_in "$app"  'path: kubernetes/overlays/prod'                     "cluster.overlay reaches the root Application"
     want_in "$app"  'app.kubernetes.io/instance: fixture-cluster'        "cluster.name reaches the root Application"
     want_in "$proj" 'https://example.invalid/consumer-repo.git'          "repo.url reaches the AppProject sourceRepos"
-    # The fixture omits target_revision on purpose.
     want_in "$app"  'targetRevision: main'                               "absent target_revision defaults to main"
     cp "$app" "$tmp/valid-app.yaml"
     cp "$proj" "$tmp/valid-proj.yaml"
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# Scenario: The four identity fields reach the render — the "and no other
-# cluster.yaml field influences the output" half, as a differential.
-# twin.yaml agrees with valid.yaml on exactly the four identity fields and
-# differs everywhere else; the renders must be byte-identical.
-# ---------------------------------------------------------------------------
 printf 'differential (no other field influences the output)\n'
 if [ -f "$tmp/valid-app.yaml" ]; then
   if ! out=$(render "$FIXTURES/twin.yaml"); then
@@ -101,15 +67,6 @@ if [ -f "$tmp/valid-app.yaml" ]; then
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# Scenario: A dollar-bearing value fails the render
-# Scenario: A missing identity field fails the render (all six cells)
-# plus the containment guards the spec names.
-# ---------------------------------------------------------------------------
-# A rejected render must: exit non-zero AND leave no manifest behind. The
-# no-manifest half is what makes "rather than rendering an empty value into a
-# bootstrap manifest" true — a render that fails after writing one file would
-# still hand `kubectl apply -f` a half-populated dir.
 reject() {
   desc="$1"; fixture="$2"; want="$3"
   if [ ! -f "$fixture" ]; then die_env "missing fixture $fixture"; fi
@@ -134,29 +91,13 @@ reject() {
 printf 'containment guards\n'
 reject "a \$-bearing value is rejected"          "$FIXTURES/inject-dollar.yaml"          "unsafe for envsubst"
 reject "a newline-bearing value is rejected"     "$FIXTURES/inject-newline.yaml"         "control character"
-# Separate from the newline case on purpose: a lone \r passes a \n-only test
-# (the guard's first version used `wc -l` and this got through).
 reject "a CR-bearing value is rejected"          "$FIXTURES/inject-carriage-return.yaml" "control character"
 reject "an empty value is rejected"              "$FIXTURES/empty-overlay.yaml"          "is empty"
-# No message assertion: yq itself rejects the non-scalar via `select(type)`, so
-# the error text is yq's, not ours. The assertion is exit-non-zero + no _out.
 reject "a non-scalar value is rejected"          "$FIXTURES/inject-non-scalar.yaml"      "no matches found"
-# The case every guard above misses: `..` is well-formed by every negative
-# test and still points a prune+selfHeal Application at a parent directory.
-# Only the positive overlay bound catches it.
 reject "a path-traversing overlay is rejected"   "$FIXTURES/traverse-overlay.yaml"       "single lowercase kustomize directory name"
-# A value that is a plain !!str but carries YAML meaning: "'*'" renders as the
-# sourceRepos wildcard, widening the AppProject to every repo, with no line
-# break and no $.
 reject "a YAML-quoting value is rejected"        "$FIXTURES/inject-yaml-quoting.yaml"    "does not survive a YAML round-trip"
-# Whitespace-only: not shell-empty, not a control character. YAML strips the
-# trailing space, so it reproduces the empty-overlay defect exactly.
 reject "a whitespace-only value is rejected"     "$FIXTURES/blank-overlay.yaml"          "does not survive a YAML round-trip"
 
-# The 2x3 matrix the scenario's "omits or nulls" claims. Generated from the
-# valid fixture rather than committed as six near-identical files: the cells
-# differ only in which key is removed or nulled, so generating them keeps the
-# enumeration honest (all six run) without six copies drifting apart.
 printf 'missing identity fields (omit x null, three fields)\n'
 for path in '.cluster.name' '.repo.url' '.cluster.overlay'; do
   for mode in omit null; do
@@ -170,29 +111,14 @@ for path in '.cluster.name' '.repo.url' '.cluster.overlay'; do
   done
 done
 
-# ---------------------------------------------------------------------------
-# Scenario: Host environment does not leak into a rendered manifest
-# The envsubst SHELL-FORMAT allowlist constrains which $NAME sequences in the
-# TEMPLATE expand. No committed template carries a non-allowlisted $NAME, so
-# without this probe, dropping the allowlist changes no output and turns
-# nothing red. The probe supplies one.
-# ---------------------------------------------------------------------------
 printf 'envsubst allowlist (template-side containment)\n'
 probe_src="kubernetes/bootstrap/argocd/root-application.yaml.tmpl"
 [ -f "$probe_src" ] || die_env "missing $probe_src"
 probe="$tmp/probe.tmpl"
 cp "$probe_src" "$probe"
-# The probe is a COPY in $tmp — the tracked template is never mutated. (An
-# earlier hand-run of this scenario appended to the tracked file and restored
-# it afterwards; an interrupt between the two would have left the payload in
-# the working tree for the next `git add -A`.)
 # shellcheck disable=SC2016  # literal $NOT_ALLOWLISTED is the point: it must NOT expand here
 printf '\n# leak-probe: $NOT_ALLOWLISTED\n' >> "$probe"
 
-# Rendered exactly as the task does — same allowlist argument. The task itself
-# is not reused here because it reads a fixed template path; the assertion is
-# on the allowlist ARGUMENT, which is duplicated below on purpose and kept
-# honest by the grep on the Taskfile that follows.
 export CLUSTER_NAME=fixture-cluster REPO_URL=https://example.invalid/r.git \
        OVERLAY=prod TARGET_REVISION=main TARGET_REVISION_LABEL=main \
        NOT_ALLOWLISTED=leaked-host-value
@@ -210,13 +136,6 @@ else
   cat "$tmp/probe.out" >&2
 fi
 
-# The probe above proves envsubst's allowlist semantics. This binds the render
-# to actually USING them: a refactor to bare `envsubst < … > …` leaves the probe
-# green (it calls envsubst itself) while the render loses template containment.
-# The denominator is NOT anchored to line start: `cat t | envsubst > out` and
-# `< t envsubst > out` are calls too, and an anchored count would leave them out
-# of the total while the ratio still balanced — the un-allowlisted call this
-# assertion exists to catch, walking past it.
 allowlisted_calls=$(grep -cF "envsubst '\$" Taskfile.yml || true)
 total_calls=$(grep -cE '(^ *|[|;&(] *)envsubst ' Taskfile.yml || true)
 if [ "${allowlisted_calls:-0}" -ge 2 ] && [ "${allowlisted_calls:-0}" -eq "${total_calls:-0}" ]; then

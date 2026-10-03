@@ -13,6 +13,10 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Remove Devbox's duplicate markdownlint installation; use
   `task docs:install-cli` for the npm lockfile-pinned version.
 
+- **Changed — module source layout.** Remove historical and redundant comments
+  and split `main.tf` into focused implementation files. Resource addresses,
+  inputs, outputs and configuration behavior remain unchanged.
+
 - **Changed (BREAKING, MAJOR): native Talos 1.14.2 support.** Pin the stable
   Talos provider to 0.12.0. Schema pins from 1.14 emit native module patches
   instead of conflicting legacy fields; 1.13 schema pins keep their patch

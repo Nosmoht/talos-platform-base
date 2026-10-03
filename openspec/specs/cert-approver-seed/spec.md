@@ -2,8 +2,7 @@
 sources:
   primary:
     - tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
-  secondary:
-    - tofu/modules/talos-cluster/main.tf
+    - tofu/modules/talos-cluster/cert-approver.tf
 references:
   - knowledge/decisions/0013-kubelet-serving-cert-rotation.md
   - knowledge/decisions/0019-postfinance-kubelet-csr-approver.md

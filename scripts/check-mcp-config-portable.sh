@@ -1,13 +1,4 @@
 #!/bin/sh
-# Pre-commit hook: blocks commits with non-portable `command` values in
-# .mcp.json and .codex/config.toml.
-#
-# Rule (inverted allowlist): `command` must be a bare identifier — letters,
-# digits, hyphens, underscores, dots; no path separators (/), tildes (~),
-# variable expansions ($), backslashes (\), or leading dots.
-#
-# Accepts: mcp-github-wrapper, github-mcp-server, kubernetes-mcp-server, talos-mcp, docker, npx
-# Rejects: /opt/homebrew/bin/foo, ./scripts/x.sh, ~/bin/y, ${VAR}, \path, .foo, (empty)
 set -eu
 
 fail=0

@@ -1,28 +1,4 @@
 #!/usr/bin/env bash
-# Assert every module variable and output appears in its README's tables.
-#
-# WHY THIS EXISTS: `knowledge/reference/talos-cluster-module.md` used to carry a
-# second copy of the interface. It was removed (2026-07-15) on the argument that
-# an ungated copy rots — and it was measurably right: at deletion time the
-# surviving README listed 11 of 19 outputs. But the survivor is a primary source
-# of no spec, so `task spec:check-staleness` never fires on it, and
-# `scripts/check-spec-partition.py` subtracts markdown from its universe. The
-# deletion argument only holds if the copy that survives is the gated one. This
-# is that gate.
-#
-# Scope, honestly: name-level parity, in the .tf -> README direction only.
-#   * It catches an added or renamed variable/output that never reached the
-#     README — the drift that actually happened (11 of 19 outputs documented).
-#   * It does NOT catch a README row for a DELETED declaration: nothing walks
-#     the table rows back to the .tf files. A stale row survives.
-#   * It does NOT check that a row's prose still describes the thing — a changed
-#     default or a tightened validation is reviewer judgment.
-# The grep is scoped to the section that documents each kind. Unscoped, it
-# false-passes: `cluster_endpoint` is BOTH a variable and an output, so the
-# Inputs row satisfied a search for the output and deleting the Outputs row
-# stayed green (verified — that is why the scoping exists).
-#
-# Exit: 0 parity holds, 1 a name is missing (the assertion), 2 environment error.
 set -uo pipefail
 
 fail=0
@@ -48,8 +24,6 @@ for m in $modules; do
       variable) heading="Inputs" ;;
       output)   heading="Outputs" ;;
     esac
-    # Everything from `## <heading>` to the next `## ` — the tables that
-    # document this kind, and nothing else.
     section=$(awk -v h="## $heading" '
       $0 == h { inside = 1; next }
       inside && /^## / { exit }
@@ -64,7 +38,6 @@ for m in $modules; do
     kind_fail=0
     for n in $names; do
       count=$((count + 1))
-      # Documented as a markdown table row: | `name` | ...
       if ! printf '%s\n' "$section" | grep -F "| \`$n\`" >/dev/null; then
         printf '  FAIL — %s `%s` is declared in %s but absent from the ## %s section of %s\n' \
           "$kind" "$n" "$file" "$heading" "$readme" >&2
@@ -72,9 +45,6 @@ for m in $modules; do
         kind_fail=1
       fi
     done
-    # Conditional: an unconditional "ok — all N present" printed alongside the
-    # FAILs above would contradict the verdict in the part of the log a CI
-    # reader actually scans.
     [ "$kind_fail" -eq 0 ] && printf '  ok   — all %s %ss present in the ## %s section\n' "$count" "$kind" "$heading"
   done
 done

@@ -1,11 +1,6 @@
 #!/bin/sh
 set -eu
 
-# ksops-detection (is_dir_unsafe below) uses `rg` because of its
-# faster recursive search. If rg is absent the find/-exec invocation
-# would silently fail open — the directory gets treated as SAFE and
-# any ksops-encrypted manifest would be rendered as plaintext.
-# Fail loudly instead.
 if ! command -v rg >/dev/null 2>&1; then
   echo "FATAL: ripgrep (rg) is required for ksops detection in render_kustomize_safe.sh" >&2
   echo "Install: brew install ripgrep   (or apt install ripgrep)" >&2

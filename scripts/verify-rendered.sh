@@ -1,23 +1,10 @@
 #!/usr/bin/env bash
-# verify-rendered.sh — re-render every component with chart.lock.yaml
-# into a tmpdir and diff against the committed _rendered/ tree.
-#
-# Used by CI to enforce that committed _rendered/ output matches what
-# render-component.sh produces from current chart.lock.yaml + values.yaml
-# + _rendered-overlay/ inputs. Drift fails the build.
-#
-# Exit codes:
-#   0 — all components match committed _rendered/
-#   1 — at least one component drifts
-#   2 — render failed for at least one component
 
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 INFRA_DIR="${ROOT}/kubernetes/substrate"
 
-# GNU find -printf is not portable to macOS; -exec sh -c … + (not | xargs)
-# avoids the SC2038 unsafe-filename split.
 components="$(find "${INFRA_DIR}" -mindepth 2 -maxdepth 2 -name chart.lock.yaml \
   -exec sh -c 'for f do basename "$(dirname "$f")"; done' _ {} + | sort)"
 
@@ -41,11 +28,9 @@ for comp in ${components}; do
     continue
   fi
 
-  # Snapshot committed render.
   snapshot="${tmproot}/${comp}.committed"
   cp -r "${rendered_dir}" "${snapshot}"
 
-  # Re-render in place; render-component.sh writes to _rendered/.
   if ! "${ROOT}/scripts/render-component.sh" "${comp}" >/dev/null 2>"${tmproot}/${comp}.err"; then
     echo "  RENDER FAILED for ${comp}:"
     sed 's/^/    /' < "${tmproot}/${comp}.err" >&2
