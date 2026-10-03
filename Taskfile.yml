@@ -45,11 +45,6 @@ vars:
   # Declarative cluster SoT consumed by bootstrap:* (override per invocation:
   # `task bootstrap:argocd ENV=other.yaml`).
   ENV: cluster.yaml
-  # Module directories (one per module) — the tofu:* targets iterate these.
-  # NOT terraform-docs-generated: no module README carries BEGIN_TF_DOCS
-  # markers, so their tables are hand-maintained (see tofu:docs).
-  TOFU_MODULES:
-    sh: find tofu/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort
   # MCP server versions — pinned to verified official sources
   # (homebrew/core, containers/k8s, npm/talos-mcp).
   MCP_GITHUB_VERSION: 0.33.0
@@ -155,43 +150,18 @@ tasks:
         ( cd "$m" && tflint --chdir=. )
       done
 
-  tofu:docs:
-    # Fail-closed, and NOT the way to refresh the current tables. No module
-    # README carries BEGIN_TF_DOCS markers today — their Inputs/Outputs tables
-    # are hand-maintained. `--output-mode inject` does not no-op on a
-    # marker-less file: it APPENDS a full generated block (markers +
-    # Requirements/Providers/Inputs/Outputs, ~114 lines) and exits 0, leaving
-    # the README with two competing, divergent table sets. The former `|| true`
-    # hid nothing, because nothing failed — it just made the damage silent.
-    # Verified by running it (terraform-docs v0.22.0) on 2026-07-15; ADR-0015's
-    # dated correction records the finding.
-    #
-    # So: refuse rather than corrupt. Adopting generated tables is a real
-    # change — commit the markers, accept the generated shape, reconcile the
-    # hand-written prose around them — not something a doc-refresh command
-    # should do as a side effect.
-    desc: "Regenerate module READMEs' terraform-docs block. Requires BEGIN_TF_DOCS markers; refuses on a marker-less README, whose tables are hand-maintained (see knowledge/reference/tasks.md)."
-    cmd: |
-      set -e
-      for m in {{.TOFU_MODULES}}; do
-        if ! grep -q 'BEGIN_TF_DOCS' "$m/README.md" 2>/dev/null; then
-          echo "ERROR: $m/README.md carries no BEGIN_TF_DOCS markers." >&2
-          echo "  Its Inputs/Outputs tables are hand-maintained — edit them by hand." >&2
-          echo "  Running terraform-docs --output-mode inject here would APPEND a second," >&2
-          echo "  competing generated table set rather than update anything." >&2
-          exit 1
-        fi
-        terraform-docs markdown table --output-file README.md --output-mode inject "$m"
-      done
-
   tofu:check:readme-parity:
     desc: "CI fence: every module variable/output appears in its (hand-maintained) README table"
     cmd: scripts/check-module-readme-parity.sh
 
   tofu:lint:yaml:
-    desc: yamllint + markdownlint over tofu/ (module READMEs, example manifests)
+    desc: Optional yamllint + markdownlint over tofu/ (advisory)
     cmd: |
-      yamllint -d relaxed tofu/ 2>/dev/null || true
+      if command -v yamllint >/dev/null 2>&1; then
+        yamllint -d relaxed tofu/ || true
+      else
+        echo "SKIP: optional yamllint is not installed"
+      fi
       markdownlint 'tofu/**/*.md' || true
 
   tofu:check:render-determinism:

@@ -54,9 +54,7 @@ if [ "$fail" -ne 0 ]; then
 
 FAIL: a module README is out of parity with its .tf interface.
 
-The README tables are HAND-MAINTAINED — `task tofu:docs` cannot fix this (no
-module carries BEGIN_TF_DOCS markers; it refuses rather than append a second
-table set). Add the missing rows by hand.
+The README tables are HAND-MAINTAINED. Add the missing rows by hand.
 EOF
   exit 1
 fi

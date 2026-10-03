@@ -7,6 +7,12 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Pending release
 
+- **Changed — smaller developer toolchain.** Remove `terraform-docs` and
+  retire `task tofu:docs`; module README tables remain hand-maintained. Remove
+  `yamllint` from Devbox and skip its advisory check explicitly when absent.
+  Remove Devbox's duplicate markdownlint installation; use
+  `task docs:install-cli` for the npm lockfile-pinned version.
+
 - **Changed — module source layout.** Remove historical and redundant comments
   and split `main.tf` into focused implementation files. Resource addresses,
   inputs, outputs and configuration behavior remain unchanged.

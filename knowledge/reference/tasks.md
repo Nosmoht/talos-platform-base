@@ -8,6 +8,7 @@ sources:
   - resource: Taskfile.yml
   - resource: Makefile
   - resource: package.json
+  - resource: devbox.json
 ---
 
 # Task Runner Surface
@@ -35,6 +36,12 @@ Conventions declared in `Taskfile.yml`:
   `markdownlint-cli`) live in `package.json` + `package-lock.json`
   (integrity-hashed) instead of Taskfile vars.
 
+The default Devbox environment omits `terraform-docs`, `yamllint` and
+`markdownlint-cli`. Module README tables remain hand-maintained; the former
+`tofu:docs` task is retired. Install `yamllint` separately to opt into the
+advisory YAML check. Install the lockfile-pinned markdownlint with
+`task docs:install-cli`; npm is its only repository-managed installation path.
+
 ## `tofu:*` — OpenTofu cluster-lifecycle module validation
 
 | Task | Purpose |
@@ -43,9 +50,8 @@ Conventions declared in `Taskfile.yml`:
 | `tofu:fmt:check` | Verify `tofu/` formatting; CI-safe, non-mutating (`-check -diff`). |
 | `tofu:validate` | `tofu init -backend=false` + `tofu validate` per tofu dir (modules + examples). |
 | `tofu:lint` | `tflint --chdir=.` per tofu dir (modules + examples). |
-| `tofu:docs` | Regenerate a module README's terraform-docs block — **refuses today**: no module README carries `BEGIN_TF_DOCS` markers, so their Inputs/Outputs tables are hand-maintained and must be edited by hand. Running `terraform-docs --output-mode inject` against a marker-less README appends a second, competing generated table set instead of updating one (verified, terraform-docs v0.22.0; [ADR-0015](../decisions/0015-openspec-adoption.md) correction). |
-| `tofu:check:readme-parity` | CI fence: every `variables.tf` variable and `outputs.tf` output of a module appears in that module's hand-maintained README table (see `tofu:docs` for why those tables are hand-maintained). Scope limit: name-level parity in the `.tf` → README direction only — a README row for a deleted declaration, or stale prose on a surviving row, is not caught. Runs `scripts/check-module-readme-parity.sh`. |
-| `tofu:lint:yaml` | yamllint (relaxed) + markdownlint over `tofu/` — advisory (`\|\| true`). |
+| `tofu:check:readme-parity` | CI fence: every `variables.tf` variable and `outputs.tf` output of a module appears in that module's hand-maintained README table (see the [ADR-0015 correction](../decisions/0015-openspec-adoption.md) for why those tables are hand-maintained). Scope limit: name-level parity in the `.tf` → README direction only — a README row for a deleted declaration, or stale prose on a surviving row, is not caught. Runs `scripts/check-module-readme-parity.sh`. |
+| `tofu:lint:yaml` | Optional yamllint (relaxed) + markdownlint over `tofu/` — advisory (`\|\| true`). Runs yamllint when installed; otherwise prints an explicit skip. |
 | `tofu:check:render-determinism` | CI fence: Cilium/ArgoCD/CRD helm renders must use frozen `terraform_data` (`ignore_changes`), not live `data.helm_template`. Runs `scripts/check-render-determinism.sh` over all top-level module `.tf` files. |
 | `tofu:check:kubeconfig-endpoint-regen` | CI fence: `talos_cluster_kubeconfig.this` keeps its `replace_triggered_by` wiring to the `terraform_data.kubeconfig_endpoint_marker` resource (whose `input` is `var.cluster_endpoint`), so a changed endpoint still forces kubeconfig regeneration (issue #186). Static, resource-scoped grep — no provider, no network. Runs `scripts/check-kubeconfig-endpoint-regen.sh`. |
 | `tofu:check:node-projection-wiring` | CI fence: the five Talos boundary arguments (`talos_client_configuration.{endpoints,nodes}`, `talos_cluster_health.{control_plane_nodes,worker_nodes,endpoints}`) stay bound to their intended `nodes.tf` projections, and `talos_machine_configuration_apply` keeps iterating `local.nodes_checked` so the duplicate-IP guard stays in the dependency chain (issue #204). The offline fixture omits provider resources, so no `tofu test` can see this wiring. Static, block-scoped, awk+POSIX-grep — no provider, no network, no GNU-grep dependency. Runs `scripts/check-node-projection-wiring.sh` over all top-level module `.tf` files. |
