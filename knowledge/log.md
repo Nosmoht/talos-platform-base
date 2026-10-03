@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-03
+
+- `decisions/0027-talos-provider-prerelease-pin.md`: append the stable-provider
+  follow-up, native schema selection and corrected install-conflict finding.
+
 ## 2026-09-17
 
 - `workflows/release-process.md`: new §Which endpoint can see a draft release —

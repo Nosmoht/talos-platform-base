@@ -27,6 +27,7 @@ on:
       - 'scripts/check-shim-key-parity.sh'
       - 'scripts/check-cilium-operator-replicas-key.sh'
       - 'scripts/check-cilium-rollout-pods-key.sh'
+      - 'scripts/check-talos-config-validation.sh'
       - 'scripts/check-provider-document-kinds.sh'
       - 'scripts/check-provider-document-kinds-bites.sh'
       - 'scripts/check-substrate-consumability.sh'
@@ -60,6 +61,7 @@ on:
       - 'scripts/check-shim-key-parity.sh'
       - 'scripts/check-cilium-operator-replicas-key.sh'
       - 'scripts/check-cilium-rollout-pods-key.sh'
+      - 'scripts/check-talos-config-validation.sh'
       - 'scripts/check-provider-document-kinds.sh'
       - 'scripts/check-provider-document-kinds-bites.sh'
       - 'scripts/check-substrate-consumability.sh'
@@ -101,6 +103,15 @@ jobs:
         with:
           version: 3.53.1  # KEEP IN SYNC with the task pin in .tool-versions
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Talos config validator
+        run: |
+          version=$(awk '$1 == "talosctl" { print $2 }' .tool-versions)
+          curl -fsSLO "https://github.com/siderolabs/talos/releases/download/v${version}/talosctl-linux-amd64"
+          curl -fsSLO "https://github.com/siderolabs/talos/releases/download/v${version}/sha256sum.txt"
+          grep ' talosctl-linux-amd64$' sha256sum.txt | sha256sum --check --strict
+          sudo install -m 0755 talosctl-linux-amd64 /usr/local/bin/talosctl
+          rm talosctl-linux-amd64 sha256sum.txt
 
       - name: task tofu:ci (fmt-check + validate + lint)
         run: task tofu:ci

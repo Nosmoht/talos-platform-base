@@ -192,3 +192,20 @@ install document must keep ignoring `machine.install`.
   native in-place upgrade via `talos_machine`
 - [ADR-0026](0026-machine-config-apply-mode.md) — the apply-mode surface of the
   same provider
+
+## Follow-up — 2026-10-03: stable provider and native schema support
+
+Provider 0.12.0 stable was released on 2026-09-21 and bundles Talos 1.14.0.
+OpenTofu 1.12.1 installs it with a verified signature. This change supersedes
+this decision's beta selection with an exact stable pin; the historical
+observations above describe the earlier implementation.
+
+The earlier suggestion to keep both install descriptions consistent was
+incorrect: the Talos 1.14.2 validator rejects their coexistence. It also
+rejects the module's legacy kubelet, network, proxy and scheduling fields
+alongside the generated native documents. The module now chooses native
+patches from the immutable schema pin and retains legacy patches below 1.14.
+Caller patches are not rewritten; their migration is explicit in `UPGRADING.md`.
+The fixture/default fence retains a 1.13.10 regression pin independently of
+the 1.14.2 examples. `scripts/check-talos-config-validation.sh` additionally
+validates the actual module patch lists with the real provider and Talos CLI.

@@ -2,6 +2,50 @@
 
 For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 
+## Native Talos 1.14 support (provider 0.12.0 stable)
+
+This section supersedes the beta-provider guidance below for this release.
+The base now supports native **Talos 1.14.2** configurations while preserving
+existing 1.13 schema pins. This is a **MAJOR** release: every consumer inherits
+a new exact provider pin, and consumers already using a 1.14 schema receive
+native module patches and must align their own patches before applying.
+
+1. Update a consumer's provider constraint to admit `0.12.0`, run
+   `tofu init -upgrade`, review and commit the lockfile.
+2. For an existing cluster, retain `talos.version` (the bootstrap schema pin).
+   Set `talos.install_version: v1.14.2` for an OS upgrade and use the existing
+   sequential, health-gated OS-upgrade procedure. A base update or config apply
+   alone does not upgrade the operating system.
+3. New 1.14 clusters use the updated example. Consumers already pinned to a
+   1.14 schema must convert conflicting caller patches before their first apply.
+   Do not change a running cluster's schema pin as part of this upgrade.
+4. Render each node's final configuration and validate with
+   `talosctl validate --mode metal --config <file>`. Review the plan for
+   resource replacement and unexpected changes. Keep generated PKI private.
+5. On a consumer canary, verify boot, Cilium, ArgoCD, kubelet serving certificates,
+   storage/CSI and extensions, then a no-op reconciliation before rolling peers.
+   Adapt etcd scrapes/firewall rules to port 2383. Check storage compatibility
+   with workload isolation before using a newly generated 1.14 configuration.
+
+| Legacy caller patch | Native 1.14 equivalent |
+|---|---|
+| `machine.install.disk` | `UnattendedInstallConfig.provisioning.diskSelector.match` |
+| `machine.install.image` | `UnattendedInstallConfig.installer.image` (normally module-owned) |
+| `machine.kubelet.extraConfig` | `KubeletConfig.config` |
+| `machine.kubelet.registerWithFQDN` | `KubeNodeConfig.registerWithFQDN` |
+| `machine.nodeLabels` / `machine.nodeTaints` | `KubeNodeConfig.labels` / `taints` |
+| `cluster.network.podSubnets` / `serviceSubnets` | `KubeNetworkConfig.podSubnets` / `serviceSubnets` |
+| `cluster.proxy.disabled: true` | `KubeProxyConfig.enabled: false` (controlplane only) |
+| `cluster.inlineManifests` | Named `KubeInlineManifestConfig` documents (`manifest`, not `contents`) |
+| `machine.time.servers` | `TimeSyncConfig.ntp.servers` |
+| `cluster.apiServer.extraArgs` | `KubeAPIServerConfig.extraArgs` |
+
+Do not duplicate a legacy field and its native document. In particular, matching
+install values do **not** resolve the conflict: Talos rejects the pair.
+The module preserves caller patch ordering but does not translate arbitrary
+patch contents. Network-interface patches should be reviewed against the
+[Talos 1.14 reference](https://docs.siderolabs.com/talos/v1.14/reference/configuration/overview).
+
 ## How to use this file
 
 - Per-release notes live in [`CHANGELOG.md`](CHANGELOG.md).

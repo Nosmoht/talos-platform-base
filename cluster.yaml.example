@@ -52,10 +52,10 @@ repo:
 
 # --- Talos / Kubernetes versions ---
 talos:
-  version: v1.13.9 # machine-config SCHEMA pin — fixed at bootstrap, do NOT change later
+  version: v1.14.2 # machine-config SCHEMA pin — fixed at bootstrap, do NOT change later
   install_version: "" # installer-image tag for OS upgrades; "" = matches talos.version
 kubernetes:
-  version: v1.36.3
+  version: v1.37.1
 
 # --- Base images: the non-composable per-image installer base ---
 # Key = image id (referenced by node.image). architecture + cpu_vendor + baseline
@@ -107,14 +107,16 @@ nodes:
 # scalars coerce (e.g. `event-ttl: 1h0m0s` stays a string, but `30`/`on`/`no`/
 # `0755` parse as int/bool/octal and re-encode wrong). When in doubt, quote.
 config_patches:
-  - machine: { time: { servers: ["pool.ntp.org"] } } # cluster-wide (all nodes)
+  - apiVersion: v1alpha1
+    kind: TimeSyncConfig
+    ntp: { servers: ["pool.ntp.org"] } # cluster-wide (all nodes)
 controlplane_config_patches: [] # controlplane-only
 worker_config_patches: [] # worker-only
 
-# kubelet serving-cert rotation (machine.kubelet.extraConfig.serverTLSBootstrap) is a
+# kubelet serving-cert rotation (KubeletConfig.config.serverTLSBootstrap) is a
 # BASE DEFAULT injected for ALL nodes by the module — do NOT set it here. The
 # base-seeded cert-approver approves the resulting kubernetes.io/kubelet-serving CSRs.
-# To opt OUT (rare): add `- machine: { kubelet: { extraConfig: { serverTLSBootstrap: false } } }`
+# To opt OUT (rare): add a KubeletConfig patch with `config: { serverTLSBootstrap: false }`
 # to config_patches above (the base patch is placed FIRST, so a caller patch overrides it).
 
 # --- Substrate (Layer-1: Talos + Cilium + ArgoCD). Secrets are NOT here. ---

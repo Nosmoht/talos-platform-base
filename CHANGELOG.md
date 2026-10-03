@@ -7,6 +7,15 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Pending release
 
+- **Changed (BREAKING, MAJOR): native Talos 1.14.2 support.** Pin the stable
+  Talos provider to 0.12.0. Schema pins from 1.14 emit native module patches
+  instead of conflicting legacy fields; 1.13 schema pins keep their patch
+  format even when the installer is upgraded. Update consumer provider locks
+  and align caller patches for an existing 1.14 schema before applying.
+  Examples target Talos 1.14.2 / Kubernetes 1.37.1. Offline validation covers
+  both node roles and schema lines; live rollout remains consumer-owned.
+
+
 Entries awaiting the next tag. A by-hand release cut moves **this block only**
 under the new version heading; the historical backfill below it stays put.
 

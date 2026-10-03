@@ -65,7 +65,7 @@ for m in $modules; do
     for n in $names; do
       count=$((count + 1))
       # Documented as a markdown table row: | `name` | ...
-      if ! printf '%s\n' "$section" | grep -qF "| \`$n\`"; then
+      if ! printf '%s\n' "$section" | grep -F "| \`$n\`" >/dev/null; then
         printf '  FAIL — %s `%s` is declared in %s but absent from the ## %s section of %s\n' \
           "$kind" "$n" "$file" "$heading" "$readme" >&2
         fail=1

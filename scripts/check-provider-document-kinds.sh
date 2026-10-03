@@ -10,10 +10,9 @@
 # the talos_version a consumer pins. Nothing else in this repo observes that
 # coupling.
 #
-# Case-by-case rationale, the boundary's history, and why the pin is an exact
-# prerelease: knowledge/decisions/0027-talos-provider-prerelease-pin.md. Two
+# Case-by-case rationale and the boundary's stable/prerelease pin history: knowledge/decisions/0027-talos-provider-prerelease-pin.md. Two
 # cases are deliberately red-on-improvement (E's absent half, F) — that is the
-# signal to revisit the 1.13.9 example pins, not a breakage to patch out.
+# signal to revisit the documented compatibility boundary, not a breakage to patch out.
 #
 # CONSTRAINT — key material. The probe renders a real (per-run, throwaway) PKI,
 # and several generated documents carry it. The fixture exposes only a kind-keyed
@@ -36,14 +35,10 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "${ROOT}"
 
-TALOS_PIN="${1:-v1.14.0}"
-K8S_PIN="${3:-v1.37.0}"
-EXAMPLE_CLUSTER_YAML="tofu/modules/talos-cluster/examples/complete/cluster.yaml"
-# READ from the example rather than hardcoded: case E asserts what an unchanged
-# consumer keeps receiving, and its failure text claims the examples still carry
-# this pin. Moving the example to 1.14 (#252 AC 4) must move this probe with it,
-# not leave it asserting absence at a version nobody uses.
-TALOS_PREV_PIN="${2:-}"
+TALOS_PIN="${1:-v1.14.2}"
+K8S_PIN="${3:-v1.37.1}"
+# The legacy contract stays covered even when examples move to the native line.
+TALOS_PREV_PIN="${2:-v1.13.10}"
 
 FIXTURE="tofu/modules/talos-cluster/tests/fixtures/provider-document-kinds"
 LOCK="tofu/modules/talos-cluster/.terraform.lock.hcl"
@@ -85,7 +80,7 @@ MODULE_PIN="$(
 # OPERATOR (">=") that every site matches through its own required_version line,
 # and the parity loop below would pass vacuously on the one drift it exists for.
 [[ "${MODULE_PIN}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] ||
-  fail "pin parity: tofu/modules/talos-cluster/versions.tf declares '${MODULE_PIN:-<unreadable>}' for siderolabs/talos, which is not an exact version. The module pins an exact prerelease on purpose (ADR-0027); a range there resolves to 0.11.0 and silently closes the Talos 1.14 document surface."
+  fail "pin parity: tofu/modules/talos-cluster/versions.tf declares '${MODULE_PIN:-<unreadable>}' for siderolabs/talos, which is not an exact version. The module pins an exact stable release to bind the generated configuration contract."
 # Each site is matched on the LINE that names the provider, not anywhere in the
 # file: the README also mentions the version in prose, which would keep this
 # green while the example root it ships carries a stale one.
@@ -100,12 +95,6 @@ LOCK_PIN="$(
 [ "${LOCK_PIN}" = "${MODULE_PIN}" ] ||
   fail "pin parity: the committed lock records ${LOCK_PIN:-<none>} but versions.tf pins ${MODULE_PIN}. Regenerate it: cd tofu/modules/talos-cluster && tofu providers lock -platform=linux_amd64 -platform=darwin_arm64 -platform=linux_arm64"
 
-if [ -z "${TALOS_PREV_PIN}" ]; then
-  [ -f "${EXAMPLE_CLUSTER_YAML}" ] || envfail "${EXAMPLE_CLUSTER_YAML} not found"
-  TALOS_PREV_PIN="$(awk '/^talos:/{f=1} f&&/^  version:/{print $2; exit}' "${EXAMPLE_CLUSTER_YAML}")"
-  [ -n "${TALOS_PREV_PIN}" ] ||
-    envfail "could not read talos.version from ${EXAMPLE_CLUSTER_YAML}"
-fi
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
@@ -117,7 +106,7 @@ cp "${LOCK}" "${WORK}/.terraform.lock.hcl"
 
 if ! init_out="$( cd "${WORK}" && tofu init -input=false -no-color 2>&1 )"; then
   printf '%s\n' "${init_out}" >&2
-  envfail "tofu init failed in the probe directory. Most likely the pinned provider is no longer downloadable (a prerelease can be withdrawn upstream), or the fixture's versions.tf and the copied lock disagree."
+  envfail "tofu init failed in the probe directory. Most likely the pinned provider is no longer downloadable, or the fixture's versions.tf and the copied lock disagree."
 fi
 
 PROVIDER_VERSION="$(
@@ -229,7 +218,7 @@ $(document FilesystemTrimConfig)"
 
 if ! out="$(probe "${TALOS_PREV_PIN}" '')"; then
   printf '%s\n' "${out}" >&2
-  fail "case E: the pinned provider could not render an unpatched ${TALOS_PREV_PIN} configuration — the line the module's own examples and fixtures still carry."
+  fail "case E: the pinned provider could not render an unpatched ${TALOS_PREV_PIN} configuration — the legacy schema compatibility line."
 fi
 # Positive control: without it the absence assertions below would also pass on a
 # render that produced nothing at all.
@@ -237,12 +226,12 @@ kinds | grep -qx 'HostnameConfig' ||
   fail "case E: the ${TALOS_PREV_PIN} render carries no HostnameConfig, so it is not the document set this gate was calibrated against and the absence checks below would prove nothing. Kinds present: $(kinds | paste -sd, -)."
 for absent in SecurityProfileConfig FilesystemTrimConfig; do
   if kinds | grep -qx "${absent}"; then
-    fail "case E: the provider now emits ${absent} at a ${TALOS_PREV_PIN} pin. The examples and fixtures still carry that pin, so an unchanged consumer's rendered configuration changed — reconcile the module README before updating this gate."
+    fail "case E: the provider now emits ${absent} at a ${TALOS_PREV_PIN} pin. An existing consumer can still carry that schema pin, so its rendered configuration changed — reconcile the module README before updating this gate."
   fi
 done
 
 # --- Case F: the generated install document ignores the module's install patch
-# The module writes machine.install (v1alpha1) for every node. At a 1.14 pin the
+# A legacy caller patch can still write machine.install. At a 1.14 pin the
 # provider ALSO emits UnattendedInstallConfig from its own defaults, and the two
 # disagree. The positive control is what separates "the provider ignores the
 # patch" from "the provider stopped honouring machine.install at all".
@@ -250,19 +239,18 @@ if ! out="$(probe "${TALOS_PIN}" 'machine:
   install:
     disk: /dev/nvme0n1')"; then
   printf '%s\n' "${out}" >&2
-  fail "case F: the pinned provider REJECTED a machine.install patch — the v1alpha1 install spelling the module writes for every node."
+  fail "case F: the pinned provider REJECTED a machine.install patch — the legacy caller spelling."
 fi
 [ "$(install_disk)" = "/dev/nvme0n1" ] ||
   fail "case F: the machine.install patch did not reach the rendered v1alpha1 document — machine.install.disk came back as '$(install_disk)'. The provider stopped honouring the install spelling the module writes for every node, so every install description the module emits is silently gone."
 document UnattendedInstallConfig | grep -q 'diskSelector' ||
-  fail "case F: a ${TALOS_PIN} pin no longer generates an UnattendedInstallConfig disk selector. The install-document conflict the README warns about is gone — drop the warning and revisit moving the pins to 1.14 (#252 AC 4)."
+  fail "case F: a ${TALOS_PIN} pin no longer generates an UnattendedInstallConfig disk selector. The install-document conflict the README warns about is gone — revisit the native migration guidance."
 if document UnattendedInstallConfig | grep -q '/dev/nvme0n1'; then
-  fail "case F: the generated UnattendedInstallConfig now follows the machine.install patch. The two install descriptions no longer disagree — drop the README warning and revisit moving the pins to 1.14 (#252 AC 4)."
+  fail "case F: the generated UnattendedInstallConfig now follows the machine.install patch. The two install descriptions no longer disagree — revisit the native migration guidance."
 fi
 
 # --- Case G: the remedy the README prescribes for case F actually works -------
-# README §"Talos 1.14" tells a consumer to patch the generated install document
-# themselves. That instruction guards a bare-metal install, so it is measured
+# Native schemas use the install document exclusively. Its merge behavior is measured
 # here rather than assumed.
 if ! out="$(probe "${TALOS_PIN}" 'apiVersion: v1alpha1
 kind: UnattendedInstallConfig

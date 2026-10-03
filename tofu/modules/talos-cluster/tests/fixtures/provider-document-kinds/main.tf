@@ -32,6 +32,11 @@ variable "config_patches" {
   default     = []
 }
 
+variable "machine_type" {
+  type    = string
+  default = "controlplane"
+}
+
 resource "talos_machine_secrets" "probe" {
   talos_version = var.talos_version
 }
@@ -39,7 +44,7 @@ resource "talos_machine_secrets" "probe" {
 data "talos_machine_configuration" "probe" {
   cluster_name       = "document-kind-probe"
   cluster_endpoint   = "https://192.0.2.1:6443"
-  machine_type       = "controlplane"
+  machine_type       = var.machine_type
   machine_secrets    = talos_machine_secrets.probe.machine_secrets
   talos_version      = var.talos_version
   kubernetes_version = var.kubernetes_version

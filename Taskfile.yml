@@ -313,7 +313,12 @@ tasks:
         -filter=tests/input-validation.tftest.hcl \
         -filter=tests/image-kernel-args.tftest.hcl \
         -filter=tests/kubeconfig-endpoint-marker.tftest.hcl \
-        -filter=tests/apply-mode.tftest.hcl
+        -filter=tests/apply-mode.tftest.hcl \
+        -filter=tests/talos-native-config.tftest.hcl
+
+  tofu:check:talos-config-validation:
+    desc: "Render module patches with the pinned provider and validate both schema lines with talosctl 1.14.2 (no cluster)"
+    cmd: scripts/check-talos-config-validation.sh
 
   tofu:ci:
     desc: "Full local tofu validation: fmt:check + validate + vendored OCI module validate + lint + check:render-determinism + check:argocd-day0-apply-shape + check:argocd-gate-bites + check:readme-parity + check:kubeconfig-endpoint-regen + check:node-projection-wiring + check:shim-key-parity + check:cilium-operator-replicas-key + check:cilium-rollout-pods-key + check:provider-document-kinds-bites + check:provider-document-kinds + test:offline — mirrors CI; provider init may use the registry, no live Image Factory"
@@ -334,6 +339,7 @@ tasks:
       - task: tofu:check:provider-document-kinds-bites
       - task: tofu:check:provider-document-kinds
       - task: tofu:test:offline
+      - task: tofu:check:talos-config-validation
 
   # ===========================================================================
   # gitops:* — kustomize manifest validation + rendered-manifests pipeline
