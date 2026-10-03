@@ -62,7 +62,7 @@ terraform {
       source  = "siderolabs/talos"
       # Tracks the module's own exact pin — the property under test is a
       # behaviour of THAT provider, not of whatever a range resolves to.
-      version = "0.12.0-beta.0"
+      version = "0.12.0"
     }
   }
 }

@@ -156,7 +156,20 @@ locals {
   # patch still overrides — the documented escape hatch) and BEFORE base_cni_patch
   # (which stays strictly last). Empty list when the node provisions nothing.
   node_generated_patches = {
-    for h, n in var.nodes : h => (
+    for h, n in var.nodes : h => local.native_config_documents ? concat(
+      [for module in local.node_kernel_modules[h] : yamlencode({
+        apiVersion = "v1alpha1"
+        kind       = "KernelModuleConfig"
+        name       = module.name
+        parameters = module.parameters
+      })],
+      length(local.node_sysctls[h]) > 0 ? [yamlencode({
+        apiVersion = "v1alpha1", kind = "SysctlConfig", params = local.node_sysctls[h]
+      })] : [],
+      length(local.node_labels[h]) > 0 ? [yamlencode({
+        apiVersion = "v1alpha1", kind = "KubeNodeConfig", labels = local.node_labels[h]
+      })] : [],
+      ) : (
       length(local.node_kernel_modules[h]) == 0 && length(local.node_sysctls[h]) == 0 && length(local.node_labels[h]) == 0
       ? []
       : [yamlencode({

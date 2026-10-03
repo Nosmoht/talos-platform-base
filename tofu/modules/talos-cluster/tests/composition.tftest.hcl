@@ -861,3 +861,34 @@ run "cilium_seed_render_carries_the_typed_api_server_endpoint" {
     error_message = "cilium-cni-delivery render-layer rule: cilium_k8s_service_port must reach the rendered agent DaemonSet as KUBERNETES_SERVICE_PORT — the string shape the module emits is the shape the chart consumes"
   }
 }
+
+# Resolve all catalog extension families plus both example architectures at the
+# supported native version. Legacy runs above remain regression coverage.
+run "native_114_factory_catalog" {
+  command = plan
+  variables {
+    talos_version      = "v1.14.2"
+    kubernetes_version = "v1.37.1"
+    hardware_capabilities = {
+      all-profiles = {
+        requires_features     = ["drbd-kernel-module", "iommu-enabled"]
+        provisioning_profiles = ["drbd", "iommu", "nvidia-lts"]
+        emits_label           = "platform.io/hardware-capability.all-profiles"
+      }
+    }
+    nodes = {
+      cp  = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["all-profiles"] }
+      arm = { ip = "192.0.2.12", role = "worker", image = "arm", hardware_capabilities = [] }
+    }
+  }
+  assert {
+    condition = alltrue([for hash, extensions in local.official_extensions_by_schematic :
+      alltrue([for requested in local.schematics[hash].extensions : contains(extensions, requested)])
+    ])
+    error_message = "Every requested extension must resolve at Talos 1.14.2."
+  }
+  assert {
+    condition     = length(data.talos_image_factory_extensions_versions.per_schematic) == 2
+    error_message = "The native Factory check must cover amd64 and arm64."
+  }
+}

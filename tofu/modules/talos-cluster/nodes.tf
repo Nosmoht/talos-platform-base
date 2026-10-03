@@ -9,6 +9,14 @@
 # cilium-values.tf is its own file.
 
 locals {
+  # Schema selection follows the immutable bootstrap contract, never the OS
+  # installer pin. Invalid versions are rejected by the variable validation.
+  native_config_documents = try(
+    tonumber(regex("^v([0-9]+)\\.([0-9]+)", var.talos_version)[0]) > 1 ||
+    tonumber(regex("^v([0-9]+)\\.([0-9]+)", var.talos_version)[1]) >= 14,
+    false,
+  )
+
   # The IP is the second identifier that must not collide: it is what talosctl
   # targets and what fills every Talos-facing argument. But it is a VALUE, not a
   # key, so it gets its own keyed view — two nodes sharing an IP produce a
@@ -66,7 +74,11 @@ locals {
   # can override it in either direction, exactly like they can override the
   # module's HostnameConfig. The typed input is the supported surface; raw patch
   # content is caller-owned. See README §Notes.
-  register_with_fqdn_patch = var.register_with_fqdn ? [yamlencode({
+  register_with_fqdn_patch = var.register_with_fqdn ? [local.native_config_documents ? yamlencode({
+    apiVersion       = "v1alpha1"
+    kind             = "KubeNodeConfig"
+    registerWithFQDN = true
+    }) : yamlencode({
     machine = { kubelet = { registerWithFQDN = true } }
   })] : []
 }

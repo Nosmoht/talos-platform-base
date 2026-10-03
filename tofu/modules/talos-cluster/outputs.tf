@@ -344,9 +344,11 @@ output "controlplane_base_is_prefix_of_final" {
     assembly step so a future edit that drops or reorders the base prefix fails the
     test. Secret-free (boolean — the sensitive tail is excluded by the slice).
   EOT
-  value = slice(
+  # Native seed conversion can propagate sensitivity to the whole list. Only
+  # declassify the comparison result, never any patch or seed content.
+  value = nonsensitive(slice(
     local.controlplane_machine_config_patches, 0, length(local.controlplane_base_patches)
-  ) == local.controlplane_base_patches
+  ) == local.controlplane_base_patches)
 }
 
 output "cilium_self_management_app" {

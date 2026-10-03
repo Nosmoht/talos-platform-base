@@ -140,7 +140,18 @@ locals {
   #   2. sops-age-key Secret (the ksops repoServer decrypts SOPS manifests with it)
   #   3. the rendered ArgoCD manifest
   # Hooked in as an additional controlplane config_patch (only when deploy_argocd).
-  argocd_controlplane_patch = var.deploy_argocd ? [yamlencode({
+  argocd_controlplane_patch = local.native_config_documents ? flatten([
+    for patch in local.argocd_legacy_controlplane_patch : [
+      for manifest in yamldecode(patch).cluster.inlineManifests : yamlencode({
+        apiVersion = "v1alpha1"
+        kind       = "KubeInlineManifestConfig"
+        name       = manifest.name
+        manifest   = manifest.contents
+      })
+    ]
+  ]) : local.argocd_legacy_controlplane_patch
+
+  argocd_legacy_controlplane_patch = var.deploy_argocd ? [yamlencode({
     cluster = {
       inlineManifests = [
         {
@@ -190,7 +201,12 @@ locals {
   # FIRST so a caller config_patch can still override it — e.g. a migrating
   # consumer with custom subnets. Tunnel-mode Cilium reads the real podSubnets via
   # ipam:kubernetes, so a subnet override does not desync it.
-  base_cluster_patch = yamlencode({
+  base_cluster_patch = local.native_config_documents ? yamlencode({
+    apiVersion     = "v1alpha1"
+    kind           = "KubeNetworkConfig"
+    podSubnets     = var.pod_cidr
+    serviceSubnets = var.service_cidr
+    }) : yamlencode({
     cluster = {
       network = {
         podSubnets     = var.pod_cidr
@@ -210,7 +226,11 @@ locals {
   # config_patches. extraConfig = KubeletConfiguration → genuine bool (no string
   # quoting). Applied to BOTH controlplane and worker (the serving cert is per
   # kubelet). See knowledge/decisions/0013-kubelet-serving-cert-rotation.md.
-  base_kubelet_rotation_patch = yamlencode({
+  base_kubelet_rotation_patch = local.native_config_documents ? yamlencode({
+    apiVersion = "v1alpha1"
+    kind       = "KubeletConfig"
+    config     = { serverTLSBootstrap = true }
+    }) : yamlencode({
     machine = { kubelet = { extraConfig = { serverTLSBootstrap = true } } }
   })
 
@@ -221,12 +241,15 @@ locals {
   # NOT caller-overridable (the documented opt-out is deploy_cilium = false). A
   # stale caller `cni` stanza from the old extraManifests recipe therefore cannot
   # silently resurrect Flannel. proxy.disabled tracks the kube-proxy toggle.
-  base_cni_patch = var.deploy_cilium ? [yamlencode({
-    cluster = merge(
-      { network = { cni = { name = "none" } } },
-      var.cilium_kube_proxy_replacement ? { proxy = { disabled = true } } : {},
-    )
-  })] : []
+  base_cni_patch = var.deploy_cilium ? (local.native_config_documents ? concat(
+    [yamlencode({ apiVersion = "v1alpha1", kind = "KubeFlannelCNIConfig", "$patch" = "delete" })],
+    var.cilium_kube_proxy_replacement ? [yamlencode({ apiVersion = "v1alpha1", kind = "KubeProxyConfig", enabled = false })] : [],
+    ) : [yamlencode({
+      cluster = merge(
+        { network = { cni = { name = "none" } } },
+        var.cilium_kube_proxy_replacement ? { proxy = { disabled = true } } : {},
+      )
+  })]) : []
 
   # OPT-IN bootstrap seeding of the Gateway API CRDs via cluster.extraManifests
   # (controlplane), only when cilium_gateway_api_crds_url is set non-empty. Default
@@ -237,7 +260,12 @@ locals {
   # extraManifests fetch is NOT graceful (Talos ExtraManifestController crashloops and
   # bootstrap does not complete cleanly) — see cilium_gateway_api_crds_url. CRDs carry
   # no key material, so the URL form is acceptable for the opt-in case (unlike Cilium).
-  gateway_api_patch = (var.deploy_cilium && var.cilium_gateway_api && var.cilium_gateway_api_crds_url != "") ? [yamlencode({
+  gateway_api_patch = (var.deploy_cilium && var.cilium_gateway_api && var.cilium_gateway_api_crds_url != "") ? [local.native_config_documents ? yamlencode({
+    apiVersion = "v1alpha1"
+    kind       = "KubeExternalManifestConfig"
+    name       = "gateway-api-crds"
+    url        = var.cilium_gateway_api_crds_url
+    }) : yamlencode({
     cluster = { extraManifests = [var.cilium_gateway_api_crds_url] }
   })] : []
 
@@ -249,7 +277,18 @@ locals {
 
   # Cilium (+ optional IPsec key Secret, applied first via the Namespace→CRD→other
   # sort) as controlplane inlineManifests, baked after caller patches like ArgoCD.
-  cilium_controlplane_patch = var.deploy_cilium ? [yamlencode({
+  cilium_controlplane_patch = local.native_config_documents ? flatten([
+    for patch in local.cilium_legacy_controlplane_patch : [
+      for manifest in yamldecode(patch).cluster.inlineManifests : yamlencode({
+        apiVersion = "v1alpha1"
+        kind       = "KubeInlineManifestConfig"
+        name       = manifest.name
+        manifest   = manifest.contents
+      })
+    ]
+  ]) : local.cilium_legacy_controlplane_patch
+
+  cilium_legacy_controlplane_patch = var.deploy_cilium ? [yamlencode({
     cluster = {
       inlineManifests = concat(
         var.cilium_encryption.type == "ipsec" ? [{
@@ -331,7 +370,18 @@ locals {
   # Deployment. The approver is cluster-scoped → it approves serving CSRs from ALL
   # nodes (incl. workers, which carry no inlineManifest seeds). Controlplane-only,
   # like the Cilium/ArgoCD seeds. Unconditional (always seeded).
-  cert_approver_controlplane_patch = [yamlencode({
+  cert_approver_controlplane_patch = local.native_config_documents ? flatten([
+    for patch in local.cert_approver_legacy_controlplane_patch : [
+      for manifest in yamldecode(patch).cluster.inlineManifests : yamlencode({
+        apiVersion = "v1alpha1"
+        kind       = "KubeInlineManifestConfig"
+        name       = manifest.name
+        manifest   = manifest.contents
+      })
+    ]
+  ]) : local.cert_approver_legacy_controlplane_patch
+
+  cert_approver_legacy_controlplane_patch = [yamlencode({
     cluster = {
       inlineManifests = [
         {
@@ -635,6 +685,11 @@ locals {
 
   controlplane_base_patches = concat(
     [local.base_cluster_patch],
+    local.native_config_documents && var.allow_scheduling_on_controlplanes ? [yamlencode({
+      apiVersion = "v1alpha1"
+      kind       = "KubeNodeConfig"
+      taints     = { "node-role.kubernetes.io/control-plane" = { "$patch" = "delete" } }
+    })] : [],
     [local.base_kubelet_rotation_patch],
     local.register_with_fqdn_patch,
     var.config_patches,
@@ -654,7 +709,7 @@ locals {
     local.register_with_fqdn_patch,
     var.config_patches,
     var.worker_config_patches,
-    local.base_cni_patch,
+    local.native_config_documents ? [] : local.base_cni_patch,
   )
 }
 
@@ -721,6 +776,77 @@ data "talos_machine_configuration" "worker" {
 # (incl. schematic-level secureboot toggles the URL grep cannot see) there is the
 # consumer overlay's job — same substrate-only boundary as AGENTS.md
 # §"Out of scope for the base".
+locals {
+  node_installer_images = {
+    for h, n in local.nodes_checked : h => data.talos_image_factory_urls.this[local.node_install_key[h]].urls.installer
+  }
+  # The native installer patch must carry the existing provisioning block.
+  # Talos 1.14's strategic merge of an image-only document clears its CEL disk
+  # selector. Preserve the generated/role-patched selector and wipe policy.
+  role_install_provisioning = local.native_config_documents ? {
+    for role, configuration in {
+      controlplane = data.talos_machine_configuration.controlplane.machine_configuration
+      worker       = data.talos_machine_configuration.worker.machine_configuration
+      } : role => one([
+        for document in split("\n---\n", configuration) : yamldecode(document).provisioning
+        if try(yamldecode(document).kind, "") == "UnattendedInstallConfig"
+    ])
+  } : {}
+  # One composition path for apply and offline validation. External installer
+  # URLs and frozen chart contents are the test harness's only substituted inputs.
+  node_config_patches = {
+    for h, n in local.nodes_checked : h => concat(
+      [
+        # Exactly one install representation, selected by the schema contract.
+        # Node patches may override the image; the default includes its schematic.
+        local.native_config_documents ? yamlencode({
+          apiVersion   = "v1alpha1"
+          kind         = "UnattendedInstallConfig"
+          installer    = { image = local.node_installer_images[h] }
+          provisioning = local.role_install_provisioning[n.role]
+          }) : yamlencode({
+          machine = {
+            install = {
+              # Explicitly the NON-secureboot installer URL — `urls.installer`,
+              # never `urls.installer_secureboot`. This is the code-level Hard
+              # Constraint enforcement (AGENTS.md: no SecureBoot installer image);
+              # the module cannot emit a SecureBoot installer through this path.
+              image = local.node_installer_images[h]
+            }
+          }
+        }),
+        # Hostname via the Talos >= 1.12 HostnameConfig document. The legacy
+        # machine.network.hostname (v1alpha1) conflicts with the provider-generated
+        # HostnameConfig{auto: stable} ("static hostname is already set in v1alpha1
+        # config"). Set the static hostname and delete the generated `auto`
+        # (hostname/auto are mutually exclusive). Refs: siderolabs/talos#12541,#12573
+        # (smira: "add auto: off"); siderolabs/terraform-provider-talos#296 ($patch
+        # delete avoids the YAML off->false coercion that bites `auto: off`).
+        yamlencode({
+          apiVersion = "v1alpha1"
+          kind       = "HostnameConfig"
+          hostname   = h
+          auto       = { "$patch" = "delete" }
+        }),
+      ],
+      # Module-generated capability patch (machine.kernel.modules / sysctls /
+      # nodeLabels from the node's hardware_capabilities). BEFORE node patches so a
+      # raw per-node patch can still override a generated value (documented escape
+      # hatch); base_cni_patch stays strictly last.
+      local.node_generated_patches[h],
+      n.config_patches,
+      # base_cni_patch re-applied LAST in the apply pass too, so cni:none + proxy
+      # win over a generated/node patch as well (not just the all-nodes/role patches of
+      # pass 1). When deploy_cilium is true, Flannel must NOT come up via any patch
+      # vector. install.image is intentionally NOT re-pinned here — per-node installer
+      # override stays allowed, and the SecureBoot guard (a substring heuristic, see
+      # talos_machine_secrets preconditions) covers the common recipe; schematic-level
+      # SecureBoot remains consumer-overlay responsibility.
+      local.native_config_documents && n.role == "worker" ? [] : local.base_cni_patch,
+    )
+  }
+}
+
 resource "talos_machine_configuration_apply" "this" {
   # Keyed by node name — the same key strings as before the map refactor, so
   # state addresses are stable across the v7 -> v8 conversion. Routed through
@@ -736,49 +862,7 @@ resource "talos_machine_configuration_apply" "this" {
   node       = each.value.ip
   apply_mode = local.node_apply_mode[each.key]
 
-  config_patches = concat(
-    [
-      # install.image stays v1alpha1 (Hard Constraint: non-secureboot installer).
-      yamlencode({
-        machine = {
-          install = {
-            # Explicitly the NON-secureboot installer URL — `urls.installer`,
-            # never `urls.installer_secureboot`. This is the code-level Hard
-            # Constraint enforcement (AGENTS.md: no SecureBoot installer image);
-            # the module cannot emit a SecureBoot installer through this path.
-            image = data.talos_image_factory_urls.this[local.node_install_key[each.key]].urls.installer
-          }
-        }
-      }),
-      # Hostname via the Talos >= 1.12 HostnameConfig document. The legacy
-      # machine.network.hostname (v1alpha1) conflicts with the provider-generated
-      # HostnameConfig{auto: stable} ("static hostname is already set in v1alpha1
-      # config"). Set the static hostname and delete the generated `auto`
-      # (hostname/auto are mutually exclusive). Refs: siderolabs/talos#12541,#12573
-      # (smira: "add auto: off"); siderolabs/terraform-provider-talos#296 ($patch
-      # delete avoids the YAML off->false coercion that bites `auto: off`).
-      yamlencode({
-        apiVersion = "v1alpha1"
-        kind       = "HostnameConfig"
-        hostname   = each.key
-        auto       = { "$patch" = "delete" }
-      }),
-    ],
-    # Module-generated capability patch (machine.kernel.modules / sysctls /
-    # nodeLabels from the node's hardware_capabilities). BEFORE node patches so a
-    # raw per-node patch can still override a generated value (documented escape
-    # hatch); base_cni_patch stays strictly last.
-    local.node_generated_patches[each.key],
-    each.value.config_patches,
-    # base_cni_patch re-applied LAST in the apply pass too, so cni:none + proxy
-    # win over a generated/node patch as well (not just the all-nodes/role patches of
-    # pass 1). When deploy_cilium is true, Flannel must NOT come up via any patch
-    # vector. install.image is intentionally NOT re-pinned here — per-node installer
-    # override stays allowed, and the SecureBoot guard (a substring heuristic, see
-    # talos_machine_secrets preconditions) covers the common recipe; schematic-level
-    # SecureBoot remains consumer-overlay responsibility.
-    local.base_cni_patch,
-  )
+  config_patches = local.node_config_patches[each.key]
 }
 
 # Bootstrap etcd on the first controlplane only. Must run after the config is

@@ -439,17 +439,13 @@ rather than leaving it to be inferred.
 ### Requirement: Version constraints and backend agnosticism
 
 The module SHALL require OpenTofu/Terraform `>= 1.9.0` and constrain its
-providers to `siderolabs/talos` `0.12.0-beta.0` (an EXACT prerelease pin),
+providers to `siderolabs/talos` `0.12.0` (an exact stable pin),
 `hashicorp/helm` `>= 2.12, < 3.0.0` (local template rendering only — no Helm
 release or apply), and `hashicorp/local` `>= 2.4` plus `hashicorp/null`
 `>= 3.2` (used only for the ArgoCD CRD apply path). The talos pin SHALL be
-exact because only the 0.12 line bundles the Talos 1.14 machinery the module's
-`config_patches` surface is decoded against, that line has no final release,
-and a version constraint matches a prerelease only through an exact `=`. Provider constraints intersect
-across a configuration and the exact pin wins that intersection, so a consumer
-root declaring a version RANGE, no `version` key, or no talos entry SHALL still
-resolve to the pinned version; only a root pinning a DIFFERENT exact version
-fails to resolve. The `>= 1.9.0` floor (raised from `>= 1.7.0`)
+exact to bind the generated configuration contract to a tested stable release.
+A consumer root's constraint SHALL admit 0.12.0; any constraint excluding it
+SHALL fail initialization. The `>= 1.9.0` floor (raised from `>= 1.7.0`)
 is required because the `cilium_self_management` guard validations below
 reference OTHER variables in their `condition` — a cross-variable `validation`
 feature OpenTofu introduced at 1.9 — and is parsed at module load regardless of
@@ -473,10 +469,10 @@ machine secrets land in state.
 
 #### Scenario: A caller root declaring a provider range still resolves
 
-- **WHEN** a consumer root declares a `siderolabs/talos` version RANGE
+- **WHEN** a consumer root declares a `siderolabs/talos` version range admitting 0.12.0
   alongside this module
 - **THEN** initialization succeeds and resolves to the module's exact
-  prerelease pin, because the pin wins the constraint intersection
+  stable pin, because it satisfies both constraints
 
 #### Scenario: A caller root constraint that excludes the pin does not resolve
 

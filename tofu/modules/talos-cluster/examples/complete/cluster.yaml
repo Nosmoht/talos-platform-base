@@ -35,10 +35,10 @@ repo:
   url: https://github.com/your-org/your-cluster-repo.git
 
 talos:
-  version: v1.13.8 # schema pin (fixed at bootstrap)
-  install_version: v1.13.9 # installer tag bumped for an OS upgrade (exercises the split)
+  version: v1.14.2 # schema pin (fixed at bootstrap)
+  install_version: v1.14.2 # installer tag bumped for an OS upgrade (exercises the split)
 kubernetes:
-  version: v1.36.3
+  version: v1.37.1
 
 # Base images — the non-composable axis: arch + CPU vendor + BASELINE extensions
 # baked on every node of the image regardless of capabilities (CPU microcode,
@@ -110,16 +110,22 @@ nodes:
 
 # Cluster-wide patches the caller owns (NTP here; the module injects none).
 config_patches:
-  - machine: { time: { servers: ["192.0.2.123"] } }
+  - apiVersion: v1alpha1
+    kind: TimeSyncConfig
+    ntp: { servers: ["192.0.2.123"] }
 
 # Role tier — applied to controlplane nodes only (exercises the controlplane pass).
 controlplane_config_patches:
-  - cluster: { apiServer: { extraArgs: { event-ttl: "1h0m0s" } } }
+  - apiVersion: v1alpha1
+    kind: KubeAPIServerConfig
+    extraArgs: { event-ttl: "1h0m0s" }
 
 # Role tier — applied to worker nodes only (exercises the worker pass). maxPods is
 # an int (unquoted) — workload-bearing workers carry more pods than the kubelet default (110).
 worker_config_patches:
-  - machine: { kubelet: { extraConfig: { maxPods: 200 } } }
+  - apiVersion: v1alpha1
+    kind: KubeletConfig
+    config: { maxPods: 200 }
 
 # Substrate: Cilium + ArgoCD delivered by the module (Layer-1 floor). Defaults are
 # shown explicitly so the worked example documents every substrate knob the shim

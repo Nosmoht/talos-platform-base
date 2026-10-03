@@ -164,7 +164,7 @@ bite "case E's positive control catches an unrecognisable prev-line render" \
 
 bite "case E catches the 1.14 documents reaching the previous line" \
   "case E: the provider now emits" \
-  'TALOS_PREV_PIN="${2:-}"' \
+  'TALOS_PREV_PIN="${2:-v1.13.10}"' \
   'TALOS_PREV_PIN="${2:-v1.14.0}"'
 
 bite "case F's positive control catches an install patch that did not land" \
