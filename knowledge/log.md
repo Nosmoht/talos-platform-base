@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-04
+
+- `reference/tasks.md`: retire `tofu:docs`, document optional yamllint and the
+  reduced Devbox environment with npm-managed markdownlint.
+
 ## 2026-10-03
 
 - `decisions/0027-talos-provider-prerelease-pin.md`: append the stable-provider

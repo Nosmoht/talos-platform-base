@@ -7,6 +7,12 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Pending release
 
+- **Changed — smaller developer toolchain.** Remove `terraform-docs` and
+  retire `task tofu:docs`; module README tables remain hand-maintained. Remove
+  `yamllint` from Devbox and skip its advisory check explicitly when absent.
+  Remove Devbox's duplicate markdownlint installation; use
+  `task docs:install-cli` for the npm lockfile-pinned version.
+
 - **Changed (BREAKING, MAJOR): native Talos 1.14.2 support.** Pin the stable
   Talos provider to 0.12.0. Schema pins from 1.14 emit native module patches
   instead of conflicting legacy fields; 1.13 schema pins keep their patch
