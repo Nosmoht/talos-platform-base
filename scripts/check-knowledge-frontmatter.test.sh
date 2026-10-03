@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# Bite-check for scripts/check-knowledge-frontmatter.sh.
-#
-# Same argument as scripts/check-knowledge-gate-bite.sh makes for the policy
-# gate: a detector for a silent failure is worth nothing without proof that it
-# still discriminates. Each scenario copies the real bundle to a temp tree,
-# applies ONE mutation, and asserts the checker fails with the right message —
-# then a conforming run must pass, so a checker that always fails cannot score.
-#
-# The real bundle is never written to.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -19,7 +10,7 @@ trap 'rm -rf "$tmp"' EXIT
 fails=0
 n=0
 
-scenario() { # name expect(pass|fail) [needle]
+scenario() {
   n=$((n + 1))
   local name="$1" expect="$2" needle="${3:-}" out st=0
   out="$("$gate" "$tmp/kb" 2>&1)" || st=$?

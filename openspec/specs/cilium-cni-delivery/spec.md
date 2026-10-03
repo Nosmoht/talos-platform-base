@@ -5,8 +5,7 @@ sources:
     - kubernetes/bootstrap/cilium/extras.yaml
     - tofu/modules/talos-cluster/helm/cilium-values.yaml
     - tofu/modules/talos-cluster/cilium-values.tf
-  secondary:
-    - tofu/modules/talos-cluster/main.tf
+    - tofu/modules/talos-cluster/cilium-seed.tf
 references:
   - AGENTS.md §Repository Purpose (three pillars)
 ---

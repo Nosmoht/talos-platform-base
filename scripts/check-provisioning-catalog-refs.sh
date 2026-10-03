@@ -1,22 +1,4 @@
 #!/usr/bin/env bash
-# check-provisioning-catalog-refs.sh — cross-reference gate for the γ'
-# node-capability-composition model (knowledge/decisions/0009-node-capability-composition.md).
-#
-# Asserts the load-bearing equivalence the composition guards rely on:
-#   { atoms a base provisioning profile `provides` }  ==
-#   { Layer-C atoms with discovery_source: talos-machine-config }
-#
-# composition.tf defines "provisioned atom" SELF-CONTAINED as "provided by some
-# catalog profile" (it does NOT read the registry at plan time, by design). That
-# is sound only while the catalog's `provides` set matches the registry's
-# talos-machine-config set. This gate enforces that match so a registry-only atom
-# addition (or a catalog-only one) cannot silently defeat the symmetry guard.
-#
-# Also validates every provided atom id is kebab-case (label-syntax safe — it is
-# interpolated into a platform.io/hardware-feature.<atom> node label).
-#
-# Usage: scripts/check-provisioning-catalog-refs.sh
-# Exit:  0 = sets match; 1 = mismatch / malformed; 2 = environment error.
 
 set -euo pipefail
 
@@ -28,23 +10,13 @@ command -v yq >/dev/null 2>&1 || { echo "ERROR: yq (mikefarah v4+) required" >&2
 [ -f "$PROFILES" ] || { echo "ERROR: catalog not found: $PROFILES" >&2; exit 2; }
 [ -f "$REGISTRY" ] || { echo "ERROR: registry not found: $REGISTRY" >&2; exit 2; }
 
-# Registry: atom ids with discovery_source == talos-machine-config (= provisioned).
 registry_atoms="$(yq -r '.hardware_features[] | select(.discovery_source == "talos-machine-config") | .id' "$REGISTRY" | sort -u)"
 
-# Flatten newlines first so a multi-line `provides = [ ... ]` list is still
-# matched as a single bracket body (grep -oE is line-oriented; without this a
-# multi-line list silently drops atoms and fails closed with a confusing set
-# mismatch instead of comparing the real set).
 profiles_flat="$(tr '\n' ' ' < "$PROFILES")"
 
-# Catalog: atoms appearing inside any profile `provides = [ ... ]` list. The grep
-# extracts the bracket body, then the quoted kebab-case ids within it.
 catalog_atoms="$(printf '%s' "$profiles_flat" | grep -oE 'provides[[:space:]]*=[[:space:]]*\[[^]]*\]' \
   | grep -oE '"[a-z0-9-]+"' | tr -d '"' | sort -u)"
 
-# Kebab-case guard: any provided token that is NOT kebab-case would have been
-# dropped by the extraction above, so a malformed token surfaces as a set
-# mismatch. Additionally flag a literal non-kebab provides entry for a clear msg.
 malformed="$(printf '%s' "$profiles_flat" | grep -oE 'provides[[:space:]]*=[[:space:]]*\[[^]]*\]' \
   | grep -oE '"[^"]*"' | tr -d '"' | grep -vE '^[a-z0-9-]+$' || true)"
 if [ -n "$malformed" ]; then

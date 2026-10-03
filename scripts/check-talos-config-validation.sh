@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Render the production patch locals with the pinned provider, then validate
-# with Talos itself. No cluster is contacted; PKI and state stay in a temp dir.
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 for tool in tofu talosctl python3; do
@@ -46,8 +44,6 @@ output "validation_config" {
 }
 EOF
 tofu -chdir="${WORK}/render" init -input=false -no-color >"${WORK}/render-init.log" 2>&1 || { cat "${WORK}/render-init.log"; exit 2; }
-# Replace external chart contents and image URLs, not patch composition. Targets
-# below apply only local seeds, throwaway PKI and role rendering: no Factory or cluster writes.
 cat >"${WORK}/validation_override.tf" <<'EOF'
 locals {
   node_installer_images = { for name in keys(var.nodes) : name => "factory.talos.dev/metal-installer/fixture:v1.14.2" }
@@ -90,7 +86,6 @@ EOF
       -auto-approve -input=false -no-color >"${WORK}/seeds.log" 2>&1 || {
         echo "Local seed fixture setup failed" >&2; exit 1;
       }
-    # Read the same two patch passes as the production apply resource.
     printf '%s\n' 'nonsensitive(jsonencode({controlplane=local.controlplane_machine_config_patches,worker=local.worker_machine_config_patches,nodes=local.node_config_patches}))' |
       tofu -chdir="${WORK}" console >"${WORK}/patches.json"
     for role in controlplane worker; do

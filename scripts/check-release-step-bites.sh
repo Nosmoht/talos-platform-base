@@ -1,28 +1,4 @@
 #!/usr/bin/env bash
-# check-release-step-bites.sh — proves oci-publish.yml's release steps bite.
-#
-# The two steps under test create the GitHub Release. They only ever run on a
-# `v*` tag push, and a published release is immutable: getting them wrong costs
-# a version, which is how five tags shipped without their assets (#251). So
-# they are exercised here, against a stub `gh`, on every PR instead.
-#
-# The three disciplines scripts/check-release-guard-gate-bites.sh records:
-#
-#   1. Assert the state the scenario claims to have built BEFORE reading a
-#      verdict, so it cannot pass because its setup silently failed.
-#   2. Assert the OBSERVABLE, not just the exit code — here the ORDER of the
-#      `gh` calls, because "created a release" and "created a release the assets
-#      reached before it was published" have the same exit status and only the
-#      second survives immutability.
-#   3. Cover BOTH directions of a rule. A green case alone is satisfied by a
-#      step that never fails; a red case alone by one that never succeeds.
-#
-# The scripts under test are EXTRACTED FROM THE WORKFLOW, never copied here: a
-# copy would keep passing after the workflow changed. Extraction is asserted to
-# have found real content, so a reformatted workflow fails loudly.
-#
-# Runs offline, mutates nothing outside its temp dir.
-# Exit 0 = both steps behaved, 1 = a step regressed, 2 = environment error.
 
 set -euo pipefail
 
@@ -38,12 +14,7 @@ scenarios=0
 note() { printf 'FAIL: %s\n' "$*" >&2; rc=1; }
 ok() { printf '  ok   %s\n' "$*"; scenarios=$((scenarios + 1)); }
 
-# ---------------------------------------------------------------------------
-# extract the two `run:` bodies by indentation
-# ---------------------------------------------------------------------------
 extract_step() {
-  # $1 = step name, $2 = output path. Steps are indented 6, step keys 8, and a
-  # block scalar's content 10.
   awk -v want="      - name: $1" '
     $0 == want { in_step = 1; next }
     in_step && /^      - / { exit }
@@ -70,13 +41,6 @@ for f in create.sh assert.sh; do
 done
 ok "both steps extracted"
 
-# No `run:` block in the WHOLE workflow may splice a workflow expression into
-# the shell, not just these two. GitHub substitutes `${{ }}` textually before
-# bash parses the script, and a git ref may contain `$`, a backtick, `(`, `)`
-# and `"` — so an interpolated tag name is shell source, in the job that holds
-# `id-token: write` and `attestations: write`. Values belong in `env:`.
-# Only run CONTENT is inspected; `if:` and `env:` lines carry `${{ }}` by
-# design.
 interpolated="$(awk '
   match($0, /^[[:space:]]*run:[[:space:]]*\|/) {
     key = index($0, "run:") - 1; in_run = 1; next
@@ -100,16 +64,6 @@ else
   ok "no run: block in the workflow splices a workflow expression into the shell"
 fi
 
-# ---------------------------------------------------------------------------
-# 0) the other half of the fix, and the half nothing else watches
-#
-# The steps above are only correct because semantic-release no longer creates
-# the release. That is an ABSENCE in .releaserc.json, and an absence has no
-# test unless one is written: @semantic-release/github ships as a direct
-# dependency of semantic-release and is a member of its DEFAULT plugin list,
-# so anything that stops the config from being read republishes an asset-less
-# release and #251 returns. Asserted here rather than in a doc.
-# ---------------------------------------------------------------------------
 RELEASERC="${ROOT}/.releaserc.json"
 [ -r "$RELEASERC" ] || { printf 'ERROR: .releaserc.json not readable — semantic-release would fall back to its default plugin list, which publishes a GitHub Release\n' >&2; exit 2; }
 if grep -q '@semantic-release/github' "$RELEASERC"; then
@@ -122,8 +76,6 @@ if grep -q '"@semantic-release/github"' "${ROOT}/package.json"; then
 else
   ok "@semantic-release/github is not a direct dependency of this repository"
 fi
-# cosmiconfig finds .releaserc.json at the repo root; a second config file
-# would shadow it, and which one wins is not worth reasoning about per PR.
 other_config=""
 for candidate in .releaserc .releaserc.yaml .releaserc.yml .releaserc.js \
                  .releaserc.cjs .releaserc.mjs release.config.js \
@@ -136,19 +88,6 @@ else
   ok ".releaserc.json is the only semantic-release config in the repository root"
 fi
 
-# ---------------------------------------------------------------------------
-# stub gh
-#
-#   $STATE     none | draft | published — the release object for $TAG
-#   $EXTRA     a second "<id> <draft>" line the release listing also returns
-#   $LIST_LAG  how many post-create attempts report nothing for THIS run's own
-#              release before it shows up — the eventual consistency that cost
-#              v14.0.0 (#276). A foreign release stays visible throughout.
-#   $LIST_FAIL how many post-create listings fail outright before succeeding
-#   $DROP      an asset basename `gh release create` silently fails to upload
-#   $UPLOADED  what the stub has actually attached, one basename per line
-#   $LOG       every call, in order
-# ---------------------------------------------------------------------------
 mkdir -p "$WORK/bin" "$WORK/repo/_release"
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -253,10 +192,6 @@ exit 0
 STUB
 chmod +x "$WORK/bin/gh"
 
-# The retry under test backs off between attempts. Stubbing `sleep` keeps the
-# suite instant without giving the workflow a test-only knob to honour — and
-# recording each call keeps the backoff itself assertable, so deleting it is
-# not a silent change.
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$SLEEP_LOG"\nexit 0\n' > "$WORK/bin/sleep"
 chmod +x "$WORK/bin/sleep"
 
@@ -270,8 +205,6 @@ export SLEEP_LOG="$WORK/slept" FAIL_SEEN="$WORK/fail-seen"
 cd "$WORK/repo"
 printf '# Changelog\n\n## v9.9.9 — 2026-01-01\n\nthe section for this tag\n\n## v9.9.8 — 2025-12-01\n\nolder\n' > CHANGELOG.md
 
-# one token per call: L list · C create · D delete · A assets-by-id
-# · T assets-by-tag · P publish
 call_order() {
   awk '
     /^api --paginate/                      { printf "L"; next }
@@ -301,11 +234,8 @@ run_create() {
 
 unset EXTRA DROP LIST_LAG LIST_FAIL
 
-# --- 1) no release yet: draft, assets, verified, published last -------------
 if run_create none v9.9.9; then
   order="$(call_order)"
-  # two listings per attempt: the tag lookup that runs the guards, then the
-  # html_url lookup that identifies this run's own release
   [ "$order" = "LCLLAP" ] \
     && ok "no release yet → create draft, verify its assets, publish last ($order)" \
     || note "expected call order LCLLAP (list, create, list, locate, assets, publish), got '$order'"
@@ -328,13 +258,6 @@ else
   note "the create step failed on a tag with no existing release: $(cat "$WORK/out")"
 fi
 
-# --- 1b) the listing lags behind the create: retried, not fatal --------------
-#
-# v14.0.0: `gh release create` returned, the listing reported nothing, and the
-# step exited with the artifact already pushed, signed, attested and tagged
-# `:latest` — a half-released tag whose documented recovery is expensive
-# (#276). The draft is the same object either way, so the only correct
-# response to "not there yet" is to look again.
 export LIST_LAG=2
 if run_create none v9.9.9; then
   ok "a listing that lags the create is retried until the draft appears"
@@ -352,7 +275,6 @@ else
 fi
 unset LIST_LAG
 
-# --- 1c) ... but the retry is bounded, and publishes nothing when it runs out
 export LIST_LAG=99
 if run_create none v9.9.9; then
   note "the step published a release it never located — the PATCH aimed at nothing"
@@ -367,11 +289,6 @@ else
 fi
 unset LIST_LAG
 
-# --- 1d) a published release is NOT waited out ------------------------------
-#
-# Retrying absence must not turn into retrying a real interleaving: more
-# waiting cannot unpublish a release, and the step has to refuse rather than
-# sample until the listing happens to omit it.
 export LIST_LAG=2 EXTRA_AFTER="4243 false"
 if run_create none v9.9.9; then
   note "a release published mid-run was ignored once the listing also lagged"
@@ -386,14 +303,6 @@ else
 fi
 unset LIST_LAG EXTRA_AFTER
 
-# --- 1e) a FOREIGN draft while ours lags: never published -------------------
-#
-# The attack the `html_url` lookup exists for. A second writer — another
-# maintainer drafting notes in the UI, another workflow, a stolen token —
-# creates a draft on the tag about to be pushed, with the three expected asset
-# NAMES. The listing then shows their draft while ours has not landed yet.
-# Addressing the release by tag would publish theirs under this repository's
-# release identity, immutably, and exit 0.
 export LIST_LAG=2 EXTRA_AFTER="4243 true"
 if run_create none v9.9.9; then
   grep -q 'releases/4243' "$LOG" \
@@ -407,12 +316,6 @@ else
 fi
 unset LIST_LAG EXTRA_AFTER
 
-# --- 1e2) a second draft appears with no lag: refused, and named as such ----
-#
-# The `html_url` lookup already keeps the step off the foreign draft, so this
-# refusal is defence in depth — but it is also the state the recovery table
-# keys on ("Two drafts for the tag → delete them by hand"), and that row is
-# only reachable if the message says so.
 export EXTRA_AFTER="4243 true"
 if run_create none v9.9.9; then
   note "a second draft appearing beside ours was published over rather than refused"
@@ -427,7 +330,6 @@ else
 fi
 unset EXTRA_AFTER
 
-# --- 1f) the listing itself errors: retried, not fatal ----------------------
 export LIST_FAIL=2
 if run_create none v9.9.9; then
   ok "a listing that cannot be read at all is retried rather than half-releasing the tag"
@@ -439,7 +341,6 @@ else
 fi
 unset LIST_FAIL
 
-# --- 2) leftover draft from a failed run: discarded and rebuilt --------------
 if run_create draft v9.9.9; then
   order="$(call_order)"
   [ "$order" = "LDCLLAP" ] \
@@ -449,7 +350,6 @@ else
   note "the create step failed on a leftover draft, so a re-run cannot recover: $(cat "$WORK/out")"
 fi
 
-# --- 3) already published: refuse, before touching anything -----------------
 if run_create published v9.9.9; then
   note "the create step accepted an already-published release — every asset upload would 422"
 else
@@ -466,7 +366,6 @@ else
     || note "the refusal names no recovery procedure"
 fi
 
-# --- 3b) a draft beside a published release must not read as "just a draft" -
 export EXTRA="4243 false"
 if run_create draft v9.9.9; then
   note "a draft sitting beside a PUBLISHED release for the same tag was treated as recoverable"
@@ -475,7 +374,6 @@ else
 fi
 unset EXTRA
 
-# --- 3b2) ... and one that appears only after the draft was created ---------
 export EXTRA_AFTER="4243 false"
 if run_create none v9.9.9; then
   note "a release published while the draft was being built was ignored, and the publish call aimed at the first listed release"
@@ -487,7 +385,6 @@ else
 fi
 unset EXTRA_AFTER
 
-# --- 3c) two drafts: refuse rather than orphan one --------------------------
 export EXTRA="4243 true"
 if run_create draft v9.9.9; then
   note "two drafts for one tag: the step deleted one and orphaned the other"
@@ -498,7 +395,6 @@ else
 fi
 unset EXTRA
 
-# --- 4) an asset that fails to upload: caught while still recoverable -------
 export DROP="talos-platform-base-v9.9.9.cdx.json"
 if run_create none v9.9.9; then
   note "a draft missing the SBOM was published — the release is now immutable and incomplete"
@@ -516,7 +412,6 @@ else
 fi
 unset DROP
 
-# --- 5) a pre-release tag stays off :latest ---------------------------------
 if run_create none v9.9.9-rc.1; then
   grep -q -- '--prerelease' "$LOG" \
     && ok "a hyphenated tag is marked pre-release" \
@@ -531,7 +426,6 @@ else
   note "the create step failed on a pre-release tag: $(cat "$WORK/out")"
 fi
 
-# --- 6) the end-state assertion, both directions ---------------------------
 run_assert() {
   export TAG=v9.9.9
   printf 'published\n' > "$STATE"
@@ -564,10 +458,7 @@ fi
   && ok "the end-state assertion reads the release through the tag endpoint consumers use" \
   || note "the end-state assertion did not read the tag endpoint"
 
-# ---------------------------------------------------------------------------
 [ "$rc" -eq 0 ] || exit 1
-# A floor, not a description: narrowing the suite has to fail here rather than
-# quietly report a smaller number.
 if [ "$scenarios" -lt 47 ]; then
   printf 'FAIL: only %d scenarios ran; the suite has been narrowed\n' "$scenarios" >&2
   exit 1

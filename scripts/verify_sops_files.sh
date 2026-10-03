@@ -1,30 +1,11 @@
 #!/bin/sh
-# Negative SOPS-presence gate — fails if ANY SOPS material exists in
-# this base repository.
-#
-# AGENTS.md "Hard Constraints" §Tool-Agnostic Safety Invariants states:
-#   "Keep secret material out of base — there is no `*.sops.yaml` in
-#    this repo."
-#
-# The previous form of this script *validated* SOPS metadata IF SOPS
-# files were found. With zero SOPS files in tree, it exited 0 with
-# "discovered: 0" — false assurance. An accidentally committed
-# `dummy.sops.yaml` with the `sops:` block stripped would NOT have
-# tripped the gate.
-#
-# This inverted form makes the invariant mechanically enforced:
-#   - filename match: *.sops.yaml, *.sops.yml, *.sops.json
-#   - content match: any YAML file containing a top-level `sops:` key
-# Either condition fires → fail.
-#
-# Run from repo root.
+# Reject SOPS filenames and top-level SOPS metadata anywhere in the base repository.
 
 set -eu
 
 invalid=0
 hits=""
 
-# Filename match — explicit SOPS-convention suffixes.
 filename_matches=$(find . -type f \
   \( -name '*.sops.yaml' -o -name '*.sops.yml' -o -name '*.sops.json' \) \
   ! -path './.git/*' \
@@ -41,9 +22,6 @@ if [ -n "$filename_matches" ]; then
   done)
 fi
 
-# Content match — top-level `sops:` key in any .yaml/.yml (NOT .toml;
-# TOML files like .gitleaks.toml use [sops] as a table header which
-# is a different shape).
 has_top_level_sops_yaml() {
   awk '
     /^[[:space:]]*#/ { next }

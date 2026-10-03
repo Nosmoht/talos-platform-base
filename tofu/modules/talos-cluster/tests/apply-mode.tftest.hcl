@@ -2,13 +2,13 @@
 #
 # mock_provider (not the ./tests/fixtures stand-in modules) because the property
 # under test is an attribute of talos_machine_configuration_apply, which lives in
-# main.tf and no fixture symlinks. The mocks keep it offline: no Image Factory,
+# machine-config.tf and no fixture symlinks. The mocks keep it offline: no Image Factory,
 # no node contact. deploy_argocd = false because a mocked data.helm_template
 # returns nothing and the CRD-projection precondition would fail on that, not on
 # anything this file tests.
 #
 # Red-green, per mutant (each verified, not asserted): reverting the apply_mode
-# line in main.tf turns runs 1-5 red — runs 6-7 fail at variable validation
+# line in machine-config.tf turns runs 1-5 red — runs 6-7 fail at variable validation
 # before the resource is planned, so that mutant cannot reach them; swapping the
 # two arms of local.node_apply_mode in nodes.tf turns runs 3-5 red; dropping a
 # member from either contains() list in variables.tf turns run 5 red; routing on

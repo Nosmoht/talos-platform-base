@@ -183,7 +183,7 @@ run "emits_label_reserved_namespace_rejected" {
 # resources") + the PSA floor (enforce: baseline) preserved from the retired
 # kubernetes/bootstrap/argocd/namespace.yaml — the module is now the sole creator
 # of the namespace, so the create-only inlineManifest seed must carry these
-# itself. Red-green: drop labels from local.argocd_namespace_labels (main.tf) and
+# itself. Red-green: drop labels from local.argocd_namespace_labels (argocd-seed.tf) and
 # both asserts fail. deploy_argocd = true renders the argo-cd chart (NETWORK) and
 # needs a prefix-valid age key — already part of the network-gated `task tofu:test`.
 run "argocd_namespace_seed_carries_psa_floor_and_recommended_labels" {
@@ -211,8 +211,8 @@ run "argocd_namespace_seed_carries_psa_floor_and_recommended_labels" {
 # Kubelet serving-cert rotation (serverTLSBootstrap) + cert-approver substrate
 # seed — knowledge/decisions/0013-kubelet-serving-cert-rotation.md. Binds both deliverables to the EXACT per-role patch lists
 # the data.talos_machine_configuration sources receive (via the named locals
-# main.tf exposes through outputs). Red-green: drop [local.base_kubelet_rotation_patch]
-# from a role's concat in main.tf and that role's rotation assert fails; drop
+# machine-config.tf exposes through outputs). Red-green: drop [local.base_kubelet_rotation_patch]
+# from a role's concat in machine-config.tf and that role's rotation assert fails; drop
 # local.cert_approver_controlplane_patch from the controlplane concat and
 # cert_approver_seeded fails. NETWORK (Image Factory) like the other plan runs.
 run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
@@ -616,7 +616,7 @@ run "cilium_seed_render_rolls_agents_on_configmap_change" {
 
 # The OFF state, which is also the opt-out UPGRADING.md documents for the seed
 # and multi-source arms. An override is the LAST values layer on the seed path
-# (main.tf), so it wins over the floor.
+# (cilium-seed.tf), so it wins over the floor.
 run "cilium_seed_render_roll_is_overridable" {
   command = plan
   variables {

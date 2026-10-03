@@ -1,18 +1,8 @@
-# Outputs consumed by the caller. A direct `tofu apply` writes kubeconfig +
-# talosconfig to disk for talosctl/kubectl bootstrap; a higher-level
-# orchestrator may instead write them into secret storage. The contract is the
-# same either way.
-#
-# All credential outputs are marked sensitive — they must never land in plan
-# output or logs.
-
 output "kubeconfig" {
   description = "Admin kubeconfig for the bootstrapped cluster (raw YAML)."
   value       = talos_cluster_kubeconfig.this.kubeconfig_raw
   sensitive   = true
-  # Only emit once the cluster is healthy — a consumer that writes this output
-  # into secret storage should not receive a kubeconfig for a cluster that is
-  # not yet reachable.
+  # Wait for health before consumers receive cluster credentials.
   depends_on = [data.talos_cluster_health.this]
 }
 
@@ -118,7 +108,7 @@ output "kubelet_serving_cert_rotation" {
     machine-config patch list. BOTH must be true — the serving cert is per
     kubelet, so rotation is all-nodes. Binding point for the composition test
     (red-green: drop [local.base_kubelet_rotation_patch] from a role's concat in
-    main.tf and that role flips to false). Secret-free: booleans only — the role
+    machine-config.tf and that role flips to false). Secret-free: booleans only — the role
     patch lists themselves embed the sops/ipsec seed Secrets and are NOT exposed.
   EOT
   value = {
@@ -344,8 +334,7 @@ output "controlplane_base_is_prefix_of_final" {
     assembly step so a future edit that drops or reorders the base prefix fails the
     test. Secret-free (boolean — the sensitive tail is excluded by the slice).
   EOT
-  # Native seed conversion can propagate sensitivity to the whole list. Only
-  # declassify the comparison result, never any patch or seed content.
+  # Declassify only the comparison result, never patch or seed contents.
   value = nonsensitive(slice(
     local.controlplane_machine_config_patches, 0, length(local.controlplane_base_patches)
   ) == local.controlplane_base_patches)
@@ -378,27 +367,12 @@ output "cilium_self_management_app" {
   value       = local.cilium_self_management_app
 
   precondition {
-    # Empty-render guard: the floor is always merged into cilium_effective_values,
-    # so valuesObject cannot legitimately be empty when the toggle is on. Belt-
-    # and-suspenders against a future refactor dropping the floor merge (a
-    # regression the offline test's floor-preservation asserts already fail on).
     condition     = !var.cilium_self_management || local.cilium_self_management_app != ""
     error_message = "cilium_self_management is true but the emitted Application rendered empty — refusing to emit a hollow Cilium Application. Check cilium-values.tf's cilium_self_management_app local."
   }
 
   precondition {
-    # Values-layer guard for the multi-source arm. The single-source arm's floor
-    # merge is covered by the guard above; on the multi-source arm the module-set
-    # layer has left the manifest, so what has to hold instead is that the first
-    # valueFiles entry actually ADDRESSES the consumer's file. A bare `length > 0`
-    # would be a tautology — the first entry is appended unconditionally on this
-    # arm — so the predicate is the `$values/<path>` shape itself, which a future
-    # edit dropping `ref = "values"`, the `$values/` prefix or values_path from the
-    # interpolation breaks: without the ref source the reference does not resolve,
-    # and ArgoCD reports a missing value file rather than rendering the floor.
-    # Ternary plus try(), not an `||` chain: on OpenTofu 1.9 — the versions.tf
-    # floor — `||` evaluates every operand, so the index raises "Invalid index"
-    # on the empty single-source list. Only the conditional skips the arm.
+    # Use a conditional and try(): boolean operators may evaluate an absent single-source entry.
     condition = var.cilium_self_management && local.cilium_self_management_multi_source ? (
       startswith(try(local.cilium_self_management_value_files[0], ""), "$values/") &&
       length(try(local.cilium_self_management_value_files[0], "")) > length("$values/")
@@ -431,8 +405,6 @@ output "cilium_self_management_values" {
   value       = local.cilium_self_management_values_file
 
   precondition {
-    # Bind the output to the arm in both directions, so neither an empty file on
-    # the multi-source arm nor a stray file on the single-source arm can ship.
     condition     = (local.cilium_self_management_values_file != "") == (var.cilium_self_management && local.cilium_self_management_multi_source)
     error_message = "cilium_self_management_values must be non-empty exactly when cilium_self_management is true AND cilium_self_management_values_source is set. Check cilium-values.tf's cilium_self_management_values_file local."
   }
@@ -455,21 +427,8 @@ output "cilium_values_override_digest" {
 }
 
 locals {
-  # Seed observability markers, a local rather than an inline
-  # comprehension so the output below can name it twice — nonsensitive(x) errors
-  # when x is NOT sensitive, so the output's try() needs the raw value as its
-  # second arm, and a hoisted local is the only way to write the same expression
-  # twice without duplicating it. It lives in THIS file, not beside
-  # terraform_data.cilium_render in main.tf, because cilium-values.tf is
-  # symlinked into the offline test fixture, which declares no such resource (see that output's declassification comment). Split on the DOCUMENT
-  # boundary ("\n---\n"), not the bare literal: several consumer-controlled
-  # strings reach this render — cilium_values_override above all, which is
-  # free-form YAML the module cannot introspect — and a "---" occurring
-  # mid-scalar (PEM material carries it too) would split a document in half.
-  # Both halves then fail yamldecode, the comprehension yields nothing, and the
-  # output's outer try() reports {} — "nothing enabled" rather than an error. An
-  # audit output that goes silent on malformed input is exactly the wrong failure
-  # direction, which is why the output keeps that fallback LAST.
+  # Keep provider reads out of cilium-values.tf, which is shared with provider-free fixtures.
+  # Split on document boundaries so separators inside values do not corrupt the audit.
   cilium_seed_observability_markers = try(
     [
       for doc in split("\n---\n", try(terraform_data.cilium_render[0].output, "")) : {
@@ -527,28 +486,7 @@ output "cilium_seed_observability_markers" {
     dimension"), so these booleans answer "what was baked in at bootstrap", never
     "what is live now".
   EOT
-  # DECLASSIFICATION, and why the expression tolerates being wrong about it.
-  # var.cilium_values_override is sensitive and reaches this render, so a value
-  # derived from terraform_data.cilium_render MAY carry the mark — in which case
-  # a non-sensitive root output is refused and nonsensitive() is required. Marks
-  # propagate through HCL interpolation for certain (the cilium_ipsec_key
-  # precedent above); whether they survive the round trip through
-  # data.helm_template's COMPUTED manifest attribute is NOT verified here, and
-  # cannot be: it needs a real plan against the Image Factory, which this
-  # repository has no path to (AGENTS.md §Testing Guidelines) and the offline
-  # fixture cannot reproduce (it carries no terraform_data.cilium_render).
-  #
-  # So the expression is written to be correct either way. nonsensitive() errors
-  # when its argument is NOT sensitive, so the try() takes the raw value as its
-  # second arm. Without that arm, an unmarked render would make nonsensitive()
-  # error into the outer {} fallback and this audit output would go silently
-  # empty — the failure direction the comprehension's own comment calls wrong.
-  #
-  # What is declassified is sound in the marked case: six BOOLEAN fields — four
-  # key-presence checks (agent_metrics, agent_metric_overrides, operator_metrics,
-  # hubble_metrics) and two values compared to the literal "true" (hubble,
-  # hubble_open_metrics) — none of which can carry override bytes. The channel is
-  # at most six bits about the override's EFFECT, and no byte of its content.
+  # Declassify only boolean markers. Fall back to the raw value if the provider did not mark it sensitive.
   value = try(
     nonsensitive(local.cilium_seed_observability_markers),
     local.cilium_seed_observability_markers,
@@ -576,10 +514,7 @@ output "cilium_operator_replicas_effective" {
     cilium_self_management = false is not what the cluster is running — the seed
     is frozen (see UPGRADING).
   EOT
-  # NOT `var.deploy_cilium ? {...} : {}`: HCL unifies the two arms of a
-  # conditional, and an empty map on one side collapses the object to
-  # map(string) — `count` would arrive as "2", not 2. A stable object with a
-  # fourth `source` literal keeps the shape and the types constant instead.
+  # An empty-map conditional coerces count to string; keep a stable object shape.
   value = {
     count = var.deploy_cilium ? (
       local.cilium_operator_replicas != null ? local.cilium_operator_replicas : try(local.cilium_floor_values.operator.replicas, null)

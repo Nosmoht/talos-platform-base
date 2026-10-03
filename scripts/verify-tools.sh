@@ -1,22 +1,7 @@
 #!/usr/bin/env bash
-# verify-tools.sh — confirm installed binaries match .tool-versions pins.
-#
-# Reads .tool-versions (asdf/mise format) at the repo root. For each
-# tool, runs the canonical version-print command, normalises the output,
-# and compares against the pinned value.
-#
-# Exit codes:
-#   0 — all tools present at pinned versions
-#   1 — at least one tool missing or version mismatch
-#
-# Used by `task dev:verify-tools` and CI drift-check step.
 
 set -euo pipefail
 
-# Runnable directly, so the Taskfile env: block does not cover it -- and that
-# block loses to an inherited value anyway. Unconditional, not `:-off`: the CLI
-# reads anything it does not recognise as ENABLED, so deferring to an ambient
-# value fails open on a typo. Reason for the opt-out itself: Taskfile.yml env:.
 export OPENKNOWLEDGE_TELEMETRY=off
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -27,9 +12,6 @@ if [ ! -f "${TOOLS_FILE}" ]; then
   exit 1
 fi
 
-# Map asdf-style tool name → (binary, version-extractor).
-# Extractors strip leading 'v' and trailing build metadata to compare
-# against the pinned token.
 extract_version() {
   local tool="$1"
   case "${tool}" in
@@ -40,12 +22,8 @@ extract_version() {
     conftest)    conftest --version 2>/dev/null | awk '/^Version:/ {print $2}' | sed -E 's/^v//' ;;
     kubeconform) kubeconform -v 2>/dev/null | sed -E 's/^v//' ;;
     yq)          yq --version 2>/dev/null | awk '{print $NF}' | sed -E 's/^v//' ;;
-    # Same pipeline as Taskfile.yml's OK_GUARD, literally: two checks of one
-    # value must not disagree on the format.
     openknowledge) openknowledge version 2>/dev/null | head -n1 | tr -d '[:space:]' | sed -E 's/^v//' ;;
     lychee)      lychee --version 2>/dev/null | awk '{print $2}' | sed -E 's/^v//' ;;
-    # openspec --version emits a bare version token (verified against 1.6.0);
-    # flag form — the tool has no `version` subcommand.
     openspec)    openspec --version 2>/dev/null | sed -E 's/^v//' ;;
     markdownlint) markdownlint --version 2>/dev/null | sed -E 's/^v//' ;;
     task)        task --version 2>/dev/null | sed -E 's/^v//' ;;
@@ -59,7 +37,6 @@ binary_for() {
 
 fail=0
 while IFS= read -r line; do
-  # Skip comments and blank lines.
   case "${line}" in ''|\#*) continue ;; esac
   tool="$(echo "${line}" | awk '{print $1}')"
   pinned="$(echo "${line}" | awk '{print $2}')"

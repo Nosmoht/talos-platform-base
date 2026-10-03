@@ -185,10 +185,6 @@ tasks:
       done
 
   tofu:check:readme-parity:
-    # The gate the deleted knowledge/reference/talos-cluster-module.md was
-    # removed in favour of. That deletion argued an ungated copy rots; this
-    # keeps the surviving copy from being one. No spec owns a README, so
-    # spec:check-staleness cannot cover it.
     desc: "CI fence: every module variable/output appears in its (hand-maintained) README table"
     cmd: scripts/check-module-readme-parity.sh
 
@@ -199,93 +195,42 @@ tasks:
       markdownlint 'tofu/**/*.md' || true
 
   tofu:check:render-determinism:
-    # The #123 render-determinism fence — full rationale in scripts/check-render-determinism.sh.
     desc: "CI fence: Cilium/ArgoCD/CRD helm renders must use frozen terraform_data (ignore_changes), not live data.helm_template"
     cmd: scripts/check-render-determinism.sh
 
   tofu:check:argocd-day0-apply-shape:
-    # #218 — full rationale in scripts/check-argocd-day0-apply-shape.sh. The
-    # provisioner's command string is not observable from a `tofu test`, and the
-    # tftest that binds the PAYLOAD needs the network, so it runs only in the
-    # advisory `tofu:test`. This offline fence is the blocking layer.
     desc: "CI fence: the Day-0 ArgoCD apply stays server-side, CRD-only-guarded, and never forces conflicts"
     cmd: scripts/check-argocd-day0-apply-shape.sh
 
   tofu:check:argocd-gate-bites:
-    # #218 — both fences above are static text analysis, and the module has one
-    # shape at a time (the compliant one), so a fence that matched nothing would
-    # report OK forever. This mutates a COPY of main.tf per regression and
-    # asserts each fence's error message, not just its exit code. Rationale and
-    # the two real near-misses that motivated it: the script header.
-    desc: "CI fence: prove the Day-0 ArgoCD fences actually bite (mutation bite-check over a main.tf copy)"
+    desc: "CI fence: prove the Day-0 ArgoCD fences actually bite (mutation bite-check over a module-source copy)"
     cmd: scripts/check-argocd-gate-bites.sh
 
   tofu:check:kubeconfig-endpoint-regen:
-    # PR #187 review blocker #3 — full rationale in scripts/check-kubeconfig-endpoint-regen.sh.
-    # Without this, deleting the entire lifecycle block from main.tf leaves the
-    # full offline tofu test suite + tofu validate green (issue #186 regresses
-    # silently); this is the only committed check that references
-    # replace_triggered_by / kubeconfig_endpoint_marker.
     desc: "CI fence: talos_cluster_kubeconfig.this keeps replace_triggered_by wired to terraform_data.kubeconfig_endpoint_marker (input = var.cluster_endpoint)"
     cmd: scripts/check-kubeconfig-endpoint-regen.sh
 
   tofu:check:node-projection-wiring:
-    # Issue #204 — full rationale in scripts/check-node-projection-wiring.sh.
-    # The offline fixture omits main.tf, so no `tofu test` can see WHICH node
-    # projection reaches WHICH Talos argument; swapping two of them leaves the
-    # whole suite green while pointing talosctl and the apply-blocking health
-    # gate at the wrong node set.
     desc: "CI fence: the Talos boundary arguments stay bound to their intended node projections (nodes.tf), and the per-node apply keeps iterating local.nodes_checked"
     cmd: scripts/check-node-projection-wiring.sh
 
   tofu:check:cilium-operator-replicas-key:
-    # Full rationale in scripts/check-cilium-operator-replicas-key.sh. Helm
-    # merges values without --strict, so a renamed or mis-nested
-    # `operator.replicas` is discarded silently and the rendered Deployment keeps
-    # a different count with every offline test green. The runs that read the
-    # RENDERED Deployment live in the network-dependent composition suite, whose
-    # CI job is advisory, so this offline fence is the blocking layer — same
-    # shape as tofu:check:argocd-day0-apply-shape.
     desc: "CI fence: the Cilium operator replica count keeps its chart key spelling on both sides (computed contributor + floor), and `operator` stays a single merge term"
     cmd: scripts/check-cilium-operator-replicas-key.sh
 
   tofu:check:cilium-rollout-pods-key:
-    # Full rationale in scripts/check-cilium-rollout-pods-key.sh. Same class as
-    # the operator-replicas fence above: Helm discards an unrecognised or
-    # mis-nested `rollOutCiliumPods` silently, and the rendered agent DaemonSet
-    # then carries no configmap-checksum annotation — so a Day-2 values change
-    # syncs green and never reaches the running agents (issue #270), with every
-    # offline test still passing.
     desc: "CI fence: rollOutCiliumPods: true stays a top-level key in the Cilium floor and in the Day-2 reference values"
     cmd: scripts/check-cilium-rollout-pods-key.sh
 
   tofu:check:provider-document-kinds-bites:
-    # The fence below has one exit code for many assertions and reads text an
-    # external provider renders, so an assertion that stopped matching would
-    # report OK forever. Full rationale in the script header; the convention it
-    # follows is scripts/check-argocd-gate-bites.sh's.
     desc: "CI fence: prove the document-kind fence actually bites (mutation bite-check over a copy of the script)"
     cmd: scripts/check-provider-document-kinds-bites.sh
 
   tofu:check:provider-document-kinds:
-    # Full rationale in scripts/check-provider-document-kinds.sh. The module's
-    # four opaque config_patches lists read as "any machine-config field is
-    # reachable", but the provider decodes every patch against its OWN bundled
-    # Talos machinery, so the reachable surface is bounded by the provider
-    # version rather than by the consumer's talos_version. Nothing else observes
-    # that coupling. Two assertions state what the provider does NOT do, so this
-    # fence still EXPIRES: it turns red when the 1.14 documents reach the 1.13.9
-    # pin the examples carry, or when the generated install document starts
-    # following machine.install — both signals to revisit those pins (#252).
     desc: "CI fence: which Talos machine-config document kinds the PINNED provider accepts in config_patches, and which documents a Talos version pin makes it generate"
     cmd: scripts/check-provider-document-kinds.sh
 
   tofu:check:shim-key-parity:
-    # Full rationale in scripts/check-shim-key-parity.sh. The worked example's
-    # shim reads cluster.yaml through try(), which is total: a mistyped key
-    # yields the default instead of an error, so the declared value never
-    # reaches the module while lint, validate, plan and the whole test suite
-    # stay green. This is the only check that binds the two sides.
     desc: "CI fence: every key of a CLOSED substrate object in schemas/cluster.schema.json is actually read by the worked example's cluster.yaml shim"
     cmd: scripts/check-shim-key-parity.sh
 

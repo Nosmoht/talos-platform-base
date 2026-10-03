@@ -1,7 +1,7 @@
 ---
 sources:
-  secondary:
-    - tofu/modules/talos-cluster/main.tf
+  primary:
+    - tofu/modules/talos-cluster/image-factory.tf
 references:
   - AGENTS.md §Hard Constraints — No SecureBoot
   - knowledge/decisions/0011-substrate-hard-constraints.md
@@ -12,12 +12,11 @@ references:
 ## Purpose
 
 Describe the Image-Factory region of
-`tofu/modules/talos-cluster/main.tf`: committing each node's composed
+`tofu/modules/talos-cluster/image-factory.tf`: committing each node's composed
 schematic description to a Talos Image-Factory schematic and deriving the
 per-(schematic, architecture) metal-installer URL, with content-hash dedup
-so identical nodes share one schematic. The region lives in `main.tf`,
-whose primary owner is the `cluster-bootstrap-lifecycle` spec; this spec
-owns the region descriptively. The upstream composition of the schematic
+so identical nodes share one schematic. The
+upstream composition of the schematic
 content (baseline image unioned with capability-profile provisions) is
 owned by the `hardware-capability-composition` spec.
 

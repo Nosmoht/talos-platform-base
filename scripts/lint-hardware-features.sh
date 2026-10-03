@@ -32,11 +32,6 @@ esac
 [ -f "$REGISTRY_FILE" ] || { echo "ERROR: registry not found: $REGISTRY_FILE" >&2; exit 2; }
 [ -f "$SCHEMA_FILE" ] || { echo "ERROR: schema not found: $SCHEMA_FILE" >&2; exit 2; }
 
-# id uniqueness gate. JSON Schema 2020-12 cannot express per-property
-# uniqueness inside an array (the former `uniqueItemProperties` keyword is
-# an AJV-only extension that check-jsonschema silently ignores), so the
-# registry's lookup-by-id contract is enforced here. yq is a hard
-# dependency of this gate (pinned in .tool-versions).
 command -v yq >/dev/null 2>&1 || { echo "ERROR: 'yq' required for the duplicate-id gate" >&2; exit 2; }
 dup_ids="$(yq -r '.hardware_features[].id' "$REGISTRY_FILE" | LC_ALL=C sort | uniq -d)"
 if [ -n "$dup_ids" ]; then
@@ -45,9 +40,6 @@ if [ -n "$dup_ids" ]; then
   exit 1
 fi
 
-# Resolve check-jsonschema. Prefer a PATH binary (CI image installs it
-# via pip). Fall back to `uvx --from check-jsonschema check-jsonschema`
-# for local dev where the Python binary isn't installed system-wide.
 if command -v check-jsonschema >/dev/null 2>&1; then
   RUNNER=(check-jsonschema)
 elif command -v uvx >/dev/null 2>&1; then

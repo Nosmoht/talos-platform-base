@@ -7,7 +7,7 @@
 # --force-conflicts, took field-manager ownership of the ConfigMaps ArgoCD
 # self-management and consumer overlays own.
 #
-# main.tf therefore projects the render down to CustomResourceDefinition
+# argocd-crds.tf therefore projects the render down to CustomResourceDefinition
 # documents BEFORE the freeze. These runs bind that projection.
 #
 # Red-green: drop the `if try(yamldecode(doc).kind, "") == "CustomResourceDefinition"`
@@ -55,7 +55,7 @@ run "day0_apply_manifest_carries_crds_only" {
       length(output.argocd_day0_apply_kinds) == 1 &&
       contains(output.argocd_day0_apply_kinds, "CustomResourceDefinition")
     )
-    error_message = "the Day-0 apply must deliver CustomResourceDefinitions and nothing else; got ${jsonencode(output.argocd_day0_apply_kinds)} — chart-default workloads/ConfigMaps leaked past the projection in main.tf (local.argocd_crd_docs) and would be applied over ArgoCD's own state"
+    error_message = "the Day-0 apply must deliver CustomResourceDefinitions and nothing else; got ${jsonencode(output.argocd_day0_apply_kinds)} — chart-default workloads/ConfigMaps leaked past the projection in argocd-crds.tf (local.argocd_crd_docs) and would be applied over ArgoCD's own state"
   }
 
   # Kinds alone cannot see a MISSING CRD: distinct() collapses one and three CRDs
@@ -104,7 +104,7 @@ run "crd_payload_structure_is_independent_of_kubernetes_version" {
         contains(output.argocd_day0_apply_crd_names, n)
       ])
     )
-    error_message = "the CRD payload changed shape at a different Kubernetes version — kinds ${jsonencode(output.argocd_day0_apply_kinds)} names ${jsonencode(output.argocd_day0_apply_crd_names)}. The chart now templates its CRDs, so kubernetes_version must go back into terraform_data.argocd_crds_render.triggers_replace (main.tf) or an intended bump will not re-apply."
+    error_message = "the CRD payload changed shape at a different Kubernetes version — kinds ${jsonencode(output.argocd_day0_apply_kinds)} names ${jsonencode(output.argocd_day0_apply_crd_names)}. The chart now templates its CRDs, so kubernetes_version must go back into terraform_data.argocd_crds_render.triggers_replace (argocd-crds.tf) or an intended bump will not re-apply."
   }
 }
 

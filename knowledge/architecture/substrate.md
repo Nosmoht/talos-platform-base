@@ -3,7 +3,7 @@ type: architecture
 title: Substrate Boundary
 description: What talos-platform-base is and ships — the three-pillar substrate, the base/apps/consumer layer model, the tracked repo layout, and the fail-closed OCI artifact allowlist.
 tags: [substrate, layer-model, oci-artifact, boundaries]
-generated: { by: human:nosmoht, at: "2026-09-02T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-03T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-07-17T00:00:00Z" }
@@ -14,6 +14,12 @@ sources:
   - resource: Taskfile.yml
   - resource: .github/workflows/oci-publish.yml
   - resource: tofu/modules/talos-cluster/main.tf
+  - resource: tofu/modules/talos-cluster/argocd-crds.tf
+  - resource: tofu/modules/talos-cluster/argocd-seed.tf
+  - resource: tofu/modules/talos-cluster/cert-approver.tf
+  - resource: tofu/modules/talos-cluster/cilium-seed.tf
+  - resource: tofu/modules/talos-cluster/image-factory.tf
+  - resource: tofu/modules/talos-cluster/machine-config.tf
   - resource: tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
   - resource: kubernetes/substrate/argocd/kustomization.yaml
   - resource: kubernetes/substrate/argocd/values.yaml
@@ -146,7 +152,7 @@ fails the publish. The same check runs locally via
 `task supply-chain:oci-allowlist`. The allowlist is the authoritative record
 of what ships; prose "what ships" summaries elsewhere are non-normative.
 
-The 24 shipped entries:
+The 30 shipped entries:
 
 ```text
 kubernetes/bootstrap/cilium/extras.yaml
@@ -158,11 +164,17 @@ kubernetes/substrate/argocd/namespace.yaml
 platform-hardware-features.yaml
 schemas/hardware-features.schema.json
 tofu/modules/talos-cluster/README.md
+tofu/modules/talos-cluster/argocd-crds.tf
+tofu/modules/talos-cluster/argocd-seed.tf
+tofu/modules/talos-cluster/cert-approver.tf
+tofu/modules/talos-cluster/cilium-seed.tf
 tofu/modules/talos-cluster/cilium-values.tf
 tofu/modules/talos-cluster/composition.tf
 tofu/modules/talos-cluster/helm/argocd-values.yaml
 tofu/modules/talos-cluster/helm/cilium-values.yaml
+tofu/modules/talos-cluster/image-factory.tf
 tofu/modules/talos-cluster/kubeconfig-refresh.tf
+tofu/modules/talos-cluster/machine-config.tf
 tofu/modules/talos-cluster/main.tf
 tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
 tofu/modules/talos-cluster/nodes.tf

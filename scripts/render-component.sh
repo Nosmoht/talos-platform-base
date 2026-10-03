@@ -1,41 +1,7 @@
 #!/usr/bin/env bash
-# render-component.sh — Stage-1 (helm template) + Stage-2 (kustomize build)
-# render of a single platform-base infrastructure component.
-#
-# Usage:
-#   scripts/render-component.sh <component>
-#
-# Reads kubernetes/substrate/<component>/chart.lock.yaml as the
-# pin spec, runs helm template with the component's values.yaml (Stage 1),
-# then kustomize build of the component's _rendered-overlay/ to apply
-# platform-base standard patches (Stage 2). Splits the final output into
-# manifests.yaml (everything except CRDs) and crds.yaml (CRDs only) under
-# _rendered/. The split is required for the 2-App pattern in Phase D
-# (separate ArgoCD App per CRDs at sync-wave -5).
-#
-# chart.lock.yaml schema:
-#   chart:
-#     repo: <https-or-oci-url>      # required
-#     name: <chart-name>             # required
-#     version: <semver-or-tag>       # required
-#     tgz_sha256: <hex>              # optional; verified if set, written if absent
-#   release:
-#     name: <helm-release-name>      # required
-#     namespace: <k8s-namespace>     # required
-#     includeCRDs: true|false        # default true
-#   values: <relative-path>          # default: values.yaml
-#
-# Determinism: helm + kustomize versions are pinned via .tool-versions and
-# enforced by `task dev:verify-tools` and the CI drift-check. Chart tarballs
-# are verified by sha256 against the pinned digest in chart.lock.yaml.
-#
-# Exit codes:
-#   0 — render succeeded
-#   1 — usage error / missing input
-#   2 — chart pull failed
-#   3 — sha256 mismatch
-#   4 — helm template failed
-#   5 — kustomize build failed
+# Render one component through Helm and Kustomize; split manifests and CRDs.
+# Usage: scripts/render-component.sh <component>
+# Verify the chart digest when present; write it to chart.lock.yaml when absent.
 
 set -euo pipefail
 
@@ -57,7 +23,6 @@ OVERLAY_DIR="${COMP_DIR}/_rendered-overlay"
 [ -f "${LOCK}" ]     || { echo "error: chart.lock.yaml missing: ${LOCK}" >&2; exit 1; }
 [ -d "${OVERLAY_DIR}" ] || { echo "error: _rendered-overlay/ missing: ${OVERLAY_DIR}" >&2; exit 1; }
 
-# Parse chart.lock.yaml.
 repo="$(yq -e '.chart.repo'    "${LOCK}")"
 name="$(yq -e '.chart.name'    "${LOCK}")"
 version="$(yq -e '.chart.version' "${LOCK}")"
@@ -72,10 +37,6 @@ values_abs="${COMP_DIR}/${values_rel}"
 
 mkdir -p "${CACHE}" "${STAGE1_DIR}" "${RENDERED_DIR}"
 
-# Strip leading 'v' from version for filename normalization (helm pull
-# stores files as <name>-<version-without-v>.tgz when version starts with
-# numeric, but keeps 'v' prefix when source tag had it; canonicalise by
-# pulling and listing the resulting file).
 echo "==> [${COMP}] Pulling chart ${name}@${version} from ${repo}"
 case "${repo}" in
   oci://*)
@@ -86,11 +47,9 @@ case "${repo}" in
     ;;
 esac
 
-# Find the pulled tarball (helm strips 'v' prefix in some cases).
 tgz="$(ls -t "${CACHE}/${name}"-*.tgz 2>/dev/null | head -n1)"
 [ -n "${tgz}" ] && [ -f "${tgz}" ] || { echo "error: chart pull produced no tarball" >&2; exit 2; }
 
-# Verify or write sha256.
 actual_sha="$(shasum -a 256 "${tgz}" | awk '{print $1}')"
 if [ -n "${expected_sha}" ]; then
   if [ "${actual_sha}" != "${expected_sha}" ]; then
@@ -107,7 +66,6 @@ else
   yq -i ".chart.tgz_sha256 = \"${actual_sha}\"" "${LOCK}"
 fi
 
-# Stage 1: helm template.
 echo "==> [${COMP}] Stage 1: helm template"
 crds_flag=""
 if [ "${include_crds}" = "true" ]; then
@@ -121,31 +79,23 @@ helm template "${release_name}" "${tgz}" \
   -f "${values_abs}" > "${stage1_out}" \
   || { echo "error: helm template failed" >&2; exit 4; }
 
-# Stage 2: kustomize build.
-# --load-restrictor=LoadRestrictionsNone is required because consumer
-# overlays reference files via relative paths that traverse `..` into
-# vendored OCI base copies (Phase C). Setting it here too keeps the
-# render call signature consistent.
+# Allow consumer overlays to reference files outside the base.
 echo "==> [${COMP}] Stage 2: kustomize build"
 stage2_out="$(mktemp)"
 trap 'rm -f "${stage2_out}"' EXIT
 kustomize build --load-restrictor=LoadRestrictionsNone "${OVERLAY_DIR}" > "${stage2_out}" \
   || { echo "error: kustomize build failed" >&2; exit 5; }
 
-# Split CRDs from non-CRDs. yq splits multi-doc YAML by document index.
 echo "==> [${COMP}] Splitting CRDs from manifests"
 yq 'select(.kind != "CustomResourceDefinition")' "${stage2_out}" > "${RENDERED_DIR}/manifests.yaml"
 crds_tmp="$(mktemp)"
 yq 'select(.kind == "CustomResourceDefinition")' "${stage2_out}" > "${crds_tmp}"
-# Only write crds.yaml if the chart actually shipped any. Empty crds.yaml
-# files would clutter the tree and confuse reviewers ("why is this empty?").
 if [ -s "${crds_tmp}" ]; then
   mv "${crds_tmp}" "${RENDERED_DIR}/crds.yaml"
 else
   rm -f "${crds_tmp}" "${RENDERED_DIR}/crds.yaml"
 fi
 
-# Normalize trailing newlines (single).
 for f in "${RENDERED_DIR}/manifests.yaml" "${RENDERED_DIR}/crds.yaml"; do
   [ -f "${f}" ] && perl -0pi -e 's/\n*\z/\n/' "${f}"
 done
