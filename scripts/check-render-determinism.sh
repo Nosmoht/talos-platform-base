@@ -1,39 +1,7 @@
 #!/usr/bin/env bash
-# Regression fence for #123 (talos-cluster render -> machineConfig decoupling).
-#
-# data.helm_template renders are re-evaluated every plan and are NOT byte-stable
-# (Sprig genCA at template time; helm-provider ordering). Consumed directly, every
-# plan / Crossplane reconcile re-pushed a fresh machineConfig (#121). The fix
-# freezes each render in state via a terraform_data carrying
-# lifecycle { ignore_changes = [input] }; the ArgoCD-CRD render (a Day-2 kubectl
-# convergence) additionally carries triggers_replace so an INTENDED chart/version
-# bump still re-applies.
-#
-# This guard fails if that decoupling regresses. It does NOT use a hardcoded render
-# allow-list: it derives every `data "helm_template" "<r>"` from the file and, for
-# each, asserts:
-#   1. the live render is referenced exactly once — either directly as the `input =`
-#      capture of its terraform_data.<r>_render freeze, or once inside a top-level
-#      locals{} block whose value that freeze then captures (`input = local.*`).
-#      The second shape admits a pure transform between read and freeze (#218
-#      projects the ArgoCD render down to its CRD documents, so the frozen bytes are
-#      exactly what kubectl applies) without weakening the property: still ONE live
-#      read, and every apply-path consumer still goes through the freeze. A
-#      contents=/content=/sha256() consumer, or any second reference, re-introduces
-#      the #121 drift and still fails;
-#   2. that freeze resource exists AND its OWN block carries ignore_changes=[input]
-#      (per-resource, so a broken freeze cannot be masked by a decoy elsewhere);
-#   3. CRD renders (name matches *crds*, a Day-2 kubectl re-apply path) additionally
-#      carry triggers_replace, so deleting it (silent-non-apply on an intended bump)
-#      is caught.
-#
-# Hermetic: scans all top-level module .tf files, no providers/network.
+# Require every live Helm render to flow through its state-backed freeze.
 # Usage: scripts/check-render-determinism.sh [module-directory|file.tf]
-#
-# NOTE (acknowledged limit): check (3) asserts triggers_replace is PRESENT, not that
-# it ENUMERATES every render-affecting input of the data source. A render input added
-# to the data source but not to triggers_replace is a silent-non-apply the static
-# guard cannot see — the code comment on the freeze is the binding, keep it honest.
+# Checks triggers_replace presence, not completeness of its render-affecting inputs.
 set -euo pipefail
 
 MAIN="${1:-tofu/modules/talos-cluster}"
@@ -50,8 +18,6 @@ if [ ! -f "$MAIN" ]; then
   exit 1
 fi
 
-# Print the top-level resource block for terraform_data."<name>" (resource opens at
-# column 0 and its closing brace is the first subsequent line starting with `}`).
 block_of() {
   awk -v name="$1" '
     index($0, "resource \"terraform_data\" \"" name "\"") == 1 { inb = 1 }
@@ -60,11 +26,7 @@ block_of() {
   ' "$MAIN"
 }
 
-# Does the single live-render reference sit inside a top-level `locals {` block?
-# Column-0 block model: a top-level block opens at column 0 and closes at the
-# first subsequent line whose first character is `}`. Comment lines are skipped
-# BEFORE the membership test so a `#`-quoted mention cannot decide the verdict.
-# Prints "yes" / "no" (empty when the pattern does not occur).
+# Top-level HCL blocks must start and end at column zero.
 ref_inside_locals() {
   awk -v pat="$1" '
     /^[[:space:]]*#/              { next }
@@ -75,8 +37,6 @@ ref_inside_locals() {
   ' "$MAIN"
 }
 
-# Names defined in the top-level locals{} block(s), one per line. Used to trace
-# which locals could be carrying a live render downstream.
 locals_names() {
   awk '
     /^[[:space:]]*#/              { next }
@@ -88,9 +48,6 @@ locals_names() {
   ' "$MAIN"
 }
 
-# Lines OUTSIDE every top-level locals{} block, comments stripped. The apply-path
-# scan below runs over these: inside locals a value is still just a value, but
-# outside it is wired to something that writes or executes.
 lines_outside_locals() {
   awk '
     /^[[:space:]]*#/              { next }
@@ -102,8 +59,6 @@ lines_outside_locals() {
 
 fail=0
 
-# Derive every helm render present in the module — not a hardcoded list, so a future
-# render path cannot slip past the fence by simply not being named here.
 renders=$(grep -oE 'data "helm_template" "[a-z_]+"' "$MAIN" | sed -E 's/.*"([a-z_]+)"$/\1/' | sort -u)
 if [ -z "$renders" ]; then
   echo "::error::check-render-determinism: no data \"helm_template\" found in ${MAIN} — fence assumptions broken (did the module move?)." >&2
@@ -114,15 +69,7 @@ count=0
 for r in $renders; do
   count=$((count + 1))
 
-  # (1) live render referenced exactly once. Two accepted capture shapes:
-  #     (a) DIRECT   — `input = data.helm_template.<r>[0].manifest` on the freeze;
-  #     (b) PROJECTED — the single reference sits in a top-level locals{} block and
-  #         the freeze captures a local (`input = local.<name>`). This admits a pure,
-  #         deterministic transform between read and freeze — #218 projects the
-  #         ArgoCD render down to its CRD documents there, so the frozen bytes are
-  #         exactly what kubectl applies. The #123 property is unchanged either way:
-  #         ONE live read, and every apply-path consumer goes through the freeze.
-  #     Anything else (a second reference, a contents=/sha256() consumer) still fails.
+  # Allow one live read: directly into the freeze, or through a captured local projection.
   total=$(grep -cE "data\.helm_template\.${r}\[0\]\.manifest" "$MAIN" || true)
   capture=$(grep -cE "^[[:space:]]*input[[:space:]]+= data\.helm_template\.${r}\[0\]\.manifest" "$MAIN" || true)
   blk=$(block_of "${r}_render")
@@ -133,16 +80,7 @@ for r in $renders; do
     projected=1
   fi
 
-  # The PROJECTED shape admits a transform, so "referenced once as input=" no
-  # longer implies "no consumer reaches the live render". Re-establish the second
-  # half explicitly: no local defined in the locals{} block may reach an
-  # apply-path sink outside it. Without this a one-line change —
-  #   resource "local_file" "x" { content = local.<the projection> }
-  # — passes the three checks above while handing the non-byte-stable live render
-  # straight to kubectl, which is the #121/#123 defect this fence exists for.
-  # Sinks are the attributes that write or execute: content(s), command, and any
-  # sha256() (the re-apply trigger). `input =` on the freeze is the sanctioned
-  # consumer and is excluded by matching the sink attributes, not by name.
+  # A projected render must have no consumers that bypass the freeze.
   if [ "$projected" -eq 1 ]; then
     outside="$(lines_outside_locals)"
     while IFS= read -r lname; do
@@ -157,14 +95,7 @@ for r in $renders; do
 $(locals_names)
 EOF
 
-    # The sink scan above is ONE HOP: it matches a sink attribute on a line that
-    # literally names `local.<x>`. That leaves an indirect launder — freeze the
-    # projection in a SECOND terraform_data, then read its `.output` from a sink.
-    # No sink line mentions `local.`, so the scan never sees it, and the live
-    # render reaches kubectl unfrozen: the #121/#123 defect one resource away.
-    #
-    # `input =` is the sanctioned consumer, but only ON THE FREEZE. Assert that:
-    # any other block capturing the projection is itself a sink.
+    # Reject captures by another freeze: only the matching render resource is checked.
     while IFS= read -r cap; do
       [ -n "$cap" ] || continue
       [ "$cap" = "${r}_render" ] && continue
@@ -184,7 +115,6 @@ EOF
     fail=1
   fi
 
-  # (2) freeze exists AND its OWN block carries ignore_changes=[input].
   if [ -z "$blk" ]; then
     echo "::error::check-render-determinism: freeze resource terraform_data.${r}_render is missing in ${MAIN} (#123)." >&2
     fail=1
@@ -195,9 +125,6 @@ EOF
     fail=1
   fi
 
-  # (3) CRD renders feed a Day-2 kubectl re-apply and MUST re-capture on an intended
-  #     bump — deleting triggers_replace turns the convergence path into a frozen
-  #     seed (silent-non-apply). Seed renders intentionally have no triggers_replace.
   case "$r" in
     *crds*)
       if ! printf '%s\n' "$blk" | grep -qE '^[[:space:]]*triggers_replace[[:space:]]*='; then

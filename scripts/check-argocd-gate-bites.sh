@@ -1,45 +1,5 @@
 #!/usr/bin/env bash
-# Bite-check for the two static fences that guard the Day-0 ArgoCD apply:
-#   scripts/check-argocd-day0-apply-shape.sh   (A1 server-side, A2 no force, A3 guard)
-#   scripts/check-render-determinism.sh        (#123 freeze, incl. the #218 PROJECTED shape)
-#
-# Why this exists. Both fences are static text analysis over the module, and the
-# module has exactly ONE shape at a time — the compliant one. A fence that
-# matched nothing, or matched the wrong block, would report OK on today's file
-# forever and would be indistinguishable from a working one. During #218 that
-# was not hypothetical twice over:
-#
-#   * the first version of check-render-determinism.sh accepted the projection
-#     while a one-line `content = local.<projection>` handed the live,
-#     non-byte-stable render straight to kubectl — the exact #121/#123 defect
-#     the fence exists to prevent;
-#   * a hand-run A3 check removed the FIRST precondition in the file (the
-#     age-key one on a different resource) instead of the freeze's, so it
-#     "passed" against a mutation that never touched the guarded block.
-#
-# So each scenario mutates a COPY of the module source and asserts the fence's
-# verdict. Following scripts/check-staleness-gate-bite.sh, three disciplines:
-#
-#   1. every scenario asserts its mutation actually changed the file before
-#      reading a verdict, so it cannot pass because its setup silently failed;
-#   2. every scenario asserts the ERROR MESSAGE, not just the exit code — both
-#      fences emit one exit code for several distinct assertions, so an exit
-#      check alone cannot tell which one bit (that is how the A3 mistake above
-#      went unnoticed);
-#   3. a control run over the UNMUTATED file must be green, so a fence that
-#      fails on everything cannot be mistaken for a fence that discriminates.
-#
-# Mutating a copy of the real file rather than shipping frozen fixtures is
-# deliberate: fixtures rot silently as the module evolves, and a rotted fixture
-# tests the fence against a module that no longer exists. Both fences already
-# take the file as an argument, so no test-only code path is added to them.
-#
-# Runs offline, mutates nothing outside its temp dir. Wired into `task tofu:ci`.
-#
-# Exit codes:
-#   0  every fence bit exactly where it should, and stayed quiet where it should
-#   1  a fence regressed (or a scenario's setup broke)
-#   2  environment error (a fence or the module is missing)
+# Mutate temporary module copies and assert each fence’s diagnostic and exit code.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -58,23 +18,14 @@ cat "$module_dir"/*.tf > "$src"
 
 rc=0
 
-# ---------------------------------------------------------------- mutators --
-# Each takes the copy's path, edits it in place, and returns non-zero only on an
-# internal error; "did it change anything" is asserted by the caller.
-
-# Re-add the flag whose removal is the point of #218.
 mut_force_conflicts() {
   perl -0pi -e 's/(command\s*=\s*"kubectl apply --server-side)/$1 --force-conflicts/' "$1"
 }
 
-# Turn the server-side apply into a client-side one.
 mut_client_side() {
   perl -0pi -e 's/(command\s*=\s*"kubectl apply) --server-side/$1/' "$1"
 }
 
-# Delete the precondition block belonging to the CRD FREEZE specifically —
-# not merely the first precondition in the file, which lives on another
-# resource entirely and is the mistake this scenario is calibrated against.
 mut_drop_freeze_precondition() {
   awk '
     index($0, "resource \"terraform_data\" \"argocd_crds_render\"") == 1 { inb = 1 }
@@ -90,18 +41,11 @@ mut_drop_freeze_precondition() {
   ' "$1" > "$1.next" && mv "$1.next" "$1"
 }
 
-# Keep the precondition, but point its condition at something that is not the
-# projection — the "guard in name only" regression. Hits the FIRST condition in
-# the freeze, i.e. the by-name completeness guard; the exclusivity one survives,
-# which is what makes this a discriminating scenario rather than a blunt one.
 mut_hollow_freeze_condition() {
   perl -0pi -e 's/(resource "terraform_data" "argocd_crds_render".*?condition\s+= )[^\n]*/${1}var.deploy_argocd/s' "$1"
 }
 
-# Delete the plan-time exclusivity guard while leaving the by-name one intact.
-# Buffer each precondition block and drop only the one mentioning
-# argocd_crd_kinds — a regex cannot do this cleanly because the error_message
-# strings carry `${jsonencode(...)}` interpolation braces.
+# Buffer each precondition and track braces to remove only the exclusivity guard.
 mut_drop_exclusivity_precondition() {
   awk '
     index($0, "resource \"terraform_data\" \"argocd_crds_render\"") == 1 { inb = 1 }
@@ -121,59 +65,42 @@ mut_drop_exclusivity_precondition() {
   ' "$1" > "$1.next" && mv "$1.next" "$1"
 }
 
-# Break the #123 freeze on the CRD render.
 mut_drop_ignore_changes() {
   perl -0pi -e 's/(resource "terraform_data" "argocd_crds_render".*?)^\s*ignore_changes\s*=\s*\[input\]\n/$1/ms' "$1"
 }
 
-# Remove the re-apply trigger: an intended chart bump would silently never apply.
 mut_drop_triggers_replace() {
   perl -0pi -e 's/(resource "terraform_data" "argocd_crds_render".*?)^\s*triggers_replace\s*=\s*\[.*?\n\s*\]\n/$1/ms' "$1"
 }
 
-# The #218 bypass, shape 1: hand the live projection to a file sink, skipping the
-# freeze. One line, passes every other check, reinstates the #121 drift.
 mut_sink_content() {
   printf '\nresource "local_file" "bite_bypass" {\n  content  = local.argocd_crd_manifest\n  filename = "/tmp/bite"\n}\n' >> "$1"
 }
 
-# The #218 bypass, shape 2: same, via the re-apply trigger hash.
 mut_sink_sha256() {
   printf '\nresource "null_resource" "bite_bypass" {\n  triggers = {\n    h = sha256(local.argocd_crd_manifest)\n  }\n}\n' >> "$1"
 }
 
-# The #218 bypass, shape 3 — INDIRECT: freeze the live projection in a second
-# terraform_data that is not the sanctioned freeze, then read ITS output from a
-# sink. No sink line mentions `local.`, so a one-hop scan does not see it. This
-# is the fence's real boundary; without a scenario it stays unmeasured.
 mut_sink_indirect_freeze() {
   printf '\nresource "terraform_data" "bite_bypass_freeze" {\n  input = local.argocd_crd_manifest\n}\n\nresource "local_file" "bite_bypass_indirect" {\n  content  = terraform_data.bite_bypass_freeze.output\n  filename = "/tmp/bite-indirect"\n}\n' >> "$1"
 }
 
-# Remove the dedicated field manager, so kubectl records the generic `kubectl`.
 mut_drop_field_manager() {
   perl -0pi -e 's/ --field-manager=[^ "]+//' "$1"
 }
 
-# Point the field manager back at the generic default it exists to replace.
 mut_generic_field_manager() {
   perl -0pi -e 's/--field-manager=[^ "]+/--field-manager=kubectl/' "$1"
 }
 
-# Delete the kind filter from the projection. The payload becomes the full
-# twelve-kind chart render while the by-name precondition — a containment test —
-# still passes. This is the #218 defect itself, and until A5 existed every
-# blocking gate stayed green on it.
 mut_drop_kind_filter() {
   perl -0pi -e 's/\n\s*doc if try\(yamldecode\(doc\)\.kind, ""\) == "CustomResourceDefinition"/\n    doc/' "$1"
 }
 
-# Put kubernetes_version back into the re-apply trigger set.
 mut_readd_kubernetes_version_trigger() {
   perl -0pi -e 's/(resource "terraform_data" "argocd_crds_render".*?triggers_replace = \[\n)/${1}    var.kubernetes_version,\n/s' "$1"
 }
 
-# ---------------------------------------------------------------- scenarios --
 # scenario <gate> <expected-exit> <expected-output-pattern> <mutator|-> <label>
 scenario() {
   local gate="$1" want_exit="$2" pattern="$3" mutator="$4" label="$5"
@@ -253,10 +180,7 @@ scenario "$shape_gate" 3 "A6 — triggers_replace names kubernetes_version" mut_
   "A6 bites when a Kubernetes bump would re-fire the apply again"
 
 echo "== check-render-determinism =="
-# Patterns name the RESOURCE, not just the symptom. main.tf carries three
-# `ignore_changes = [input]` blocks, so a mutation that hit the wrong freeze
-# would still match a resource-agnostic pattern and report a false PASS — the
-# same mis-anchoring class this file was written to catch.
+# Match the resource-specific diagnostic so an unrelated failure cannot satisfy the scenario.
 scenario "$det_gate" 1 "reaches an apply-path sink" mut_sink_content \
   "the projection cannot be handed to a content= sink"
 scenario "$det_gate" 1 "reaches an apply-path sink" mut_sink_sha256 \

@@ -3,7 +3,7 @@ type: reference
 title: Helm Value Surface — ArgoCD and Cilium
 description: Which Helm values a consumer cluster can actually set for the two substrate charts, on which of the five delivery paths, in which lifecycle phase — and the three places where the surface closes.
 tags: [argocd, cilium, helm, values, consumer-contract, delivery-paths]
-generated: { by: human:nosmoht, at: "2026-10-04T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-03T00:00:00Z" }
 sources:
   - resource: tofu/modules/talos-cluster/main.tf
   - resource: tofu/modules/talos-cluster/argocd-crds.tf

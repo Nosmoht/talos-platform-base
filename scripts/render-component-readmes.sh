@@ -29,9 +29,6 @@ COMP_LIST="$REPO_ROOT/.ci-renderable-components.txt"
 command -v yq >/dev/null 2>&1 || { echo "ERROR: yq not found in PATH" >&2; exit 2; }
 [ -f "$COMP_LIST" ] || { echo "ERROR: $COMP_LIST not found" >&2; exit 2; }
 
-# Hand-curated per-component metadata. bash 3.2 lacks `declare -A`, so
-# both fields are exposed as case-statement functions instead.
-
 purpose_of() {
   case "$1" in
     argocd) echo "ArgoCD GitOps engine — reconciles every other component in this base from git source via Multi-Source Applications." ;;
@@ -127,7 +124,6 @@ case "${1:-}" in
 esac
 
 if [ "$mode" = "check" ]; then
-  # Render to tmpdir, diff against committed.
   fails=0
   tmpdir="$(mktemp -d)"
   trap 'rm -rf "$tmpdir"' EXIT

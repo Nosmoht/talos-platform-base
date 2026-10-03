@@ -1,24 +1,6 @@
 #!/usr/bin/env bash
-# Frontmatter gate for the knowledge/ OKF bundle.
-#
-# Asserts the six things `openknowledge validate` does not, each of which the
-# bundle conventions (knowledge/rules/talos-base-bundle.md) state normatively
-# and none of which any rule enforces:
-#
-#   - `sources[].resource` resolves, is repo-relative, and does not escape.
-#   - `decided`, `generated.at` and `verified[].at` are quoted ISO 8601
-#     datetimes and not in the future.
-#   - a concept listing `sources` carries `generated`.
-#   - no frontmatter carries the retired `timestamp` key.
-#   - knowledge/index.md declares `okf_version`.
-#   - a decision concept carries `decided` and neither `generated`,
-#     `verified` nor `sources`.
-#
-# Bite-checked by scripts/check-knowledge-frontmatter.test.sh.
 set -euo pipefail
 
-# `resource` values are repo-relative, so resolve them from the repo root rather
-# than from wherever the caller happens to stand.
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 bundle="${1:-knowledge}"

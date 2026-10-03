@@ -22,7 +22,7 @@ run_conftest_for_list() {
   label=$1
   list_file=$2
   report_file=$3
-  enforce=$4   # 1 = fail CI on findings; 0 = informational only
+  enforce=$4
 
   if [ ! -f "$list_file" ]; then
     echo "notice: $label list not found, skipping: $list_file"
@@ -59,9 +59,7 @@ run_conftest_for_list() {
   fi
 }
 
-# Rendered base components: informational (upstream chart defaults).
 run_conftest_for_list "rendered" "$rendered_list" "$rendered_report" 0
-# ArgoCD Application CRs: enforced (we author these directly; no upstream excuse).
 run_conftest_for_list "argocd application" "$apps_list" "$apps_report" 1
 
 if [ "$status" -ne 0 ]; then

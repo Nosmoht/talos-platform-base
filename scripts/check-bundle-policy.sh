@@ -1,37 +1,21 @@
 #!/usr/bin/env bash
-# Assert that an OKF bundle's `.openknowledge.toml` is actually IN EFFECT.
-#
-# `openknowledge validate` exits 0 with an empty policy when it cannot find a
-# config, so every severity raise degrades back to the spec default and the
-# gate reports green while checking nothing. scripts/check-knowledge-gate-bite.sh
-# proves this detector bites.
-#
+# An absent config can produce a successful validation with no policy loaded.
 # Usage: check-bundle-policy.sh <bundle-dir> <rule=severity>...
-# Exit 0 = the bundle's own config is loaded and every named rule is at the
-# named severity. Exit 1 = it is not, with the cause on stdout. Exit 2 =
-# openknowledge could not run; its own stderr is reproduced verbatim, since a
-# TOML syntax error and an unknown rule name both land here and neither is a
-# discovery problem.
 
 set -euo pipefail
 
-# Runnable outside go-task, and go-task's env: block loses to an inherited
-# value, so this has to be unconditional.
 export OPENKNOWLEDGE_TELEMETRY=off
 
 bundle="${1:?usage: check-bundle-policy.sh <bundle-dir> [--spec <v>] <rule=severity>...}"
 shift
 [ -d "$bundle" ] || { echo "ERROR: $bundle is not a directory" >&2; exit 2; }
 
-# Forwarded so this gate certifies the policy under the SAME spec resolution as
-# the run it gates.
 spec=()
 if [ "${1:-}" = "--spec" ]; then
   [ -n "${2:-}" ] || { echo "ERROR: --spec needs a value" >&2; exit 2; }
   spec=(--spec "$2"); shift 2
 fi
 
-# python3 rather than jq, for the reason dev:verify-pins states in Taskfile.yml.
 command -v python3 >/dev/null 2>&1 || {
   echo "ERROR: python3 required by $0" >&2; exit 2; }
 
@@ -40,13 +24,10 @@ trap 'rm -f "$err" "$raw"' EXIT
 
 st=0
 openknowledge validate "${spec[@]}" --format json "$bundle" >"$raw" 2>"$err" || st=$?
-# Exit 1 means findings, which is a verdict about content and not our concern.
-# Anything higher means the run itself failed.
+# Exit 1 reports content findings; this check only verifies policy loading.
 if [ "$st" -gt 1 ]; then
   echo "FAIL: openknowledge could not run (exit $st). Its own report:"
   cat "$err"
-  # The CLI's own wording for an unquoted rule key names neither the key nor the
-  # fix, and the whole file is lost rather than the one rule.
   if grep -q "unhandled kv part" "$err"; then
     echo "HINT: a rule key containing a dot must be quoted in the config —"
     echo "      \"okf-0.2-metadata\" = \"error\", not okf-0.2-metadata = \"error\"."

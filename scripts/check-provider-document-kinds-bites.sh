@@ -1,34 +1,4 @@
 #!/usr/bin/env bash
-# check-provider-document-kinds-bites.sh — prove that
-# scripts/check-provider-document-kinds.sh actually bites.
-#
-# WHY THIS EXISTS: that fence has one exit code for many assertions, and its
-# verdict depends on text rendered by an external provider plus a jq extraction.
-# A fence whose assertion silently stopped matching — a renamed output, an
-# extraction that returns empty, an expectation that can no longer fail — reports
-# OK forever and is indistinguishable from a working one. The same argument, and
-# the two near-misses that motivated it, are in scripts/check-argocd-gate-bites.sh;
-# this is that discipline applied to a fence whose input is a provider render.
-#
-# Each scenario mutates a COPY of the fence — its expectation, or the patch it
-# sends — runs it, and asserts the fence fails with the MESSAGE that case owns,
-# not merely with a non-zero exit. A control run of the unmutated fence must pass.
-#
-# NOT every `fail` in the fence is covered. A branch that fires only when the
-# PROVIDER behaves differently — each case's rejection branch, case D's
-# wrong-message branch, the two render-failure branches — cannot be reached by
-# mutating an expectation, so it is unbound here and named as such rather than
-# claimed. What is bound is every assertion whose expectation this script can
-# falsify: the list below is the coverage statement.
-#
-# Cost: each scenario runs the fence end to end (~8s warm), so this target is
-# roughly two minutes. The provider is downloaded once into a shared plugin
-# cache rather than per scenario. That cost is why it is a separate task rather
-# than more cases inside the fence.
-#
-# Exit: 0 every scenario bites and the control passes; 1 one did not (or an
-#       anchor no longer matches the fence); 2 an environment error, including a
-#       mutant that failed on its environment rather than on its assertion.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -40,11 +10,9 @@ FENCE="scripts/check-provider-document-kinds.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 FAILURES=0
-# One download for all 13 fence runs; each run inits a fresh temp dir otherwise.
 export TF_PLUGIN_CACHE_DIR="${WORK}/plugin-cache"
 mkdir -p "${TF_PLUGIN_CACHE_DIR}"
 
-# $1 label, $2 expected message substring, $3 literal to replace, $4 replacement
 bite() {
   local label="$1" expect="$2" from="$3" to="$4"
   local mutant="${WORK}/mutant.sh"
@@ -94,9 +62,6 @@ set -e
 if [ "${control_status}" -eq 0 ]; then
   echo "  PASS  the real fence is green"
 else
-  # Print what the fence said. tofu:ci runs this target BEFORE the fence, so this
-  # is the only place its ::error:: lines reach the log, and its exit class (1 =
-  # the boundary moved, 2 = environment) is propagated rather than flattened.
   printf '%s\n' "${control_out}" >&2
   echo "  FAIL  the real fence is already red — fix that first; every bite below is meaningless" >&2
   exit "${control_status}"

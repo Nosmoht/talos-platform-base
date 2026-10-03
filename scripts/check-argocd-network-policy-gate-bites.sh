@@ -1,16 +1,4 @@
 #!/usr/bin/env bash
-# Bite-check for the ArgoCD NetworkPolicy posture gate.
-#
-# Each scenario mutates a copy of the committed steady-state render and asserts
-# the gate's exact verdict. This keeps the fixtures coupled to the real chart
-# output while proving that selector and ingress regressions cannot pass I6.
-#
-# Runs offline and mutates nothing outside its temporary directory.
-#
-# Exit codes:
-#   0  every mutation was rejected and the unmodified render stayed green
-#   1  the gate missed a regression or rejected the control
-#   2  environment error
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -74,9 +62,6 @@ mut_drop_repo_server_policy() {
 }
 
 mut_add_sixth_policy() {
-  # Growth is a posture change too, and the exact-set comparison is what catches
-  # it: a sixth policy could police a component the five do not, or shadow one
-  # of them, and neither shows up in a per-policy comparison of the five.
   cat >> "$1" <<'NPEOF'
 ---
 apiVersion: networking.k8s.io/v1
@@ -97,17 +82,12 @@ NPEOF
 }
 
 mut_wrong_namespace() {
-  # NetworkPolicy is namespaced: five byte-identical policies in another namespace
-  # enforce nothing in argocd, and the namespace is a hand-editable literal in the
-  # committed render (kustomization.yaml applies no namespace transform).
   yq -i '
     (select(.kind == "NetworkPolicy") | .metadata.namespace) = "argocd-system"
   ' "$1"
 }
 
 mut_foreign_policy_kind() {
-  # An AdminNetworkPolicy Deny outranks every NetworkPolicy allow rule, and the
-  # kind filter in the comparison cannot see it.
   cat >> "$1" <<'ANPEOF'
 ---
 apiVersion: policy.networking.k8s.io/v1alpha1
@@ -129,8 +109,6 @@ ANPEOF
 }
 
 mut_rename_container_port() {
-  # The policy documents stay byte-identical; the allow rule silently stops
-  # matching because the target pod no longer declares the named port.
   yq -i '
     (select(.kind == "Deployment" and .metadata.name == "argocd-redis")
       | .spec.template.spec.containers[0].ports[0].name) = "redis-tcp"
