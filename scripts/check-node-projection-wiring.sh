@@ -3,7 +3,7 @@
 #
 # WHY THIS EXISTS: nodes.tf's projections (local.controlplane_ips / worker_ips /
 # node_ips) are asserted offline via the provider-less `colliding-catalog`
-# fixture, which re-exports those locals. But that fixture omits main.tf, so no
+# fixture, which re-exports those locals. But that fixture omits provider resources, so no
 # test can see WHICH projection reaches WHICH Talos argument. Swapping
 # `endpoints = local.controlplane_ips` for `local.node_ips` in
 # data.talos_client_configuration would leave the entire offline suite green
@@ -18,12 +18,19 @@
 # identically on the GNU-grep CI image and on a BSD-grep developer machine. A
 # check that errors out locally teaches maintainers to ignore it.
 #
-# Usage: scripts/check-node-projection-wiring.sh [main.tf]
+# Usage: scripts/check-node-projection-wiring.sh [module-directory|file.tf]
 # Exit: 0 all assertions hold; 1 at least one is wrong (message names which);
 #       2 the named input file does not exist.
 set -euo pipefail
 
-MAIN="${1:-tofu/modules/talos-cluster/main.tf}"
+MAIN="${1:-tofu/modules/talos-cluster}"
+
+if [ -d "$MAIN" ]; then
+  source_file="$(mktemp)"
+  trap 'rm -f "$source_file"' EXIT
+  cat "$MAIN"/*.tf > "$source_file"
+  MAIN="$source_file"
+fi
 
 if [ ! -f "$MAIN" ]; then
   echo "::error::check-node-projection-wiring: ${MAIN} not found" >&2

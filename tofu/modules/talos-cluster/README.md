@@ -12,6 +12,20 @@ OCI artifact, supplies the `provider "talos"` block + an **encrypted** state
 backend, and calls the module directly with a `tofu apply` from a workstation.
 No higher-level orchestrator is required.
 
+## Source layout
+
+All `.tf` files belong to the same module; file boundaries do not change state addresses.
+
+| File | Responsibility |
+| --- | --- |
+| `main.tf` | Cluster secrets, bootstrap, credentials and health |
+| `machine-config.tf` | Role configurations and per-node patch application |
+| `image-factory.tf` | Schematics and installer URLs |
+| `argocd-seed.tf` | ArgoCD bootstrap seed |
+| `argocd-crds.tf` | CRD projection and bootstrap apply |
+| `cilium-seed.tf` | CNI patches and Cilium bootstrap seed |
+| `cert-approver.tf` | Serving-certificate approver seed |
+
 ## Scope
 
 In scope:

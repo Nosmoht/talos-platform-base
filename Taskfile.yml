@@ -214,10 +214,10 @@ tasks:
   tofu:check:argocd-gate-bites:
     # #218 — both fences above are static text analysis, and the module has one
     # shape at a time (the compliant one), so a fence that matched nothing would
-    # report OK forever. This mutates a COPY of main.tf per regression and
+    # report OK forever. This mutates a COPY of the module source per regression and
     # asserts each fence's error message, not just its exit code. Rationale and
     # the two real near-misses that motivated it: the script header.
-    desc: "CI fence: prove the Day-0 ArgoCD fences actually bite (mutation bite-check over a main.tf copy)"
+    desc: "CI fence: prove the Day-0 ArgoCD fences actually bite (mutation bite-check over a module-source copy)"
     cmd: scripts/check-argocd-gate-bites.sh
 
   tofu:check:kubeconfig-endpoint-regen:
@@ -231,7 +231,7 @@ tasks:
 
   tofu:check:node-projection-wiring:
     # Issue #204 — full rationale in scripts/check-node-projection-wiring.sh.
-    # The offline fixture omits main.tf, so no `tofu test` can see WHICH node
+    # The offline fixture omits provider resources, so no `tofu test` can see WHICH node
     # projection reaches WHICH Talos argument; swapping two of them leaves the
     # whole suite green while pointing talosctl and the apply-blocking health
     # gate at the wrong node set.

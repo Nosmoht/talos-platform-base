@@ -3,12 +3,18 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-generated: { by: human:nosmoht, at: "2026-09-09T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-04T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
 sources:
   - resource: tofu/modules/talos-cluster/main.tf
+  - resource: tofu/modules/talos-cluster/argocd-crds.tf
+  - resource: tofu/modules/talos-cluster/argocd-seed.tf
+  - resource: tofu/modules/talos-cluster/cert-approver.tf
+  - resource: tofu/modules/talos-cluster/cilium-seed.tf
+  - resource: tofu/modules/talos-cluster/image-factory.tf
+  - resource: tofu/modules/talos-cluster/machine-config.tf
   - resource: tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml
   - resource: kubernetes/bootstrap/argocd/root-application.yaml.tmpl
   - resource: kubernetes/bootstrap/argocd/root-project.yaml.tmpl
@@ -99,7 +105,8 @@ Two supporting mechanics:
 
 ## The bootstrap sequence
 
-As implemented in `tofu/modules/talos-cluster/main.tf`:
+As implemented in `tofu/modules/talos-cluster/main.tf`, with role and node
+configuration in `machine-config.tf` and component delivery in the seed files:
 
 ```mermaid
 flowchart TD

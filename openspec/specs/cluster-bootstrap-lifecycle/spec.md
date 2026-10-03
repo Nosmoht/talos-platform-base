@@ -16,23 +16,10 @@ sole Talos cluster-lifecycle path: machine secrets generation, machine
 configuration apply to maintenance-mode nodes, single-node etcd bootstrap,
 kubeconfig/talosconfig retrieval, and the blocking health gate.
 
-`main.tf` also hosts the ArgoCD, Cilium and cert-approver render/seed
-regions (including the post-health ArgoCD CRD server-side apply and the
-CRD-only projection bounding it — both owned descriptively by the
-`argocd-module-seed` spec) plus the
-Image-Factory and machine-config regions; the latter two are owned
-descriptively by the `node-image-composition` and
-`machine-config-generation` specs. The Cilium value-computation locals
-(the module-computed values feeding both the frozen seed and the opt-in
-emitted self-management Application, and the emitted-Application local
-itself) live in the sibling `cilium-values.tf`, owned by
-`cilium-cni-delivery` — moved out of `main.tf` (issue #188) so both
-consumers of the computed values read the same map. The cert-approver
-region seeds
-`postfinance/kubelet-csr-approver` (ADR-0019 supersedes ADR-0013 §D2) by
-rendering the vendored chart manifest through `templatefile()` into
-`local.cert_approver_manifest` — a pure render, not a raw `file()` read —
-and baking it as a controlplane inlineManifest. Day-2 OS and Kubernetes upgrades are
+Seed delivery, image resolution and machine configuration live in the sibling
+`argocd-seed.tf`, `argocd-crds.tf`, `cilium-seed.tf`, `cert-approver.tf`,
+`image-factory.tf` and `machine-config.tf` files, owned by their respective
+capability specs. Day-2 OS and Kubernetes upgrades are
 out-of-band: applying configuration alone does not re-image a node — the
 consumer runs `talosctl` against the rendered installer URL and version
 outputs.

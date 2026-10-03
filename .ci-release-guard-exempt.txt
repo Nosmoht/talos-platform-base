@@ -41,3 +41,15 @@ tofu/modules/talos-cluster/test/run-adoption-proof.sh
 tofu/modules/talos-cluster/variables.tf
 # reason: ADR-0020 §Consequences — module interface, reviewer judgment.
 tofu/modules/talos-cluster/versions.tf
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/argocd-crds.tf
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/argocd-seed.tf
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/cert-approver.tf
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/cilium-seed.tf
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/image-factory.tf
+# reason: ADR-0020 §Consequences — module interface, reviewer judgment.
+tofu/modules/talos-cluster/machine-config.tf

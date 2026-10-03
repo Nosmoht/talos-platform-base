@@ -3,9 +3,15 @@ type: reference
 title: Helm Value Surface — ArgoCD and Cilium
 description: Which Helm values a consumer cluster can actually set for the two substrate charts, on which of the five delivery paths, in which lifecycle phase — and the three places where the surface closes.
 tags: [argocd, cilium, helm, values, consumer-contract, delivery-paths]
-generated: { by: human:nosmoht, at: "2026-09-16T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-04T00:00:00Z" }
 sources:
   - resource: tofu/modules/talos-cluster/main.tf
+  - resource: tofu/modules/talos-cluster/argocd-crds.tf
+  - resource: tofu/modules/talos-cluster/argocd-seed.tf
+  - resource: tofu/modules/talos-cluster/cert-approver.tf
+  - resource: tofu/modules/talos-cluster/cilium-seed.tf
+  - resource: tofu/modules/talos-cluster/image-factory.tf
+  - resource: tofu/modules/talos-cluster/machine-config.tf
   - resource: tofu/modules/talos-cluster/variables.tf
   - resource: tofu/modules/talos-cluster/outputs.tf
   - resource: tofu/modules/talos-cluster/cilium-values.tf
@@ -59,10 +65,10 @@ component READMEs; that is an open item, not something this page discharges.
 
 | # | Path | Values input | Consumer access |
 |---|---|---|---|
-| A | ArgoCD Day-0 seed — `data "helm_template" "argocd"`, `tofu/modules/talos-cluster/main.tf:51` | `helm/argocd-values.yaml`, then `var.argocd_values_override`, later wins (`main.tf:66-70`) | free-form, fresh bootstrap only |
-| B | ArgoCD CRDs — `data "helm_template" "argocd_crds"`, `tofu/modules/talos-cluster/main.tf:869` | none — no `values` block at all, only `set crds.install=true` | none |
+| A | ArgoCD Day-0 seed — `data "helm_template" "argocd"`, `tofu/modules/talos-cluster/argocd-seed.tf` | `helm/argocd-values.yaml`, then `var.argocd_values_override`, later wins (`argocd-seed.tf`) | free-form, fresh bootstrap only |
+| B | ArgoCD CRDs — `data "helm_template" "argocd_crds"`, `tofu/modules/talos-cluster/argocd-crds.tf` | none — no `values` block at all, only `set crds.install=true` | none |
 | C | ArgoCD steady state — `kubernetes/substrate/argocd/` | `values.yaml`, rendered at authoring time by `scripts/render-component.sh` into `_rendered/` | none in the published payload |
-| D | Cilium seed — `data "helm_template" "cilium"`, `tofu/modules/talos-cluster/main.tf:359` | `helm/cilium-values.yaml`, then the module-computed layer, then `var.cilium_values_override` (`main.tf:374-378`) | free-form, fresh bootstrap only |
+| D | Cilium seed — `data "helm_template" "cilium"`, `tofu/modules/talos-cluster/cilium-seed.tf` | `helm/cilium-values.yaml`, then the module-computed layer, then `var.cilium_values_override` (`cilium-seed.tf`) | free-form, fresh bootstrap only |
 | E | Cilium self-management — `local.cilium_self_management_app`, `tofu/modules/talos-cluster/cilium-values.tf` | single-source arm: floor and computed layer inline in `valuesObject`. Multi-source arm (`cilium_self_management_values_source` set): the module-set layer and `cilium_values_override` as two ordered `valueFiles`, joint keys re-asserted in `valuesObject` | typed inputs, plus free-form on the multi-source arm |
 
 Paths A and D are OpenTofu renders baked into the Talos machine config; path E
@@ -75,19 +81,19 @@ time, not at sync time.
 (`terraform_data.argocd_crds_render`), but it is written to disk by
 `local_file.argocd_crds` and applied by `null_resource.argocd_crds`, which runs
 `kubectl apply --server-side` after the cluster-health gate
-(`tofu/modules/talos-cluster/main.tf:1007-1103`). Unlike the seeds it therefore
+(`tofu/modules/talos-cluster/argocd-crds.tf`). Unlike the seeds it therefore
 **re-fires** when its `manifest_sha` trigger moves — i.e. on a deliberate
 `argocd_chart_version` bump. It still takes no values: the data source renders
 with no `values` block at all, only `set crds.install=true`.
 
 **Both seed renders are frozen, and freezing is not the reason they are
 bootstrap-only.** `terraform_data.argocd_render`
-(`tofu/modules/talos-cluster/main.tf:105-110`) and
-`terraform_data.cilium_render` (`main.tf:409-415`) each carry
+(`tofu/modules/talos-cluster/argocd-seed.tf`) and
+`terraform_data.cilium_render` (`cilium-seed.tf`) each carry
 `ignore_changes = [input]`, which keeps an unstable Helm render from re-pushing
 a machine config on every plan. The deeper property is that a Talos
-`inlineManifest` is applied once at bootstrap: "re-capture on a live cluster is
-inert for a create-only seed" (`main.tf:99-104`). So an override edited after
+`inlineManifest` creates missing resources without updating existing ones
+(`argocd-seed.tf`). So an override edited after
 the first bootstrap reaches a **fresh bootstrap only**. `UPGRADING.md`, in the
 `v10.0.0` section's step 2, states the same for the ArgoCD NetworkPolicy lever:
 the seed values reach "a **fresh bootstrap only**".
@@ -133,7 +139,7 @@ render, under both helm 3.20.2 (the repo pin) and helm 4.2.4. Nulling the
 **parent** map instead (`dex: null`) does drop the subtree, but it drops it
 rather than reverting to the chart default. So a leaf the floor owns cannot be
 handed back to the chart, and the coarse lever costs the whole map.
-`tofu/modules/talos-cluster/variables.tf:650-657` (the `cilium_values_override`
+`tofu/modules/talos-cluster/variables.tf` (the `cilium_values_override`
 description) states the leaf half of this.
 
 "Typed inputs only" means the `cilium_*` module variables listed in the module
@@ -200,7 +206,7 @@ records the finding and what replaced it; the finding itself is history, not
 current behaviour.
 
 **What was closed.** `var.cilium_values_override` reached the render in exactly
-one place — the seed's values list in `tofu/modules/talos-cluster/main.tf`. The
+one place — the seed's values list in `tofu/modules/talos-cluster/cilium-seed.tf`. The
 seed is bootstrap-only, and enabling `cilium_self_management` while the override
 was non-empty was a hard plan-time rejection. So the long tail the override
 exists to carry — Hubble beyond the typed inputs, L2 and BGP announcements, bpf
@@ -279,7 +285,7 @@ copy is a starting point, not a migration.
 
 `argocd_values_override` is seed-only, and whatever it sets that the
 steady-state render also declares is overwritten at the first self-management
-sync (`tofu/modules/talos-cluster/variables.tf:505-511`).
+sync (`tofu/modules/talos-cluster/variables.tf`).
 
 What exists today is per-case guidance, not the set. The same variable
 description names the highest-value members ("SSO and RBAC do NOT belong here")
@@ -364,7 +370,7 @@ The narrow typed surface is a recorded decision, not an oversight.
 
 1. `tofu/modules/talos-cluster/helm/argocd-values.yaml:12` says a consumer "can
    replace this wholesale via var.argocd_values_override". It is a merge —
-   `main.tf:66-70`, `variables.tf:501-503` and
+   `argocd-seed.tf`, `variables.tf` and
    `tofu/modules/talos-cluster/README.md:571` all say so. The identical claim
    stood in that README's §Inputs row and was corrected when this page was
    written; the values-file comment is a spec `primary` source and was left for
@@ -401,9 +407,7 @@ The narrow typed surface is a recorded decision, not an oversight.
    whose audit note records that a clean plan is not evidence the override
    survived a chart bump. That the module cannot introspect
    the opaque string, and why its prerequisite checks therefore warn instead of
-   reject, is in `tofu/modules/talos-cluster/cilium-values.tf`, in the
-   `# --- Inert-input warnings ---` comment block above the file's `check`
-   blocks. The
+   reject, is in `tofu/modules/talos-cluster/cilium-values.tf`, in the short comment above its `check` blocks. The
    reference file has a schema gate; the two overrides have none.
 6. The `substrate.argocd` asymmetry in finding 4 is documented as deliberate in
    `openspec/specs/cluster-yaml-sot/spec.md` §"Requirement: Untyped escape

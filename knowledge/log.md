@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-04
+
+- `architecture/day-zero-bootstrap.md`: update module file locations.
+- `architecture/substrate.md`: update module file locations and the shipped file inventory.
+- `reference/helm-values-surface.md`: update module file locations.
+- `reference/tasks.md`: document module-wide static source checks.
+
 ## 2026-10-03
 
 - `decisions/0027-talos-provider-prerelease-pin.md`: append the stable-provider

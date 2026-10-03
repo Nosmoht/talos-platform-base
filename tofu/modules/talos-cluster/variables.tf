@@ -1,11 +1,4 @@
-# Inputs for the talos-cluster module.
-#
-# The module is backend- and caller-agnostic: a consumer's root module maps
-# its cluster.yaml onto these variables and supplies the `provider "talos"`
-# block plus the state backend. Cluster identity (endpoint, node IPs, NTP,
-# install disk, registry mirrors) is caller-supplied via patches — the module
-# ships none of its own. A direct `tofu apply` from a workstation and any
-# higher-level orchestrator use the identical variable contract.
+# Keep independent validation predicates in separate blocks so expect_failures tests bind each guard.
 
 variable "cluster_name" {
   description = "Name of the Talos cluster (e.g. \"prod\"). Used in PKI CNs and config."
@@ -110,21 +103,7 @@ variable "nodes" {
     error_message = "At least one controlplane node is required."
   }
 
-  # etcd quorum: an even control-plane count tolerates no more failures than the
-  # odd count below it (2 tolerates 0 like 1; 4 tolerates 1 like 3) while adding a
-  # member that can break quorum. Rejected at plan time rather than left as a
-  # cluster one failure away from a surprise. Consequence: growing 3 -> 5 must be
-  # declared in ONE step; a transient 4-member control plane is not plannable, and
-  # a control plane cannot be shrunk to an even count to eject a dead member —
-  # replace the entry instead of deleting it (UPGRADING §Unreleased).
-  #
-  # The count == 0 arm keeps this rule OFF the empty case, so the
-  # at-least-one-controlplane rule above owns it alone and stays isolatable
-  # red-green (0 % 2 == 0 would otherwise make both fire on the same input).
-  #
-  # NOTE: this counts DECLARED controlplanes, not live etcd members. A member
-  # removed out-of-band leaves the declared count unchanged — the rule prevents
-  # declaring an even topology, it does not observe the cluster.
+  # Even controlplane counts add no etcd failure tolerance over the preceding odd count.
   validation {
     condition = (
       length([for h, n in var.nodes : h if n.role == "controlplane"]) == 0 ||
@@ -138,15 +117,7 @@ variable "nodes" {
     error_message = "Each node.role must be either \"controlplane\" or \"worker\"."
   }
 
-  # Node keys must ALREADY be canonical Kubernetes node names — deliberately
-  # stricter than what either platform accepts. Talos validates the hostname's
-  # LENGTH only (HostnameConfigV1Alpha1.Validate: first label 1..63, whole value
-  # <= 253; no character class, no lowercasing), and what reaches the kubelet is
-  # then silently rewritten by nodename.FromHostname(): lowercased, '_' -> '-',
-  # every other non-[a-z0-9.-] rune dropped, leading/trailing '-'/'.' trimmed. So
-  # "NODE_01" and "node-01" are two distinct keys here that arrive in Kubernetes
-  # as ONE node. Rejecting what Talos would REWRITE — not merely what Kubernetes
-  # would reject — is what keeps the declared name and the live name identical.
+  # Node-map keys are state identities: require canonical names rather than normalizing them.
   validation {
     condition = alltrue([for h, n in var.nodes :
       can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$", h))
@@ -156,17 +127,7 @@ variable "nodes" {
     error_message = "Node keys must be canonical Kubernetes node names: lowercase [a-z0-9-.], no leading/trailing '-' or '.', <= 63 chars per label, <= 253 total. Talos does NOT reject uppercase or '_' — it silently rewrites them, so two keys could collapse onto one Kubernetes node."
   }
 
-  # Talos splits the hostname at the FIRST dot (HostnameSpecSpec.ParseFQDN:
-  # Hostname = parts[0], Domainname = parts[1]) and registers the SHORT hostname
-  # with Kubernetes UNLESS register_with_fqdn is set. So while it is off, two keys
-  # sharing a first label are two kubelets claiming one Kubernetes Node object —
-  # rejected. With it ON, the full key is the Kubernetes identity and the map key
-  # already makes that unique, so a shared first label is permitted.
-  #
-  # Residual the operator owns in that case: the two machines still carry the same
-  # OS hostname (Talos sets only the first label via sethostname). That is visible
-  # in Talos-level output and in anything keyed on the short name; the module does
-  # not police it because it is no longer a Kubernetes-identity collision.
+  # Talos splits at the first dot; the first label must fit the Linux hostname limit.
   validation {
     condition = (
       var.register_with_fqdn ||
@@ -175,29 +136,17 @@ variable "nodes" {
     error_message = "The first label of every node key must be unique while register_with_fqdn is false: Talos splits the hostname at the first dot and uses the SHORT hostname as the Kubernetes node name, so two such keys would put two kubelets on one Node object."
   }
 
-  # A dotted key without the switch is a lie: Kubernetes only ever sees the first
-  # label, so the domain part silently disappears from the cluster's identity.
   validation {
     condition     = var.register_with_fqdn || alltrue([for h, n in var.nodes : !strcontains(h, ".")])
     error_message = "A dotted node key requires register_with_fqdn = true — otherwise Kubernetes only sees the first label and the domain part is silently dropped."
   }
 
-  # IPs target talosctl and fill every Talos-facing argument; duplicates make
-  # bootstrap ambiguous. The map key already makes the NAME unique — the IP is a
-  # value, so it needs its own check. nodes.tf's node_name_by_ip is the structural
-  # backstop; this is the readable error that fires first.
   validation {
     condition     = length(distinct([for h, n in var.nodes : n.ip])) == length(var.nodes)
     error_message = "node.ip values must be unique."
   }
 
-  # …and uniqueness by STRING is only as good as the string being canonical:
-  # "192.0.2.11", "192.0.2.011" and "::ffff:192.0.2.11" are three distinct strings
-  # naming one host, so a duplicate would slip past the check above and put two
-  # apply resources on one machine. Round-tripping through cidrhost() rejects
-  # every non-canonical spelling (and every non-address) for both families: the
-  # function normalises, so a value that differs from its own normalisation was
-  # not canonical.
+  # Require canonical IP spelling so string uniqueness also means address uniqueness.
   validation {
     condition = alltrue([for h, n in var.nodes :
       (can(cidrhost("${n.ip}/32", 0)) && cidrhost("${n.ip}/32", 0) == n.ip) ||
@@ -287,18 +236,7 @@ variable "images" {
     error_message = "Each image.cpu_vendor must be \"intel\", \"amd\", or \"arm\"."
   }
 
-  # AC9 rules W/D/E/B on extra_kernel_args — lexical guardrails against a
-  # documented footgun, not a security boundary (a consumer owns their repo).
-  # Each validation is self-contained (references only var.images) and each
-  # message names the offending image + element via an identical naming clause
-  # (AC9's naming fence — grep-counted at exactly four occurrences below).
-  # Empty-list safety: alltrue([]) is true, so the default [] passes every rule.
-
-  # Rule W (whitespace) — a space smuggles a second arg past karg_conflicts,
-  # which keys on "=" and never on whitespace. ASCII-scoped by design: RE2
-  # [[:space:]] does not match U+00A0 and similar, which is not a cmdline-smuggle
-  # vector (the kernel splits the cmdline on ASCII space/tab, so an NBSP stays
-  # inside the token).
+  # ASCII whitespace can smuggle a second kernel arg past key-based conflict checks.
   validation {
     condition = alltrue([
       for name, img in var.images : alltrue([
@@ -312,8 +250,7 @@ variable "images" {
     })}."
   }
 
-  # Rule D (removal spelling) — the karg removal/prefix syntax (§Non-Goals);
-  # the conflict guard cannot see it.
+  # Removal prefixes bypass the composition conflict model.
   validation {
     condition = alltrue([
       for name, img in var.images : alltrue([
@@ -327,9 +264,6 @@ variable "images" {
     })}."
   }
 
-  # Rule E (empty key) — rejects the bare empty string AND a leading '=' (both
-  # key as "" via element(split("=", a), 0) and would otherwise defeat the
-  # guard's =-keying; a leading '=' also bypasses rule B's key match).
   validation {
     condition = alltrue([
       for name, img in var.images : alltrue([
@@ -343,11 +277,7 @@ variable "images" {
     })}."
   }
 
-  # Rule B (debugfs key) — the debugfs KEY at any value is rejected (AGENTS.md
-  # §Hard Constraints forbids the `off` value that boot-loops Talos with
-  # Cilium; this base's own gate greps only this repo's kubernetes/**/tofu/**
-  # PR diff and can never see a consumer's cluster.yaml). Matches the key,
-  # never the forbidden value literal, so this file stays clean of it.
+  # Reject the debugfs key at any value; consumer patches are outside this repository’s CI grep.
   validation {
     condition = alltrue([
       for name, img in var.images : alltrue([
@@ -436,12 +366,6 @@ variable "worker_config_patches" {
   default     = []
 }
 
-# ---------------------------------------------------------------------------
-# ArgoCD delivery (Layer-1 substrate, C4 layer model). ArgoCD is baked into the
-# controlplane machine config as a Talos cluster.inlineManifest
-# (data.helm_template, rendered locally), so it comes up with the bootstrap.
-# ---------------------------------------------------------------------------
-
 variable "deploy_argocd" {
   description = <<-EOT
     Whether the module ships ArgoCD as a Talos inlineManifest. Default true —
@@ -525,16 +449,6 @@ variable "cluster_health_timeout" {
   default     = "10m"
 }
 
-# ---------------------------------------------------------------------------
-# Cluster network — pod / service CIDRs (install-time-fixed in Talos)
-# ---------------------------------------------------------------------------
-# These are first-class because a pod CIDR is irreversible at bootstrap AND it
-# couples Talos (cluster.network.{podSubnets,serviceSubnets}) to Cilium
-# (native-routing / masquerade / encryption strict-mode CIDR). Setting it in one
-# place keeps both sides coherent; the defaults match Talos' own defaults, so a
-# caller that does not care gets identical behaviour. Lists carry both families
-# when dual_stack = true.
-
 variable "pod_cidr" {
   description = "Pod network CIDR(s). Drives Talos cluster.network.podSubnets AND Cilium IPAM/masquerade/native-routing. One entry for single-stack; v4+v6 when dual_stack = true."
   type        = list(string)
@@ -578,22 +492,6 @@ variable "allow_scheduling_on_controlplanes" {
   type        = bool
   default     = false
 }
-
-# ---------------------------------------------------------------------------
-# Cilium delivery (Layer-1 substrate). Cilium is rendered locally with
-# data.helm_template and baked into the controlplane cluster.inlineManifests as
-# a bootstrap SEED, so it comes up as the CNI with the bootstrap — the same
-# local-render → inlineManifest pattern as deploy_argocd. The module disables
-# the Talos default CNI (cni.name = none) and kube-proxy when deploy_cilium is
-# true, so Flannel never comes up.
-#
-# inlineManifests are create-only (Talos never edits a resource it created), so
-# this is a SEED, not a reconciled deployment: cilium_chart_version is a SEED
-# knob, not an upgrade knob (parity with argocd_chart_version). Install-time
-# Cilium settings (routing mode, encryption, kube-proxy replacement, MTU) belong
-# in the seed via the typed inputs below + cilium_values_override; runtime-mutable
-# config (Hubble export, L2/BGP announcements) is Day-2 Cilium self-management.
-# ---------------------------------------------------------------------------
 
 variable "deploy_cilium" {
   description = <<-EOT
@@ -691,38 +589,12 @@ variable "cilium_values_override" {
   default     = ""
   sensitive   = true
 
-  # Map-shape guard. yamldecode admits documents this variable cannot be: a
-  # comment-only string decodes to null and a list-rooted one to a tuple, and
-  # both would reach the seed's values list — and the consumer's own committed
-  # override file on the Day-2 path — as a non-object Helm rejects at render
-  # time. Rejecting at plan time puts the message on the input instead of on the
-  # rendered artifact.
   validation {
     condition     = var.cilium_values_override == "" || can(keys(yamldecode(var.cilium_values_override)))
     error_message = "cilium_values_override must be a YAML MAPPING (top-level `key: value` pairs) — a comment-only document decodes to null and a list-rooted one to a sequence, neither of which is a Helm values document."
   }
 
-  # Joint-key HARD-REJECT (adr-0028 §(d)). These three keys have a Talos-side
-  # counterpart the module writes: kubeProxyReplacement pairs with
-  # cluster.proxy.disabled (main.tf base_cni_patch), and k8sServiceHost/Port name
-  # the endpoint Cilium reaches the API server through before the CNI is up.
-  # Overriding either half alone yields no ClusterIP datapath and no cluster DNS
-  # — at bootstrap baked into a create-only seed, at Day-2 delivered by a sync.
-  #
-  # This costs no capability BECAUSE all three have typed inputs that set both
-  # halves together: cilium_kube_proxy_replacement, cilium_k8s_service_host and
-  # cilium_k8s_service_port (the latter two shipped with this guard — closes #227,
-  # and adr-0028 §(f) is why they are typed fields rather than override keys).
-  #
-  # It is a footgun guard, NOT a boundary: the chart's `extraConfig` passthrough
-  # and a caller `config_patches` entry both reach the same unbootable state
-  # around it (base_cni_patch writes `proxy.disabled` only when the toggle is
-  # true, so it does not win over a caller patch that sets it while the toggle is
-  # false). Recorded in adr-0028's addendum rather than claimed as closure.
-  #
-  # SEPARATE validation block from the map-shape guard above, per the isolation
-  # rule on cilium_self_management below: expect_failures matches the VARIABLE,
-  # so a merged condition would let either half rot untested.
+  # These keys must agree with Talos configuration; change them through the paired typed inputs.
   validation {
     condition = var.cilium_values_override == "" || length(setintersection(
       try(keys(yamldecode(var.cilium_values_override)), []),
@@ -748,16 +620,7 @@ variable "cilium_native_routing_cidr" {
   type        = string
   default     = ""
 
-  # Well-formedness guard — same MANDATORY class as the two metric-list format
-  # guards below, and for the same measured reason: the chart renders this value
-  # RAW and UNQUOTED into cilium-config (`ipv4-native-routing-cidr: {{ . }}`),
-  # and that ConfigMap is baked into the create-only controlplane machine config.
-  # Verified against the pinned chart (1.20.0): the value
-  # "10.244.0.0/16\n  injected-native-key: pwned" renders `injected-native-key`
-  # as a standalone cilium-config key. A CIDR predicate is the precise guard —
-  # it admits exactly the value shape the input is FOR, so every newline-bearing
-  # or otherwise malformed string is rejected without enumerating attack shapes.
-  # cidrhost() also rejects null, so the default-nullable variable fails closed.
+  # The chart renders this CIDR unquoted; reject malformed strings before freezing the seed.
   validation {
     condition     = var.cilium_native_routing_cidr == "" || can(cidrhost(var.cilium_native_routing_cidr, 0))
     error_message = "cilium_native_routing_cidr must be empty (derive from pod_cidr) or a well-formed CIDR such as \"10.244.0.0/16\"."
@@ -770,18 +633,6 @@ variable "cilium_kube_proxy_replacement" {
   default     = true
 }
 
-# k8sServiceHost / k8sServicePort — typed because the value feeds two sinks that
-# must agree (adr-0028 §(f)): the chart's pre-CNI API-server endpoint, and the
-# kube-proxy-replacement pairing with Talos' cluster.proxy.disabled. They are
-# therefore joint keys under adr-0028 §(d) and rejected inside
-# cilium_values_override; these inputs are what makes that rejection cost no
-# capability. Closes #227.
-#
-# The defaults are Talos KubePrism, which is what Talos' own Cilium guide
-# documents — but Cilium documents these values as endpoint-derived in general
-# (docs.cilium.io "Kubernetes Without kube-proxy" sets them from the real
-# kubernetes endpoint in every example), and KubePrism is not always the right or
-# available endpoint, so the values must be settable.
 variable "cilium_k8s_service_host" {
   description = <<-EOT
     Cilium's `k8sServiceHost` — the endpoint Cilium reaches the API server
@@ -803,44 +654,8 @@ variable "cilium_k8s_service_host" {
   default     = "localhost"
   nullable    = false
 
-  # Well-formedness guard. The sink is MEASURED, not assumed: chart 1.20.0 renders
-  # this value into the container env var KUBERNETES_SERVICE_HOST on the agent, the
-  # operator, the Envoy DaemonSet and the init containers — NOT into a cilium-config
-  # key (which is why tests/fixtures/cilium-config-keys.txt carries neither
-  # `k8s-service-host` nor `KUBERNETES_SERVICE*`), and it renders it QUOTED, so a
-  # newline-bearing value cannot inject a sibling YAML key the way
-  # cilium_native_routing_cidr can. This guard is therefore well-formedness rather
-  # than injection closure: the value is the endpoint Cilium reaches the API server
-  # through before the CNI is up, and on the seed path it is frozen into a
-  # create-only machine config, so a malformed host is a bootstrap deadlock that no
-  # later apply repairs. A host is a DNS name or an IP literal: no whitespace, no
-  # ":" (the port is its own input), non-empty.
-  # Two accepted shapes, as an alternation rather than one permissive class:
-  #
-  #   (1) a DNS name or IPv4 literal — no ":" at all, so "host:port" is rejected
-  #       (the port is its own input);
-  #   (2) an UNBRACKETED IPv6 literal in CANONICAL form, decided by the cidrhost()
-  #       round trip var.nodes already uses — a parse, not a shape match, so
-  #       "1:2:3", "fffff:1:2" and a nine-group string are rejected rather than
-  #       admitted by a character class. Its two consequences are deliberate and
-  #       shared with var.nodes: a non-canonical spelling ("2001:0db8::1") and an
-  #       IPv4-embedded one ("::ffff:192.0.2.1", "64:ff9b::192.0.2.33") normalize
-  #       to something else and are rejected — write the normalized form.
-  #       Bracketing is REJECTED, and that direction is measured rather than
-  #       stylistic: the chart puts this value in KUBERNETES_SERVICE_HOST, and
-  #       client-go's rest.InClusterConfig() builds the API-server URL as
-  #       net.JoinHostPort(<that env var>, <the port env var>) — JoinHostPort
-  #       brackets any host containing a colon and does not special-case one that
-  #       is already bracketed, so "[2001:db8::1]" reaches the API server as
-  #       "[[2001:db8::1]]:6443", which does not parse. Bare is also the form
-  #       kubelet itself injects for a ClusterIP.
-  #
-  # A zone index ("fe80::1%eth0") is out: link-local is not an endpoint a whole
-  # cluster shares.
-  #
-  # try() rather than the `can(f(x)) && f(x)` pair var.nodes uses: on the
-  # versions.tf floor `&&` evaluates both operands, so the second cidrhost() call
-  # raises on a non-address instead of yielding this message (issue #271).
+  # client-go adds IPv6 brackets itself; accept only bare canonical literals.
+  # Use try() because boolean operators may evaluate a failing cidrhost() call.
   validation {
     condition = can(regex("^[a-zA-Z0-9._-]+$", var.cilium_k8s_service_host)) || (
       try(cidrhost("${var.cilium_k8s_service_host}/128", 0), "") == var.cilium_k8s_service_host
@@ -860,19 +675,12 @@ variable "cilium_k8s_service_port" {
   default     = "7445"
   nullable    = false
 
-  # Two blocks, not one merged condition, per the isolation rule on
-  # cilium_self_management below: expect_failures matches the VARIABLE, so a merged
-  # condition passes its leg whichever conjunct rejected the value — and HCL's `&&`
-  # is not documented as short-circuiting, so a merged condition would additionally
-  # evaluate tonumber() on a non-numeric value and fail with an evaluation error
-  # instead of this message.
   validation {
     condition     = can(regex("^[0-9]{1,5}$", var.cilium_k8s_service_port))
     error_message = "cilium_k8s_service_port must be a decimal TCP port as a string — digits only, no whitespace, no scheme, no host (e.g. \"7445\")."
   }
 
-  # try() so a non-numeric value has already been rejected by the block above
-  # rather than crashing this one.
+  # The format validation reports non-numeric values; do not raise during this range check.
   validation {
     condition     = try(tonumber(var.cilium_k8s_service_port), 0) > 0 && try(tonumber(var.cilium_k8s_service_port), 0) < 65536
     error_message = "cilium_k8s_service_port must be in the TCP port range 1-65535 (e.g. \"7445\", the Talos KubePrism port)."
@@ -917,9 +725,6 @@ variable "cilium_ipsec_key" {
   default     = ""
   sensitive   = true
 
-  # Catch an obviously malformed key at plan time rather than as a post-boot CNI
-  # failure. Cilium IPsec keys start with a numeric key id, e.g.
-  # "3 rfc4106(gcm(aes)) <hex> 128". Permissive on purpose (multiple algos).
   validation {
     condition     = var.cilium_ipsec_key == "" || can(regex("^[0-9]+ ", var.cilium_ipsec_key))
     error_message = "cilium_ipsec_key must be empty or a Cilium IPsec key starting with a numeric key id (e.g. \"3 rfc4106(gcm(aes)) <hex> 128\")."
@@ -969,16 +774,6 @@ variable "cilium_gateway_api_crds_url" {
   type        = string
   default     = ""
 }
-
-# ---------------------------------------------------------------------------
-# Cilium observability inputs + opt-in ArgoCD self-management (issue #188).
-# Default-off, first-class alternative to hand-rolling cilium_values_override
-# for the common "I want Cilium/Hubble metrics" case. Feed the SAME computed-
-# values map (cilium-values.tf) that serves both the frozen bootstrap seed and
-# the opt-in emitted self-management Application — single observability
-# data-flow, no double-application. See
-# knowledge/decisions/0022-cilium-observability-and-argocd-self-management.md.
-# ---------------------------------------------------------------------------
 
 variable "cilium_agent_metrics" {
   description = <<-EOT
@@ -1032,8 +827,7 @@ variable "cilium_operator_replicas" {
   default     = null
 
   validation {
-    # Ternary, not `||`: the null default must not reach floor(), and the
-    # conditional operator is the form that does not evaluate the untaken arm.
+    # Only the conditional reliably skips floor(null) on the supported OpenTofu floor.
     condition = var.cilium_operator_replicas == null ? true : (
       var.cilium_operator_replicas >= 1 &&
       floor(var.cilium_operator_replicas) == var.cilium_operator_replicas
@@ -1041,11 +835,6 @@ variable "cilium_operator_replicas" {
     error_message = "cilium_operator_replicas must be null (derive from the node count) or an integer >= 1."
   }
 
-  # Its own block, per the guard-isolation rule: merged into the conjunction
-  # above, whichever leg a test did not exercise would go untested. Reads
-  # var.nodes rather than local.nodes_checked because a validation may not
-  # reference locals — the two carry identical keys by construction, and the
-  # IP-distinctness round trip that distinguishes them cannot change a COUNT.
   validation {
     condition     = var.cilium_operator_replicas == null || var.cilium_operator_replicas <= length(var.nodes)
     error_message = "cilium_operator_replicas must not exceed the number of declared nodes: the chart's operator podAntiAffinity is requiredDuringScheduling on kubernetes.io/hostname, so at most one operator pod places per node and every surplus replica stays Pending indefinitely. Rejected rather than warned because the value is baked into a create-only inlineManifest — the bootstrap that carries it cannot be walked back by a later apply."
@@ -1088,18 +877,7 @@ variable "cilium_hubble_metrics" {
   default     = []
   nullable    = false
 
-  # Same corruption class as cilium_agent_metric_overrides, same measurement:
-  # the chart renders these entries raw and unquoted into cilium-config, which is
-  # baked into the create-only controlplane machine config. Verified against the
-  # pinned chart — an entry "x\n  injected-hubble-key: pwned" renders
-  # `injected-hubble-key` as a standalone ConfigMap key. "---" is excluded for the
-  # same reason it is on the sibling input: outputs.tf splits the rendered
-  # document on that literal, so an embedded one silently blanks the seed markers.
-  #
-  # An allowlist would be wrong here: the legitimate context syntax uses ":", ";",
-  # "=" and "," freely, and pinning that grammar would break on the next Hubble
-  # metric option. Excluding exactly the two measured corruption vectors keeps the
-  # guard correct without guessing at the grammar.
+  # The chart renders entries unquoted; newlines inject keys and separators corrupt seed audits.
   validation {
     condition = alltrue([
       for m in var.cilium_hubble_metrics : !strcontains(m, "\n") && !strcontains(m, "\r") && !strcontains(m, "---")
@@ -1133,21 +911,7 @@ variable "cilium_agent_metric_overrides" {
   default     = []
   nullable    = false
 
-  # Format guard — MANDATORY, and not merely a typo catcher. The chart renders
-  # these entries RAW and UNQUOTED into cilium-config as a multi-line plain
-  # scalar, and that ConfigMap is baked into the create-only controlplane
-  # machine config. An entry carrying a newline with matching indentation
-  # escapes the scalar and writes arbitrary cilium-config keys. Verified against
-  # the pinned chart: an entry "x\n  injected-key: pwned" renders `injected-key`
-  # as a standalone ConfigMap key. An embedded "---" is equally load-bearing: it
-  # would split the rendered document and silently blank the
-  # cilium_seed_observability_markers output (outputs.tf splits on that literal).
-  #
-  # The class is deliberately CONSERVATIVE — Prometheus metric-name characters
-  # minus ":" (no Cilium metric uses one). Widen it if a legitimate metric name
-  # is ever rejected; do not widen it to accommodate a value that needs quoting.
-  # Precedent for guarding a free-form list that reaches the machine config:
-  # var.images[*].extra_kernel_args.
+  # Keep the raw-rendered metric names free of YAML syntax and document separators.
   validation {
     condition = alltrue([
       for m in var.cilium_agent_metric_overrides : can(regex("^[+-][a-zA-Z_][a-zA-Z0-9_]*$", m))
@@ -1221,32 +985,12 @@ variable "cilium_self_management" {
   type        = bool
   default     = false
 
-  # Deploy-prereq guard: self-management presupposes both an ArgoCD to
-  # reconcile into and a module-delivered Cilium seed to hand off from.
   validation {
     condition     = !var.cilium_self_management || (var.deploy_argocd && var.deploy_cilium)
     error_message = "cilium_self_management requires deploy_argocd = true AND deploy_cilium = true (self-management hands the Day-2 config off from the module-delivered Cilium seed to the consumer's ArgoCD)."
   }
 
-  # Override-drop HARD-REJECT guard, adr-0028 §(b) rewriting adr-0022's: the
-  # override now REACHES the emitted Application, but only through the
-  # multi-source arm, which needs a values source to read the two `valueFiles`
-  # from. Without one the emitted Application falls back to the single-source
-  # shape whose valuesObject carries no override term — the same SILENT DROP of a
-  # datapath override (BGP control-plane / L2 announcements / bpf tuning) the old
-  # guard existed to prevent, so the reject stays, pointed at the missing input
-  # instead of at the combination. Hard-reject (not a `check`-warn) because
-  # cilium_values_override is an opaque free-form YAML string the module cannot
-  # introspect to tell a datapath-critical override from a benign one — fail safe.
-  #
-  # KEEP THIS AS A SEPARATE validation block from the one above — merging the
-  # two conditions into one `condition` would collapse the deploy-prereq guard
-  # legs (A/B) and this override-drop guard leg (C) in
-  # tests/input-validation.tftest.hcl into a single untested predicate: an
-  # expect_failures check only proves SOME validation fired, so all three legs
-  # would stay vacuously green under a merged condition even if one half of
-  # the merged predicate were silently deleted. See tests/input-validation.tftest.hcl
-  # guard legs A/B/C.
+  # Overrides require the multi-source path; the single-source valuesObject cannot carry them.
   validation {
     condition     = !(var.cilium_self_management && var.cilium_values_override != "" && var.cilium_self_management_values_source == null)
     error_message = "cilium_self_management with a non-empty cilium_values_override requires cilium_self_management_values_source: without it the emitted Application is single-source and its valuesObject carries no override term, so a datapath-critical override (BGP control-plane / L2 announcements / bpf tuning) would be silently dropped when ArgoCD adopts Cilium. Set cilium_self_management_values_source to the git repo, revision and two file paths the Application should read its values layers from."
@@ -1323,13 +1067,7 @@ variable "cilium_self_management_values_source" {
   })
   default = null
 
-  # Coordinate completeness. One predicate per validation block throughout —
-  # expect_failures matches the VARIABLE, so a merged condition would let any
-  # half rot untested (the isolation rule on cilium_self_management above).
-  #
-  # try() rather than a bare attribute access behind the null check: Terraform's
-  # `||` is not documented as short-circuiting, so `x == null || x.attr` can
-  # still evaluate the right operand and fail with "attribute from null value".
+  # Use try() for nullable attributes; boolean operators may evaluate both sides.
   validation {
     condition = var.cilium_self_management_values_source == null || alltrue([
       for f in ["repo_url", "revision", "values_path"] :
@@ -1338,24 +1076,13 @@ variable "cilium_self_management_values_source" {
     error_message = "cilium_self_management_values_source needs a non-empty repo_url, revision and values_path — they become spec.sources[0].repoURL, its targetRevision, and the first $values/… valueFiles entry of the emitted Application."
   }
 
-  # Character-set guard, the raw-render class rule (see cilium_native_routing_cidr
-  # and cilium_k8s_service_host): repo_url and both paths are interpolated into
-  # the generated values document's `#` header lines by bare string join, not
-  # through yamlencode, so a value carrying a newline breaks out of the comment
-  # and injects a TOP-LEVEL key into the module-set values layer — the first
-  # valueFiles entry of an Application that renders a privileged, host-networked
-  # DaemonSet. An allowlist is correct here because both value spaces are narrow
-  # tokens: a repo-relative path, and a git URL. The emitted header additionally
-  # collapses newlines defensively, so this guard and that are belt and braces.
+  # These values reach generated YAML comment headers through interpolation; reject line breaks.
   validation {
     condition = var.cilium_self_management_values_source == null || alltrue([
       for p in compact([
         try(var.cilium_self_management_values_source.values_path, ""),
         try(var.cilium_self_management_values_source.override_path, ""),
         ]) : can(regex("^[A-Za-z0-9._/-]+$", p)) && alltrue([
-        # No empty or "." segment either: those are not a character-set question
-        # but the same one — a non-normalized spelling. ".." is the traversal
-        # block's below, so it is not re-checked here.
         for seg in split("/", p) : seg != "" && seg != "."
       ])
     ])
@@ -1367,19 +1094,7 @@ variable "cilium_self_management_values_source" {
     error_message = "cilium_self_management_values_source.repo_url must carry no whitespace — it is interpolated into an emitted Helm values document's header, where a newline injects a top-level values key. It must also carry no userinfo (no \"https://user:token@host\"): ArgoCD repository credentials belong in the repository registration, and this URL is written into a file the consumer commits to git."
   }
 
-  # Scheme allowlist. repo_url becomes spec.sources[0].repoURL verbatim, and that
-  # source decides where ArgoCD fetches the Helm values for a privileged,
-  # host-networked DaemonSet from — so the value space is narrowed to the three
-  # forms ArgoCD actually resolves for a git source: https://, ssh://, and scp-like
-  # `git@host:path`. It rejects `file://` and any bare token, and it rejects
-  # userinfo (`https://user:token@host`) in every accepted form, which the message
-  # above promises and no other block enforces.
-  #
-  # This is NOT an authorization control and does not try to be one: the repo it
-  # names is still whatever the caller wrote. What keeps a FOREIGN values repo out
-  # of the Application is the AppProject's sourceRepos list, which is why a values
-  # source on the permissive "default" project warns (cilium-values.tf, check
-  # "cilium_self_management_values_source_on_permissive_project").
+  # Restrict URL forms and reject embedded credentials. AppProject sourceRepos owns authorization.
   validation {
     condition = var.cilium_self_management_values_source == null || can(regex(
       "^(https://[^@[:space:]]+|ssh://([A-Za-z0-9._-]+@)?[^@:[:space:]]+(:[0-9]+)?/[^@[:space:]]*|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^@[:space:]]+)$",
@@ -1388,13 +1103,7 @@ variable "cilium_self_management_values_source" {
     error_message = "cilium_self_management_values_source.repo_url must be a git remote ArgoCD can resolve — \"https://host/org/repo.git\", \"ssh://git@host[:port]/org/repo.git\" or \"git@host:org/repo.git\" — and must carry no embedded PASSWORD (no \"https://user:token@host\", no \"ssh://user:pass@host\"): ArgoCD repository credentials belong in the repository registration, not in a manifest committed to git. An SSH USERNAME is fine, and is the documented form."
   }
 
-  # Distinctness. The two paths address two DIFFERENT layers of the same Helm
-  # merge; pointing them at one file makes the same $values/ entry appear twice
-  # and, with the local_file write UPGRADING prescribes, overwrites the consumer's
-  # override document with the module-set layer. Every other guard stays green on
-  # that state — the override variable is still non-empty, so the emptied-override
-  # check does not fire, and the values-digest pair still matches, because the
-  # digest covers the module-set layer only.
+  # Using one path for both layers would overwrite the consumer override with module values.
   validation {
     condition = var.cilium_self_management_values_source == null || (
       trimspace(try(var.cilium_self_management_values_source.override_path, "")) == "" ||
@@ -1403,10 +1112,6 @@ variable "cilium_self_management_values_source" {
     error_message = "cilium_self_management_values_source.values_path and .override_path must be different files — they are two ordered layers of one Helm merge, and one path for both means the module-set layer overwrites your override document (the values-digest check stays green on that state, because the digest covers the module-set layer only)."
   }
 
-  # Path traversal. Both paths are resolved by ArgoCD's repo-server against the
-  # ref source's checkout root, so a leading "/" or a ".." segment either escapes
-  # that root or fails manifest generation — which stops ALL Cilium
-  # reconciliation with no plan-time signal.
   validation {
     condition = var.cilium_self_management_values_source == null || alltrue([
       for p in compact([
@@ -1417,10 +1122,6 @@ variable "cilium_self_management_values_source" {
     error_message = "cilium_self_management_values_source paths must be repo-root-relative with no leading \"/\" and no \"..\" segment — they are interpolated into $values/<path> and resolved against the ref source's checkout root."
   }
 
-  # override_path is what carries the override into the emitted Application. With
-  # the override non-empty and no path for it, the Application would render from
-  # the module-set layer alone: the silent drop again, one layer down from the
-  # cilium_self_management guard.
   validation {
     condition = var.cilium_self_management_values_source == null || var.cilium_values_override == "" || (
       trimspace(try(var.cilium_self_management_values_source.override_path, "")) != ""
@@ -1428,15 +1129,6 @@ variable "cilium_self_management_values_source" {
     error_message = "cilium_self_management_values_source.override_path is required while cilium_values_override is non-empty: it is the second valueFiles entry, the one that carries the override into the emitted Application. Without it the Application renders from the module-set layer alone and the override is silently dropped."
   }
 }
-
-# ---------------------------------------------------------------------------
-# cert-approver (postfinance/kubelet-csr-approver) — per-cluster config surface.
-# The seed itself is UNCONDITIONAL (always delivered); these knobs tune the
-# SAN-to-node binding. Defaults keep every cluster booting + approving
-# out-of-the-box AND carry the always-on per-node DNS-SAN binding (the approver
-# binds each DNS SAN to the requesting node's hostname regardless of the regex).
-# See knowledge/decisions/0019-postfinance-kubelet-csr-approver.md.
-# ---------------------------------------------------------------------------
 
 variable "cert_approver_provider_regex" {
   description = <<-EOT
@@ -1461,9 +1153,7 @@ variable "cert_approver_provider_regex" {
     error_message = "cert_approver_provider_regex must be a valid RE2 regex (it is compiled by the Go approver)."
   }
   validation {
-    # The seed's audit outputs parse the rendered manifest by splitting on the
-    # YAML document separator "---"; a regex containing it (or a newline) would
-    # corrupt that parse. A compilable regex can still contain "---".
+    # Document separators and newlines would corrupt the seed audit parser.
     condition     = !strcontains(var.cert_approver_provider_regex, "---") && !strcontains(var.cert_approver_provider_regex, "\n")
     error_message = "cert_approver_provider_regex must not contain a YAML document separator (---) or a newline."
   }
@@ -1537,9 +1227,7 @@ variable "controlplane_apply_mode" {
   EOT
   type        = string
   default     = "auto"
-  # nullable=false so an explicit null from a consumer shim's try() lands on the
-  # default instead of reaching contains(), which errors on null with a message
-  # that names neither the variable nor the accepted values.
+  # An explicit null from a consumer shim selects the default.
   nullable = false
 
   validation {
@@ -1564,9 +1252,7 @@ variable "worker_apply_mode" {
   EOT
   type        = string
   default     = "auto"
-  # nullable=false so an explicit null from a consumer shim's try() lands on the
-  # default instead of reaching contains(), which errors on null with a message
-  # that names neither the variable nor the accepted values.
+  # An explicit null from a consumer shim selects the default.
   nullable = false
 
   validation {

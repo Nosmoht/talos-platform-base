@@ -18,7 +18,7 @@
 # rationale as check-kubeconfig-endpoint-regen.sh and
 # check-node-projection-wiring.sh.
 #
-# Asserts, inside the relevant top-level blocks of main.tf:
+# Asserts, inside the relevant top-level blocks of argocd-crds.tf:
 #   A1  null_resource.argocd_crds applies with `kubectl apply --server-side`.
 #   A2  that command carries NO `--force-conflicts`.
 #   A3  terraform_data.argocd_crds_render carries a precondition whose condition
@@ -39,7 +39,7 @@
 #       rather than a silent overwrite.
 #
 # Hermetic: pure static analysis, no providers/network.
-# Usage: scripts/check-argocd-day0-apply-shape.sh [path/to/main.tf]
+# Usage: scripts/check-argocd-day0-apply-shape.sh [path/to/argocd-crds.tf]
 #
 # Exit codes:
 #   0  all assertions hold
@@ -47,7 +47,7 @@
 #   3  an assertion failed
 set -euo pipefail
 
-MAIN="${1:-tofu/modules/talos-cluster/main.tf}"
+MAIN="${1:-tofu/modules/talos-cluster/argocd-crds.tf}"
 
 if [ ! -f "$MAIN" ]; then
   echo "::error::check-argocd-day0-apply-shape: ${MAIN} not found" >&2

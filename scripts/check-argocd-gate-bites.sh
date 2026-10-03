@@ -3,7 +3,7 @@
 #   scripts/check-argocd-day0-apply-shape.sh   (A1 server-side, A2 no force, A3 guard)
 #   scripts/check-render-determinism.sh        (#123 freeze, incl. the #218 PROJECTED shape)
 #
-# Why this exists. Both fences are static text analysis over main.tf, and the
+# Why this exists. Both fences are static text analysis over the module, and the
 # module has exactly ONE shape at a time — the compliant one. A fence that
 # matched nothing, or matched the wrong block, would report OK on today's file
 # forever and would be indistinguishable from a working one. During #218 that
@@ -17,7 +17,7 @@
 #     age-key one on a different resource) instead of the freeze's, so it
 #     "passed" against a mutation that never touched the guarded block.
 #
-# So each scenario mutates a COPY of the real main.tf and asserts the fence's
+# So each scenario mutates a COPY of the module source and asserts the fence's
 # verdict. Following scripts/check-staleness-gate-bite.sh, three disciplines:
 #
 #   1. every scenario asserts its mutation actually changed the file before
@@ -30,7 +30,7 @@
 #      fails on everything cannot be mistaken for a fence that discriminates.
 #
 # Mutating a copy of the real file rather than shipping frozen fixtures is
-# deliberate: fixtures rot silently as main.tf evolves, and a rotted fixture
+# deliberate: fixtures rot silently as the module evolves, and a rotted fixture
 # tests the fence against a module that no longer exists. Both fences already
 # take the file as an argument, so no test-only code path is added to them.
 #
@@ -43,16 +43,18 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-src="${repo_root}/tofu/modules/talos-cluster/main.tf"
+module_dir="${repo_root}/tofu/modules/talos-cluster"
 shape_gate="${repo_root}/scripts/check-argocd-day0-apply-shape.sh"
 det_gate="${repo_root}/scripts/check-render-determinism.sh"
 
-for f in "$src" "$shape_gate" "$det_gate"; do
+for f in "$module_dir/main.tf" "$shape_gate" "$det_gate"; do
   [ -f "$f" ] || { echo "ERROR: $f missing" >&2; exit 2; }
 done
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+src="${work}/module.tf"
+cat "$module_dir"/*.tf > "$src"
 
 rc=0
 
@@ -181,7 +183,7 @@ scenario() {
   if [ "$mutator" != "-" ]; then
     "$mutator" "$copy"
     if cmp -s "$src" "$copy"; then
-      echo "  SETUP BROKEN: ${mutator} changed nothing — the anchor it edits moved in main.tf"
+      echo "  SETUP BROKEN: ${mutator} changed nothing — the anchor it edits moved in the module"
       rc=1
       return
     fi
@@ -206,9 +208,29 @@ scenario() {
 
 echo "== controls: both fences green on the unmutated module =="
 scenario "$shape_gate" 0 "check-argocd-day0-apply-shape: OK" - \
-  "apply-shape fence passes the real main.tf"
+  "apply-shape fence passes the module source"
 scenario "$det_gate" 0 "check-render-determinism: OK" - \
-  "render-determinism fence passes the real main.tf"
+  "render-determinism fence passes the module source"
+
+# A scan confined to the render's file must not miss a consumer in a sibling file.
+mkdir "$work/split"
+cp "$module_dir"/*.tf "$work/split/"
+out="$(bash "$det_gate" "$work/split" 2>&1)" || rc=1
+if ! printf '%s\n' "$out" | grep -qF 'check-render-determinism: OK'; then
+  printf '  FAIL  directory control\n%s\n' "$out"
+  rc=1
+else
+  echo '  PASS  render-determinism scans the split module'
+fi
+mut_sink_content "$work/split/bypass.tf"
+got=0
+out="$(bash "$det_gate" "$work/split" 2>&1)" || got=$?
+if [ "$got" -eq 1 ] && printf '%s\n' "$out" | grep -qF 'reaches an apply-path sink'; then
+  echo '  PASS  a projection consumer in a sibling file is rejected'
+else
+  printf '  FAIL  sibling-file bypass (exit %s)\n%s\n' "$got" "$out"
+  rc=1
+fi
 
 echo "== check-argocd-day0-apply-shape =="
 scenario "$shape_gate" 3 "A1 —" mut_client_side \

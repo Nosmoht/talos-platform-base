@@ -1,7 +1,7 @@
 ---
 sources:
-  secondary:
-    - tofu/modules/talos-cluster/main.tf
+  primary:
+    - tofu/modules/talos-cluster/machine-config.tf
 references:
   - AGENTS.md §Hard Constraints — No `debugfs=off`
   - knowledge/decisions/0011-substrate-hard-constraints.md
@@ -12,12 +12,10 @@ references:
 ## Purpose
 
 Describe the machine-config region of
-`tofu/modules/talos-cluster/main.tf`: per-role machine-configuration
+`tofu/modules/talos-cluster/machine-config.tf`: per-role machine-configuration
 generation and the two-pass patch composition order that layers module
 defaults, caller patches and the module's authoritative patches. The
-region lives in `main.tf`, whose primary owner is the
-`cluster-bootstrap-lifecycle` spec; this spec owns the region
-descriptively. The module-generated per-node capability patch it consumes
+module-generated per-node capability patch it consumes
 is composed per the `hardware-capability-composition` spec.
 
 ## Requirements

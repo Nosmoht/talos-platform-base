@@ -27,8 +27,8 @@
 #      carry triggers_replace, so deleting it (silent-non-apply on an intended bump)
 #      is caught.
 #
-# Hermetic: pure static analysis of main.tf, no providers/network. Wired into
-# `task tofu:ci`. Usage: scripts/check-render-determinism.sh [path/to/main.tf]
+# Hermetic: scans all top-level module .tf files, no providers/network.
+# Usage: scripts/check-render-determinism.sh [module-directory|file.tf]
 #
 # NOTE (acknowledged limit): check (3) asserts triggers_replace is PRESENT, not that
 # it ENUMERATES every render-affecting input of the data source. A render input added
@@ -36,7 +36,14 @@
 # guard cannot see — the code comment on the freeze is the binding, keep it honest.
 set -euo pipefail
 
-MAIN="${1:-tofu/modules/talos-cluster/main.tf}"
+MAIN="${1:-tofu/modules/talos-cluster}"
+
+if [ -d "$MAIN" ]; then
+  source_file="$(mktemp)"
+  trap 'rm -f "$source_file"' EXIT
+  cat "$MAIN"/*.tf > "$source_file"
+  MAIN="$source_file"
+fi
 
 if [ ! -f "$MAIN" ]; then
   echo "::error::check-render-determinism: ${MAIN} not found" >&2
