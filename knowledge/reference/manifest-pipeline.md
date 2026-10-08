@@ -3,7 +3,7 @@ type: reference
 title: Manifest Pipeline
 description: How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 tags: [rendered-manifests, validation, ci, conftest]
-generated: { by: human:nosmoht, at: "2026-09-02T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-08T00:00:00Z" }
 sources:
   - resource: scripts/render-component.sh
   - resource: scripts/verify-rendered.sh
@@ -14,6 +14,8 @@ sources:
   - resource: scripts/check-argocd-substrate-invariants.sh
   - resource: scripts/check-argocd-network-policy-invariants.sh
   - resource: scripts/check-argocd-network-policy-gate-bites.sh
+  - resource: scripts/check-argocd-image-invariant.sh
+  - resource: scripts/check-argocd-image-gate-bites.sh
   - resource: scripts/render-component-readmes.sh
   - resource: scripts/lint-cluster-yaml.sh
   - resource: policies/conftest/k8s.rego
@@ -227,7 +229,7 @@ across the two render paths — the Day-0 bootstrap seed values
 self-management values (`kubernetes/substrate/argocd/values.yaml`)
 — by rendering each fresh with the single pinned chart from the argocd
 component's `chart.lock.yaml` (tarball sha256-verified, same posture as the
-component render). I1–I3 and I6 are asserted against both paths; I4 and I5 are
+component render). I1–I3, I6 and I7 are asserted against both paths; I4 and I5 are
 steady-state-only; P compares the two pins:
 
 - **I1** — no bundled-Dex resource: no rendered document carries the label
@@ -274,6 +276,14 @@ steady-state-only; P compares the two pins:
   deliberately unpoliced — the chart gates its policy on
   `applicationSet.{metrics,ingress,httproute}`, none of which the base enables,
   and an emitted policy would default-deny the webhook receiver.
+- **I7** — every Argo CD container runs the pinned chart's image,
+  `quay.io/argoproj/argocd:<appVersion>`.
+  `scripts/check-argocd-image-invariant.sh` takes the set of Argo CD containers
+  from a chart-default render of the same sha256-verified tarball, so another
+  tag, another repository or a digest on any of them fails, as does any image
+  naming an `argocd` repository. A render with no container on the pinned image
+  fails as a shape change. It also runs on the kustomize-built component;
+  `scripts/check-argocd-image-gate-bites.sh` proves the gate rejects each case.
 - **P** — the module's Day-0 `argocd_chart_version` default equals the
   steady-state `chart.lock.yaml` version.
 

@@ -3,7 +3,7 @@ type: reference
 title: Helm Value Surface — ArgoCD and Cilium
 description: Which Helm values a consumer cluster can actually set for the two substrate charts, on which of the five delivery paths, in which lifecycle phase — and the three places where the surface closes.
 tags: [argocd, cilium, helm, values, consumer-contract, delivery-paths]
-generated: { by: human:nosmoht, at: "2026-10-03T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-08T00:00:00Z" }
 sources:
   - resource: tofu/modules/talos-cluster/main.tf
   - resource: tofu/modules/talos-cluster/argocd-crds.tf
@@ -132,13 +132,15 @@ layers by Helm's own multi-file merge: later wins, lists replace, maps merge.
 The escape hatch therefore **sets and extends**; it does not restore a chart
 default the floor overrode.
 
-Measured against the pinned `argo-cd` 10.6.0 chart, whose default is
+Measured first against the `argo-cd` 10.6.0 chart, whose default is
 `dex.enabled: true` while the seed floor sets it to `false`: a later layer
 carrying `dex.enabled: null` leaves the floor's `false` effective — identical
 render, under both helm 3.20.2 (the repo pin) and helm 4.2.4. Nulling the
 **parent** map instead (`dex: null`) does drop the subtree, but it drops it
-rather than reverting to the chart default. So a leaf the floor owns cannot be
-handed back to the chart, and the coarse lever costs the whole map.
+rather than reverting to the chart default. Re-measured at the 10.10.1 pin under
+helm 4.3.0: the same layer leaves the render byte-identical. So a leaf the
+floor owns cannot be handed back to the chart, and the coarse lever costs the
+whole map.
 `tofu/modules/talos-cluster/variables.tf` (the `cilium_values_override`
 description) states the leaf half of this.
 
@@ -293,8 +295,8 @@ and `UPGRADING.md`'s `v10.0.0` step 2 names a third
 (`global.networkPolicy.create`) with the seed and steady-state levers spelled
 out side by side. On the base's
 own side, `scripts/check-argocd-substrate-invariants.sh` renders **both**
-values files fresh with the pinned chart and asserts six invariants across them
-on every PR — so the two files are compared, and four of the invariants are
+values files fresh with the pinned chart and asserts seven invariants across them
+on every PR — so the two files are compared, and five of the invariants are
 explicitly shared across the paths. Its own scope note excludes the consumer
 override: "base CI cannot gate what a consumer boots".
 
@@ -396,7 +398,7 @@ The narrow typed surface is a recorded decision, not an oversight.
    chart does not **declare** — a typo, a wrong nesting level, or a key a later
    chart version removed — is dropped silently, because Helm merges without
    `--strict`. **Type** validity is only checked where the chart ships a
-   `values.schema.json`: `cilium` does, `argo-cd` 10.6.0 does not, and
+   `values.schema.json`: `cilium` does, `argo-cd` 10.6.0 and 10.10.1 do not, and
    `server.replicas: definitely-not-an-integer` was measured to template
    cleanly into the argocd-server Deployment (exit 0, helm 3.20.2) — deferring
    the failure to bootstrap. Stated in

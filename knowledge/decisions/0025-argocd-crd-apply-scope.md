@@ -246,3 +246,12 @@ nothing else, with no `.Capabilities` and no `.Release`, and the render is
 byte-identical under `--kube-version` 1.31.0, 1.35.0 and 1.36.3. The decision
 and its residual are unchanged; only the version the measurement was taken at
 moves, and the trigger stands for the next bump.
+
+## Addendum — revisit trigger discharged at chart 10.10.1 (2026-10-08)
+
+Run again for `10.6.0` → `10.10.1`. It holds: the three `templates/crds/` files
+are byte-identical between the two charts, every directive still interpolates
+`.Values.crds.{install,keep,annotations,additionalLabels}` and nothing else, with
+no `.Capabilities` and no `.Release`, and the render is byte-identical under
+`--kube-version` 1.31.0, 1.35.0, 1.36.3 and 1.37.1. The decision, its residual
+and the trigger are unchanged.
