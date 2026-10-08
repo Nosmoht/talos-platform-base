@@ -2,14 +2,9 @@ name: Commit Lint
 
 # Conventional-commit gate on the PR TITLE.
 #
-# NOT because the title becomes the mainline commit subject: with
-# merge_commit_title=MERGE_MESSAGE the subject is "Merge pull request #N from …"
-# and the release type comes from the branch commits preserved in the range.
+# merge_commit_title=PR_TITLE makes the title the mainline merge subject; the
+# release type still comes from the branch commits preserved in the range.
 # What linting the title buys:
-#   * merge_commit_message=PR_TITLE puts the title in the merge commit BODY, so
-#     an unconstrained title is a line the release guard reads. The closed type
-#     list below keeps `Allow-Non-Major: …` out of it — which makes this check a
-#     premise of the guard rather than house style.
 #   * it is the subject readers see in the PR list and in `git log --oneline`.
 #   * it is where the `!` breaking-change marker is caught before merge.
 # `requireScope: false`: scope is a soft house-style preference per CONTRIBUTING.md,

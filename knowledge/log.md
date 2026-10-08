@@ -13,6 +13,8 @@
 - `reference/tasks.md`: add the image gate bite-check to `gitops:validate`.
 - `reference/argocd-sso-contract.md`: name I7 among the non-identity invariants.
 - `architecture/day-zero-bootstrap.md`: add invariant I7 to the shared list.
+- `workflows/release-process.md`: state that the merge body is blank by default
+  and only `gh pr merge --body` writes one.
 
 ## 2026-10-04
 

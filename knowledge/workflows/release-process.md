@@ -3,7 +3,7 @@ type: workflow
 title: Release Process
 description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-generated: { by: human:nosmoht, at: "2026-09-17T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-08T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
   - resource: scripts/release-major-bump-guard.sh
@@ -43,10 +43,9 @@ outstanding.
 The release type does *not* come from the title. `merge_commit_title` is
 `PR_TITLE`, so the merge subject on `main` is the PR title — which is why the
 title lint is required; semantic-release computes the bump from the
-branch commits preserved in the range. What the title lint buys is narrower and
-load-bearing: `merge_commit_message` is `PR_TITLE`, so the title becomes the
-merge commit **body** — the line the MAJOR-bump guard reads. The closed type list
-below is what keeps an `Allow-Non-Major:` line out of it.
+branch commits preserved in the range. `merge_commit_message` is `BLANK`, so a
+merge made with the GitHub merge button carries an empty **body**. The body is
+what the MAJOR-bump guard reads, and only `gh pr merge --body` writes one.
 
 - Allowed types: `feat`, `fix`, `perf`, `chore`, `docs`, `test`, `refactor`, `ci`.
 - `requireScope: false` — a scope like `fix(cilium): …` is house style per
@@ -165,9 +164,9 @@ Three facts make the recovery non-obvious:
    tip.
 2. **The trailer has to land on a NEW tip commit**, and `main` is protected, so
    that means another pull request — not a push.
-3. **`gh pr merge --merge` with no `--body` cannot carry it.** With
-   `merge_commit_message: PR_TITLE` the body is the PR title, and `Commit Lint`
-   rejects a title shaped like a trailer. `AGENTS.md §Issue-Interface` declares
+3. **A merge without `--body` cannot carry it.** `merge_commit_message` is
+   `BLANK`, so the merge button in the GitHub UI and `gh pr merge --merge` with
+   no `--body` both leave the body empty. `AGENTS.md §Issue-Interface` declares
    the `--subject`/`--body` form for this reason.
 
 The procedure:
