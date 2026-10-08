@@ -8,6 +8,7 @@ LOCK="${ARGOCD_DIR}/chart.lock.yaml"
 STEADY_VALUES="${ARGOCD_DIR}/values.yaml"
 BOOTSTRAP_VALUES="${ROOT}/tofu/modules/talos-cluster/helm/argocd-values.yaml"
 NETPOL_GATE="${ROOT}/scripts/check-argocd-network-policy-invariants.sh"
+IMAGE_GATE="${ROOT}/scripts/check-argocd-image-invariant.sh"
 
 for t in helm yq; do
   command -v "$t" >/dev/null 2>&1 || { echo "::error::required tool not found on PATH: $t" >&2; exit 1; }
@@ -16,6 +17,7 @@ for f in "$LOCK" "$STEADY_VALUES" "$BOOTSTRAP_VALUES"; do
   [ -f "$f" ] || { echo "::error::required file missing: $f" >&2; exit 1; }
 done
 [ -x "$NETPOL_GATE" ] || { echo "::error::required gate missing or not executable: $NETPOL_GATE" >&2; exit 1; }
+[ -x "$IMAGE_GATE" ] || { echo "::error::required gate missing or not executable: $IMAGE_GATE" >&2; exit 1; }
 
 repo="$(yq -e '.chart.repo' "$LOCK")"       || { echo "::error::chart.lock.yaml missing .chart.repo" >&2; exit 1; }
 name="$(yq -e '.chart.name' "$LOCK")"       || { echo "::error::chart.lock.yaml missing .chart.name" >&2; exit 1; }
@@ -92,6 +94,28 @@ render "$tmp/bootstrap.yaml" "$BOOTSTRAP_VALUES"
 
 check_path "steady-state"   "$tmp/steady.yaml"
 check_path "bootstrap-seed" "$tmp/bootstrap.yaml"
+
+app_version="$(helm show chart "$tgz" 2>/dev/null | yq -e '.appVersion')" || { echo "::error::could not read appVersion from ${name}@${version}" >&2; exit 2; }
+
+pinned_image="quay.io/argoproj/argocd:${app_version}"
+
+# The chart-default render is the oracle for which containers run Argo CD itself.
+helm template argocd "$tgz" --namespace argocd > "$tmp/default.yaml" 2>"$tmp/helm.err" || {
+  echo "::error::helm template failed for the chart-default render" >&2; sed 's/^/    /' "$tmp/helm.err" >&2; exit 2; }
+argocd_containers="$(yq e 'select(.kind == "Deployment" or .kind == "StatefulSet" or .kind == "DaemonSet" or .kind == "Job") | .metadata.name as $w | ((.spec.template.spec.initContainers // []) + (.spec.template.spec.containers // [])) | .[] | select(.image == "'"${pinned_image}"'") | $w + "/" + .name' "$tmp/default.yaml" | grep -vE '^(---)?$' | sort -u | paste -sd, - || true)"
+
+check_image_tag() {
+  local label="$1" render="$2" got=0
+  "$IMAGE_GATE" "$label" "$render" "$pinned_image" "$argocd_containers" || got=$?
+  case "$got" in
+    0) ;;
+    3) violations=$((violations + 1)) ;;
+    *) exit "$got" ;;
+  esac
+}
+
+check_image_tag "steady-state"   "$tmp/steady.yaml"
+check_image_tag "bootstrap-seed" "$tmp/bootstrap.yaml"
 
 # Require ConfigMap presence before asserting the absence of forbidden keys.
 require_cm() {
@@ -181,6 +205,7 @@ kustomize build "$EXAMPLE_DIR" > "$tmp/sso-full.yaml" 2>"$tmp/kz.err" || {
 
 # Check committed manifests separately from freshly rendered chart output.
 check_netpol_floor "steady-state (kustomize build)" "$tmp/ctl-full.yaml"
+check_image_tag "steady-state (kustomize build)" "$tmp/ctl-full.yaml"
 
 for s in ctl sso; do
   yq e 'select(.kind == "ConfigMap" and (.metadata.name == "argocd-cm" or .metadata.name == "argocd-rbac-cm"))' \
@@ -241,4 +266,4 @@ if [ "$violations" -ne 0 ]; then
   echo "::error::ArgoCD substrate invariants FAILED (see above). Declared in kubernetes/substrate/argocd/README.md §Substrate invariants." >&2
   exit 3
 fi
-echo "OK: ArgoCD substrate invariants hold (I1-I3 + I6 in both render paths: no bundled Dex, no server.dex.server* cmd-params, no placeholder argocd-cm url, and the exact five-policy NetworkPolicy selector/ingress posture; I4/I5 steady-state: no shipped policy.csv, no blanket policy.default; P: seed and steady-state chart pins agree; E: the worked consumer-SSO overlay merges url/oidc.config/policy.csv in against a control build without dropping a base-shipped key)."
+echo "OK: ArgoCD substrate invariants hold (I1-I3 + I6 in both render paths: no bundled Dex, no server.dex.server* cmd-params, no placeholder argocd-cm url, and the exact five-policy NetworkPolicy selector/ingress posture; I4/I5 steady-state: no shipped policy.csv, no blanket policy.default; I7 in both render paths and the committed build: every Argo CD image carries the pinned chart appVersion; P: seed and steady-state chart pins agree; E: the worked consumer-SSO overlay merges url/oidc.config/policy.csv in against a control build without dropping a base-shipped key)."

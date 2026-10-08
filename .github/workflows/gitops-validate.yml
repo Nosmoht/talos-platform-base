@@ -143,6 +143,11 @@ jobs:
         # empty/wrong selectors, unsafe ingress drift and a missing policy.
         run: ./scripts/check-argocd-network-policy-gate-bites.sh
 
+      - name: Prove the ArgoCD image gate bites
+        # Mutates copies of the real committed render and requires I7 to reject
+        # another tag, another repository, a digest and a render without the image.
+        run: ./scripts/check-argocd-image-gate-bites.sh
+
       - name: Check Cilium reference values against the pinned chart schema
         # kubernetes/bootstrap/cilium/values.yaml ships in the OCI artifact and is
         # what a consumer copies into a Day-2 self-managed Application, but nothing

@@ -7,6 +7,15 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Pending release
 
+- **Fixed (security): Argo CD v3.5.4.** Move the argo-cd chart to `10.10.1`
+  in the substrate render and the module's `argocd_chart_version` default,
+  fixing GHSA-fmxq-cgp8-87wp / CVE-2026-77459. A new substrate invariant (I7)
+  requires every Argo CD image to carry the pinned chart's appVersion. Adopting
+  the tag changes every controlplane's machine configuration through the seeded
+  namespace's version label. Under `controlplane_apply_mode = "reboot"` that
+  apply reboots every Talos 1.13 controlplane at once and fails on Talos 1.14,
+  so switch to `auto` first; see UPGRADING.md.
+
 - **Changed — smaller developer toolchain.** Remove `terraform-docs` and
   retire `task tofu:docs`; module README tables remain hand-maintained. Remove
   `yamllint` from Devbox and skip its advisory check explicitly when absent.

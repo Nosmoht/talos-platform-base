@@ -286,6 +286,7 @@ tasks:
       echo "conftest bite-check OK: all three source-classification/pinning denies fire"
       ./scripts/check-argocd-substrate-invariants.sh
       ./scripts/check-argocd-network-policy-gate-bites.sh
+      ./scripts/check-argocd-image-gate-bites.sh
       # The bootstrap render is part of what this repo delivers to a consumer,
       # so its gate belongs in the target AGENTS.md §Testing Guidelines names as
       # the pre-PR requirement. Wired in CI only, a contributor following the

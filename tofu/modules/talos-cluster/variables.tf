@@ -416,7 +416,7 @@ variable "argocd_chart_version" {
     pin" — see that variable for why the attribute is load-bearing.
   EOT
   type        = string
-  default     = "10.6.0"
+  default     = "10.10.1"
   nullable    = false
 }
 

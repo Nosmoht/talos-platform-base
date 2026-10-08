@@ -357,7 +357,7 @@ provider "talos" {}
 | `deploy_argocd` | bool | `true` | deliver ArgoCD as a controlplane `inlineManifest`. Requires `sops_age_key` when true. |
 | `sops_age_key` | string (sensitive) | `""` | age private key (`keys.txt`) for the ArgoCD **ksops** repoServer, seeded as the `sops-age-key` Secret. **Required** when `deploy_argocd = true`. Lands in (encrypted) state. |
 | `argocd_namespace` | string | `"argocd"` | namespace for the bootstrap ArgoCD install |
-| `argocd_chart_version` | string | `"10.6.0"` | `argo-cd` Helm chart version (argoproj.github.io/argo-helm) |
+| `argocd_chart_version` | string | `"10.10.1"` | `argo-cd` Helm chart version (argoproj.github.io/argo-helm) |
 | `argocd_values_override` | string | `""` | consumer Helm values **merged** on top of the shipped `helm/argocd-values.yaml` (helm merges value files; later wins) — not a wholesale replacement. **SEED-ONLY**: the steady-state component does not read it, so anything it sets that the steady state also declares is overwritten on the first sync. Empty = just the shipped values (slim, ksops). |
 | `cert_approver_provider_regex` | string | `".*"` | `postfinance/kubelet-csr-approver` `PROVIDER_REGEX` — regex every kubelet-serving CSR's **SAN DNS name** must additionally match. Match the **full DNS SAN string**, which may be an FQDN (e.g. `node-1.internal.example.com`), not just the bare node name — a pattern too restrictive to match the actual SAN (e.g. `^node-[0-9]+$` against an FQDN SAN) denies those CSRs. `^node-.*$` is a safe permissive form. **SEED knob** (create-only). The always-on per-node DNS-SAN hostname-prefix binding applies regardless. Validated: non-empty/non-whitespace (empty crashes the approver; whitespace-only denies all), compiles, no `---`, no newline (protects the split-based audit outputs). |
 | `cert_approver_provider_ip_prefixes` | list(string) | `["0.0.0.0/0", "::/0"]` | `PROVIDER_IP_PREFIXES` — CIDRs a CSR's IP SANs must fall within. Default is the **safe floor** (all IPs); **never `[]`** (an empty set denies every serving CSR). Tighten to node subnets for an IP-SAN-to-subnet binding. **SEED knob.** Every entry must be a valid CIDR. |
@@ -772,7 +772,7 @@ covers.
 
 **The merge order is an implementation detail, not an API guarantee.**
 `valuesObject` being applied after every `valueFiles` entry was read from the
-Argo CD **v3.5.2** repo-server (chart `10.6.0`, this module's pin).
+Argo CD **v3.5.4** repo-server (chart `10.10.1`, this module's pin).
 `argocd_chart_version` is a SEED knob and the seed is create-only, so a cluster
 bootstrapped on an older base tag still runs the ArgoCD that tag shipped — read
 the running repo-server version before adopting this arm (UPGRADING, the
