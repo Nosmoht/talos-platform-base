@@ -1,32 +1,43 @@
 #!/usr/bin/env bash
-# I7: every Argo CD container runs the pinned chart's image. Exit 3 = violation, 2 = render shape changed.
+# I7: every container image in the render is the chart's pinned Argo CD image or one of the
+# chart's own non-Argo-CD image repositories. Exit 3 = violation, 2 = render or chart shape changed.
 set -euo pipefail
 
-[ "$#" = 4 ] || { echo "usage: $0 <label> <render.yaml> <pinned-image> <workload/container,...>" >&2; exit 1; }
+[ "$#" = 3 ] || { echo "usage: $0 <label> <render.yaml> <chart.tgz>" >&2; exit 1; }
 label="$1"
 render="$2"
-pinned_image="$3"
-argocd_containers="$4"
+tgz="$3"
 
-command -v yq >/dev/null 2>&1 || { echo "::error::required tool not found on PATH: yq" >&2; exit 1; }
+for t in helm yq; do
+  command -v "$t" >/dev/null 2>&1 || { echo "::error::required tool not found on PATH: $t" >&2; exit 1; }
+done
 [ -f "$render" ] || { echo "::error::[${label}] render missing: $render" >&2; exit 1; }
-[ -n "$argocd_containers" ] || { echo "::error::[${label}] empty Argo CD container list — I7 has no oracle" >&2; exit 2; }
+[ -f "$tgz" ] || { echo "::error::[${label}] chart tarball missing: $tgz" >&2; exit 1; }
 
-listing="$(yq e 'select(.kind == "Deployment" or .kind == "StatefulSet" or .kind == "DaemonSet" or .kind == "Job") | .metadata.name as $w | ((.spec.template.spec.initContainers // []) + (.spec.template.spec.containers // [])) | .[] | $w + "/" + .name + " " + .image' "$render" |
-  grep -vE '^(---)?$' || true)"
+app_version="$(helm show chart "$tgz" 2>/dev/null | yq -e '.appVersion')" || { echo "::error::[${label}] could not read appVersion from $tgz" >&2; exit 2; }
+pinned_repository="$(helm show values "$tgz" 2>/dev/null | yq -e '.global.image.repository')" || { echo "::error::[${label}] could not read global.image.repository from $tgz" >&2; exit 2; }
+pinned_image="${pinned_repository}:${app_version}"
+# viaductoss/ksops is the init container the base itself adds to the repo-server.
+allowed_repositories="$(helm show values "$tgz" 2>/dev/null |
+  yq e '.. | select(type == "!!map" and has("repository")) | .repository | select(. != "")' - |
+  grep -vxF "$pinned_repository" | { cat; echo "viaductoss/ksops"; } | sort -u | paste -sd, -)"
 
-if ! printf '%s\n' "$listing" | awk -v img="$pinned_image" '$2 == img {found=1} END {exit !found}'; then
+# Every string `image` beside a `name` is a container, whatever kind or nesting carries it.
+images="$(yq e '.. | select(type == "!!map" and has("image") and has("name")) | select(.image | type == "!!str") | .image' "$render" |
+  grep -vE '^(---)?$' | sort -u || true)"
+
+if ! printf '%s\n' "$images" | grep -qxF "$pinned_image"; then
   echo "::error::[${label}] anchor: no container runs ${pinned_image} — I7 would pass vacuously; the chart render shape changed." >&2
   exit 2
 fi
 
-# A container is Argo CD's when the chart-default render runs it on the pinned image, or when its
-# image names an argocd repository under any registry, tag or digest.
-stray="$(printf '%s\n' "$listing" | awk -v img="$pinned_image" -v known="$argocd_containers" '
-  BEGIN {n = split(known, k, ","); for (i = 1; i <= n; i++) argocd[k[i]] = 1}
-  $2 != img && (($1 in argocd) || $2 ~ /(^|\/)argocd[:@]/) {print}')"
+stray="$(printf '%s\n' "$images" | awk -v img="$pinned_image" -v allowed="$allowed_repositories" '
+  BEGIN {n = split(allowed, a, ","); for (i = 1; i <= n; i++) ok[a[i]] = 1}
+  $0 == img {next}
+  {repo = $0; sub(/@.*/, "", repo); if (match(repo, /:[^\/]*$/)) repo = substr(repo, 1, RSTART - 1)}
+  !(repo in ok) {print}')"
 if [ -n "$stray" ]; then
-  echo "::error::[${label}] I7 violated: an Argo CD container does not run the pinned chart's image ${pinned_image}:" >&2
+  echo "::error::[${label}] I7 violated: a container image is neither the pinned chart's ${pinned_image} nor one of the chart's other image repositories:" >&2
   printf '%s\n' "$stray" | sed 's/^/    /' >&2
   exit 3
 fi

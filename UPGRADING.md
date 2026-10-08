@@ -2,7 +2,7 @@
 
 For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 
-## Unreleased (next PATCH) — argo-cd chart `10.6.0` → `10.10.1`, Argo CD `v3.5.2` → `v3.5.4` (security fix; action required only under `controlplane_apply_mode = "reboot"` or `"staged"`)
+## Unreleased (next PATCH) — argo-cd chart `10.6.0` → `10.10.1`, Argo CD `v3.5.2` → `v3.5.4` (security fix; action required only under `controlplane_apply_mode = "reboot"`)
 
 Argo CD `v3.5.2` is affected by the critical advisory
 [GHSA-fmxq-cgp8-87wp](https://github.com/argoproj/argo-cd/security/advisories/GHSA-fmxq-cgp8-87wp)
@@ -26,7 +26,8 @@ module's `argocd_chart_version` default.
    - With `"auto"` (the default) or `"no_reboot"`, no action is needed. Talos
      applies a `.cluster` change without a reboot on 1.13 (`CanApplyImmediate`
      lists `.cluster`), and 1.14 applies every change in `auto` without one.
-   - With `"staged"`, the change waits for the next boot of each node.
+   - With `"staged"`, the change waits for the next boot of each node; reboot
+     the controlplanes one at a time as for any staged change.
    - With `controlplane_apply_mode = "reboot"`, a Talos 1.13 controlplane reboots
      on this apply, all of them at once. Talos 1.14 rejects the reboot mode on a
      running node, so the apply fails. Either way, switch to `"auto"` before

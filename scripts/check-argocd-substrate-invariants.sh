@@ -95,18 +95,9 @@ render "$tmp/bootstrap.yaml" "$BOOTSTRAP_VALUES"
 check_path "steady-state"   "$tmp/steady.yaml"
 check_path "bootstrap-seed" "$tmp/bootstrap.yaml"
 
-app_version="$(helm show chart "$tgz" 2>/dev/null | yq -e '.appVersion')" || { echo "::error::could not read appVersion from ${name}@${version}" >&2; exit 2; }
-
-pinned_image="quay.io/argoproj/argocd:${app_version}"
-
-# The chart-default render is the oracle for which containers run Argo CD itself.
-helm template argocd "$tgz" --namespace argocd > "$tmp/default.yaml" 2>"$tmp/helm.err" || {
-  echo "::error::helm template failed for the chart-default render" >&2; sed 's/^/    /' "$tmp/helm.err" >&2; exit 2; }
-argocd_containers="$(yq e 'select(.kind == "Deployment" or .kind == "StatefulSet" or .kind == "DaemonSet" or .kind == "Job") | .metadata.name as $w | ((.spec.template.spec.initContainers // []) + (.spec.template.spec.containers // [])) | .[] | select(.image == "'"${pinned_image}"'") | $w + "/" + .name' "$tmp/default.yaml" | grep -vE '^(---)?$' | sort -u | paste -sd, - || true)"
-
 check_image_tag() {
   local label="$1" render="$2" got=0
-  "$IMAGE_GATE" "$label" "$render" "$pinned_image" "$argocd_containers" || got=$?
+  "$IMAGE_GATE" "$label" "$render" "$tgz" || got=$?
   case "$got" in
     0) ;;
     3) violations=$((violations + 1)) ;;
@@ -266,4 +257,4 @@ if [ "$violations" -ne 0 ]; then
   echo "::error::ArgoCD substrate invariants FAILED (see above). Declared in kubernetes/substrate/argocd/README.md §Substrate invariants." >&2
   exit 3
 fi
-echo "OK: ArgoCD substrate invariants hold (I1-I3 + I6 in both render paths: no bundled Dex, no server.dex.server* cmd-params, no placeholder argocd-cm url, and the exact five-policy NetworkPolicy selector/ingress posture; I4/I5 steady-state: no shipped policy.csv, no blanket policy.default; I7 in both render paths and the committed build: every Argo CD image carries the pinned chart appVersion; P: seed and steady-state chart pins agree; E: the worked consumer-SSO overlay merges url/oidc.config/policy.csv in against a control build without dropping a base-shipped key)."
+echo "OK: ArgoCD substrate invariants hold (I1-I3 + I6 in both render paths: no bundled Dex, no server.dex.server* cmd-params, no placeholder argocd-cm url, and the exact five-policy NetworkPolicy selector/ingress posture; I4/I5 steady-state: no shipped policy.csv, no blanket policy.default; I7 in both render paths and the committed build: every container image is the pinned chart's Argo CD image or one of its other image repositories; P: seed and steady-state chart pins agree; E: the worked consumer-SSO overlay merges url/oidc.config/policy.csv in against a control build without dropping a base-shipped key)."

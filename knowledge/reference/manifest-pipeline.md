@@ -199,9 +199,13 @@ The aggregate validation task chains the following gates
    `scripts/check-argocd-network-policy-gate-bites.sh` mutates copies of the
    committed render and requires the exact-posture gate to reject selector,
    ingress, port, `policyTypes`, and policy-set drift.
-9. **Bootstrap render contract** — `scripts/check-bootstrap-render.sh` binds
+9. **Image gate bite-check** — `scripts/check-argocd-image-gate-bites.sh`
+   mutates copies of the committed render and requires I7 to reject another
+   tag, an untagged or digest reference, another repository on an init or
+   renamed container, an added CronJob, and a render without the pinned image.
+10. **Bootstrap render contract** — `scripts/check-bootstrap-render.sh` binds
    the consumer bootstrap render to its OpenSpec scenarios.
-10. **Cilium reference values** — `scripts/check-cilium-reference-values.py`
+11. **Cilium reference values** — `scripts/check-cilium-reference-values.py`
    checks the shipped Day-2 values against the pinned chart schema; an
    unreachable registry skips loudly rather than blocking unrelated work.
 
@@ -276,14 +280,15 @@ steady-state-only; P compares the two pins:
   deliberately unpoliced — the chart gates its policy on
   `applicationSet.{metrics,ingress,httproute}`, none of which the base enables,
   and an emitted policy would default-deny the webhook receiver.
-- **I7** — every Argo CD container runs the pinned chart's image,
-  `quay.io/argoproj/argocd:<appVersion>`.
-  `scripts/check-argocd-image-invariant.sh` takes the set of Argo CD containers
-  from a chart-default render of the same sha256-verified tarball, so another
-  tag, another repository or a digest on any of them fails, as does any image
-  naming an `argocd` repository. A render with no container on the pinned image
-  fails as a shape change. It also runs on the kustomize-built component;
-  `scripts/check-argocd-image-gate-bites.sh` proves the gate rejects each case.
+- **I7** — every container image in the render, of any kind, is either the
+  pinned chart's `quay.io/argoproj/argocd:<appVersion>` or one of the image
+  repositories the same sha256-verified chart declares for its other components
+  (plus the base's `viaductoss/ksops` init container).
+  `scripts/check-argocd-image-invariant.sh` reads both from the chart tarball, so
+  another tag, an untagged or digest reference, or another repository on any
+  container fails, whatever the container or workload is called. A render with
+  no container on the pinned image fails as a shape change. It also runs on the
+  kustomize-built component.
 - **P** — the module's Day-0 `argocd_chart_version` default equals the
   steady-state `chart.lock.yaml` version.
 
@@ -327,9 +332,10 @@ composition:
   local task — no CI step invokes it (consistent with the base shipping no
   `*.sops.yaml`; the consumer-side gate is where it bites).
 - Ordering differs without behavioral effect: CI runs the substrate invariants,
-  NetworkPolicy bite-check and Cilium reference-values check before discovery,
-  then kubeconform before conftest. The local task renders first, runs conftest
-  before kubeconform, and puts those three checks after both validators.
+  the NetworkPolicy and image bite-checks and the Cilium reference-values check
+  before discovery, then kubeconform before conftest. The local task renders
+  first, runs conftest before kubeconform, and puts those four checks after both
+  validators.
 
 ## Related concepts
 

@@ -270,9 +270,10 @@ and CI):
   component NetworkPolicies, including their selectors, ingress callers and
   ports. The server stays reachable from a consumer gateway while redis and
   repo-server remain restricted to their chart-documented callers.
-- **I7** (shared across both render paths) — every Argo CD container runs the
-  pinned chart's `appVersion` image, so the chart pin names the Argo CD release
-  both the seed and the steady state ship.
+- **I7** (shared across both render paths) — every container image is the
+  pinned chart's `appVersion` Argo CD image or one of the chart's other image
+  repositories, so the chart pin names the Argo CD release both the seed and the
+  steady state ship.
 - **P** (cross-path) — the module's Day-0 chart-version default equals the
   steady-state `chart.lock.yaml` version.
 
