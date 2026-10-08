@@ -10,7 +10,8 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Fixed (security): Argo CD v3.5.4.** Move the argo-cd chart to `10.10.1`
   in the substrate render and the module's `argocd_chart_version` default,
   fixing GHSA-fmxq-cgp8-87wp / CVE-2026-77459. A new substrate invariant (I7)
-  requires every Argo CD image to carry the pinned chart's appVersion. Adopting
+  requires every container image to be the pinned chart's Argo CD image or come
+  from a repository the chart declares for its other components. Adopting
   the tag changes every controlplane's machine configuration through the seeded
   namespace's version label. Under `controlplane_apply_mode = "reboot"` that
   apply reboots every Talos 1.13 controlplane at once and fails on Talos 1.14,

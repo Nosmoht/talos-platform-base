@@ -17,7 +17,14 @@ module's `argocd_chart_version` default.
 2. **Running clusters upgrade through ArgoCD.** The seed is frozen, so the new
    release arrives on the next sync of the `argocd` component. The CRD apply
    re-runs on the version change; the three CRD templates are byte-identical
-   between the two charts.
+   between the two charts. Confirm the fix is live. This prints only
+   `quay.io/argoproj/argocd:v3.5.4` (plus the redis and ksops images) once the
+   sync has rolled out:
+
+   ```bash
+   kubectl -n argocd get deploy,sts -o jsonpath='{range .items[*]}{range .spec.template.spec.initContainers[*]}{.image}{"\n"}{end}{range .spec.template.spec.containers[*]}{.image}{"\n"}{end}{end}' | sort -u
+   ```
+
 3. **Every controlplane gets a machine-configuration apply.** The seeded `argocd`
    namespace carries `app.kubernetes.io/version` from `argocd_chart_version`
    outside the frozen render, so the plan shows a config change on each

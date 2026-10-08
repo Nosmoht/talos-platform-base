@@ -21,8 +21,9 @@ changes live, but the apply runs under the consumer's `controlplane_apply_mode`.
 
 ## What Changes
 
-- `argocd-substrate`: one added requirement — every Argo CD image in the render
-  carries the pinned chart's appVersion (gate: invariant I7,
+- `argocd-substrate`: one added requirement — every container image in the
+  render is the pinned chart's Argo CD image (its appVersion) or comes from a
+  repository the chart declares for its other components (gate: invariant I7,
   `scripts/check-argocd-image-invariant.sh`, called by
   `scripts/check-argocd-substrate-invariants.sh` and bite-checked by
   `scripts/check-argocd-image-gate-bites.sh`).
