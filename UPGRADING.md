@@ -2,6 +2,65 @@
 
 For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 
+## Unreleased (next PATCH) — argo-cd chart `10.6.0` → `10.10.1`, Argo CD `v3.5.2` → `v3.5.4` (security fix; action required only under `controlplane_apply_mode = "reboot"`)
+
+Argo CD `v3.5.2` is affected by the critical advisory
+[GHSA-fmxq-cgp8-87wp](https://github.com/argoproj/argo-cd/security/advisories/GHSA-fmxq-cgp8-87wp)
+(CVE-2026-77459): AppProject restrictions are bypassed by PreDelete/PostDelete
+resource hooks, and no configuration closes the gap while delete hooks are in use.
+`v3.5.4` fixes it. Both base pins move together: `chart.lock.yaml` and the
+module's `argocd_chart_version` default.
+
+1. **Adopt both halves.** Move `.base-version` and the module `ref=` to the new tag
+   together. Leave `substrate.argocd.chart_version` unset in `cluster.yaml` so the
+   module default applies; a consumer pin there keeps the old chart.
+2. **Running clusters upgrade through ArgoCD.** The seed is frozen, so the new
+   release arrives on the next sync of the `argocd` component. The CRD apply
+   re-runs on the version change; the three CRD templates are byte-identical
+   between the two charts. Confirm the fix is live. This prints only
+   `quay.io/argoproj/argocd:v3.5.4` (plus the redis and ksops images) once the
+   sync has rolled out:
+
+   ```bash
+   kubectl -n argocd get deploy,sts -o jsonpath='{range .items[*]}{range .spec.template.spec.initContainers[*]}{.image}{"\n"}{end}{range .spec.template.spec.containers[*]}{.image}{"\n"}{end}{end}' | sort -u
+   ```
+
+3. **Every controlplane gets a machine-configuration apply.** The seeded `argocd`
+   namespace carries `app.kubernetes.io/version` from `argocd_chart_version`
+   outside the frozen render, so the plan shows a config change on each
+   controlplane. Talos' inline-manifest controller only creates missing
+   resources, so nothing changes in the running namespace.
+   - With `"auto"` (the default) or `"no_reboot"`, no action is needed. Talos
+     applies a `.cluster` change without a reboot on 1.13 (`CanApplyImmediate`
+     lists `.cluster`), and 1.14 applies every change in `auto` without one.
+   - With `"staged"`, the change waits for the next boot of each node; reboot
+     the controlplanes one at a time as for any staged change.
+   - With `controlplane_apply_mode = "reboot"`, a Talos 1.13 controlplane reboots
+     on this apply, all of them at once. Talos 1.14 rejects the reboot mode on a
+     running node, so the apply fails. Either way, switch to `"auto"` before
+     adopting the tag and keep it. Changing `controlplane_apply_mode` alone also
+     reaches the provider's Update path, so switching back to `"reboot"` later
+     re-applies every controlplane in that mode.
+4. **Kubernetes window and upgrade notes are unchanged.** Upstream tests Argo CD
+   3.5 against Kubernetes v1.33–v1.36, as for `v3.5.2`. There is no upgrade note
+   beyond the 3.4 → 3.5 one, which applied at `v10.0.0`.
+
+The rendered manifests change in the Argo CD image tag, chart and version labels,
+the ConfigMap checksum annotations, and a new optional
+`GRPC_ENABLE_TXT_SERVICE_CONFIG` environment variable on four workloads.
+
+### Back-out
+
+Rolling back to the previous tag brings back the vulnerable `v3.5.2` and is a
+last resort. If you must, move `.base-version` and the module `ref=` back
+together. That rollback has the same effects as the upgrade, in reverse:
+
+- ArgoCD syncs the old render.
+- The CRD apply re-runs at `10.6.0`. The CRD templates are identical, so this
+  is a no-op.
+- Every controlplane receives another machine-configuration apply through the
+  namespace label, with the same `controlplane_apply_mode` caveats as step 3.
+
 ## Native Talos 1.14 support (provider 0.12.0 stable)
 
 This section supersedes the beta-provider guidance below for this release.
@@ -602,7 +661,7 @@ seed-to-GitOps takeover behaviour §3 describes.
 
 5. Confirm your ArgoCD is new enough for this arm. The safety property above
    depends on `valuesObject` being applied AFTER every `valueFiles` entry, which
-   was read from the Argo CD **v3.5.2** repo-server (chart 10.6.0, this base's
+   was read from the Argo CD **v3.5.4** repo-server (chart 10.10.1, this base's
    pin) — it is an implementation detail of the merge order, not an API
    guarantee. `argocd_chart_version` is a SEED knob and the seed is create-only,
    so a cluster bootstrapped on an older base tag is still running the ArgoCD

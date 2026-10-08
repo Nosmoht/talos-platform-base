@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-10-08
+
+- `decisions/0025-argocd-crd-apply-scope.md`: append the revisit-trigger
+  measurement at chart 10.10.1.
+- `reference/helm-values-surface.md`: record the `dex.enabled: null`
+  re-measurement and the absent `values.schema.json` at chart 10.10.1; count
+  seven substrate invariants, five shared.
+- `reference/manifest-pipeline.md`: add invariant I7 (every container image is
+  the pinned chart's Argo CD image or a chart-declared repository) and its
+  bite-check stage.
+- `reference/tasks.md`: add the image gate bite-check to `gitops:validate`.
+- `reference/argocd-sso-contract.md`: name I7 among the non-identity invariants.
+- `architecture/day-zero-bootstrap.md`: add invariant I7 to the shared list.
+
 ## 2026-10-04
 
 - `reference/tasks.md`: retire `tofu:docs`, document optional yamllint and the

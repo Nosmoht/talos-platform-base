@@ -835,11 +835,16 @@ for the pinned chart and the shipped examples leave the key unset, moving that
 default is a **consumer-visible change**, not a version literal. What it reaches,
 stated precisely, because the seed renders are frozen: a **fresh bootstrap** and
 a **deliberate replacement** of the frozen render seed whatever the new chart
-emits, including defaults the base does not override; an already-bootstrapped
-consumer's machine configuration does NOT change, because
-`terraform_data.{argocd,cilium}_render` ignore input changes and the machine
-config consumes their frozen outputs. The separately live-reconciled paths — the
-steady-state component a consumer syncs, and the CRD apply whose
+emits, including defaults the base does not override. An already-bootstrapped
+consumer is not re-seeded, because `terraform_data.{argocd,cilium}_render`
+ignore input changes and the machine config consumes their frozen outputs. For
+`cilium_chart_version` the machine configuration therefore does NOT change. For
+`argocd_chart_version` it does: the seeded `argocd` namespace manifest carries
+the input as its `app.kubernetes.io/version` label outside the frozen render, so
+every controlplane receives a machine-configuration apply under its
+`controlplane_apply_mode`, which Talos' create-only inline-manifest controller
+does not carry into the running namespace. The separately live-reconciled paths
+— the steady-state component a consumer syncs, and the CRD apply whose
 `triggers_replace` carries the chart version — are what reach a running cluster.
 
 A change moving one of those defaults SHALL therefore carry the behavioural delta
@@ -860,6 +865,10 @@ the staleness gate cannot reach the render-side spec on its own.
 
 - **WHEN** an already-bootstrapped consumer vendors a tag whose chart-version
   default moved and re-plans
-- **THEN** the frozen render output is unchanged and no machine-config re-push
-  results; the new chart reaches the cluster only through the steady-state
-  component's next sync, and the CRD apply re-fires on the version change alone
+- **THEN** the frozen render output is unchanged; the new chart reaches the
+  cluster only through the steady-state component's next sync, and the CRD apply
+  re-fires on the version change alone
+- **AND** a moved `cilium_chart_version` default causes no machine-config
+  re-push, while a moved `argocd_chart_version` default changes every
+  controlplane's machine configuration through the seeded namespace's version
+  label only

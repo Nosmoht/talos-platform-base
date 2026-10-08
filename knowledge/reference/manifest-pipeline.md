@@ -3,7 +3,7 @@ type: reference
 title: Manifest Pipeline
 description: How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 tags: [rendered-manifests, validation, ci, conftest]
-generated: { by: human:nosmoht, at: "2026-09-02T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-08T00:00:00Z" }
 sources:
   - resource: scripts/render-component.sh
   - resource: scripts/verify-rendered.sh
@@ -14,6 +14,8 @@ sources:
   - resource: scripts/check-argocd-substrate-invariants.sh
   - resource: scripts/check-argocd-network-policy-invariants.sh
   - resource: scripts/check-argocd-network-policy-gate-bites.sh
+  - resource: scripts/check-argocd-image-invariant.sh
+  - resource: scripts/check-argocd-image-gate-bites.sh
   - resource: scripts/render-component-readmes.sh
   - resource: scripts/lint-cluster-yaml.sh
   - resource: policies/conftest/k8s.rego
@@ -197,9 +199,13 @@ The aggregate validation task chains the following gates
    `scripts/check-argocd-network-policy-gate-bites.sh` mutates copies of the
    committed render and requires the exact-posture gate to reject selector,
    ingress, port, `policyTypes`, and policy-set drift.
-9. **Bootstrap render contract** — `scripts/check-bootstrap-render.sh` binds
+9. **Image gate bite-check** — `scripts/check-argocd-image-gate-bites.sh`
+   mutates copies of the committed render and requires I7 to reject another
+   tag, an untagged or digest reference, another repository on an init or
+   renamed container, an added CronJob, and a render without the pinned image.
+10. **Bootstrap render contract** — `scripts/check-bootstrap-render.sh` binds
    the consumer bootstrap render to its OpenSpec scenarios.
-10. **Cilium reference values** — `scripts/check-cilium-reference-values.py`
+11. **Cilium reference values** — `scripts/check-cilium-reference-values.py`
    checks the shipped Day-2 values against the pinned chart schema; an
    unreachable registry skips loudly rather than blocking unrelated work.
 
@@ -227,7 +233,7 @@ across the two render paths — the Day-0 bootstrap seed values
 self-management values (`kubernetes/substrate/argocd/values.yaml`)
 — by rendering each fresh with the single pinned chart from the argocd
 component's `chart.lock.yaml` (tarball sha256-verified, same posture as the
-component render). I1–I3 and I6 are asserted against both paths; I4 and I5 are
+component render). I1–I3, I6 and I7 are asserted against both paths; I4 and I5 are
 steady-state-only; P compares the two pins:
 
 - **I1** — no bundled-Dex resource: no rendered document carries the label
@@ -274,6 +280,15 @@ steady-state-only; P compares the two pins:
   deliberately unpoliced — the chart gates its policy on
   `applicationSet.{metrics,ingress,httproute}`, none of which the base enables,
   and an emitted policy would default-deny the webhook receiver.
+- **I7** — every container image in the render, of any kind, is either the
+  pinned chart's `quay.io/argoproj/argocd:<appVersion>` or one of the image
+  repositories the same sha256-verified chart declares for its other components
+  (plus the base's `viaductoss/ksops` init container).
+  `scripts/check-argocd-image-invariant.sh` reads both from the chart tarball, so
+  another tag, an untagged or digest reference, or another repository on any
+  container fails, whatever the container or workload is called. A render with
+  no container on the pinned image fails as a shape change. It also runs on the
+  kustomize-built component.
 - **P** — the module's Day-0 `argocd_chart_version` default equals the
   steady-state `chart.lock.yaml` version.
 
@@ -317,9 +332,10 @@ composition:
   local task — no CI step invokes it (consistent with the base shipping no
   `*.sops.yaml`; the consumer-side gate is where it bites).
 - Ordering differs without behavioral effect: CI runs the substrate invariants,
-  NetworkPolicy bite-check and Cilium reference-values check before discovery,
-  then kubeconform before conftest. The local task renders first, runs conftest
-  before kubeconform, and puts those three checks after both validators.
+  the NetworkPolicy and image bite-checks and the Cilium reference-values check
+  before discovery, then kubeconform before conftest. The local task renders
+  first, runs conftest before kubeconform, and puts those four checks after both
+  validators.
 
 ## Related concepts
 
