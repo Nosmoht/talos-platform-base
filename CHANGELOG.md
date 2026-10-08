@@ -15,7 +15,7 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the tag changes every controlplane's machine configuration through the seeded
   namespace's version label. Under `controlplane_apply_mode = "reboot"` that
   apply reboots every Talos 1.13 controlplane at once and fails on Talos 1.14,
-  so switch to `auto` first; see UPGRADING.md.
+  so switch to `auto` first; see UPGRADING.md. (#287)
 
 - **Changed — smaller developer toolchain.** Remove `terraform-docs` and
   retire `task tofu:docs`; module README tables remain hand-maintained. Remove
