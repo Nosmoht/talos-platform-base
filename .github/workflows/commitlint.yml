@@ -2,15 +2,13 @@ name: Commit Lint
 
 # Conventional-commit gate on the PR TITLE.
 #
-# merge_commit_title=PR_TITLE makes the title the mainline merge subject; the
-# release type still comes from the branch commits preserved in the range.
-# What linting the title buys:
-#   * it is the subject readers see in the PR list and in `git log --oneline`.
-#   * it is where the `!` breaking-change marker is caught before merge.
+# Merges are squash-only with squash_merge_commit_title=PR_TITLE and a blank
+# body, so the title is the subject on `main` and the only input to the
+# release bump (ADR-0029). Linting it is what makes that input well-formed.
 # `requireScope: false`: scope is a soft house-style preference per CONTRIBUTING.md,
 # not mandatory (scope-less subjects like `docs: fix typo` are valid).
 # Note: this gates PRs only; direct-main commits bypass it (repo convention is
-# PR-merged). The release approval gate is the backstop. See knowledge/workflows/release-process.md.
+# PR-merged). See knowledge/workflows/release-process.md.
 
 on:
   pull_request:
@@ -23,7 +21,7 @@ permissions:
 jobs:
   lint-pr-title:
     # MUST stay "lint-pr-title": that is the context branch protection is to
-    # require (ADR-0020 §Amendment, not yet applied), and GitHub derives it from
+    # require (ADR-0020 §Amendment), and GitHub derives it from
     # name:, so riding the job-id fallback would let a rename silently un-gate
     # the check. scripts/preflight-checks.sh Check 1 asserts both.
     name: lint-pr-title
