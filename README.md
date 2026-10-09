@@ -212,9 +212,9 @@ do not vendor.
   Single-bus-factor — mitigated by aggressive CI gating and
   adversarial-reviewer dispatch, not by multi-maintainer review.
 - **`v1.0.0` released** (2026-06-06); `v0.5.0` was the first GitHub
-  Release. Post-1.0 SemVer now applies in full: a breaking change to
-  base Helm values or to the `cluster.yaml` / `talos-cluster` module
-  interface requires a MAJOR bump.
+  Release. Post-1.0 SemVer now applies in full; which release class a
+  change takes is decided in
+  [`knowledge/decisions/0029-public-api-and-major-rule.md`](knowledge/decisions/0029-public-api-and-major-rule.md).
 - **Consumer validation** is desk-only at the moment
   (issue [#32](https://github.com/Nosmoht/talos-platform-base/issues/32)).
 - **Known risks and technical debt** are listed in

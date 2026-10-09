@@ -79,12 +79,33 @@ bare opaque IDs (`NOS-123`) are forbidden.
 
 Releases are computed from these commits by semantic-release, so the
 *type* and breaking markers drive the version bump (`feat` → MINOR,
-`fix`/`perf` → PATCH). **A MAJOR bump requires a real `BREAKING CHANGE:`
-footer or a `type!:` marker** — a prose `**BREAKING**` line in the body is
-*not* recognised by the release tool. This matters for the AGENTS.md Hard
-Constraint that a breaking change to base Helm values bumps MAJOR: add the
-footer, or the change ships as a non-breaking release. See
-[`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md).
+`fix`/`perf` → PATCH). A release is MAJOR when, after upgrading the base,
+configuration a consumer wrote fails or silently changes its effect; an
+upstream version number is never MAJOR by itself. MAJOR: a removed or renamed
+module input or output; a narrowed input type, an `optional()` attribute
+becoming required, or an input losing its default or null acceptance;
+validation or a schema newly rejecting accepted input; a removed schema,
+contract or vocabulary entry; a moved tarball path; a renamed resource identity
+or removed CRD version; dropping a Talos schema version existing clusters may
+hold; a provider or OpenTofu constraint excluding a version a consumer root may
+legitimately pin; a shipped change breaking a documented supported setup; a
+shipped chart change silently dropping a consumer override key. MINOR: a new
+upstream release or default version whose effect stays compatible; a default
+change behind an existing input, or a change that reaches consumers only when
+they move their own pin, each with an `UPGRADING.md` note; a new optional input,
+output or schema field. PATCH: a compatible upstream patch or security fix; a
+packaging repair. `tofu init -upgrade` against a lock file alone is not MAJOR.
+The full rule and its table are in
+[ADR-0029](knowledge/decisions/0029-public-api-and-major-rule.md).
+ADR-0029 is authoritative; this summary yields to it on conflict.
+
+Mark a MAJOR change with `!` in the PR title (`feat!:`, `fix!:`). A
+`BREAKING CHANGE:` footer in a branch commit still counts today, and stops
+counting at the cutover ADR-0029 plans. No commit-body line may start, in any
+letter case, with "breaking change" or "breaking-change" followed by a colon or
+a space unless the change is meant to be MAJOR. How the release tool reads
+commits is described in
+[`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md#version-computation--releasercjson).
 
 ## PR expectations
 
@@ -144,9 +165,9 @@ These are required PR checks and will block merge.
 
 ## Documentation expectations
 
-If your change touches a public interface (Helm values, the
-`tofu/modules/talos-cluster` interface, Layer-C hardware-feature schema,
-hard constraints), update **at minimum**:
+If your change touches the public API
+([ADR-0029 §Public API](knowledge/decisions/0029-public-api-and-major-rule.md#public-api)),
+a Helm-value default, or a hard constraint, update **at minimum**:
 
 - `CHANGELOG.md` (Unreleased section — Added / Changed / Deprecated / Removed / Fixed / Security).
 - Either a decision record (decision-grade, `knowledge/decisions/`) or the
