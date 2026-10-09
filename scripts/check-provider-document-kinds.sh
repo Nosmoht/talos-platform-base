@@ -47,6 +47,14 @@ FORM='^>= ([0-9]+\.[0-9]+\.[0-9]+), < [0-9]+\.[0-9]+\.[0-9]+-0$'
 [[ "${CONSTRAINT}" =~ ${FORM} ]] ||
   fail "constraint form: tofu/modules/talos-cluster/versions.tf declares '${CONSTRAINT:-<unreadable>}' for siderolabs/talos, not the '>= <floor>, < <next line>-0' range ADR-0029 §Provider constraints sets. An exact prerelease pin, the record's only exception, has to change this gate with it."
 FLOOR="${BASH_REMATCH[1]}"
+IFS=. read -r FLOOR_MAJOR FLOOR_MINOR _ <<<"${FLOOR}"
+if [ "${FLOOR_MAJOR}" -eq 0 ]; then
+  NEXT_LINE="0.$((FLOOR_MINOR + 1)).0-0"
+else
+  NEXT_LINE="$((FLOOR_MAJOR + 1)).0.0-0"
+fi
+[ "${CONSTRAINT##*< }" = "${NEXT_LINE}" ] ||
+  fail "constraint bound: the upper bound in '${CONSTRAINT}' is not ${NEXT_LINE}, the start of the floor's next breaking line (ADR-0029 §Provider constraints). A wider bound admits a line nothing here tests, and narrowing it once a release there is published is MAJOR."
 for site in "${CONSTRAINT_SITES[@]}"; do
   grep -A3 -- 'source *= *"siderolabs/talos"' "${site}" | grep -qF -- "\"${CONSTRAINT}\"" ||
     fail "constraint site: ${site} does not declare siderolabs/talos at \"${CONSTRAINT}\". The README and the example ship to consumers, who copy them into their roots."

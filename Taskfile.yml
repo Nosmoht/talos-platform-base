@@ -232,7 +232,7 @@ tasks:
         -filter=tests/talos-native-config.tftest.hcl
 
   tofu:check:talos-config-validation:
-    desc: "Render module patches with the pinned provider and validate both schema lines with talosctl 1.14.2 (no cluster)"
+    desc: "Render module patches with the locked provider and validate both schema lines with talosctl 1.14.2 (no cluster)"
     cmd: scripts/check-talos-config-validation.sh
 
   tofu:ci:

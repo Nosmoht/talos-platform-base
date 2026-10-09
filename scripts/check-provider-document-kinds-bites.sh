@@ -74,6 +74,16 @@ bite "constraint parity catches a site that lost the constraint" \
   '  "tofu/modules/talos-cluster/README.md"' \
   '  "Taskfile.yml"'
 
+bite "constraint parity reads only the talos provider entry, not prose quoting the constraint" \
+  "constraint site:" \
+  '  "tofu/modules/talos-cluster/README.md"' \
+  '  "knowledge/decisions/0029-public-api-and-major-rule.md"'
+
+bite "the bound check ties the upper bound to the floor's next line" \
+  "constraint bound:" \
+  'NEXT_LINE="0.$((FLOOR_MINOR + 1)).0-0"' \
+  'NEXT_LINE="0.$((FLOOR_MINOR + 2)).0-0"'
+
 bite "constraint parity anchors the closing quote, so a longer site constraint fails" \
   "constraint site:" \
   'grep -qF -- "\"${CONSTRAINT}\""' \
