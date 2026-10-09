@@ -3,7 +3,7 @@ type: workflow
 title: Release Process
 description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-generated: { by: human:nosmoht, at: "2026-10-08T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-09T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
   - resource: scripts/release-major-bump-guard.sh
@@ -40,12 +40,13 @@ individual commits. It **is** a required status check as of 2026-08-31,
 together with the merge-method settings ADR-0020 §Amendment recorded as
 outstanding.
 
-The release type does *not* come from the title. `merge_commit_title` is
-`PR_TITLE`, so the merge subject on `main` is the PR title — which is why the
-title lint is required; semantic-release computes the bump from the
-branch commits preserved in the range. `merge_commit_message` is `BLANK`, so a
-merge made with the GitHub merge button carries an empty **body**. The body is
-what the MAJOR-bump guard reads, and only `gh pr merge --body` writes one.
+`merge_commit_title` is `PR_TITLE`, so the merge subject on `main` is the PR
+title — which is why the title lint is required. The release type comes from
+every commit in the tag range: semantic-release analyzes the branch commits the
+merge preserves and the merge commit whose subject is the PR title, and the
+highest bump among them wins. `merge_commit_message` is `BLANK`, so a merge made
+with the GitHub merge button carries an empty **body**. The body is what the
+MAJOR-bump guard reads, and only `gh pr merge --body` writes one.
 
 - Allowed types: `feat`, `fix`, `perf`, `chore`, `docs`, `test`, `refactor`, `ci`.
 - `requireScope: false` — a scope like `fix(cilium): …` is house style per
@@ -91,11 +92,14 @@ No custom `releaseRules` are declared, so the commit-analyzer defaults apply:
 - `refactor`, `docs`, `chore`, `test`, `ci` → **no release** (no default
   release rule; a refactor-only history produces "no relevant changes").
 
-A prose `**BREAKING**` line in the commit body is **not** recognized — only
-the footer or the `!` marker bumps MAJOR (`CONTRIBUTING.md` §Conventional
-commits). This carries the `AGENTS.md` rule that a breaking change to base
-Helm values requires a MAJOR bump: without the footer, the change ships as a
-non-breaking release.
+A prose `**BREAKING**` line in the commit body is **not** recognized. Any
+commit-body line, a merge-commit body included, that matches the note pattern of
+`conventional-commits-parser` — `BREAKING CHANGE` or `BREAKING-CHANGE` in any
+letter case, optionally preceded by whitespace, `*` or `|`, and followed by a
+colon or whitespace — cuts a MAJOR today, not only a `BREAKING CHANGE:` footer.
+Which changes are MAJOR is decided by
+[ADR-0029](../decisions/0029-public-api-and-major-rule.md); a `type!:` marker or
+such a note is how that class reaches the computed version.
 
 ## Plan and release — `.github/workflows/release.yml`
 
@@ -241,11 +245,13 @@ PR, because the admin path leaves no record of what was disabled.
 `CHANGELOG.md` is **hand-maintained** (Keep a Changelog sections under
 `## Unreleased`); semantic-release ships no changelog plugin here.
 
-The same by-hand pass renames any `## Unreleased (next MAJOR|MINOR)` heading in
-`UPGRADING.md` to the tag being cut. That file's own §How to use this file tells
-consumers to locate sections by their tag heading, so a section authored before
-the version is known carries the unreleased form until the cut and is renamed
-here — nothing automates it.
+The same by-hand pass renames any `## Unreleased (next <CLASS>)` heading in
+`UPGRADING.md` to the tag being cut. `<CLASS>` is MAJOR, MINOR or PATCH: the
+unreleased heading names the class the section is expected to ship in, and the
+renamed heading carries the class of the tag actually cut. That file's own §How
+to use this file tells consumers to locate sections by their tag heading, so a
+section authored before the version is known carries the unreleased form until
+the cut and is renamed here — nothing automates it.
 
 `## [Unreleased]` carries two blocks with different lifetimes. `### Pending
 release` holds entries awaiting the next tag: the by-hand cut moves **that block

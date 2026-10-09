@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-09
+
+- `decisions/0029-public-api-and-major-rule.md`: add the decision that declares
+  the base's public API, defines the MAJOR rule with its classification table,
+  sets the provider-constraint form, and records the release mechanism as
+  planned.
+- `decisions/0020-automated-release-no-approval-gate.md`: add a dated banner
+  recording its partial supersession by ADR-0029.
+- `decisions/0027-talos-provider-prerelease-pin.md`: append a 2026-10-09
+  follow-up recording the exact stable pin's partial supersession by ADR-0029.
+- `decisions/index.md`: add the ADR-0029 entry and partial-supersession
+  suffixes to the ADR-0020 and ADR-0027 entries.
+- `workflows/release-process.md`: state that the bump comes from every commit
+  in the tag range, the PR-title merge subject included; name the
+  breaking-note pattern; point the MAJOR rule at ADR-0029; let an
+  `Unreleased (next <CLASS>)` heading name PATCH.
+
 ## 2026-10-08
 
 - `decisions/0025-argocd-crd-apply-scope.md`: append the revisit-trigger

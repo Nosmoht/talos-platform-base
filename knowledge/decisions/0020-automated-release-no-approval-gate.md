@@ -18,6 +18,19 @@ tags: [adr, release, ci, supply-chain]
 
 # ADR: Remove the manual release approval gate; replace its MAJOR backstop with a blocking CI guard
 
+> [2026-10-09 partial supersession] **Superseded in part by
+> [0029-public-api-and-major-rule.md](./0029-public-api-and-major-rule.md):
+> §Context MAJOR-vs-MINOR framing and §Consequences surface-set carve-out now;
+> §Decision 2, §Decision 3 and the merge-commit-only premise of
+> §Amendment (2026-08-25), §Amendment (2026-08-31) and
+> §Amendment (2026-08-31, second) when the planned cutover ships.**
+> ADR-0029 decides what a MAJOR release is and which surfaces form the public
+> API, so the MAJOR-vs-MINOR question §Context frames and the surface set that
+> §Consequences leaves to reviewer judgment are answered there. The path guard,
+> the `Allow-Non-Major:` attestation and the merge settings stay in force until
+> the planned cutover ships. §Decision 1, and §Decision 4 with its
+> §Amendment (2026-09-04), are untouched.
+
 ## Context
 
 `release.yml` gated its `release` job behind an `environment: release` manual
