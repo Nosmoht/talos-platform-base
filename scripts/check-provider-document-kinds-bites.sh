@@ -69,20 +69,35 @@ fi
 
 echo "== each assertion bites =="
 
-bite "pin parity catches a site that lost the pin" \
-  "pin parity:" \
+bite "constraint parity catches a site that lost the constraint" \
+  "constraint site:" \
   '  "tofu/modules/talos-cluster/README.md"' \
   '  "Taskfile.yml"'
 
-bite "pin parity refuses a range, the drift it exists for" \
-  "which is not an exact version" \
-  'MODULE_PIN="$(' \
-  'MODULE_PIN=">= 0.7.0, < 1.0.0"; unused="$('
+bite "constraint parity anchors the closing quote, so a longer site constraint fails" \
+  "constraint site:" \
+  'grep -qF -- "\"${CONSTRAINT}\""' \
+  'grep -qF -- "\"${CONSTRAINT%-0}\""'
 
-bite "pin parity catches a lock that disagrees with the pin" \
-  "Regenerate it" \
-  '[ "${LOCK_PIN}" = "${MODULE_PIN}" ] ||' \
-  '[ "${LOCK_PIN}" = "${MODULE_PIN}zz" ] ||'
+bite "constraint parity anchors the opening quote, so a longer site constraint fails" \
+  "constraint site:" \
+  'grep -qF -- "\"${CONSTRAINT}\""' \
+  'grep -qF -- "\"${CONSTRAINT#>= }\""'
+
+bite "the form check catches a truncated extraction" \
+  "constraint form:" \
+  "sub(/\".*\$/,\"\"); print; exit}' \\" \
+  "sub(/,.*\$/,\"\"); print; exit}' \\"
+
+bite "the lock check catches recorded constraints that disagree" \
+  "lock constraints:" \
+  '[ "${LOCK_CONSTRAINTS}" = "${CONSTRAINT}" ] ||' \
+  '[ "${LOCK_CONSTRAINTS}" = "${CONSTRAINT}zz" ] ||'
+
+bite "the lock check catches a lock above the floor" \
+  "lock floor:" \
+  '[ "${LOCK_VERSION}" = "${FLOOR}" ] ||' \
+  '[ "${LOCK_VERSION}" = "${FLOOR}zz" ] ||'
 
 bite "case A catches a kind that never reached the render" \
   "case A: UserVolumeConfig did not reach" \

@@ -73,7 +73,7 @@ provider "registry.opentofu.org/hashicorp/null" {
 
 provider "registry.opentofu.org/siderolabs/talos" {
   version     = "0.12.0"
-  constraints = "0.12.0"
+  constraints = ">= 0.12.0, < 0.13.0-0"
   hashes = [
     "h1:5TOAcT0dJ9PUsJfivsym5GNtF8CFhq6NQen1CkMbjI4=",
     "h1:7FSHrDDftj9IcsD/VgYIJTvgVasMW3bKLRvnK/H3Q1M=",

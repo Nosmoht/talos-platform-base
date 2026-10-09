@@ -197,7 +197,7 @@ tasks:
     cmd: scripts/check-provider-document-kinds-bites.sh
 
   tofu:check:provider-document-kinds:
-    desc: "CI fence: which Talos machine-config document kinds the PINNED provider accepts in config_patches, and which documents a Talos version pin makes it generate"
+    desc: "CI fence: which Talos machine-config document kinds the LOCKED provider accepts in config_patches, and which documents a Talos version pin makes it generate"
     cmd: scripts/check-provider-document-kinds.sh
 
   tofu:check:shim-key-parity:

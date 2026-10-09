@@ -292,10 +292,9 @@ Example root `versions.tf`:
 terraform {
   required_version = ">= 1.9.0"
   required_providers {
-    # The module pins this exact prerelease and it wins the intersection, so a
-    # range here still resolves to it. Spelling it out keeps the resolved version
-    # visible in the root. See §Talos 1.14.
-    talos = { source = "siderolabs/talos", version = "0.12.0" }
+    # The module's own constraint. A narrower root constraint is fine as long as
+    # it admits a version inside it. See §Talos 1.14.
+    talos = { source = "siderolabs/talos", version = ">= 0.12.0, < 0.13.0-0" }
   }
   # State holds machine_secrets — the backend MUST be encrypted.
   encryption {
@@ -452,11 +451,20 @@ Taskfile owns the imperative talosctl execution; both read the same tfplan-JSON.
 
 ## Talos 1.14: native documents and stable provider
 
-The module pins `siderolabs/talos` **exactly to 0.12.0 stable**, with the
-Talos 1.14.0 machinery. Examples use **Talos 1.14.2 / Kubernetes 1.37.1**.
+The module constrains `siderolabs/talos` to **`>= 0.12.0, < 0.13.0-0`**.
+0.12.0 is the first stable release with the Talos 1.14.0 machinery, and the
+`-0` upper bound also excludes 0.13 prereleases a root pins exactly
+([ADR-0029 §Provider constraints](../../../knowledge/decisions/0029-public-api-and-major-rule.md#provider-constraints)).
+Examples use **Talos 1.14.2 / Kubernetes 1.37.1**.
 Run `tofu init -upgrade` in each consumer and commit its refreshed lock.
-The consumer's provider constraints must admit 0.12.0; `~> 0.11.0` and an
-exact beta pin do not. See [UPGRADING](../../../UPGRADING.md).
+The consumer's provider constraints must admit a version in that range;
+`~> 0.11.0` and an exact beta pin do not. See [UPGRADING](../../../UPGRADING.md).
+
+Base CI tests the floor: the module's committed lock stays at 0.12.0, and the
+provider probe, the configuration validation and `tofu test` run against it. A
+later 0.12.x is admitted without a behavioral base CI run. A consumer root with
+a lock keeps its selection until `tofu init -upgrade`; a root without one
+resolves the newest admitted release.
 
 The immutable **schema pin** (`talos_version`) chooses the patch format:
 
@@ -491,7 +499,7 @@ Native defaults include workload isolation and a weekly trim interval; override
 these with `SecurityProfileConfig` and `FilesystemTrimConfig` when required.
 An existing 1.13 schema does not acquire those documents merely by upgrading its OS.
 
-`task tofu:ci` validates both schema lines with the real pinned provider and
+`task tofu:ci` validates both schema lines with the real provider at the locked floor and
 `talosctl 1.14.2 validate --mode metal`; resource tests bind the per-node
 installer URL and override order. These are offline configuration checks, not
 proof of a successful hardware boot or storage-driver compatibility.

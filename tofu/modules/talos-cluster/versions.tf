@@ -5,10 +5,10 @@ terraform {
   required_version = ">= 1.9.0"
 
   required_providers {
-    # Keep the provider pin, examples, probe and lock synchronized.
+    # Keep the constraint, examples, probe and lock synchronized; the lock stays at the floor.
     talos = {
       source  = "siderolabs/talos"
-      version = "0.12.0"
+      version = ">= 0.12.0, < 0.13.0-0"
     }
     # Local chart rendering only; no Helm release or Kubernetes connection.
     helm = {
