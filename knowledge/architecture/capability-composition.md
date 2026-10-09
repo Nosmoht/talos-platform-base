@@ -219,15 +219,17 @@ runs:
   regression suite (network: pulls the seed Helm charts; run via
   `task tofu:test`, not part of the offline `task tofu:ci`). An
   `override_data` block stands in for the Image Factory's extension lookup, so
-  a Factory outage cannot fail it. Covers schematic
-  dedup and capability-order determinism, forward/inverse symmetry violations,
+  a Factory outage cannot fail it. Covers an extension name the Factory does
+  not list failing the plan, schematic dedup and capability-order
+  determinism, forward/inverse symmetry violations,
   the union-masking pair, variant mismatch, undefined image/capability, and
   rejection of a reserved `hardware-feature.*` `emits_label`.
 - `tofu/modules/talos-cluster/tests/live/image-factory.tftest.hcl` — the one
-  check against the live Image Factory: every catalog extension resolves at the
-  supported native Talos version, on amd64 and arm64. Run via
-  `task tofu:test:image-factory` and the advisory `image-factory-live.yml`
-  workflow (weekly, and on PRs touching the catalog or the Factory lookup).
+  check against the live Image Factory: every catalog extension resolves at
+  Talos 1.13.9 and 1.14.2, and the run fails when a catalog profile is missing
+  from it. Run via `task tofu:test:image-factory` and the advisory
+  `image-factory-live.yml` workflow (weekly, and on PRs touching the catalog,
+  the composition, the Factory lookup, the provider lock or `Taskfile.yml`).
 - `tofu/modules/talos-cluster/tests/conflict-guards.tftest.hcl` — offline
   red-green binding for the module/sysctl/kernel-arg conflict guards, using a
   synthetic colliding catalog fixture that symlinks the real `composition.tf`

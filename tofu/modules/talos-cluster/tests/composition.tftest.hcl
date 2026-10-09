@@ -17,15 +17,17 @@ provider "talos" {}
 provider "helm" {}
 
 # Stands in for factory.talos.dev, so a Factory outage cannot fail this suite.
-# Every schematic receives the whole list, which keeps the exact-name filter in
-# image-factory.tf load-bearing. Names are the live catalog's spelling; the
-# upstream check lives in tests/live/image-factory.tftest.hcl.
+# Every schematic receives the whole list, and the provider matches filter names
+# by substring, so the list carries a superstring of a requested name: both keep
+# the exact-name filter in image-factory.tf load-bearing. The upstream check is
+# tests/live/image-factory.tftest.hcl.
 override_data {
   target = data.talos_image_factory_extensions_versions.per_schematic
   values = {
     extensions_info = [
       for name in [
         "siderolabs/drbd",
+        "siderolabs/drbd-superstring",
         "siderolabs/intel-ucode",
       ] : { name = name, ref = "", digest = "", author = "", description = "" }
     ]
@@ -81,8 +83,8 @@ run "valid_dedup_and_determinism" {
 
 # Issue #169 (AC1) — a node whose image sets extra_kernel_args: the rendered
 # schematic's customization.extraKernelArgs contains those args UNIONED with
-# the node's resolved profile kargs. Needs the network (unlike AC2/AC6 in
-# tests/image-kernel-args.tftest.hcl): the assert reads the actual rendered
+# the node's resolved profile kargs. Unlike AC2/AC6 in
+# tests/image-kernel-args.tftest.hcl, the assert reads the actual rendered
 # talos_image_factory_schematic resource, not just the plan-time hash.
 # Red-green: drop the image leg from node_effective.kernel_args's concat
 # (composition.tf) and this assert fails — extraKernelArgs lacks
@@ -162,6 +164,19 @@ run "variant_mismatch" {
     }
   }
   expect_failures = [terraform_data.composition_guards]
+}
+
+# An extension name the Factory does not list must fail the plan instead of
+# silently dropping out of the schematic.
+run "unresolved_extension_fails_the_plan" {
+  command = plan
+  variables {
+    images = {
+      intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucod"] }
+    }
+    nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] } }
+  }
+  expect_failures = [talos_image_factory_schematic.this]
 }
 
 # Undefined image reference.

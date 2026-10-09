@@ -121,8 +121,8 @@ jobs:
     runs-on: ubuntu-latest
     # ADVISORY by default: this job pulls the argo-cd and cilium Helm charts, so
     # an outage of a chart repository can red it independently of the diff. The
-    # Image Factory is overridden in the tests and never contacted; its live check
-    # is image-factory-live.yml. timeout-minutes bounds a hung connect.
+    # Image Factory's live check is image-factory-live.yml. timeout-minutes
+    # bounds a hung connect.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -145,5 +145,10 @@ jobs:
       # the ADR §"Falsification criteria" (each hard-error guard fires red-green,
       # dedup determinism holds). Without it those guards can regress silently
       # with `task tofu:ci` still green.
+      # Any suite that still reaches the Factory fails here on every run,
+      # instead of only during a Factory outage.
+      - name: Block the Talos Image Factory
+        run: echo "0.0.0.0 factory.talos.dev" | sudo tee -a /etc/hosts
+
       - name: task tofu:test (hard-error guards + dedup determinism)
         run: task tofu:test

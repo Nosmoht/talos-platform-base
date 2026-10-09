@@ -1,10 +1,8 @@
 name: image-factory-live
 
-# Checks the provisioning catalog's extension names against the live Talos
-# Image Factory. Kept out of tofu-validate.yml so a factory.talos.dev outage
-# reds this workflow only, never the module's regression suite. A red run means
-# the Factory is unreachable or has renamed a package — re-run it, or fix the
-# catalog name in profiles.tf. Advisory; not a required check.
+# Kept out of tofu-validate.yml so a factory.talos.dev outage reds this
+# workflow only, never the module's regression suite. Advisory; not a required
+# check.
 
 on:
   workflow_dispatch:
@@ -16,16 +14,19 @@ on:
     paths:
       - 'tofu/modules/talos-cluster/profiles.tf'
       - 'tofu/modules/talos-cluster/image-factory.tf'
+      - 'tofu/modules/talos-cluster/composition.tf'
+      - 'tofu/modules/talos-cluster/main.tf'
       - 'tofu/modules/talos-cluster/.terraform.lock.hcl'
       - 'tofu/modules/talos-cluster/tests/live/**'
       - '.github/workflows/image-factory-live.yml'
+      - 'Taskfile.yml'
 
 permissions:
   contents: read
 
 jobs:
   image-factory-catalog:
-    name: image-factory-catalog (live upstream, not a module regression)
+    name: image-factory-catalog (live Talos Image Factory)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
