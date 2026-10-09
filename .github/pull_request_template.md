@@ -25,7 +25,7 @@ Refs: <!-- #N — issues this PR touches but does not close -->
 - [ ] `test` — test infrastructure
 - [ ] `chore` — repo hygiene
 - [ ] `ci` — pipeline change
-- [ ] **Breaking change** (consumer overlays affected) — described in CHANGELOG `### Removed` or `### Changed` with `BREAKING — …` prefix
+- [ ] **Breaking change** (MAJOR under the [ADR-0029 rule](../knowledge/decisions/0029-public-api-and-major-rule.md#classification)) — described in CHANGELOG `### Removed` or `### Changed` with `BREAKING — …` prefix
 
 ## Validation locally (required before opening)
 
@@ -60,13 +60,14 @@ Not merge-blocking, but run on every PR and worth reading:
 ## Documentation
 
 - [ ] CHANGELOG.md `[Unreleased]` updated (Added / Changed / Deprecated / Removed / Fixed / Security)
-- [ ] If a public interface changed (Helm values, `tofu/modules/talos-cluster` interface, Layer-C hardware-feature schema, hard constraints): either a decision record (`knowledge/decisions/`) or the matching `knowledge/` concept updated
+- [ ] If the public API ([ADR-0029 §Public API](../knowledge/decisions/0029-public-api-and-major-rule.md#public-api)), a Helm-value default or a hard constraint changed: either a decision record (`knowledge/decisions/`) or the matching `knowledge/` concept updated
 - [ ] If `knowledge/rules/` changed: ran `task knowledge:rules-apply` and committed the regenerated `AGENTS.md` block (never hand-edited)
 
 ## Consumer impact
 
-If this PR changes a public interface (OpenTofu module variables/outputs,
-Helm-value defaults, release notes shape, OCI tarball contents):
+If this PR changes the public API
+([ADR-0029 §Public API](../knowledge/decisions/0029-public-api-and-major-rule.md#public-api)),
+a Helm-value default, a hard constraint or the release notes shape:
 
 - [ ] Each known v0.5.x consumer named below with per-PR impact
   (cross-checked against the platform dependency manifest's
@@ -76,8 +77,7 @@ Helm-value defaults, release notes shape, OCI tarball contents):
 - [ ] If no other v0.5.x consumer exists at PR merge time, that fact is
   asserted here with the snapshot date.
 
-Skip this section only if the PR is purely internal (no public-interface
-change).
+Skip this section only if the PR changes none of the items listed above.
 
 ## Reviewer checklist
 

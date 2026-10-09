@@ -5,6 +5,8 @@ sources:
     - tofu/modules/talos-cluster/outputs.tf
     - tofu/modules/talos-cluster/versions.tf
     - tofu/modules/talos-cluster/nodes.tf
+references:
+  - knowledge/decisions/0029-public-api-and-major-rule.md
 ---
 
 # module-interface-contract
@@ -746,7 +748,10 @@ correctness — it reports only that a byte moved, and a deliberate refresh
 silences it — so the facts a reader depends on SHALL additionally carry named
 per-key assertions that a refresh cannot silence. The promise does not extend across revisions: a
 floor or computed-layer change moves this document for every consumer on this
-arm, and SHALL be released as a MAJOR with the golden refreshed deliberately.
+arm. Such a change is consumer-visible on this arm and SHALL carry an
+`UPGRADING.md` note and a deliberate golden refresh; its release class follows
+ADR-0029 — row 12, MINOR with that note although this arm has no opt-out, and
+the higher class only if row 9 applies.
 
 #### Scenario: Output is empty by default
 

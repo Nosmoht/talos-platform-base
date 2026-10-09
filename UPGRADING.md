@@ -108,8 +108,14 @@ patch contents. Network-interface patches should be reviewed against the
 ## How to use this file
 
 - Per-release notes live in [`CHANGELOG.md`](CHANGELOG.md).
-- This file documents **cumulative migration steps** for each MAJOR
-  bump and any MINOR that requires a manual action.
+- This file documents **cumulative migration steps** for every release
+  that requires consumer action or carries an upgrade note, whatever its class.
+- Every section heading added from now on names its release class — MAJOR,
+  MINOR or PATCH under
+  [`knowledge/decisions/0029-public-api-and-major-rule.md`](knowledge/decisions/0029-public-api-and-major-rule.md)
+  — and that class is the class of the release (tag) the section shipped in, as
+  in the `v10.0.0` heading. Headings written before that record are not
+  relabeled.
 - Read every section between the version you currently pin and the
   version you want to adopt, oldest tag first. Sections are not stored in
   version order and one tag may own more than one of them — locate every
@@ -152,7 +158,7 @@ rm -rf vendor/base && mkdir -p vendor/base
 tar -xzf /tmp/base-pull/talos-platform-base-${TAG}.tar.gz -C vendor/base
 diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manifests.yaml | less
 
-# 4. Apply consumer-overlay patches for any MAJOR-listed breaking change below.
+# 4. Apply consumer-overlay patches for any section below with action required.
 # 5. Commit, open PR, let ArgoCD reconcile after merge.
 ```
 
@@ -3378,25 +3384,28 @@ fires a sunset.
 
 ---
 
-## Template for future MAJOR/MINOR sections
+## Template for future release sections
 
 Releases are now tagged automatically by semantic-release (see
 [`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md)), which does **not**
 write this file. Migration sections here are curated by a maintainer
-retroactively — typically alongside the release for a MAJOR/MINOR with consumer
-impact — using the format below:
+retroactively — typically alongside every release with consumer action, MAJOR,
+MINOR or PATCH — using the format below:
 
 ```markdown
-### `vX.Y.Z` (YYYY-MM-DD) — <one-line summary>
+### `vX.Y.Z` (YYYY-MM-DD) — <one-line summary> (MAJOR | MINOR | PATCH — <who must act, or no action required>)
 
-**Type:** MAJOR | MINOR | PATCH
 **Breaking?** yes | no
 
 #### Breaking changes (consumer action required)
 
+- <bullet> — for example "`tofu/modules/talos-cluster` input `<var>`
+  renamed."
+
+#### Non-breaking changes with a note (MINOR or PATCH)
+
 - <bullet> — for example "Substrate Helm value `argocd.server.replicas`
-  default changed. Patch your consumer overlay." or "`tofu/modules/talos-cluster`
-  input `<var>` renamed."
+  default changed. Set the old value in your consumer overlay to keep it."
 
 #### Validation steps after upgrade
 

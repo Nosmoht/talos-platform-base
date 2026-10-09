@@ -209,3 +209,21 @@ Caller patches are not rewritten; their migration is explicit in `UPGRADING.md`.
 The fixture/default fence retains a 1.13.10 regression pin independently of
 the 1.14.2 examples. `scripts/check-talos-config-validation.sh` additionally
 validates the actual module patch lists with the real provider and Talos CLI.
+
+## Follow-up — 2026-10-09: the exact stable pin under ADR-0029
+
+The 2026-10-03 follow-up's exact stable pin is superseded in part by
+[ADR-0029 §Provider constraints](0029-public-api-and-major-rule.md#provider-constraints).
+That rule admits an exact pin only where the machinery the module needs exists
+only in a prerelease, which is why this decision pinned `0.12.0-beta.0`: a range
+never selects a prerelease. `0.12.0` is a stable release, so its exact pin does
+not conform. The pin stays in force until the planned provider-range change
+ships.
+
+The reason for the MAJOR given in §Consequences — every consumer inherits a
+prerelease provider — is re-assessed under ADR-0029, which classifies a release
+by what it does to configuration a consumer wrote. Under that rule the release
+is MAJOR because the exact pin excluded `0.11.0`, a published version the
+previous range admitted; inheriting a prerelease and the routine apply the
+changed installer default triggers are not MAJOR by themselves. The tag is not
+relabeled.

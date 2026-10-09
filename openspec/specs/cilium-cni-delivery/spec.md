@@ -8,6 +8,7 @@ sources:
     - tofu/modules/talos-cluster/cilium-seed.tf
 references:
   - AGENTS.md §Repository Purpose (three pillars)
+  - knowledge/decisions/0029-public-api-and-major-rule.md
 ---
 
 # cilium-cni-delivery
@@ -391,8 +392,11 @@ The emitted Application SHALL take one of two shapes, selected by
 of the floor and computed-values layers only, and `cilium_values_override` SHALL
 NOT reach it. Configuring or not configuring a values source SHALL NOT move this
 document AT ONE BASE REVISION. It is not a promise across revisions: a floor or
-computed-layer change moves it for every consumer on this arm, deliberately and
-as a MAJOR release.
+computed-layer change moves it for every consumer on this arm, deliberately.
+Such a change is consumer-visible on this arm and SHALL carry an `UPGRADING.md`
+note and a deliberate golden refresh; its release class follows ADR-0029 —
+row 12, MINOR with that note although this arm has no opt-out, and the higher
+class only if row 9 applies.
 
 **Multi-source (values source set).** `spec.sources` SHALL carry exactly two
 entries: a `ref`-only source for the consumer's values repository (no `path`,
