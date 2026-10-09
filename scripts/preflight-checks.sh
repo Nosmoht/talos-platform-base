@@ -125,16 +125,16 @@ else
   fi
 fi
 
-printf '\n=== Check 4: merge methods (release-guard attestation premise) ===\n'
+printf '\n=== Check 4: merge methods (squash-only; the PR title is the only bump source) ===\n'
 
 REPO_JSON="$(gh_api_or_empty "repos/${REPO}")"
 if [ -z "$REPO_JSON" ]; then
   err "Check 4 — could not read the repository object for ${REPO}."
   FAIL=1
 else
-  # A blank default merge body prevents contributor text from supplying attestations.
-  for pair in "allow_squash_merge|false" "allow_rebase_merge|false" \
-              "merge_commit_message|BLANK" "merge_commit_title|PR_TITLE"; do
+  # Any other value lets branch-commit text reach the commits semantic-release analyzes.
+  for pair in "allow_squash_merge|true" "allow_merge_commit|false" "allow_rebase_merge|false" \
+              "squash_merge_commit_title|PR_TITLE" "squash_merge_commit_message|BLANK"; do
     key="${pair%|*}"; want="${pair#*|}"
     got="$(printf '%s' "$REPO_JSON" | jq -r ".${key}")"
     if [ "$got" = "$want" ]; then
@@ -142,14 +142,15 @@ else
     elif [ "$got" = "null" ]; then
       UNREADABLE=1
     else
-      err "${key} is '${got}', expected '${want}' — the Allow-Non-Major attestation is only maintainer-owned under merge-commit-only"
+      err "${key} is '${got}', expected '${want}' — only a squash with the PR title as subject and a blank body keeps the title the sole bump source"
       yellow "  Hint: https://github.com/${REPO}/settings — Pull Requests, merge button options"
       FAIL=1
     fi
   done
 
+  # CI tokens read these settings back as null (ADR-0020 §Amendment 2026-08-31, second), so check their effect instead.
   if [ "${UNREADABLE:-0}" = "1" ]; then
-    yellow "  NOTE: merge settings not readable with this credential — checking the effect on the default branch instead."
+    yellow "  NOTE: merge settings not readable with this credential — checking the newest commit on ${DEFAULT_BRANCH} instead."
     HEAD_JSON="$(gh_api_or_empty "repos/${REPO}/commits/${DEFAULT_BRANCH}")"
     if [ -z "$HEAD_JSON" ]; then
       err "Check 4 — could not read ${DEFAULT_BRANCH} to check the merge effect."
@@ -157,12 +158,20 @@ else
     else
       PARENTS="$(printf '%s' "$HEAD_JSON" | jq -r '.parents | length')"
       SUBJECT="$(printf '%s' "$HEAD_JSON" | jq -r '.commit.message' | head -1)"
-      if [ "$PARENTS" -ge 2 ]; then
-        green "  OK: newest commit on ${DEFAULT_BRANCH} is a merge commit (${PARENTS} parents): ${SUBJECT}"
-      else
-        err "newest commit on ${DEFAULT_BRANCH} has ${PARENTS} parent — squash or rebase merging is enabled again, which lets a contributor's commit body reach the tip the release guard parses"
-        yellow "  Hint: https://github.com/${REPO}/settings — Pull Requests, merge button options"
+      # GitHub may append co-author or sign-off trailers; neither is a release note.
+      BODY="$(printf '%s' "$HEAD_JSON" | jq -r '.commit.message' | tail -n +2 \
+        | grep -viE '^(Co-authored-by|Signed-off-by):' | tr -d '[:space:]')"
+      if [ "$PARENTS" -ne 1 ]; then
+        err "newest commit on ${DEFAULT_BRANCH} has ${PARENTS} parents — merge commits are enabled again, so branch commits reach the release range"
         FAIL=1
+      elif ! printf '%s' "$SUBJECT" | grep -qE ' \(#[0-9]+\)$'; then
+        err "newest commit on ${DEFAULT_BRANCH} is not a pull-request squash (no ' (#N)' suffix): ${SUBJECT}"
+        FAIL=1
+      elif [ -n "$BODY" ]; then
+        err "newest commit on ${DEFAULT_BRANCH} has a non-empty body — the squash body reaches the release analyzer and must stay blank"
+        FAIL=1
+      else
+        green "  OK: newest commit on ${DEFAULT_BRANCH} is a squash with a blank body: ${SUBJECT}"
       fi
     fi
   fi

@@ -2,6 +2,17 @@
 
 ## 2026-10-09
 
+- `workflows/release-process.md`: describe squash-only merges with the PR title
+  as the only bump source; drop the MAJOR-bump guard, its override and its
+  recovery procedure; add recovery for a release carrying the wrong class.
+- `decisions/0029-public-api-and-major-rule.md`: end three interim facts, mark
+  the merge-method and cutover sections shipped and the content check withdrawn,
+  and append §Amendment (2026-10-09).
+- `decisions/index.md`: record the cutover on the ADR-0020 and ADR-0029 entries.
+- `reference/tasks.md`: drop the `supply-chain:check-release-guard` row.
+- `reference/helm-values-surface.md`: drop the deleted guard pathspec from
+  `sources`.
+- `index.md`: describe Release Process without the guard.
 - `decisions/0029-public-api-and-major-rule.md`: end the interim fact that the
   spec requirement mandates an exact `talos` pin; add a dated update under
   §Provider constraints recording the shipped `talos` range.

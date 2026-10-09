@@ -77,9 +77,9 @@ Body MUST explain the *why* and stay readable without an issue tracker.
 Cross-link with `Closes:`, `Refs:`, `Fixes:` trailers using public URLs;
 bare opaque IDs (`NOS-123`) are forbidden.
 
-Releases are computed from these commits by semantic-release, so the
-*type* and breaking markers drive the version bump (`feat` → MINOR,
-`fix`/`perf` → PATCH). A release is MAJOR when, after upgrading the base,
+Pull requests are squash-merged with the PR title as the subject and an empty
+body, so the release is computed from PR titles alone: their *type* and `!`
+drive the version bump (`feat` → MINOR, `fix`/`perf` → PATCH). A release is MAJOR when, after upgrading the base,
 configuration a consumer wrote fails or silently changes its effect; an
 upstream version number is never MAJOR by itself. MAJOR: a removed or renamed
 module input or output; a narrowed input type, an `optional()` attribute
@@ -99,12 +99,11 @@ The full rule and its table are in
 [ADR-0029](knowledge/decisions/0029-public-api-and-major-rule.md).
 ADR-0029 is authoritative; this summary yields to it on conflict.
 
-Mark a MAJOR change with `!` in the PR title (`feat!:`, `fix!:`). A
-`BREAKING CHANGE:` footer in a branch commit still counts today, and stops
-counting at the cutover ADR-0029 plans. No commit-body line may start — after
-optional whitespace, `*` or `|` — with "breaking change" or "breaking-change" in
-any letter case followed by a colon or whitespace, unless the change is meant to
-be MAJOR. How the release tool reads commits is described in
+Mark a MAJOR change with `!` in the PR title (`feat!:`, `fix!:`). The title is
+the only place that counts: branch commits, their footers and the PR description
+never reach `main`. Branch commits still matter before the merge —
+`spec:check-staleness` reads their `Spec-Impact: none` trailers on the PR. How
+the release tool reads commits is described in
 [`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md#version-computation--releasercjson).
 
 ## PR expectations

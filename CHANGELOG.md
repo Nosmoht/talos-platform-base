@@ -7,6 +7,11 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Pending release
 
+- **Changed — the PR title alone sets the version.** Pull requests are
+  squash-merged with the title as subject and an empty body, so a branch-commit
+  footer no longer affects the release. The path-based MAJOR-bump guard and its
+  `Allow-Non-Major:` attestation are removed; the reviewer checks the title's
+  class against ADR-0029 §Classification. No consumer action.
 - **Changed — the `siderolabs/talos` constraint is a range.** The module
   constrains the provider to `>= 0.12.0, < 0.13.0-0` instead of the exact
   `0.12.0`, as ADR-0029 §Provider constraints requires, so a later 0.12.x
@@ -20,10 +25,9 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the base's public API and defines when a release is MAJOR: configuration a
   consumer wrote fails, or silently changes its effect, after upgrading the
   base; an upstream version number is never MAJOR by itself. It also sets the
-  form of the module's provider constraints. The release mechanism it decides —
-  squash-only merges, the PR title as the only bump source and a content-based
-  breaking-change check in place of the path guard — is planned and not yet
-  shipped. (#292)
+  form of the module's provider constraints, and the release mechanism below:
+  squash-only merges with the PR title as the only bump source. The
+  content-based breaking-change check it first planned is withdrawn. (#292)
 
 - **Fixed (security): Argo CD v3.5.4.** Move the argo-cd chart to `10.10.1`
   in the substrate render and the module's `argocd_chart_version` default,
