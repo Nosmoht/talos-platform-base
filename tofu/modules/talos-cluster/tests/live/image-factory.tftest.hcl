@@ -33,8 +33,8 @@ run "native_114_factory_catalog" {
     kubernetes_version = "v1.37.1"
   }
   assert {
-    condition     = toset(keys(local.provisioning_profiles)) == toset(flatten([for c in var.hardware_capabilities : c.provisioning_profiles]))
-    error_message = "this file's capabilities must select every catalog profile in profiles.tf, or a new profile's extensions are never checked; catalog: ${jsonencode(keys(local.provisioning_profiles))}"
+    condition     = toset(keys(local.provisioning_profiles)) == toset(flatten(values(local.node_profiles)))
+    error_message = "this file's nodes must select every catalog profile in profiles.tf, or a new profile's extensions are never checked; catalog: ${jsonencode(keys(local.provisioning_profiles))}"
   }
   assert {
     condition = alltrue([for hash, extensions in local.official_extensions_by_schematic :
