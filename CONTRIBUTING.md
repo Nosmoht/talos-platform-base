@@ -101,10 +101,10 @@ ADR-0029 is authoritative; this summary yields to it on conflict.
 
 Mark a MAJOR change with `!` in the PR title (`feat!:`, `fix!:`). A
 `BREAKING CHANGE:` footer in a branch commit still counts today, and stops
-counting at the cutover ADR-0029 plans. No commit-body line may start, in any
-letter case, with "breaking change" or "breaking-change" followed by a colon or
-a space unless the change is meant to be MAJOR. How the release tool reads
-commits is described in
+counting at the cutover ADR-0029 plans. No commit-body line may start — after
+optional whitespace, `*` or `|` — with "breaking change" or "breaking-change" in
+any letter case followed by a colon or whitespace, unless the change is meant to
+be MAJOR. How the release tool reads commits is described in
 [`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md#version-computation--releasercjson).
 
 ## PR expectations

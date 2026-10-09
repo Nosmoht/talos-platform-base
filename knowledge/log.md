@@ -16,6 +16,8 @@
   in the tag range, the PR-title merge subject included; name the
   breaking-note pattern; point the MAJOR rule at ADR-0029; let an
   `Unreleased (next <CLASS>)` heading name PATCH.
+- `project/openssf-self-assessment.md`: state that `UPGRADING.md` documents
+  migration steps for every release that requires consumer action.
 
 ## 2026-10-08
 

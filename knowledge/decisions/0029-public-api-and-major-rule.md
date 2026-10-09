@@ -26,11 +26,15 @@ tags: [adr, release, versioning, public-api]
 
 ## Context and Problem Statement
 
-Nothing stated which changes to the base are MAJOR. The module's types and the
-OpenSpec specs declare individual contracts, and the only written trigger was
-one line in `AGENTS.md` §Commit & Pull Request Guidelines: a breaking change to
-the base's Helm values requires a MAJOR bump. Classification was inconsistent
-as a result: `UPGRADING.md` records v8.2.0 (Cilium 1.20) as MINOR with action
+Nothing stated in one place which changes to the base are MAJOR. The module's
+types and the OpenSpec specs declare individual contracts, and the written
+triggers disagreed. `AGENTS.md` §Commit & Pull Request Guidelines required a
+MAJOR for a breaking change to the base's Helm values. `README.md` required one
+for a breaking change to the Helm values or to the `cluster.yaml` /
+`talos-cluster` module interface. The release-plan prompt in
+`.github/workflows/release.yml` asks for a MAJOR when a published contract,
+layout or Helm-value default moved. Classification was inconsistent as a
+result: `UPGRADING.md` records v8.2.0 (Cilium 1.20) as MINOR with action
 required for every consumer, and v10.0.0 as MAJOR for a NetworkPolicy default.
 
 The release mechanism added two more problems. semantic-release analyzes every

@@ -77,8 +77,7 @@ a Helm-value default, a hard constraint or the release notes shape:
 - [ ] If no other v0.5.x consumer exists at PR merge time, that fact is
   asserted here with the snapshot date.
 
-Skip this section only if the PR is purely internal (no public-interface
-change).
+Skip this section only if the PR changes none of the items listed above.
 
 ## Reviewer checklist
 

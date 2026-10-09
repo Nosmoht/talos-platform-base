@@ -3402,7 +3402,7 @@ MINOR or PATCH — using the format below:
 - <bullet> — for example "`tofu/modules/talos-cluster` input `<var>`
   renamed."
 
-#### Non-breaking changes with a note (MINOR)
+#### Non-breaking changes with a note (MINOR or PATCH)
 
 - <bullet> — for example "Substrate Helm value `argocd.server.replicas`
   default changed. Set the old value in your consumer overlay to keep it."
