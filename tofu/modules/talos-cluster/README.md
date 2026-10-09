@@ -681,7 +681,14 @@ Requires **OpenTofu ≥ 1.9** (cross-variable `validation` blocks).
   computed) inline. `cilium_values_override` does not reach it — and is rejected
   at plan time on this arm, so the module-set layer is final here. Setting or
   leaving this input unset does not move this document at a given base revision;
-  a floor change does, deliberately, and is a MAJOR release.
+  a floor or computed-layer change does, deliberately. Such a change is
+  consumer-visible on this arm and ships with an `UPGRADING.md` note and a
+  deliberate golden refresh. Its release class follows
+  [`knowledge/decisions/0029-public-api-and-major-rule.md`](../../../knowledge/decisions/0029-public-api-and-major-rule.md),
+  under which a release is MAJOR when configuration a consumer wrote fails or
+  silently changes its effect: this change is MINOR with that note although
+  this arm has no opt-out, and MAJOR only if it breaks a documented supported
+  setup.
 - **set** — a MULTI-SOURCE `Application`. `sources[0]` is a `ref`-only source
   for the consumer's git repo; `sources[1]` is the chart, whose `valueFiles`
   are the module-set layer FIRST and `cilium_values_override` SECOND. The list
