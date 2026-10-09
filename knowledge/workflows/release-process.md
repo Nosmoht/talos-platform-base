@@ -46,8 +46,9 @@ rebase merges are disabled. Each commit on `main` is therefore one PR whose
 subject is its title plus a `(#N)` suffix and whose body is empty, and the title is the
 **only** input to the version bump. Branch commits, their footers and the PR
 description never reach `main`. `AGENTS.md §Issue-Interface` `state:close`
-passes `--subject` and `--body ""` explicitly, so the merge records the title the
-reviewer checked even if the PR was retitled afterwards.
+copies the linted title into `--subject` and passes `--body ""` explicitly, so
+the subject is the linted title and the body stays empty whatever the settings
+say.
 `scripts/preflight-checks.sh` Check 4 asserts the settings with an admin
 credential; the weekly `policy-audit.yml` run cannot read them and checks the
 newest commit's shape instead (one parent, a `(#N)` suffix, an empty body).
@@ -142,12 +143,12 @@ workflow or push the next merge.
 ### When a release carries the wrong class
 
 A mis-titled PR ships at once, and a published release is immutable. Do not
-edit the merged PR's title: the subject on `main` is what counted. Follow
-ADR-0029 §Planned: cutover and reverts:
+edit the merged PR's title: the subject on `main` is what counted.
 
-- **A break shipped as MINOR or PATCH:** restore compatibility with a
-  `fix(<scope>): revert "<subject>"` PR, then re-land the change under a `!`
-  title with an `UPGRADING.md` note.
+- **A break shipped as MINOR or PATCH:** restore compatibility with a revert PR,
+  titled by its own effect on the released state as ADR-0029 §Planned: cutover
+  and reverts says — reverting a released rename or removal can itself be MAJOR.
+  Then re-land the change under a `!` title with an `UPGRADING.md` note.
 - **A MAJOR that breaks nothing, or a missed MINOR or PATCH:** nothing to undo;
   record the misclassification in the next release's `CHANGELOG.md` entry.
 

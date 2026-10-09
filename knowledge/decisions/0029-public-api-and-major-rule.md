@@ -398,12 +398,13 @@ are not built; the rest of the planned mechanism shipped in #298.**
   PR title against §Classification; nothing re-checks the content.
 - The pre-tag check that every first-parent commit is the squash of a merged PR
   with its title as subject is not built. `AGENTS.md §Issue-Interface` merges
-  with an explicit `--subject` and an empty `--body`, so the subject is the title
-  the reviewer checked. `scripts/preflight-checks.sh` Check 4 asserts the merge
+  with `--subject` copied from the linted PR title and an empty `--body`. `scripts/preflight-checks.sh` Check 4 asserts the merge
   settings with an admin credential and, where the settings are unreadable,
-  the newest commit's shape (one parent, a `(#N)` suffix, an empty body). An
-  admin push or a hand-edited squash message remains possible and is the
-  maintainer's own act.
+  the newest commit's shape (one parent, a `(#N)` suffix, an empty body). That
+  fallback reports a pass, not the limited evidence the fourth bullet of
+  §Planned: merge method and bump source planned: a re-enabled merge method shows
+  only after a merge uses it. An admin push or a hand-edited squash message
+  remains possible and is the maintainer's own act.
 - release-please was considered and not adopted. Under squash merges it derives
   the bump from the same subjects; its release PR is either merged automatically,
   with no review, or is the manual gate ADR-0020 removed; and it creates the

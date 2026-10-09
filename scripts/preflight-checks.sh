@@ -158,7 +158,9 @@ else
     else
       PARENTS="$(printf '%s' "$HEAD_JSON" | jq -r '.parents | length')"
       SUBJECT="$(printf '%s' "$HEAD_JSON" | jq -r '.commit.message' | head -1)"
-      BODY="$(printf '%s' "$HEAD_JSON" | jq -r '.commit.message' | tail -n +2 | tr -d '[:space:]')"
+      # GitHub may append co-author or sign-off trailers; neither is a release note.
+      BODY="$(printf '%s' "$HEAD_JSON" | jq -r '.commit.message' | tail -n +2 \
+        | grep -viE '^(Co-authored-by|Signed-off-by):' | tr -d '[:space:]')"
       if [ "$PARENTS" -ne 1 ]; then
         err "newest commit on ${DEFAULT_BRANCH} has ${PARENTS} parents — merge commits are enabled again, so branch commits reach the release range"
         FAIL=1

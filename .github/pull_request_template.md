@@ -86,5 +86,5 @@ Skip this section only if the PR changes none of the items listed above.
 - [ ] The PR title's class matches
       [ADR-0029 §Classification](../knowledge/decisions/0029-public-api-and-major-rule.md#classification)
       (`!` for MAJOR). It is the only input to the version bump; merge with
-      `--subject "<checked title> (#N)" --body ""` (`AGENTS.md §Issue-Interface`).
+      `state:close` (`AGENTS.md §Issue-Interface`), which copies the title.
 - [ ] No `git commit --no-verify` or hook-skipping artifacts

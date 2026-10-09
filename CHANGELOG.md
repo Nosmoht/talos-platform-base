@@ -25,10 +25,9 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the base's public API and defines when a release is MAJOR: configuration a
   consumer wrote fails, or silently changes its effect, after upgrading the
   base; an upstream version number is never MAJOR by itself. It also sets the
-  form of the module's provider constraints. The release mechanism it decides —
-  squash-only merges, the PR title as the only bump source and a content-based
-  breaking-change check in place of the path guard — is planned and not yet
-  shipped. (#292)
+  form of the module's provider constraints, and the release mechanism below:
+  squash-only merges with the PR title as the only bump source. The
+  content-based breaking-change check it first planned is withdrawn. (#292)
 
 - **Fixed (security): Argo CD v3.5.4.** Move the argo-cd chart to `10.10.1`
   in the substrate render and the module's `argocd_chart_version` default,

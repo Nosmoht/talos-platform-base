@@ -198,7 +198,7 @@ and the script header.
 | `state:handoff` | `scripts/issue-state.sh handoff ${N}` |
 | `state:release` | `scripts/issue-state.sh release ${N}` |
 | `state:block` | `scripts/issue-state.sh block ${N} "${REASON}"` |
-| `state:close` | `gh pr merge ${PR_REF} --squash --subject "${SUBJECT}" --body "" && scripts/issue-state.sh close ${N} --pr "${PR_REF}"` |
+| `state:close` | `SUBJECT="$(gh pr view ${PR_REF} --json title --jq .title) (#${PR_REF})" && gh pr merge ${PR_REF} --squash --subject "${SUBJECT}" --body "" && scripts/issue-state.sh close ${N} --pr "${PR_REF}"` |
 | `pr:open` | `gh pr create --fill` |
 | `pr:list-by-branch` | `gh pr list --head "$(git rev-parse --abbrev-ref HEAD)" --json number --jq '.[0].number // empty'` |
 | `pr:status` | `gh pr checks ${PR_NUMBER} --required` |
@@ -213,11 +213,12 @@ CI-status verb and a branch-scoped equivalent would report nothing.
 
 Substitutions: `${N}` issue number (no leading `#`) · `${PR_REF}` /
 `${PR_NUMBER}` · `${REASON}` block reason · `${TITLE}` · `${LABEL}` ·
-`${SUBJECT}` the PR title as reviewed, followed by its `(#N)` suffix. The squash subject
-is the only input to the release bump, so pass the title you checked against
-[ADR-0029](knowledge/decisions/0029-public-api-and-major-rule.md) §Classification
-rather than whatever the PR carries at merge time, and keep the body empty: a
-body line can carry a breaking-change note the release analyzer reads.
+`${SUBJECT}` is read from the PR, never typed: the linted title plus its `(#N)`
+suffix, held in a shell variable so title text is never evaluated. The squash
+subject is the only input to the release bump, so confirm the title's class
+against [ADR-0029](knowledge/decisions/0029-public-api-and-major-rule.md)
+§Classification right before merging, and keep the body empty: a body line can
+carry a breaking-change note the release analyzer reads.
 
 ## Tool-Agnostic Safety Invariants
 
@@ -226,7 +227,7 @@ body line can carry a breaking-change note the release analyzer reads.
 | AWS/GitHub tokens in any file | pre-commit `gitleaks` hook | Credential-leak prevention at authoring time |
 | `git commit --no-verify` bypass | CI `gitleaks` in `gitops-validate.yml` `secret-scan`, required PR check | Last backstop — blocks the merge even when the local hook was skipped |
 | Forbidden Kubernetes kinds (Ingress, Endpoints) | CI `hard-constraints-check.yml`, required context `Hard Constraints` | Server-side enforcement of §Hard Constraints |
-| Non-Conventional PR title reaching the squash subject | CI `commitlint.yml`, required context `lint-pr-title` | `squash_merge_commit_title=PR_TITLE` makes the PR title the squash subject, and `release.yml` derives the version bump from it alone |
+| Non-Conventional PR title reaching the squash subject | CI `commitlint.yml`, required context `lint-pr-title` | `state:close` copies the linted PR title into the squash subject (and `squash_merge_commit_title=PR_TITLE` does the same for a button merge); `release.yml` derives the version bump from it alone |
 | Replacing a published release or its tag | Repo setting: release immutability enabled | A signed release cannot be swapped after the fact — asserted by `scripts/preflight-checks.sh` Check 3. It does NOT cover the published image: GHCR has no immutable-tag setting, so consumers pin the digest |
 | Branch-commit text reaching the release range | Repo settings: squash merges only, `squash_merge_commit_message=BLANK`, merge commits and rebase merges disabled | A branch commit's footer or a commit body would be a second, unreviewed bump source — asserted by `scripts/preflight-checks.sh` Check 4 (settings with an admin credential, the newest commit's shape in the weekly `policy-audit.yml`) |
 | SOPS plaintext leak (consumer-side) | pre-commit plus a PreToolUse hook, both in the consumer repo | Plaintext secrets must never reach git; this base ships no SOPS gate because it holds no SOPS material |
