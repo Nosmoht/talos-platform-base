@@ -7,6 +7,14 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Pending release
 
+- **Changed — the `siderolabs/talos` constraint is a range.** The module
+  constrains the provider to `>= 0.12.0, < 0.13.0-0` instead of the exact
+  `0.12.0`, as ADR-0029 §Provider constraints requires, so a later 0.12.x
+  provider release needs no base release and no consumer edit. Every root that
+  initialized before still initializes: the range admits only `0.12.0` today.
+  Base CI keeps testing `0.12.0`, the floor; a later 0.12.x is admitted
+  without a behavioral base CI run. (#292)
+
 - **Added — the public API and the MAJOR rule.**
   [ADR-0029](knowledge/decisions/0029-public-api-and-major-rule.md) declares
   the base's public API and defines when a release is MAJOR: configuration a

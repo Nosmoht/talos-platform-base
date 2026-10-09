@@ -2,6 +2,13 @@
 
 ## 2026-10-09
 
+- `decisions/0029-public-api-and-major-rule.md`: end the interim fact that the
+  spec requirement mandates an exact `talos` pin; add a dated update under
+  §Provider constraints recording the shipped `talos` range.
+- `decisions/index.md`: state on the ADR-0027 entry that ADR-0029's provider
+  range shipped.
+- `reference/tasks.md`: describe the provider-document-kinds fence as checking
+  the constraint form, the constraint sites and the lock floor.
 - `decisions/0029-public-api-and-major-rule.md`: add the decision that declares
   the base's public API, defines the MAJOR rule with its classification table,
   sets the provider-constraint form, and records the release mechanism as
