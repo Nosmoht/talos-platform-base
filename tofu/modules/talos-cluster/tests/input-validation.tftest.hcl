@@ -1723,7 +1723,7 @@ run "cilium_self_management_single_source_arm_is_unchanged" {
   # and scripts/check-cilium-rollout-pods-key.sh are what survive that.
   assert {
     condition     = output.cilium_self_management_app == replace(file("tests/fixtures/cilium-self-management-app-single-source.yaml"), "/(?m)^#.*\n/", "")
-    error_message = "single-source arm: the emitted Application must be BYTE-IDENTICAL to tests/fixtures/cilium-self-management-app-single-source.yaml for this input set. A byte moved — every single-source consumer's manifest moved with it, so decide whether that belongs in CHANGELOG/UPGRADING and the next MAJOR before refreshing the fixture."
+    error_message = "single-source arm: the emitted Application must be BYTE-IDENTICAL to tests/fixtures/cilium-self-management-app-single-source.yaml for this input set. A byte moved — every single-source consumer's manifest moved with it, so decide whether that belongs in CHANGELOG/UPGRADING, with the release class ADR-0029 assigns, before refreshing the fixture."
   }
 }
 
