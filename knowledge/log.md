@@ -2,6 +2,11 @@
 
 ## 2026-10-09
 
+- `architecture/capability-composition.md`: describe the composition suite's
+  Image Factory override and add the live Factory catalog suite.
+- `reference/tasks.md`: describe `tofu:test` as chart-bound only and add the
+  `tofu:test:image-factory` row.
+
 - `workflows/release-process.md`: describe squash-only merges with the PR title
   as the only bump source; drop the MAJOR-bump guard, its override and its
   recovery procedure; add recovery for a release carrying the wrong class.

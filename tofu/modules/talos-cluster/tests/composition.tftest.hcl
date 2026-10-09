@@ -1,10 +1,11 @@
 # Composition regression suite (ADR base:node-capability-composition).
 #
 # Proves the γ' composition + its hard-error invariants. command = plan (no
-# apply). The valid run resolves the live Image Factory (network) for schematic
-# dedup; the expect_failures runs lock in each guard (red-green: revert the guard
-# and the matching run stops failing). NETWORK REQUIRED — run via `task tofu:test`,
-# NOT part of the offline `task tofu:ci`.
+# apply). The valid run proves schematic dedup; the expect_failures runs lock in
+# each guard (red-green: revert the guard and the matching run stops failing).
+# NETWORK REQUIRED for the Helm chart repositories the seed renders pull from —
+# run via `task tofu:test`, NOT part of the offline `task tofu:ci`. The Image
+# Factory is NOT contacted: see the override_data block below.
 #
 # The module-param / sysctl / kernel-arg conflict guards are exercised in the
 # sibling conflict-guards.tftest.hcl via a synthetic colliding catalog fixture
@@ -14,6 +15,22 @@
 
 provider "talos" {}
 provider "helm" {}
+
+# Stands in for factory.talos.dev, so a Factory outage cannot fail this suite.
+# Every schematic receives the whole list, which keeps the exact-name filter in
+# image-factory.tf load-bearing. Names are the live catalog's spelling; the
+# upstream check lives in tests/live/image-factory.tftest.hcl.
+override_data {
+  target = data.talos_image_factory_extensions_versions.per_schematic
+  values = {
+    extensions_info = [
+      for name in [
+        "siderolabs/drbd",
+        "siderolabs/intel-ucode",
+      ] : { name = name, ref = "", digest = "", author = "", description = "" }
+    ]
+  }
+}
 
 variables {
   cluster_name       = "test"
@@ -214,7 +231,7 @@ run "argocd_namespace_seed_carries_psa_floor_and_recommended_labels" {
 # machine-config.tf exposes through outputs). Red-green: drop [local.base_kubelet_rotation_patch]
 # from a role's concat in machine-config.tf and that role's rotation assert fails; drop
 # local.cert_approver_controlplane_patch from the controlplane concat and
-# cert_approver_seeded fails. NETWORK (Image Factory) like the other plan runs.
+# cert_approver_seeded fails.
 run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
   command = plan
   variables {
@@ -351,7 +368,7 @@ run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
 # leader-election + the leases RBAC; provider_* flow through as env; a
 # metacharacter-bearing regex (colon) still renders a parseable manifest (the
 # jsonencode escaping guard). Red-green: revert the templatefile wiring and these
-# flip. NETWORK (Image Factory) like the other plan runs.
+# flip.
 run "cert_approver_ha_and_config_override" {
   command = plan
   variables {
@@ -737,7 +754,7 @@ run "cilium_seed_config_surface_is_pinned" {
 # only at its input. This is the Cilium mirror of that binding.
 #
 # CI CAVEAT, stated because it changes what these runs are worth: this suite is
-# NETWORK-dependent (live Image Factory) and its CI job is ADVISORY by design —
+# NETWORK-dependent (seed Helm charts) and its CI job is ADVISORY by design —
 # `task tofu:ci` does not carry it. `scripts/check-cilium-operator-replicas-key.sh`
 # (task tofu:check:cilium-operator-replicas-key, inside tofu:ci) is the BLOCKING
 # layer for the key spelling, following the tofu:check:argocd-day0-apply-shape
@@ -859,36 +876,5 @@ run "cilium_seed_render_carries_the_typed_api_server_endpoint" {
       ] if try(yamldecode(doc).kind, "") == "DaemonSet"
     ]))
     error_message = "cilium-cni-delivery render-layer rule: cilium_k8s_service_port must reach the rendered agent DaemonSet as KUBERNETES_SERVICE_PORT — the string shape the module emits is the shape the chart consumes"
-  }
-}
-
-# Resolve all catalog extension families plus both example architectures at the
-# supported native version. Legacy runs above remain regression coverage.
-run "native_114_factory_catalog" {
-  command = plan
-  variables {
-    talos_version      = "v1.14.2"
-    kubernetes_version = "v1.37.1"
-    hardware_capabilities = {
-      all-profiles = {
-        requires_features     = ["drbd-kernel-module", "iommu-enabled"]
-        provisioning_profiles = ["drbd", "iommu", "nvidia-lts"]
-        emits_label           = "platform.io/hardware-capability.all-profiles"
-      }
-    }
-    nodes = {
-      cp  = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["all-profiles"] }
-      arm = { ip = "192.0.2.12", role = "worker", image = "arm", hardware_capabilities = [] }
-    }
-  }
-  assert {
-    condition = alltrue([for hash, extensions in local.official_extensions_by_schematic :
-      alltrue([for requested in local.schematics[hash].extensions : contains(extensions, requested)])
-    ])
-    error_message = "Every requested extension must resolve at Talos 1.14.2."
-  }
-  assert {
-    condition     = length(data.talos_image_factory_extensions_versions.per_schematic) == 2
-    error_message = "The native Factory check must cover amd64 and arm64."
   }
 }

@@ -119,10 +119,10 @@ jobs:
   tofu-test:
     name: tofu-test (composition guard-regression suite)
     runs-on: ubuntu-latest
-    # ADVISORY by default: this job calls the live Talos Image Factory, so an
-    # upstream outage can red it independently of the diff. Do NOT add it to
-    # branch-protection *required* checks unless you accept that a factory.talos.dev
-    # outage will block all tofu/** merges. timeout-minutes bounds a hung connect.
+    # ADVISORY by default: this job pulls the argo-cd and cilium Helm charts, so
+    # an outage of a chart repository can red it independently of the diff. The
+    # Image Factory is overridden in the tests and never contacted; its live check
+    # is image-factory-live.yml. timeout-minutes bounds a hung connect.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -139,13 +139,11 @@ jobs:
           version: 3.53.1  # KEEP IN SYNC with the task pin in .tool-versions
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # NETWORK: `tofu test` resolves the live Talos Image Factory (schematic
-      # dedup proof), so it is deliberately excluded from the offline `task tofu:ci`.
-      # This dedicated job is the CI enforcement of the node-capability
-      # composition guard-regression suite — the ADR §"Falsification criteria"
-      # (each hard-error guard fires red-green, dedup determinism holds). Without
-      # it those guards can regress silently with `task tofu:ci` still green.
-      # An Image-Factory outage (factory.talos.dev unreachable) can red this job
-      # independently of the diff — re-run on transient infra blips.
-      - name: task tofu:test (hard-error guards + dedup determinism — live Image Factory)
+      # NETWORK: `tofu test` renders the seed charts, so it is deliberately
+      # excluded from the offline `task tofu:ci`. This dedicated job is the CI
+      # enforcement of the node-capability composition guard-regression suite —
+      # the ADR §"Falsification criteria" (each hard-error guard fires red-green,
+      # dedup determinism holds). Without it those guards can regress silently
+      # with `task tofu:ci` still green.
+      - name: task tofu:test (hard-error guards + dedup determinism)
         run: task tofu:test

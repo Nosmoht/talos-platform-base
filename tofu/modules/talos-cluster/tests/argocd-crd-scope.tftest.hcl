@@ -27,6 +27,14 @@
 provider "talos" {}
 provider "helm" {}
 
+# Keeps the Image Factory out of this suite; its image requests no extensions.
+override_data {
+  target = data.talos_image_factory_extensions_versions.per_schematic
+  values = {
+    extensions_info = []
+  }
+}
+
 variables {
   cluster_name       = "test"
   cluster_endpoint   = "https://192.0.2.1:6443"
