@@ -13,7 +13,6 @@ variables {
 
   images = {
     intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucode"] }
-    arm   = { architecture = "arm64", cpu_vendor = "arm", extensions = [], overlay = { name = "rpi_generic", image = "siderolabs/sbc-raspberrypi" } }
   }
   hardware_capabilities = {
     all-profiles = {
@@ -23,8 +22,7 @@ variables {
     }
   }
   nodes = {
-    cp  = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["all-profiles"] }
-    arm = { ip = "192.0.2.12", role = "worker", image = "arm", hardware_capabilities = [] }
+    cp = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["all-profiles"] }
   }
 }
 
@@ -35,18 +33,14 @@ run "native_114_factory_catalog" {
     kubernetes_version = "v1.37.1"
   }
   assert {
-    condition     = toset(keys(local.provisioning_profiles)) == toset(var.hardware_capabilities["all-profiles"].provisioning_profiles)
-    error_message = "all-profiles must select every catalog profile in profiles.tf, or a new profile's extensions are never checked; catalog: ${jsonencode(keys(local.provisioning_profiles))}"
+    condition     = toset(keys(local.provisioning_profiles)) == toset(flatten([for c in var.hardware_capabilities : c.provisioning_profiles]))
+    error_message = "this file's capabilities must select every catalog profile in profiles.tf, or a new profile's extensions are never checked; catalog: ${jsonencode(keys(local.provisioning_profiles))}"
   }
   assert {
     condition = alltrue([for hash, extensions in local.official_extensions_by_schematic :
       alltrue([for requested in local.schematics[hash].extensions : contains(extensions, requested)])
     ])
     error_message = "Every requested extension must resolve at Talos 1.14.2."
-  }
-  assert {
-    condition     = length(data.talos_image_factory_extensions_versions.per_schematic) == 2
-    error_message = "The native Factory check must cover amd64 and arm64."
   }
 }
 

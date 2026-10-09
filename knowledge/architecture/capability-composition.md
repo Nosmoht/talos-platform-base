@@ -220,7 +220,8 @@ runs:
   `task tofu:test`, not part of the offline `task tofu:ci`). An
   `override_data` block stands in for the Image Factory's extension lookup, so
   a Factory outage cannot fail it. Covers an extension name the Factory does
-  not list failing the plan, schematic dedup and capability-order
+  not list, or one resolving twice, failing the plan, the schematic baking
+  exactly the declared extensions, schematic dedup and capability-order
   determinism, forward/inverse symmetry violations,
   the union-masking pair, variant mismatch, undefined image/capability, and
   rejection of a reserved `hardware-feature.*` `emits_label`.

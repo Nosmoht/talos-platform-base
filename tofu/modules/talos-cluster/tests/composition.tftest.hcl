@@ -79,6 +79,10 @@ run "valid_dedup_and_determinism" {
     condition     = output.node_schematic_hashes["cp-1"] != output.node_schematic_hashes["w-1"]
     error_message = "storage-only and storage+virt nodes must NOT share a schematic (virt adds IOMMU kernel args)"
   }
+  assert {
+    condition     = yamldecode(talos_image_factory_schematic.this[output.node_schematic_hashes["w-1"]].schematic).customization.systemExtensions.officialExtensions == ["siderolabs/drbd", "siderolabs/intel-ucode"]
+    error_message = "node-image-composition §'Substring expansion cannot bake unrequested extensions': w-1's schematic must bake exactly its declared extensions; got ${jsonencode(yamldecode(talos_image_factory_schematic.this[output.node_schematic_hashes["w-1"]].schematic).customization.systemExtensions.officialExtensions)}"
+  }
 }
 
 # Issue #169 (AC1) — a node whose image sets extra_kernel_args: the rendered
@@ -173,6 +177,27 @@ run "unresolved_extension_fails_the_plan" {
   variables {
     images = {
       intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucod"] }
+    }
+    nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] } }
+  }
+  expect_failures = [talos_image_factory_schematic.this]
+}
+
+# One declared name resolving twice must not stand in for another that is missing.
+run "duplicate_resolution_fails_the_plan" {
+  command = plan
+  override_data {
+    target = data.talos_image_factory_extensions_versions.per_schematic
+    values = {
+      extensions_info = [
+        for name in ["siderolabs/intel-ucode", "siderolabs/intel-ucode"] :
+        { name = name, ref = "", digest = "", author = "", description = "" }
+      ]
+    }
+  }
+  variables {
+    images = {
+      intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucode", "siderolabs/drbd"] }
     }
     nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] } }
   }

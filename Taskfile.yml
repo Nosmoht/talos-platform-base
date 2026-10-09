@@ -210,7 +210,7 @@ tasks:
       cd tofu/modules/talos-cluster && tofu init -input=false >/dev/null && tofu test
 
   tofu:test:image-factory:
-    desc: "tofu test — checks every catalog extension name against the LIVE Talos Image Factory at the 1.13 and 1.14 lines. On a PR that leaves image-factory.tf and the provider lock alone, red means the Factory is down or renamed a package. Not part of tofu:test or tofu:ci."
+    desc: "tofu test — checks every catalog extension name against the LIVE Talos Image Factory at the 1.13 and 1.14 lines. Not part of tofu:test or tofu:ci."
     cmd: |
       cd tofu/modules/talos-cluster && tofu init -input=false >/dev/null && tofu test -test-directory=tests/live
 
