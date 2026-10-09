@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Probe document kinds accepted by the pinned provider, independent of the Talos version.
+# Probe document kinds accepted by the locked provider, independent of the Talos version.
 # Improved provider support intentionally fails boundary assertions; review the compatibility contract.
 # Inspect only allowlisted documents and machine.install; full renders contain generated key material.
 # Usage: scripts/check-provider-document-kinds.sh [talos_version] [prev_talos_version] [k8s_version]
@@ -16,7 +16,7 @@ FIXTURE="tofu/modules/talos-cluster/tests/fixtures/provider-document-kinds"
 LOCK="tofu/modules/talos-cluster/.terraform.lock.hcl"
 REJECTION="not registered"
 
-PIN_SITES=(
+CONSTRAINT_SITES=(
   "tofu/modules/talos-cluster/versions.tf"
   "tofu/modules/talos-cluster/examples/complete/versions.tf"
   "tofu/modules/talos-cluster/tests/fixtures/provider-document-kinds/versions.tf"
@@ -39,22 +39,36 @@ done
 [ -d "${FIXTURE}" ] || envfail "${FIXTURE} not found"
 [ -f "${LOCK}" ] || envfail "${LOCK} not found"
 
-MODULE_PIN="$(
-  awk '/source  = "siderolabs\/talos"/{f=1} f&&/version = /{gsub(/[",]/,"",$3); print $3; exit}' \
+CONSTRAINT="$(
+  awk '/source  = "siderolabs\/talos"/{f=1} f&&/version = /{sub(/^[^"]*"/,""); sub(/".*$/,""); print; exit}' \
     tofu/modules/talos-cluster/versions.tf
 )"
-[[ "${MODULE_PIN}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] ||
-  fail "pin parity: tofu/modules/talos-cluster/versions.tf declares '${MODULE_PIN:-<unreadable>}' for siderolabs/talos, which is not an exact version. The module pins an exact stable release to bind the generated configuration contract."
-for site in "${PIN_SITES[@]}"; do
-  grep -q -- "siderolabs/talos.*${MODULE_PIN}\|${MODULE_PIN}.*siderolabs/talos" "${site}" ||
-    grep -A3 -- 'source *= *"siderolabs/talos"' "${site}" | grep -q -- "${MODULE_PIN}" ||
-    fail "pin parity: ${site} does not declare siderolabs/talos at ${MODULE_PIN}. An exact pin that drifts breaks \`tofu init\` at that site, and the README and example ship to consumers."
+FORM='^>= ([0-9]+\.[0-9]+\.[0-9]+), < [0-9]+\.[0-9]+\.[0-9]+-0$'
+[[ "${CONSTRAINT}" =~ ${FORM} ]] ||
+  fail "constraint form: tofu/modules/talos-cluster/versions.tf declares '${CONSTRAINT:-<unreadable>}' for siderolabs/talos, not the '>= <floor>, < <next line>-0' range ADR-0029 §Provider constraints sets. An exact prerelease pin, the record's only exception, has to change this gate with it."
+FLOOR="${BASH_REMATCH[1]}"
+IFS=. read -r FLOOR_MAJOR FLOOR_MINOR _ <<<"${FLOOR}"
+if [ "${FLOOR_MAJOR}" -eq 0 ]; then
+  NEXT_LINE="0.$((FLOOR_MINOR + 1)).0-0"
+else
+  NEXT_LINE="$((FLOOR_MAJOR + 1)).0.0-0"
+fi
+[ "${CONSTRAINT##*< }" = "${NEXT_LINE}" ] ||
+  fail "constraint bound: the upper bound in '${CONSTRAINT}' is not ${NEXT_LINE}, the start of the floor's next breaking line (ADR-0029 §Provider constraints). A wider bound admits a line nothing here tests, and narrowing it once a release there is published is MAJOR."
+for site in "${CONSTRAINT_SITES[@]}"; do
+  grep -A3 -- 'source *= *"siderolabs/talos"' "${site}" | grep -qF -- "\"${CONSTRAINT}\"" ||
+    fail "constraint site: ${site} does not declare siderolabs/talos at \"${CONSTRAINT}\". The README and the example ship to consumers, who copy them into their roots."
 done
-LOCK_PIN="$(
+LOCK_CONSTRAINTS="$(
+  awk '/siderolabs\/talos/{f=1} f&&/constraints[[:space:]]*=/{sub(/^[^"]*"/,""); sub(/".*$/,""); print; exit}' "${LOCK}"
+)"
+[ "${LOCK_CONSTRAINTS}" = "${CONSTRAINT}" ] ||
+  fail "lock constraints: the committed lock records \"${LOCK_CONSTRAINTS:-<none>}\" but versions.tf declares \"${CONSTRAINT}\". Refresh it with the lock file in place, which keeps the selected version: cd tofu/modules/talos-cluster && tofu providers lock -platform=linux_amd64 -platform=darwin_arm64 -platform=linux_arm64"
+LOCK_VERSION="$(
   awk '/siderolabs\/talos/{f=1} f&&/version[[:space:]]*=/{gsub(/[",]/,"",$3); print $3; exit}' "${LOCK}"
 )"
-[ "${LOCK_PIN}" = "${MODULE_PIN}" ] ||
-  fail "pin parity: the committed lock records ${LOCK_PIN:-<none>} but versions.tf pins ${MODULE_PIN}. Regenerate it: cd tofu/modules/talos-cluster && tofu providers lock -platform=linux_amd64 -platform=darwin_arm64 -platform=linux_arm64"
+[ "${LOCK_VERSION}" = "${FLOOR}" ] ||
+  fail "lock floor: the committed lock selects ${LOCK_VERSION:-<none>}, not the constraint's floor ${FLOOR}, and base CI tests the floor. \`tofu init -upgrade\` and a lock generated without the existing file select the newest admitted release: restore the lock from git and refresh it in place. Raising the floor instead is MAJOR under ADR-0029."
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
@@ -197,4 +211,4 @@ if [ "$(document UnattendedInstallConfig | grep -c '^kind: UnattendedInstallConf
 $(document UnattendedInstallConfig)"
 fi
 
-echo "check-provider-document-kinds: boundary unchanged — every pin site agrees, the patch path carries UserVolumeConfig, the Talos 1.14 kinds reach the rendered documents by value, an invented kind is still refused, ${TALOS_PIN} generates workloadIsolation: true and a 168h trim while ${TALOS_PREV_PIN} generates neither, the generated install document still ignores machine.install, and patching it directly still works."
+echo "check-provider-document-kinds: boundary unchanged — every constraint site agrees and the lock sits at the floor, the patch path carries UserVolumeConfig, the Talos 1.14 kinds reach the rendered documents by value, an invented kind is still refused, ${TALOS_PIN} generates workloadIsolation: true and a 168h trim while ${TALOS_PREV_PIN} generates neither, the generated install document still ignores machine.install, and patching it directly still works."

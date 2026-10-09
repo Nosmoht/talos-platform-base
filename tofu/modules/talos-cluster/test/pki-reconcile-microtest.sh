@@ -60,9 +60,9 @@ terraform {
   required_providers {
     talos = {
       source  = "siderolabs/talos"
-      # Tracks the module's own exact pin — the property under test is a
-      # behaviour of THAT provider, not of whatever a range resolves to.
-      version = "0.12.0"
+      # The module's own constraint: this root resolves what a fresh consumer
+      # root resolves.
+      version = ">= 0.12.0, < 0.13.0-0"
     }
   }
 }

@@ -197,7 +197,7 @@ tasks:
     cmd: scripts/check-provider-document-kinds-bites.sh
 
   tofu:check:provider-document-kinds:
-    desc: "CI fence: which Talos machine-config document kinds the PINNED provider accepts in config_patches, and which documents a Talos version pin makes it generate"
+    desc: "CI fence: which Talos machine-config document kinds the LOCKED provider accepts in config_patches, and which documents a Talos version pin makes it generate"
     cmd: scripts/check-provider-document-kinds.sh
 
   tofu:check:shim-key-parity:
@@ -232,7 +232,7 @@ tasks:
         -filter=tests/talos-native-config.tftest.hcl
 
   tofu:check:talos-config-validation:
-    desc: "Render module patches with the pinned provider and validate both schema lines with talosctl 1.14.2 (no cluster)"
+    desc: "Render module patches with the locked provider and validate both schema lines with talosctl 1.14.2 (no cluster)"
     cmd: scripts/check-talos-config-validation.sh
 
   tofu:ci:

@@ -202,12 +202,23 @@ This section governs every constraint in the module's `versions.tf`:
   requirement "Version constraints and backend agnosticism" in
   `openspec/specs/module-interface-contract/spec.md`, which mandates that pin.
   Moving both to a conforming range is planned for the provider-range change.
+  - **Update 2026-10-09 (#296).** The `talos` constraint is
+    `">= 0.12.0, < 0.13.0-0"` and conforms, and the requirement states that
+    range. The `-0` upper bound also excludes 0.13 prereleases: a root that
+    pins a prerelease exactly makes OpenTofu order it against the other
+    constraints, and `< 0.13.0` would admit it. The gate keeps the module's
+    committed lock at the floor, so base CI verifies the `talos` floor; a later
+    0.12.x is admitted without a behavioral base CI run.
 - **Known limitation.** CI runs OpenTofu `1.12.1` only
   (`.github/workflows/tofu-validate.yml`) and does not resolve the `helm`,
   `local` or `null` floors, so CI verifies no floor. A floor states what the
   module's code needs; CI coverage does not define it.
 
 ## Interim state
+
+**Ended 2026-10-09 in #296: the requirement "Version constraints and backend
+agnosticism" no longer mandates an exact `talos` pin; it states the range
+§Provider constraints sets.**
 
 These facts hold until the named planned change ships:
 
