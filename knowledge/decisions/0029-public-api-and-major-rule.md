@@ -1,7 +1,7 @@
 ---
 type: decision
 title: "ADR: The base's public API and the MAJOR rule"
-description: "Declares the base's public API and defines a MAJOR release as one after which configuration a consumer wrote fails, or silently changes its effect; an upstream version number is never MAJOR by itself. Decides the provider-constraint form and, as planned and not yet shipped, a squash-only release mechanism whose PR title is the only bump source, backed by a content-based breaking-change check."
+description: "Declares the base's public API and defines a MAJOR release as one after which configuration a consumer wrote fails, or silently changes its effect; an upstream version number is never MAJOR by itself. Decides the provider-constraint form and a squash-only release mechanism whose PR title is the only bump source; the content-based breaking-change check it first planned is withdrawn."
 status: stable
 id: base:public-api-and-major-rule
 decided: "2026-10-09T00:00:00Z"
@@ -216,6 +216,15 @@ This section governs every constraint in the module's `versions.tf`:
 
 ## Interim state
 
+**Ended 2026-10-09 in #298: the path guard, the `Allow-Non-Major:` attestation and
+the merge-commit-only settings are removed; merges are squash-only.**
+
+**Ended 2026-10-09 in #298: the release-plan prompt and the release-guard files
+that row 12 superseded are deleted.**
+
+**Ended 2026-10-09 in #298: [Release Process](../workflows/release-process.md)
+describes the squash-only mechanism.**
+
 **Ended 2026-10-09 in #296: the requirement "Version constraints and backend
 agnosticism" no longer mandates an exact `talos` pin; it states the range
 §Provider constraints sets.**
@@ -248,6 +257,9 @@ the state at decision time.
 
 ## Planned: merge method and bump source
 
+**Shipped 2026-10-09 in #298, without the pre-tag check of the third bullet, which
+§Amendment (2026-10-09) withdraws.**
+
 **Planned — not yet shipped.**
 
 - The repository allows squash merges only. The squash subject defaults to the
@@ -264,6 +276,8 @@ the state at decision time.
   a pass.
 
 ## Planned: content-based breaking-change check
+
+**Withdrawn 2026-10-09 in #298: not built; see §Amendment (2026-10-09).**
 
 **Planned — not yet shipped.**
 
@@ -305,6 +319,9 @@ workflows call.
   `task supply-chain:*` stay.
 
 ## Planned: cutover and reverts
+
+**Shipped 2026-10-09 in #298; the pre-tag range check the first bullet cites is
+withdrawn (§Amendment (2026-10-09)).**
 
 **Planned — not yet shipped.**
 
@@ -367,6 +384,32 @@ workflows call.
 - The decision is wrong if a consumer's configuration fails or changes its
   effect after a non-MAJOR upgrade that followed this table, or if a MAJOR
   release forces no consumer edit and changes no consumer-visible effect.
+
+## Amendment (2026-10-09)
+
+**The content-based breaking-change check and the pre-tag landed-commit check
+are not built; the rest of the planned mechanism shipped in #298.**
+
+- No maintained tool detects the §Classification classes across module inputs,
+  schemas, rendered identities and constraints. A purpose-built detector would
+  have been larger than the problem it covers: the history replay in issue #292
+  finds one mis-titled break (v7.0.0, #189). It would also only compensate for
+  the title-only bump source rather than remove a cause. The reviewer judges each
+  PR title against §Classification; nothing re-checks the content.
+- The pre-tag check that every first-parent commit is the squash of a merged PR
+  with its title as subject is not built. `AGENTS.md §Issue-Interface` merges
+  with an explicit `--subject` and an empty `--body`, so the subject is the title
+  the reviewer checked. `scripts/preflight-checks.sh` Check 4 asserts the merge
+  settings with an admin credential and, where the settings are unreadable,
+  the newest commit's shape (one parent, a `(#N)` suffix, an empty body). An
+  admin push or a hand-edited squash message remains possible and is the
+  maintainer's own act.
+- release-please was considered and not adopted. Under squash merges it derives
+  the bump from the same subjects; its release PR is either merged automatically,
+  with no review, or is the manual gate ADR-0020 removed; and it creates the
+  GitHub Release itself, which the draft-release flow in `oci-publish.yml` owns.
+- §Validation's measurement of the planned check no longer applies. The decision
+  is still wrong under its last bullet.
 
 ## Links
 

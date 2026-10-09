@@ -63,7 +63,7 @@ Only what a directory listing does not tell you:
 
 - `kubernetes/bootstrap/cilium/`: reference values for *optional* Day-2 self-management. Cilium itself is delivered by the `talos-cluster` module as a controlplane `inlineManifest` seed (`deploy_cilium`); the former consumer-side render path is retired.
 - `tofu/modules/talos-cluster/`: the **sole** Talos cluster-lifecycle path — backend- and identity-agnostic, called by a consumer-side OpenTofu root that is a thin `yamldecode` shim over the declarative `cluster.yaml` SoT. See [`knowledge/decisions/0006-opentofu-cluster-lifecycle.md`](knowledge/decisions/0006-opentofu-cluster-lifecycle.md) and [`knowledge/decisions/0007-cluster-yaml-sot.md`](knowledge/decisions/0007-cluster-yaml-sot.md).
-- Consumer-parsed contracts live **outside** the knowledge bundle, at the repo root: `schemas/`, `contracts/`, `platform-hardware-features.yaml`. This list is the release guard's clause-(c) input (`.ci-release-guard-pathspec.txt`) — it stays here whether or not `ls` would reveal it, and adding a contract means adding it to both.
+- Consumer-parsed contracts live **outside** the knowledge bundle, at the repo root: `schemas/`, `contracts/`, `platform-hardware-features.yaml`. They are public API under [ADR-0029](knowledge/decisions/0029-public-api-and-major-rule.md) §Public API item 2 — the list stays here whether or not `ls` would reveal it, and adding a contract means adding it here.
 - `knowledge/`: the OKF v0.2 bundle; entry point [`knowledge/index.md`](knowledge/index.md). It ships in no release artifact. `knowledge/rules/` is a narrow carve-out for contracts the bundle's own tooling reads.
 
 ## Build, Test, and Development Commands
@@ -198,7 +198,7 @@ and the script header.
 | `state:handoff` | `scripts/issue-state.sh handoff ${N}` |
 | `state:release` | `scripts/issue-state.sh release ${N}` |
 | `state:block` | `scripts/issue-state.sh block ${N} "${REASON}"` |
-| `state:close` | `gh pr merge ${PR_REF} --merge --subject "${SUBJECT}" --body "${BODY}" && scripts/issue-state.sh close ${N} --pr "${PR_REF}"` |
+| `state:close` | `gh pr merge ${PR_REF} --squash --subject "${SUBJECT}" --body "" && scripts/issue-state.sh close ${N} --pr "${PR_REF}"` |
 | `pr:open` | `gh pr create --fill` |
 | `pr:list-by-branch` | `gh pr list --head "$(git rev-parse --abbrev-ref HEAD)" --json number --jq '.[0].number // empty'` |
 | `pr:status` | `gh pr checks ${PR_NUMBER} --required` |
@@ -213,14 +213,11 @@ CI-status verb and a branch-scoped equivalent would report nothing.
 
 Substitutions: `${N}` issue number (no leading `#`) · `${PR_REF}` /
 `${PR_NUMBER}` · `${REASON}` block reason · `${TITLE}` · `${LABEL}` ·
-`${SUBJECT}` Conventional-Commit-shaped merge subject · `${BODY}` merge-commit
-body. On a PR touching a guarded release surface
-(`.ci-release-guard-pathspec.txt`), `${BODY}` is where an
-`Allow-Non-Major: <reason>` attestation goes — the guard reads the BODY of the
-tip commit only, so the bare `--merge` form cannot carry one and the release
-blocks again. See
-[`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md)
-§When the release is blocked.
+`${SUBJECT}` the PR title as reviewed, followed by its `(#N)` suffix. The squash subject
+is the only input to the release bump, so pass the title you checked against
+[ADR-0029](knowledge/decisions/0029-public-api-and-major-rule.md) §Classification
+rather than whatever the PR carries at merge time, and keep the body empty: a
+body line can carry a breaking-change note the release analyzer reads.
 
 ## Tool-Agnostic Safety Invariants
 
@@ -229,9 +226,9 @@ blocks again. See
 | AWS/GitHub tokens in any file | pre-commit `gitleaks` hook | Credential-leak prevention at authoring time |
 | `git commit --no-verify` bypass | CI `gitleaks` in `gitops-validate.yml` `secret-scan`, required PR check | Last backstop — blocks the merge even when the local hook was skipped |
 | Forbidden Kubernetes kinds (Ingress, Endpoints) | CI `hard-constraints-check.yml`, required context `Hard Constraints` | Server-side enforcement of §Hard Constraints |
-| Non-Conventional PR title reaching the merge subject | CI `commitlint.yml`, required context `lint-pr-title` | `merge_commit_title=PR_TITLE` makes the PR title the merge subject, and `release.yml` derives the version bump from it and from the branch commits in the range |
+| Non-Conventional PR title reaching the squash subject | CI `commitlint.yml`, required context `lint-pr-title` | `squash_merge_commit_title=PR_TITLE` makes the PR title the squash subject, and `release.yml` derives the version bump from it alone |
 | Replacing a published release or its tag | Repo setting: release immutability enabled | A signed release cannot be swapped after the fact — asserted by `scripts/preflight-checks.sh` Check 3. It does NOT cover the published image: GHCR has no immutable-tag setting, so consumers pin the digest |
-| Contributor-authored text in the merge-commit body | Repo setting `merge_commit_message=BLANK`, squash and rebase merges disabled | The release guard's `Allow-Non-Major:` attestation is only maintainer-owned while the body cannot carry contributor text — asserted by `scripts/preflight-checks.sh` Check 4 |
+| Branch-commit text reaching the release range | Repo settings: squash merges only, `squash_merge_commit_message=BLANK`, merge commits and rebase merges disabled | A branch commit's footer or a commit body would be a second, unreviewed bump source — asserted by `scripts/preflight-checks.sh` Check 4 (settings with an admin credential, the newest commit's shape in the weekly `policy-audit.yml`) |
 | SOPS plaintext leak (consumer-side) | pre-commit plus a PreToolUse hook, both in the consumer repo | Plaintext secrets must never reach git; this base ships no SOPS gate because it holds no SOPS material |
 
 ## ADR Coverage

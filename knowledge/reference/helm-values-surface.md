@@ -28,7 +28,6 @@ sources:
   - resource: scripts/check-cilium-reference-values.py
   - resource: scripts/check-shim-key-parity.sh
   - resource: .ci-oci-tarball-include.txt
-  - resource: .ci-release-guard-pathspec.txt
   - resource: UPGRADING.md
   - resource: openspec/specs/argocd-module-seed/spec.md
   - resource: openspec/specs/argocd-substrate/spec.md

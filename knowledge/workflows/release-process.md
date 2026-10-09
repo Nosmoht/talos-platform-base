@@ -1,14 +1,12 @@
 ---
 type: workflow
 title: Release Process
-description: How a release moves from conventional commit through the automated semantic-release flow and the MAJOR-bump guard to a signed OCI artifact on ghcr.io.
+description: How a release moves from the PR title through the automated semantic-release flow to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
 generated: { by: human:nosmoht, at: "2026-10-09T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
-  - resource: scripts/release-major-bump-guard.sh
-  - resource: scripts/release-guard-lib.sh
-  - resource: .ci-release-guard-pathspec.txt
+  - resource: scripts/preflight-checks.sh
   - resource: .github/workflows/commitlint.yml
   - resource: .github/workflows/oci-publish.yml
   - resource: .releaserc.json
@@ -20,17 +18,19 @@ sources:
 # Release Process
 
 Releases are conventional-commit-driven and fully automated — no human
-approval step. The chain is: PR title lint → merge to `main` → `release.yml`
-plan (dry-run) → hard MAJOR-bump guard → semantic-release cuts the tag → the
-tag push triggers `oci-publish.yml`, which builds, signs, attests, and
-publishes the OCI artifact plus the GitHub Release.
+approval step. The chain is: PR title lint → squash merge to `main` →
+`release.yml` plan (dry-run) → semantic-release cuts the tag → the tag push
+triggers `oci-publish.yml`, which builds, signs, attests, and publishes the OCI
+artifact plus the GitHub Release.
 
 The former manual approval gate (an `environment: release` protection) was
-removed so a merge to `main` releases without operator action. Its one
-mechanical function — catching a breaking base-surface change that ships
-without a MAJOR bump — is now a blocking CI check (the MAJOR-bump guard,
-below). What the human gate additionally provided implicitly (an eyeball on
-every release) is **not** replaced; automated releases are unattended.
+removed so a merge to `main` releases without operator action
+([ADR-0020](../decisions/0020-automated-release-no-approval-gate.md)). Its
+successor, a path-based MAJOR-bump guard with an `Allow-Non-Major:` override, was
+removed in turn by the #292 cutover
+([ADR-0029](../decisions/0029-public-api-and-major-rule.md) §Amendment
+(2026-10-09)). Whether a change is MAJOR is judged once, by the reviewer, on the
+PR title; nothing re-checks the content mechanically.
 
 ## Commit gate — commitlint on the PR title
 
@@ -40,23 +40,25 @@ individual commits. It **is** a required status check as of 2026-08-31,
 together with the merge-method settings ADR-0020 §Amendment recorded as
 outstanding.
 
-`merge_commit_title` is `PR_TITLE`, so the merge subject on `main` is the PR
-title — which is why the title lint is required. The release type comes from
-every commit in the tag range: semantic-release analyzes the branch commits the
-merge preserves and the merge commit whose subject is the PR title, and the
-highest bump among them wins. `merge_commit_message` is `BLANK`, so a merge made
-with the GitHub merge button carries an empty **body**. The body is what the
-MAJOR-bump guard reads, and only `gh pr merge --body` writes one.
+Pull requests are **squash-merged only**: `squash_merge_commit_title` is
+`PR_TITLE` and `squash_merge_commit_message` is `BLANK`, and merge commits and
+rebase merges are disabled. Each commit on `main` is therefore one PR whose
+subject is its title plus a `(#N)` suffix and whose body is empty, and the title is the
+**only** input to the version bump. Branch commits, their footers and the PR
+description never reach `main`. `AGENTS.md §Issue-Interface` `state:close`
+passes `--subject` and `--body ""` explicitly, so the merge records the title the
+reviewer checked even if the PR was retitled afterwards.
+`scripts/preflight-checks.sh` Check 4 asserts the settings with an admin
+credential; the weekly `policy-audit.yml` run cannot read them and checks the
+newest commit's shape instead (one parent, a `(#N)` suffix, an empty body).
 
 - Allowed types: `feat`, `fix`, `perf`, `chore`, `docs`, `test`, `refactor`, `ci`.
 - `requireScope: false` — a scope like `fix(cilium): …` is house style per
   `CONTRIBUTING.md`, not mandatory.
-- The gate applies to PRs only; direct-`main` commits bypass it. With the
-  manual release approval removed, there is **no** human backstop for a
-  malformed direct-`main` commit subject; the MAJOR-bump guard below covers
-  only the breaking-surface-without-MAJOR class, not commit-message hygiene in
-  general. The mitigating factor is that `main` merges land as merge commits
-  that preserve the PR-title-derived subject.
+- The gate applies to PRs only; direct-`main` commits bypass it, and with the
+  manual release approval removed there is **no** backstop for a malformed
+  direct-`main` commit subject. `main` is protected, so such a commit needs an
+  admin push.
 
 ## Version computation — `.releaserc.json`
 
@@ -92,14 +94,12 @@ No custom `releaseRules` are declared, so the commit-analyzer defaults apply:
 - `refactor`, `docs`, `chore`, `test`, `ci` → **no release** (no default
   release rule; a refactor-only history produces "no relevant changes").
 
-A prose `**BREAKING**` line in the commit body is **not** recognized. Any
-commit-body line, a merge-commit body included, that matches the note pattern of
-`conventional-commits-parser` — `BREAKING CHANGE` or `BREAKING-CHANGE` in any
-letter case, optionally preceded by whitespace, `*` or `|`, and followed by a
-colon or whitespace — cuts a MAJOR today, not only a `BREAKING CHANGE:` footer.
-Which changes are MAJOR is decided by
-[ADR-0029](../decisions/0029-public-api-and-major-rule.md); a `type!:` marker or
-such a note is how that class reaches the computed version.
+With a blank squash body, the `!` in the PR title is the only marker that
+reaches the analyzer. The analyzer would also read a body line matching the
+`conventional-commits-parser` note pattern (`BREAKING CHANGE` or
+`BREAKING-CHANGE` in any letter case, followed by a colon or whitespace), which
+is why the body must stay empty. Which changes are MAJOR is decided by
+[ADR-0029](../decisions/0029-public-api-and-major-rule.md) §Classification.
 
 ## Plan and release — `.github/workflows/release.yml`
 
@@ -112,39 +112,12 @@ Triggered on every push to `main` (concurrency group `release-main`,
 - Greps the log for "the next release version is X.Y.Z" and emits
   `will-release` / `next-version` outputs plus a `# Release plan` job summary
   showing the next version (or "No release").
-- **MAJOR-bump guard** (blocking, `if: will-release == 'true'`): when a
-  published base-surface path changed since the last tag but the computed bump
-  is not MAJOR, the step **fails** — blocking `release` (which is
-  `needs: plan`). The logic lives in `scripts/release-major-bump-guard.sh`; the
-  guarded set and its membership rule live in `.ci-release-guard-pathspec.txt`,
-  which is the single source — this document deliberately does not restate the
-  list. Deliberate carve-outs are in `.ci-release-guard-exempt.txt`, one reason
-  per entry. Gated on `will-release`, so a non-releasing push (docs/chore) never
-  fails it; the job summary above is unconditional, so a surface change parked on
-  `main` without a release is visible there.
-  **Override:** a maintainer who has confirmed the change is genuinely
-  non-breaking adds an `Allow-Non-Major: <reason>` trailer to the **body** of the
-  merge commit. Four properties make it an attestation rather than a string: it
-  is read from the body only; it is honoured only on a merge commit (≥2 parents,
-  so a re-enabled squash or rebase merge makes the guard fail closed); it needs
-  maintainer prose above it, so a body that is only the trailer — which is what
-  a PR-title-derived merge body is — is refused; and a placeholder reason is
-  refused. Additive, backward-compatible edits to a guarded
-  path (a new optional schema field, a new default value) are the expected
-  override case — the guard flags any change to the path, not only breaking ones.
-  The set is the high-signal subset a dropped `type!:` marker most often slips
-  through — it is **not** exhaustive (tofu module interfaces and machine-config
-  patches are out of the mechanical net; reviewer judgment covers those).
-  `task supply-chain:check-release-guard` is the binding: a required `docs-lint`
-  step that fails if a published tarball member is neither guarded nor
-  exempt-with-reason, or if the guard stops biting.
 - The job runs with `GITHUB_TOKEN`, which cannot push to protected `main` nor
   trigger downstream workflows — so this ungated job cannot cut a real release.
 
 ### Job `release` (unattended)
 
-Runs whenever `will-release == 'true'` and `plan` (incl. the guard) passed — no
-approval step. It mints a GitHub App token (`vars.RELEASE_APP_ID` +
+Runs whenever `will-release == 'true'` and `plan` passed — no approval step. It mints a GitHub App token (`vars.RELEASE_APP_ID` +
 `secrets.RELEASE_APP_PRIVATE_KEY`), checks out with `persist-credentials:
 false`, and runs the real `npx semantic-release` with the App token. The App
 token matters: tags pushed with the default `GITHUB_TOKEN` do not trigger other
@@ -157,88 +130,26 @@ tracked as a follow-up).
 
 ## When the release is blocked
 
-**This section is the authoritative copy of the recovery procedure.** The PR
-template, the guard's own `::error::` output and the `release-guard-advisory` job
-all point here.
+**This section is the authoritative copy of the recovery procedure.** The
+tracking issue `notify` opens points here.
 
-Three facts make the recovery non-obvious:
+The release no longer blocks on content. It fails only when `plan` or
+`release` fails: the dry-run errors (npm, registry, a missing tag), or the
+`release` job computes a different version than `plan` did — it refuses to ship
+a version nobody saw planned. Read the run log, fix the cause, and re-run the
+workflow or push the next merge.
 
-1. **Re-running the failed workflow can never help.** The guard reads the
-   attestation from `git log -1` — the tip commit. A re-run inspects the same
-   tip.
-2. **The trailer has to land on a NEW tip commit**, and `main` is protected, so
-   that means another pull request — not a push.
-3. **A merge without `--body` cannot carry it.** `merge_commit_message` is
-   `BLANK`, so the merge button in the GitHub UI and `gh pr merge --merge` with
-   no `--body` both leave the body empty. `AGENTS.md §Issue-Interface` declares
-   the `--subject`/`--body` form for this reason.
+### When a release carries the wrong class
 
-The procedure:
+A mis-titled PR ships at once, and a published release is immutable. Do not
+edit the merged PR's title: the subject on `main` is what counted. Follow
+ADR-0029 §Planned: cutover and reverts:
 
-```bash
-# 1. read what is actually blocking — the run log lists it, or locally:
-./scripts/release-major-bump-guard.sh --advisory
-
-# 2. decide. If any listed change IS breaking, do not attest: land a commit
-#    carrying a `BREAKING CHANGE:` footer or a `type!:` marker and let the
-#    release go MAJOR.
-
-# 3. if every listed change is genuinely non-breaking, merge the next PR with an
-#    attestation in the BODY:
-gh pr merge <N> --merge \
-  --subject "fix(scope): what the PR does" \
-  --body $'why this is not breaking\n\nAllow-Non-Major: the only guarded change since v9.1.0 is an additive optional key in schemas/cluster.schema.json; nothing that validated before stops validating'
-```
-
-The reason is not decoration. A placeholder (`<reason>`, `TODO`, `FIXME`, a bare
-`reason`, or anything under 12 characters) is refused, because the example above
-is published in three places and a copy-paste must not attest anything.
-
-**The attestation covers every guarded path changed since the last tag**, not
-only the ones the merged PR touched. The guard prints that full set before its
-verdict, in the run log and the job summary, precisely so the scope is visible at
-the moment it is used.
-
-**An attestation does not survive a later push.** It is read from the tip commit
-only, so an ordinary merge after an attested one re-arms the block for the same,
-already-attested change. The guard notices a prior attestation in the range and
-says so, but does not honour it — re-attest on the new tip.
-
-**Recovery latency is bounded by the required checks**, not by the guard: the
-recovery PR clears `validate`, `Secret Scan (gitleaks)`, `docs-lint`,
-`Hard Constraints` and `lint-pr-title` like any other.
-
-If the block is not what you expected — a path you believe should not be guarded
-at all — the supported route is to **move** it into
-`.ci-release-guard-exempt.txt` with a reason, not to delete it from the pathspec.
-`scripts/check-release-guard-coverage.sh` prints the exact five-file edit
-sequence when it refuses.
-
-### When the guard errors (exit 2)
-
-A `guard error` verdict is a different situation from `guard blocked`, and the
-attestation route above **cannot** clear it — the guard exits before the trailer
-is read. The causes are enumerated in
-[ADR-0020 §Amendment](../decisions/0020-automated-release-no-approval-gate.md);
-each is an environment fault, not a judgement call: tags not fetched, a shallow
-checkout, an unresolvable tag, a `NEXT` that is missing or below the highest
-stable tag, a pathspec entry that matches nothing at the base (a guarded
-directory renamed in an earlier release), or a malformed data file. Fix the
-cause; there is nothing to attest.
-
-### Break glass — the guard itself is broken
-
-If the guard errors on every push and the cause cannot be fixed quickly, note
-that removing it is deliberately not a one-file edit:
-`scripts/check-release-guard-coverage.sh` fails when `release.yml` stops
-invoking the guard, and it runs in the **required** `docs-lint` context — so a
-naive revert PR is un-mergeable. The supported emergency revert touches, in one
-PR: the guard step in `.github/workflows/release.yml`, the invocation assertion
-in `scripts/check-release-guard-coverage.sh`, the
-`supply-chain:check-release-guard` step in `.github/workflows/docs-lint.yml`, and
-its Taskfile target. That PR still clears the required checks. The alternative,
-for a repo admin, is an admin merge of the minimal revert; prefer the four-file
-PR, because the admin path leaves no record of what was disabled.
+- **A break shipped as MINOR or PATCH:** restore compatibility with a
+  `fix(<scope>): revert "<subject>"` PR, then re-land the change under a `!`
+  title with an `UPGRADING.md` note.
+- **A MAJOR that breaks nothing, or a missed MINOR or PATCH:** nothing to undo;
+  record the misclassification in the next release's `CHANGELOG.md` entry.
 
 ## CHANGELOG contract
 
@@ -472,11 +383,12 @@ as unbounded rather than as the sub-second one that happened to be observed.
 
 ## End-to-end summary
 
-1. Author commits per conventional-commit rules; PR title linted by
-   `lint-pr-title`. CHANGELOG `[Unreleased]` is cut by hand in the same PR.
-2. Merge to `main` → `plan` computes the next version into the job summary and
-   runs the blocking MAJOR-bump guard.
-3. Guard passes → `release` runs unattended (no approval) → semantic-release
+1. The PR title carries the release class (ADR-0029 §Classification) and is
+   linted by `lint-pr-title`; the reviewer checks the class. CHANGELOG
+   `[Unreleased]` is cut by hand in the same PR.
+2. Squash merge to `main` → `plan` computes the next version from the PR
+   titles in the range into the job summary.
+3. `release` runs unattended (no approval) → semantic-release
    tags `v<version>`. It creates no Release object and does not commit back to
    `main`.
 4. Tag push (App token) → `oci-publish.yml` builds the allowlisted tarball,

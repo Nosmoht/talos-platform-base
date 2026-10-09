@@ -42,9 +42,9 @@ These run automatically; PR is blocked until all are green.
 - [ ] `gitops-validate` — full render + lint + policy pipeline
 - [ ] `hard-constraints-check` — no `Ingress`, no `Endpoints`, no SecureBoot installer, no `debugfs=off`
 - [ ] `secret-scan` (gitleaks) — last backstop on bypassed pre-commit
-- [ ] `docs-lint` — markdownlint + OKF bundle validation + offline link gate + AGENTS.md managed-block drift + the release-guard coverage/bite checks
-- [ ] `lint-pr-title` — Conventional-Commit PR title; it becomes the merge
-      subject, which `release.yml` reads
+- [ ] `docs-lint` — markdownlint + OKF bundle validation + offline link gate + AGENTS.md managed-block drift + the release-step bite check
+- [ ] `lint-pr-title` — Conventional-Commit PR title; it becomes the squash
+      subject, the only input to the version bump
 
 Account policy (branch protection, Actions allowlist, release immutability,
 merge methods) is not checked here: the default token cannot read any of it, so
@@ -54,8 +54,7 @@ Check 1 is the source of truth for the required set — this list is a
 convenience copy.
 
 Not merge-blocking, but run on every PR and worth reading:
-`hardware-features-check`, `OCI Allowlist Check`, `tofu-validate`,
-`release-guard-advisory` (see below).
+`hardware-features-check`, `OCI Allowlist Check`, `tofu-validate`.
 
 ## Documentation
 
@@ -84,12 +83,8 @@ Skip this section only if the PR changes none of the items listed above.
 - [ ] Commit messages follow Conventional Commits with scoped types
 - [ ] Each commit body explains the **why**, not just the what
 - [ ] No literal secrets, tokens, or internal RFC1918 IPs in any committed file
-- [ ] **If the `release-guard-advisory` job lists any guarded path**: this merge
-      blocks the next release unless the computed bump is MAJOR. To let it
-      through, merge with an attestation in the commit BODY —
-      `gh pr merge <N> --merge --subject "<conventional subject>" --body $'<why>\n\nAllow-Non-Major: <reason>'`.
-      The attestation clears **every** guarded path changed since the last tag,
-      not only this PR's, and a placeholder reason is refused. Full procedure:
-      [`knowledge/workflows/release-process.md`](../knowledge/workflows/release-process.md)
-      §When the release is blocked — the authoritative copy.
+- [ ] The PR title's class matches
+      [ADR-0029 §Classification](../knowledge/decisions/0029-public-api-and-major-rule.md#classification)
+      (`!` for MAJOR). It is the only input to the version bump; merge with
+      `--subject "<checked title> (#N)" --body ""` (`AGENTS.md §Issue-Interface`).
 - [ ] No `git commit --no-verify` or hook-skipping artifacts

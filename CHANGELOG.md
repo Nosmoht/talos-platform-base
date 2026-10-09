@@ -7,6 +7,11 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Pending release
 
+- **Changed — the PR title alone sets the version.** Pull requests are
+  squash-merged with the title as subject and an empty body, so a branch-commit
+  footer no longer affects the release. The path-based MAJOR-bump guard and its
+  `Allow-Non-Major:` attestation are removed; the reviewer checks the title's
+  class against ADR-0029 §Classification. No consumer action.
 - **Changed — the `siderolabs/talos` constraint is a range.** The module
   constrains the provider to `>= 0.12.0, < 0.13.0-0` instead of the exact
   `0.12.0`, as ADR-0029 §Provider constraints requires, so a later 0.12.x
