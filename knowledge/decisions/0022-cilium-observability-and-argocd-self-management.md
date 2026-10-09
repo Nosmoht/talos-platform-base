@@ -804,6 +804,11 @@ design** (it calls the live Image Factory, and an upstream outage must not block
 every `tofu/**` merge), so `task tofu:ci` does not carry it and the gate has no
 blocking consumer.
 
+> [2026-10-09 clarification] The suite no longer calls the Image Factory: its
+> extension lookup is overridden in the tests, and the live check moved to
+> `.github/workflows/image-factory-live.yml`. The job stays advisory because it
+> still pulls the argo-cd and cilium charts, so the conclusion above holds.
+
 `scripts/check-cilium-operator-replicas-key.sh` is the blocking layer, wired as
 `task tofu:check:cilium-operator-replicas-key` inside `tofu:ci` — the same
 static-offline-fence pattern `tofu:check:argocd-day0-apply-shape` established for

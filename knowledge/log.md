@@ -2,6 +2,14 @@
 
 ## 2026-10-09
 
+- `architecture/capability-composition.md`: describe the composition suite's
+  Image Factory override and add the live Factory catalog suite.
+- `reference/tasks.md`: describe `tofu:test` without the Image Factory and add the
+  `tofu:test:image-factory` row.
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: append a
+  clarification that the composition suite no longer calls the Image Factory.
+- `decisions/0010-composition-logic-placement.md`: append the same
+  clarification to the offline-testability consequence.
 - `workflows/release-process.md`: describe squash-only merges with the PR title
   as the only bump source; drop the MAJOR-bump guard, its override and its
   recovery procedure; add recovery for a release carrying the wrong class.

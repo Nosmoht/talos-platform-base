@@ -58,6 +58,10 @@ that swap. And HCL is a *poor host* for this work:
   networked job (added in PR #135). Pulling the pure resolution logic into a
   general-purpose language would make it testable with ordinary offline unit tests.
 
+  > [2026-10-09 clarification] The suite no longer needs the Image Factory: its
+  > extension lookup is overridden in the tests. It still stays out of
+  > `task tofu:ci` because the seed renders pull Helm charts.
+
 ## Considered Options
 
 1. **Status quo — keep resolution in HCL** (the shape PR #135 ships).

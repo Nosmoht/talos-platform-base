@@ -1,10 +1,11 @@
 # Composition regression suite (ADR base:node-capability-composition).
 #
 # Proves the γ' composition + its hard-error invariants. command = plan (no
-# apply). The valid run resolves the live Image Factory (network) for schematic
-# dedup; the expect_failures runs lock in each guard (red-green: revert the guard
-# and the matching run stops failing). NETWORK REQUIRED — run via `task tofu:test`,
-# NOT part of the offline `task tofu:ci`.
+# apply). The valid run proves schematic dedup; the expect_failures runs lock in
+# each guard (red-green: revert the guard and the matching run stops failing).
+# NETWORK REQUIRED for the Helm chart repositories the seed renders pull from —
+# run via `task tofu:test`, NOT part of the offline `task tofu:ci`. The Image
+# Factory is NOT contacted: see the override_data block below.
 #
 # The module-param / sysctl / kernel-arg conflict guards are exercised in the
 # sibling conflict-guards.tftest.hcl via a synthetic colliding catalog fixture
@@ -14,6 +15,24 @@
 
 provider "talos" {}
 provider "helm" {}
+
+# Stands in for factory.talos.dev, so a Factory outage cannot fail this suite.
+# Every schematic receives the whole list, and the provider matches filter names
+# by substring, so the list carries a superstring of a requested name: both keep
+# the exact-name filter in image-factory.tf load-bearing. The upstream check is
+# tests/live/image-factory.tftest.hcl.
+override_data {
+  target = data.talos_image_factory_extensions_versions.per_schematic
+  values = {
+    extensions_info = [
+      for name in [
+        "siderolabs/drbd",
+        "siderolabs/drbd-superstring",
+        "siderolabs/intel-ucode",
+      ] : { name = name, ref = "", digest = "", author = "", description = "" }
+    ]
+  }
+}
 
 variables {
   cluster_name       = "test"
@@ -60,12 +79,16 @@ run "valid_dedup_and_determinism" {
     condition     = output.node_schematic_hashes["cp-1"] != output.node_schematic_hashes["w-1"]
     error_message = "storage-only and storage+virt nodes must NOT share a schematic (virt adds IOMMU kernel args)"
   }
+  assert {
+    condition     = yamldecode(talos_image_factory_schematic.this[output.node_schematic_hashes["w-1"]].schematic).customization.systemExtensions.officialExtensions == ["siderolabs/drbd", "siderolabs/intel-ucode"]
+    error_message = "node-image-composition §'Substring expansion cannot bake unrequested extensions': w-1's schematic must bake exactly its declared extensions; got ${jsonencode(yamldecode(talos_image_factory_schematic.this[output.node_schematic_hashes["w-1"]].schematic).customization.systemExtensions.officialExtensions)}"
+  }
 }
 
 # Issue #169 (AC1) — a node whose image sets extra_kernel_args: the rendered
 # schematic's customization.extraKernelArgs contains those args UNIONED with
-# the node's resolved profile kargs. Needs the network (unlike AC2/AC6 in
-# tests/image-kernel-args.tftest.hcl): the assert reads the actual rendered
+# the node's resolved profile kargs. Unlike AC2/AC6 in
+# tests/image-kernel-args.tftest.hcl, the assert reads the actual rendered
 # talos_image_factory_schematic resource, not just the plan-time hash.
 # Red-green: drop the image leg from node_effective.kernel_args's concat
 # (composition.tf) and this assert fails — extraKernelArgs lacks
@@ -147,6 +170,40 @@ run "variant_mismatch" {
   expect_failures = [terraform_data.composition_guards]
 }
 
+# An extension name the Factory does not list must fail the plan instead of
+# silently dropping out of the schematic.
+run "unresolved_extension_fails_the_plan" {
+  command = plan
+  variables {
+    images = {
+      intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucod"] }
+    }
+    nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] } }
+  }
+  expect_failures = [talos_image_factory_schematic.this]
+}
+
+# One declared name resolving twice must not stand in for another that is missing.
+run "duplicate_resolution_fails_the_plan" {
+  command = plan
+  override_data {
+    target = data.talos_image_factory_extensions_versions.per_schematic
+    values = {
+      extensions_info = [
+        for name in ["siderolabs/intel-ucode", "siderolabs/intel-ucode"] :
+        { name = name, ref = "", digest = "", author = "", description = "" }
+      ]
+    }
+  }
+  variables {
+    images = {
+      intel = { architecture = "amd64", cpu_vendor = "intel", extensions = ["siderolabs/intel-ucode", "siderolabs/drbd"] }
+    }
+    nodes = { cp-1 = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = [] } }
+  }
+  expect_failures = [talos_image_factory_schematic.this]
+}
+
 # Undefined image reference.
 run "undefined_image" {
   command = plan
@@ -214,7 +271,7 @@ run "argocd_namespace_seed_carries_psa_floor_and_recommended_labels" {
 # machine-config.tf exposes through outputs). Red-green: drop [local.base_kubelet_rotation_patch]
 # from a role's concat in machine-config.tf and that role's rotation assert fails; drop
 # local.cert_approver_controlplane_patch from the controlplane concat and
-# cert_approver_seeded fails. NETWORK (Image Factory) like the other plan runs.
+# cert_approver_seeded fails.
 run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
   command = plan
   variables {
@@ -351,7 +408,7 @@ run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
 # leader-election + the leases RBAC; provider_* flow through as env; a
 # metacharacter-bearing regex (colon) still renders a parseable manifest (the
 # jsonencode escaping guard). Red-green: revert the templatefile wiring and these
-# flip. NETWORK (Image Factory) like the other plan runs.
+# flip.
 run "cert_approver_ha_and_config_override" {
   command = plan
   variables {
@@ -737,7 +794,7 @@ run "cilium_seed_config_surface_is_pinned" {
 # only at its input. This is the Cilium mirror of that binding.
 #
 # CI CAVEAT, stated because it changes what these runs are worth: this suite is
-# NETWORK-dependent (live Image Factory) and its CI job is ADVISORY by design —
+# NETWORK-dependent (seed Helm charts) and its CI job is ADVISORY by design —
 # `task tofu:ci` does not carry it. `scripts/check-cilium-operator-replicas-key.sh`
 # (task tofu:check:cilium-operator-replicas-key, inside tofu:ci) is the BLOCKING
 # layer for the key spelling, following the tofu:check:argocd-day0-apply-shape
@@ -859,36 +916,5 @@ run "cilium_seed_render_carries_the_typed_api_server_endpoint" {
       ] if try(yamldecode(doc).kind, "") == "DaemonSet"
     ]))
     error_message = "cilium-cni-delivery render-layer rule: cilium_k8s_service_port must reach the rendered agent DaemonSet as KUBERNETES_SERVICE_PORT — the string shape the module emits is the shape the chart consumes"
-  }
-}
-
-# Resolve all catalog extension families plus both example architectures at the
-# supported native version. Legacy runs above remain regression coverage.
-run "native_114_factory_catalog" {
-  command = plan
-  variables {
-    talos_version      = "v1.14.2"
-    kubernetes_version = "v1.37.1"
-    hardware_capabilities = {
-      all-profiles = {
-        requires_features     = ["drbd-kernel-module", "iommu-enabled"]
-        provisioning_profiles = ["drbd", "iommu", "nvidia-lts"]
-        emits_label           = "platform.io/hardware-capability.all-profiles"
-      }
-    }
-    nodes = {
-      cp  = { ip = "192.0.2.11", role = "controlplane", image = "intel", hardware_capabilities = ["all-profiles"] }
-      arm = { ip = "192.0.2.12", role = "worker", image = "arm", hardware_capabilities = [] }
-    }
-  }
-  assert {
-    condition = alltrue([for hash, extensions in local.official_extensions_by_schematic :
-      alltrue([for requested in local.schematics[hash].extensions : contains(extensions, requested)])
-    ])
-    error_message = "Every requested extension must resolve at Talos 1.14.2."
-  }
-  assert {
-    condition     = length(data.talos_image_factory_extensions_versions.per_schematic) == 2
-    error_message = "The native Factory check must cover amd64 and arm64."
   }
 }

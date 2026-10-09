@@ -405,7 +405,7 @@ overlay's job.
 
 Audit-shaped outputs. These exist as binding points for the composition
 regression suite (`tests/composition.tftest.hcl`, via `task tofu:test` —
-network-bound, not part of `task tofu:ci`); they are secret-free and safe to
+network-bound for the seed charts, not part of `task tofu:ci`); they are secret-free and safe to
 read. Full semantics live in each output's `description` in
 [`outputs.tf`](outputs.tf).
 

@@ -14,8 +14,8 @@
 # (synthetic catalog, real guards). It substitutes only versions.tf (no providers)
 # and outputs.tf (composition locals, no Image-Factory data sources), so these runs
 # are a pure plan over terraform_data — NO network, NO provider. That is what lets
-# them run in `tofu:ci`; composition.tftest.hcl cannot, it resolves the live
-# Image Factory.
+# them run in `tofu:ci`; composition.tftest.hcl cannot, it pulls the seed
+# Helm charts.
 #
 # BINDING CAVEAT (keep this binding intact): the binding holds only while
 # `local.node_effective` and `local.provisioning_profiles` stay in composition.tf

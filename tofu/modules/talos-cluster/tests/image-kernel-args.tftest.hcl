@@ -7,7 +7,7 @@
 # is a pure plan over terraform_data. OFFLINE: both fixtures symlink the real
 # composition.tf/variables.tf and declare no providers (real-catalog/versions.tf,
 # colliding-catalog/versions.tf), so this suite needs no network — unlike
-# tests/composition.tftest.hcl (AC1), which resolves the live Image Factory.
+# tests/composition.tftest.hcl (AC1), which plans the real provider-backed module.
 #
 # BINDING CAVEAT (same as conflict-guards.tftest.hcl): the red-green binding
 # holds only while the conflict-detection locals + node_effective stay IN

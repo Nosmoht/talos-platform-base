@@ -3,7 +3,7 @@ type: architecture
 title: Capability Composition
 description: How per-node hardware capabilities compose Layer-C atoms, the base-owned provisioning-profile catalog, deduplicated schematics, and node labels in the talos-cluster module.
 tags: [layer-c, hardware-capabilities, talos, opentofu]
-generated: { by: human:nosmoht, at: "2026-07-15T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-09T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
@@ -16,6 +16,7 @@ sources:
   - resource: scripts/check-provisioning-catalog-refs.sh
   - resource: tofu/modules/talos-cluster/tests/composition.tftest.hcl
   - resource: tofu/modules/talos-cluster/tests/conflict-guards.tftest.hcl
+  - resource: tofu/modules/talos-cluster/tests/live/image-factory.tftest.hcl
   - resource: .github/workflows/gitops-validate.yml
 ---
 
@@ -215,11 +216,21 @@ runs:
 ## Module tests
 
 - `tofu/modules/talos-cluster/tests/composition.tftest.hcl` — plan-only
-  regression suite (network: resolves the live Image Factory; run via
-  `task tofu:test`, not part of the offline `task tofu:ci`). Covers schematic
-  dedup and capability-order determinism, forward/inverse symmetry violations,
+  regression suite (network: pulls the seed Helm charts; run via
+  `task tofu:test`, not part of the offline `task tofu:ci`). An
+  `override_data` block stands in for the Image Factory's extension lookup, so
+  a Factory outage cannot fail it. Covers an extension name the Factory does
+  not list, or one resolving twice, failing the plan, the schematic baking
+  exactly the declared extensions, schematic dedup and capability-order
+  determinism, forward/inverse symmetry violations,
   the union-masking pair, variant mismatch, undefined image/capability, and
   rejection of a reserved `hardware-feature.*` `emits_label`.
+- `tofu/modules/talos-cluster/tests/live/image-factory.tftest.hcl` — the one
+  check against the live Image Factory: every catalog extension resolves at
+  Talos 1.13.9 and 1.14.2, and the run fails when a catalog profile is missing
+  from it. Run via `task tofu:test:image-factory` and the advisory
+  `image-factory-live.yml` workflow (weekly, and on PRs touching the catalog,
+  the composition, the Factory lookup, the provider lock or `Taskfile.yml`).
 - `tofu/modules/talos-cluster/tests/conflict-guards.tftest.hcl` — offline
   red-green binding for the module/sysctl/kernel-arg conflict guards, using a
   synthetic colliding catalog fixture that symlinks the real `composition.tf`

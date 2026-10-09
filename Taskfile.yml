@@ -205,9 +205,14 @@ tasks:
     cmd: scripts/check-shim-key-parity.sh
 
   tofu:test:
-    desc: "tofu test — node-capability composition regression suite (dedup/determinism + hard-error guards). NETWORK: resolves the live Image Factory, so it is NOT part of tofu:ci (which stays offline). Superset of tofu:test:offline."
+    desc: "tofu test — node-capability composition regression suite (dedup/determinism + hard-error guards). NETWORK: provider install plus the Helm charts the seeds render, so it is NOT part of tofu:ci (which stays offline). The Image Factory lookup is overridden in the tests. Superset of tofu:test:offline."
     cmd: |
       cd tofu/modules/talos-cluster && tofu init -input=false >/dev/null && tofu test
+
+  tofu:test:image-factory:
+    desc: "tofu test — checks every catalog extension name against the LIVE Talos Image Factory at the 1.13 and 1.14 lines. Not part of tofu:test or tofu:ci."
+    cmd: |
+      cd tofu/modules/talos-cluster && tofu init -input=false >/dev/null && tofu test -test-directory=tests/live
 
   tofu:test:offline:
     # The offline SUBSET of tofu:test, so tofu:ci can carry it. These suites
