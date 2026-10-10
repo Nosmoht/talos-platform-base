@@ -22,6 +22,7 @@ jobs:
 
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
+          version: 2026.10.3
           install_args: aqua:helm/helm aqua:kubernetes-sigs/kustomize aqua:open-policy-agent/conftest aqua:yannh/kubeconform aqua:mikefarah/yq aqua:BurntSushi/ripgrep
 
       - name: Verify rendered manifests are reproducible (drift gate)
@@ -143,6 +144,7 @@ jobs:
 
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
+          version: 2026.10.3
           install_args: aqua:mikefarah/yq aqua:go-task/task aqua:kubernetes-sigs/kustomize
 
       - name: Install check-jsonschema (for Layer-C schema lint)
@@ -254,6 +256,7 @@ jobs:
 
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
+          version: 2026.10.3
           install_args: aqua:gitleaks/gitleaks
 
       - name: Run gitleaks (full history)
@@ -271,6 +274,7 @@ jobs:
 
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
+          version: 2026.10.3
           install_args: aqua:mikefarah/yq
 
       - name: Verify OCI tarball allowlist matches expected fixture
@@ -308,6 +312,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
+          version: 2026.10.3
           install_args: aqua:koalaman/shellcheck
       - name: Run ShellCheck (-S warning) over all tracked shell scripts
         run: |

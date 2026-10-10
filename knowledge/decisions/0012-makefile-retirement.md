@@ -17,6 +17,12 @@ tags: [adr, tooling]
 
 # ADR: Retire the Makefile — go-task is the single runner
 
+> [2026-10-10 partial supersession] **Superseded in part by
+> [0030-mise-single-tool-version-source.md](./0030-mise-single-tool-version-source.md):
+> Decision Outcome §4 and the two devbox predicates in §Validation.**
+> `devbox.json` is deleted; tools come from `mise.toml`. The runner decision
+> stands.
+
 ## Context and Problem Statement
 
 ADR `base:task-runner-consolidation` (2026-06-07) decided **against** a

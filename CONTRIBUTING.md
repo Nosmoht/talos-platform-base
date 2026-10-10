@@ -55,9 +55,10 @@ Contributions that do NOT fit:
    [`mise.toml`](mise.toml), checksum-locked in `mise.lock`
    ([ADR-0030](knowledge/decisions/0030-mise-single-tool-version-source.md)).
    Install [mise](https://mise.jdx.dev), activate it in your shell, then run
-   `mise install`. Three things come from elsewhere: `envsubst` from GNU
-   gettext (`brew install gettext`; Ubuntu ships it), `python3` from the
-   system, and the npm tools via `task docs:install-cli spec:install-cli`.
+   `mise install`. The rest comes from elsewhere: `envsubst` from GNU gettext
+   (`brew install gettext`; Ubuntu ships it), `python3` from the system, the
+   npm tools via `task docs:install-cli spec:install-cli`, and
+   `check-jsonschema` via `uvx`.
 
 ## Issue → PR workflow
 

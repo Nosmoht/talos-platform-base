@@ -8,8 +8,10 @@
   record the partial supersession of ADR-0028 §(c).
 - `decisions/0028-consumer-free-helm-value-surface.md`: add a dated banner
   recording the partial supersession of §(c)'s pin file by ADR-0030.
+- `decisions/0012-makefile-retirement.md`: add a dated banner recording the
+  partial supersession of its devbox items by ADR-0030.
 - `decisions/index.md`: move ADR-0030 to Accepted and record the partial
-  supersession on both entries.
+  supersessions on the 0012, 0028 and 0030 entries.
 - `reference/tasks.md`: drop the `tofu:lint:yaml`, `knowledge:install-cli` and
   `dev:verify-tools` rows; describe `dev:verify-pins` as the lockfile provenance
   check only; state that binary tool versions live in `mise.toml`.

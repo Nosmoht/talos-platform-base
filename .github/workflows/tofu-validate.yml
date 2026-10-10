@@ -91,6 +91,7 @@ jobs:
 
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
+          version: 2026.10.3
           install_args: aqua:opentofu/opentofu aqua:terraform-linters/tflint aqua:go-task/task aqua:siderolabs/talos aqua:helm/helm aqua:mikefarah/yq aqua:jqlang/jq
 
       - name: task tofu:ci (fmt-check + validate + lint)
@@ -109,6 +110,7 @@ jobs:
 
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
+          version: 2026.10.3
           install_args: aqua:opentofu/opentofu aqua:go-task/task
 
       # NETWORK: `tofu test` renders the seed charts, so it is deliberately

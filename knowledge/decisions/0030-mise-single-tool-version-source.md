@@ -10,6 +10,7 @@ deciders:
 consulted: []
 informed: []
 supersedes:
+  - "/decisions/0012-makefile-retirement.md §Decision Outcome 4 and the devbox predicates of §Validation"
   - "/decisions/0028-consumer-free-helm-value-surface.md §(c) (.tool-versions as the payload file carrying the render pins)"
 superseded_by: []
 related:
@@ -261,6 +262,14 @@ Differences from the Decision Outcome:
   passes as an input file. `python3` stays the system interpreter; every script
   is stdlib-only.
 - Each CI job installs only the tools it runs (`install_args`).
+- `jdx/mise-action` is pinned by commit SHA and by `version: 2026.10.3` in
+  every step, as decided above.
+- `check-jsonschema` (Python) stays outside the manifest: CI pip-installs it
+  unpinned and the lint scripts fall back to an unpinned `uvx`. #301 pins it.
+- The change lands as a squash commit, so §Rollback's `git revert -m 1` reads
+  `git revert <sha>`: the merge-commit premise there predates squash-only merges.
+- ADR-0012's devbox predicates are superseded in part, as the follow-up above
+  required.
 
 Observed on PR #303, `ubuntu-latest` through `jdx/mise-action`: every job green,
 `node` 22.23.3 included; `verify-rendered.sh`, `tofu:fmt:check` and
