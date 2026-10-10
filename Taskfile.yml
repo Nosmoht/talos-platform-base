@@ -154,16 +154,6 @@ tasks:
     desc: "CI fence: every module variable/output appears in its (hand-maintained) README table"
     cmd: scripts/check-module-readme-parity.sh
 
-  tofu:lint:yaml:
-    desc: Optional yamllint + markdownlint over tofu/ (advisory)
-    cmd: |
-      if command -v yamllint >/dev/null 2>&1; then
-        yamllint -d relaxed tofu/ || true
-      else
-        echo "SKIP: optional yamllint is not installed"
-      fi
-      markdownlint 'tofu/**/*.md' || true
-
   tofu:check:render-determinism:
     desc: "CI fence: Cilium/ArgoCD/CRD helm renders must use frozen terraform_data (ignore_changes), not live data.helm_template"
     cmd: scripts/check-render-determinism.sh
