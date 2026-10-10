@@ -51,6 +51,14 @@ Contributions that do NOT fit:
    features, or the `tofu/modules/talos-cluster` interface.
 4. **Read the relevant decision records** in `knowledge/decisions/` (index:
    [`knowledge/decisions/index.md`](knowledge/decisions/index.md)).
+5. **Install the toolchain.** Every binary tool version lives in
+   [`mise.toml`](mise.toml), checksum-locked in `mise.lock`
+   ([ADR-0030](knowledge/decisions/0030-mise-single-tool-version-source.md)).
+   Install [mise](https://mise.jdx.dev), activate it in your shell, then run
+   `mise install`. The rest comes from elsewhere: `envsubst` from GNU gettext
+   (`brew install gettext`; Ubuntu ships it), `python3` from the system, the
+   npm tools via `task docs:install-cli spec:install-cli`, and
+   `check-jsonschema` via `uvx`.
 
 ## Issue → PR workflow
 
@@ -113,7 +121,6 @@ the release tool reads commits is described in
 ```bash
 task gitops:validate             # kustomize + conftest + kubeconform
 task spec:validate               # when openspec/ or a spec's primary source changed
-task knowledge:install-cli       # once — the bundle gates refuse an unpinned CLI
 task knowledge:validate          # when knowledge/ changed — docs-lint blocks on it
 task knowledge:rules-check       # when knowledge/rules/ changed
 task spec:check-staleness        # primary-source diff must touch the owning spec

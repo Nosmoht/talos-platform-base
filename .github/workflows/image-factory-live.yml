@@ -20,6 +20,8 @@ on:
       - 'tofu/modules/talos-cluster/tests/live/**'
       - '.github/workflows/image-factory-live.yml'
       - 'Taskfile.yml'
+      - 'mise.toml'
+      - 'mise.lock'
 
 permissions:
   contents: read
@@ -32,17 +34,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install OpenTofu
-        uses: opentofu/setup-opentofu@v1
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
         with:
-          tofu_version: '1.12.1'
-          tofu_wrapper: false
-
-      - name: Install go-task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.53.1  # KEEP IN SYNC with the task pin in .tool-versions
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          version: 2026.10.3
+          install_args: aqua:opentofu/opentofu aqua:go-task/task
 
       - name: task tofu:test:image-factory
         run: task tofu:test:image-factory

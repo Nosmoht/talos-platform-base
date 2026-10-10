@@ -2,14 +2,16 @@
 type: decision
 title: "ADR: mise is the single committed source of every binary tool version"
 description: "Replaces .tool-versions, devbox.json and the per-workflow env/with version pins with one mise.toml plus a checksum lockfile that jdx/mise-action reads unchanged in CI; npm-distributed Node tooling stays in package-lock.json because mise's --locked enforcement exempts the npm backend."
-status: draft
+status: stable
 id: base:mise-single-tool-version-source
 decided: "2026-09-06T00:00:00Z"
 deciders:
   - maintainer
 consulted: []
 informed: []
-supersedes: []
+supersedes:
+  - "/decisions/0012-makefile-retirement.md §Decision Outcome 4 and the devbox predicates of §Validation"
+  - "/decisions/0028-consumer-free-helm-value-surface.md §(c) (.tool-versions as the payload file carrying the render pins)"
 superseded_by: []
 related:
   - /decisions/0012-makefile-retirement.md
@@ -236,6 +238,52 @@ implementation detail: the per-job install-cost budget is this decision's stated
 falsification condition. Marking the ADR `stable` while it is unmeasured would
 assert more than has been observed, which is the failure this section exists to
 prevent.
+
+## Amendment (2026-10-10): implemented in reduced scope, cost criterion replaced
+
+The implementation (#259) shipped a reduced scope by maintainer decision.
+`mise.toml` + `mise.lock` (`locked = true`) are the single source for every
+binary tool the repository installs in its PR workflows and for contributors;
+`.tool-versions`, `devbox.json`/`devbox.lock`, `scripts/verify-tools.sh`,
+`dev:verify-tools`, `knowledge:install-cli` and the Taskfile version and
+checksum vars are deleted.
+
+Differences from the Decision Outcome:
+
+- The release workflows (`oci-publish.yml`: oras, cosign, syft; `release.yml`:
+  node) keep their own installers and move in #304. The cosign pin is
+  declared in the publish workflow, and the `oci-supply-chain` spec says so.
+- Not adopted: the `mise which` resolution assertion, the lock and
+  gitleaks-hook bite-checks, and the expected-set gates. `OK_GUARD` compares
+  `openknowledge` against the `mise.toml` pin instead.
+- Manifest set: `talosctl` and `ripgrep` join; `terraform-docs` (no caller) and
+  `oras`/`cosign` (release-only) stay out. `envsubst` stays GNU gettext:
+  `aqua:a8m/envsubst` treats the SHELL-FORMAT argument the bootstrap render
+  passes as an input file. `python3` stays the system interpreter; every script
+  is stdlib-only.
+- Each CI job installs only the tools it runs (`install_args`).
+- `jdx/mise-action` is pinned by commit SHA and by `version: 2026.10.3` in
+  every step, as decided above.
+- `check-jsonschema` (Python) stays outside the manifest: CI pip-installs it
+  unpinned and the lint scripts fall back to an unpinned `uvx`. #301 pins it.
+- The change lands as a squash commit, so §Rollback's `git revert -m 1` reads
+  `git revert <sha>`: the merge-commit premise there predates squash-only merges.
+- ADR-0012's devbox predicates are superseded in part, as the follow-up above
+  required.
+
+Observed on PR #303, `ubuntu-latest` through `jdx/mise-action`: every job green,
+`node` 22.23.3 included; `verify-rendered.sh`, `tofu:fmt:check` and
+`tofu:check:render-determinism` green, so the pinned versions reproduce the
+committed bytes.
+
+**The cost criterion in §Validation is replaced.** A per-job ratio cannot be
+met where the old install was near zero (a preinstalled `shellcheck`, a
+one-second `gitleaks` curl): mise itself is fetched first. Measured per job
+(mise-action step, PR run) against the replaced steps on `main`: validate
+15 s → 7 s, docs-lint ~10 s → 8 s, hardware-features-check 5 s → 7 s, vale
+→ 3 s, secret-scan ~1 s → 5 s, shellcheck 0 s → 5 s, oci-allowlist-check
+0 s → 4 s, tofu jobs 5–11 s. The decision is wrong if any job's mise-action
+step exceeds the steps it replaced by more than 10 seconds.
 
 ## Links
 

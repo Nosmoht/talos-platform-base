@@ -3,12 +3,12 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-generated: { by: human:nosmoht, at: "2026-10-09T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-10T00:00:00Z" }
 sources:
   - resource: Taskfile.yml
   - resource: Makefile
   - resource: package.json
-  - resource: devbox.json
+  - resource: mise.toml
 ---
 
 # Task Runner Surface
@@ -30,17 +30,12 @@ Conventions declared in `Taskfile.yml`:
   (`MCP_GITHUB_VERSION: 0.33.0`, `MCP_K8S_VERSION: 0.0.60`,
   `MCP_TALOS_VERSION: 1.1.0`). Unlike the pins below these are asserted
   against nothing, so the values are restated here.
-- Knowledge-bundle tool pins (`OPENKNOWLEDGE_VERSION`, `LYCHEE_VERSION`) plus
-  their per-platform sha256 checksums are Taskfile vars, kept in sync with
-  `.tool-versions` by `task dev:verify-pins`. The npm-distributed pins (`openspec`,
-  `markdownlint-cli`) live in `package.json` + `package-lock.json`
-  (integrity-hashed) instead of Taskfile vars.
-
-The default Devbox environment omits `terraform-docs`, `yamllint` and
-`markdownlint-cli`. Module README tables remain hand-maintained; the former
-`tofu:docs` task is retired. Install `yamllint` separately to opt into the
-advisory YAML check. Install the lockfile-pinned markdownlint with
-`task docs:install-cli`; npm is its only repository-managed installation path.
+- Binary tool versions are not Taskfile vars: they live in `mise.toml`,
+  checksum-locked in `mise.lock`, and `mise install` provides them
+  ([ADR-0030](../decisions/0030-mise-single-tool-version-source.md)). The
+  npm-distributed pins (`openspec`, `markdownlint-cli`) live in `package.json` +
+  `package-lock.json` (integrity-hashed); install them with
+  `task docs:install-cli spec:install-cli`.
 
 ## `tofu:*` — OpenTofu cluster-lifecycle module validation
 
@@ -51,7 +46,6 @@ advisory YAML check. Install the lockfile-pinned markdownlint with
 | `tofu:validate` | `tofu init -backend=false` + `tofu validate` per tofu dir (modules + examples). |
 | `tofu:lint` | `tflint --chdir=.` per tofu dir (modules + examples). |
 | `tofu:check:readme-parity` | CI fence: every `variables.tf` variable and `outputs.tf` output of a module appears in that module's hand-maintained README table (see the [ADR-0015 correction](../decisions/0015-openspec-adoption.md) for why those tables are hand-maintained). Scope limit: name-level parity in the `.tf` → README direction only — a README row for a deleted declaration, or stale prose on a surviving row, is not caught. Runs `scripts/check-module-readme-parity.sh`. |
-| `tofu:lint:yaml` | Optional yamllint (relaxed) + markdownlint over `tofu/` — advisory (`\|\| true`). Runs yamllint when installed; otherwise prints an explicit skip. |
 | `tofu:check:render-determinism` | CI fence: Cilium/ArgoCD/CRD helm renders must use frozen `terraform_data` (`ignore_changes`), not live `data.helm_template`. Runs `scripts/check-render-determinism.sh` over all top-level module `.tf` files. |
 | `tofu:check:kubeconfig-endpoint-regen` | CI fence: `talos_cluster_kubeconfig.this` keeps its `replace_triggered_by` wiring to the `terraform_data.kubeconfig_endpoint_marker` resource (whose `input` is `var.cluster_endpoint`), so a changed endpoint still forces kubeconfig regeneration (issue #186). Static, resource-scoped grep — no provider, no network. Runs `scripts/check-kubeconfig-endpoint-regen.sh`. |
 | `tofu:check:node-projection-wiring` | CI fence: the five Talos boundary arguments (`talos_client_configuration.{endpoints,nodes}`, `talos_cluster_health.{control_plane_nodes,worker_nodes,endpoints}`) stay bound to their intended `nodes.tf` projections, and `talos_machine_configuration_apply` keeps iterating `local.nodes_checked` so the duplicate-IP guard stays in the dependency chain (issue #204). The offline fixture omits provider resources, so no `tofu test` can see this wiring. Static, block-scoped, awk+POSIX-grep — no provider, no network, no GNU-grep dependency. Runs `scripts/check-node-projection-wiring.sh` over all top-level module `.tf` files. |
@@ -130,11 +124,10 @@ Details of the render → apply path (`bootstrap:render-root`, `bootstrap:check-
 
 | Task | Purpose |
 | --- | --- |
-| `knowledge:validate` | Validate the `knowledge/` OKF bundle. Three gates, each preceded by its own bite check so a silent detector cannot pass for a verdict: `scripts/check-bundle-policy.sh` asserts the four raised rules in `knowledge/.openknowledge.toml` are the policy actually in effect and that the config raises nothing the caller fails to demand; `scripts/check-knowledge-frontmatter.sh` asserts the six frontmatter invariants `openknowledge` provably does not check (its header enumerates them, `resource` paths and `decided` values among them); and `openknowledge validate --spec 0.2` enforces the OKF v0.2 field contract. `--spec` is pinned to `OKF_SPEC` rather than left at the CLI default of `latest`, so the gate's meaning is a property of this repo rather than of the installed binary. Finally an offline intra-repo link-resolution pass (`lychee --offline`) over the bundle, root Markdown files, `contracts/`, and the two `tofu/modules/talos-cluster` READMEs. Invoked directly by `docs-lint.yml`. Precondition: `openknowledge` must report exactly the pinned version — the target refuses to run otherwise (`task knowledge:install-cli`). |
+| `knowledge:validate` | Validate the `knowledge/` OKF bundle. Three gates, each preceded by its own bite check so a silent detector cannot pass for a verdict: `scripts/check-bundle-policy.sh` asserts the four raised rules in `knowledge/.openknowledge.toml` are the policy actually in effect and that the config raises nothing the caller fails to demand; `scripts/check-knowledge-frontmatter.sh` asserts the six frontmatter invariants `openknowledge` provably does not check (its header enumerates them, `resource` paths and `decided` values among them); and `openknowledge validate --spec 0.2` enforces the OKF v0.2 field contract. `--spec` is pinned to `OKF_SPEC` rather than left at the CLI default of `latest`, so the gate's meaning is a property of this repo rather than of the installed binary. Finally an offline intra-repo link-resolution pass (`lychee --offline`) over the bundle, root Markdown files, `contracts/`, and the two `tofu/modules/talos-cluster` READMEs. Invoked directly by `docs-lint.yml`. Precondition: `openknowledge` must report exactly the pinned version as `mise.toml` pins it — the target refuses to run otherwise (`mise install`). |
 | `knowledge:rules-apply` | Regenerate the Open Knowledge Maintenance block in `AGENTS.md` from `knowledge/rules/` via `openknowledge prompt rules apply`. The block is a managed region between `openknowledge:rules` markers; run this after changing a rule document rather than hand-editing `AGENTS.md`. |
 | `knowledge:rules-check` | Fail if the `AGENTS.md` managed block drifted from what `knowledge/rules/` currently renders — hand-edited, stale, or missing a configured rule. Asserts every rule in `OK_RULES` reached the block, so a rule that silently fails to render is caught rather than passing as a smaller-but-consistent block. Invoked by `docs-lint.yml`. |
 | `knowledge:new` | Scaffold a new concept file with the bundle's OKF v0.2 frontmatter (usage: `task knowledge:new FILE=reference/foo.md TYPE=reference`). `TYPE` is an enum and deliberately excludes `decision`: an ADR carries `decided` and neither `generated` nor `sources`, so copy `knowledge/decisions/template.md` instead. |
-| `knowledge:install-cli` | Download the pinned, checksum-verified `openknowledge` + `lychee` release binaries for the host platform into `~/.local/bin`. |
 
 ## `spec:*` — OpenSpec behavioral specs
 
@@ -144,7 +137,7 @@ bundle. See `knowledge/workflows/spec-driven-development.md`.
 
 | Task | Purpose |
 | --- | --- |
-| `spec:validate` | Strict `openspec validate` over `openspec/`, a bite-check (a committed malformed fixture must fail validation, run against a temp copy), the `spec_lib` parser self-test (`scripts/test/test_spec_lib.py`), the staleness-gate merge-attribution bite-check (`scripts/check-staleness-gate-bite.sh`: six scenarios over a throwaway fixture repo, controls first; skips loudly on git < 2.38), the source-ownership partition assert (`scripts/check-spec-partition.py`: exclusivity + completeness over the enumerated universe per ADR-0015), and an offline `lychee` pass. Run verbatim by `docs-lint.yml`. Precondition: `task spec:install-cli` + `task knowledge:install-cli` (lychee). |
+| `spec:validate` | Strict `openspec validate` over `openspec/`, a bite-check (a committed malformed fixture must fail validation, run against a temp copy), the `spec_lib` parser self-test (`scripts/test/test_spec_lib.py`), the staleness-gate merge-attribution bite-check (`scripts/check-staleness-gate-bite.sh`: six scenarios over a throwaway fixture repo, controls first; skips loudly on git < 2.38), the source-ownership partition assert (`scripts/check-spec-partition.py`: exclusivity + completeness over the enumerated universe per ADR-0015), and an offline `lychee` pass. Run verbatim by `docs-lint.yml`. Precondition: `task spec:install-cli` + `mise install` (lychee). |
 | `spec:install-cli` | Install the lockfile-pinned `openspec` CLI: shared `npm ci --ignore-scripts` (integrity-verified via `package-lock.json`) + `~/.local/bin` symlink. Precondition: `npm`. |
 | `spec:check-regen` | Regeneration parity: whole-tree delta after `openspec update --force` must be empty — the committed tool trees equal the pinned generator's output (parity only, not benignity). Run verbatim by `docs-lint.yml`. Overwrites uncommitted edits inside the generated trees. |
 | `spec:check-staleness` | Staleness gate: fail when the diff against `BASE` (default `origin/main`) touches a spec's `primary` source without touching the owning spec (`scripts/check-spec-staleness.py`; fragment-keyed sources fire at fragment granularity, fail-closed on unresolvable fragments). Escape for verified no-behavior-change diffs: `Spec-Impact: none` trailer in the BODY of every commit that CONTRIBUTED to the file — a base-sync merge does not count as one; attribution rule and its two failure directions: [spec-driven-development](../workflows/spec-driven-development.md). Run by `docs-lint.yml` on PRs. |
@@ -176,8 +169,7 @@ the pinned Taskfile vars above. See the MCP setup workflow
 | Task | Purpose |
 | --- | --- |
 | `dev:install-pre-commit` | `uvx pre-commit install` + one advisory run across the repo. |
-| `dev:verify-tools` | Confirm installed binaries match the `.tool-versions` pins (`scripts/verify-tools.sh`). |
-| `dev:verify-pins` | Assert the Taskfile `vars:` pins (openknowledge, lychee) and the `package.json` pins (openspec, markdownlint-cli) agree with `.tool-versions`, and that every `package-lock.json`-resolved package points at the official `registry.npmjs.org` (supply-chain provenance guard). Run verbatim by `docs-lint.yml`. |
+| `dev:verify-pins` | Assert that every `package-lock.json`-resolved package points at the official `registry.npmjs.org` (supply-chain provenance guard). Run verbatim by `docs-lint.yml`. |
 
 Deliberately absent from this table: `dev:npm-ci`, declared `internal: true` in `Taskfile.yml` and therefore hidden from `task --list` — the live inventory this page mirrors. It is the shared `npm ci --ignore-scripts` step that `docs:install-cli` and `spec:install-cli` both declare as a dependency (`deps: [dev:npm-ci]`). `Deliberately absent from this table:` is a fixed lead-in marker: the planned inventory-parity fence (issue #200) will read a table's exemption list from a note carrying this exact lead-in, naming the exempt tasks as the backticked task names that follow it in the same paragraph.
 
@@ -201,7 +193,6 @@ stderr and exits with code 2 — never runs a build. The printed mapping:
 | `make mcp-verify` | `task mcp:verify` |
 | `make mcp-uninstall` | `task mcp:uninstall` |
 | `make install-pre-commit` | `task dev:install-pre-commit` |
-| `make verify-tools` | `task dev:verify-tools` |
 
 Removed with no replacement: `make chart-pull` and
 `make grafana-dashboards-check`. Rationale and the supersession chain live in

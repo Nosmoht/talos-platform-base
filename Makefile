@@ -28,7 +28,6 @@ define RETIRED_MSG
    make mcp-verify           ->  task mcp:verify
    make mcp-uninstall        ->  task mcp:uninstall
    make install-pre-commit   ->  task dev:install-pre-commit
-   make verify-tools         ->  task dev:verify-tools
 
  Removed (no replacement): make chart-pull, make grafana-dashboards-check.
  See knowledge/decisions/0012-makefile-retirement.md.

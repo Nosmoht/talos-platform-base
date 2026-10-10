@@ -23,6 +23,12 @@ tags: [adr, cilium, argocd, helm, consumer-interface]
 
 # ADR: The consumer's Helm value surface is free-form and reaches every lifecycle phase
 
+> [2026-10-10 partial supersession] **Superseded in part by
+> [0030-mise-single-tool-version-source.md](./0030-mise-single-tool-version-source.md):
+> the file §(c) names for the render's determinism pins.** `.tool-versions` no
+> longer exists; the pins live in `mise.toml` and `mise.lock`. Which of them the
+> payload ships is settled when §(c) is implemented. The rest of §(c) stands.
+
 ## Context and Problem Statement
 
 Consumers report that they cannot set all the Helm values they need for the two

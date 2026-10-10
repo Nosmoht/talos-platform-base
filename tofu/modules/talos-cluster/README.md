@@ -547,7 +547,7 @@ inlineManifest budget (the app render is ~109 KB). So the module applies the
 CRDs via `kubectl apply --server-side` (a `null_resource`, gated on the health
 check) using the module's kubeconfig; server-side apply also avoids the >262 KB
 client-side last-applied-config annotation limit the ApplicationSet CRD trips.
-**This needs `kubectl` on the apply host** (a workstation has it via devbox; a
+**This needs `kubectl` on the apply host** (install it on a workstation; a
 Crossplane provider-terraform runner must ship it). The ArgoCD app (in the
 inlineManifest) crash-loops for the few seconds until the CRDs land, then
 recovers.

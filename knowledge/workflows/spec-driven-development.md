@@ -3,7 +3,7 @@ type: workflow
 title: "Spec-Driven Development (OpenSpec)"
 description: "How behavioral requirements are maintained in the OpenSpec surface — the change lifecycle, the scope demarcation against knowledge/, and the pinned-tool upgrade procedure."
 tags: [workflow, openspec, spec-driven-development]
-generated: { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-10T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-23T00:00:00Z" }
 sources:
@@ -114,17 +114,15 @@ implement.
 
 ## Tool pin and upgrades
 
-The CLI is npm-distributed and pinned (`.tool-versions` is the SoT; the
-committed `package.json` + `package-lock.json` carry the installable
-copy with integrity hashes — `task dev:verify-pins` asserts the pair,
-locally and in CI). Install: `task spec:install-cli` (`npm ci
+The CLI is npm-distributed and pinned in the committed `package.json` +
+`package-lock.json`, with integrity hashes; `task dev:verify-pins` asserts
+that every resolved URL is on the npm registry, locally and in CI. Install: `task spec:install-cli` (`npm ci
 --ignore-scripts` against the lockfile, then a `~/.local/bin` symlink —
 the lockfile's integrity hashes are the supply-chain control;
 `--ignore-scripts` additionally disables lifecycle scripts). Upgrading:
 
-1. Bump the pin in `.tool-versions` and `package.json` together, then
-   refresh the lockfile via `npm install --package-lock-only
-   --ignore-scripts` (`dev:verify-pins` fails on a partial bump).
+1. Bump the pin in `package.json`, then refresh the lockfile via
+   `npm install --package-lock-only --ignore-scripts`.
 2. `task spec:install-cli`, then `task spec:update` — regenerates the
    committed Claude/Codex integration trees and fails if the regeneration
    emitted paths the `.gitignore` negation list does not cover.
