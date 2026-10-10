@@ -2,6 +2,14 @@
 
 ## 2026-10-10
 
+- `decisions/0030-mise-single-tool-version-source.md`: accepted; append
+  §Amendment (2026-10-10) recording the reduced implementation scope, the
+  observed CI runs, and the per-job cost criterion that replaces the ratio;
+  record the partial supersession of ADR-0028 §(c).
+- `decisions/0028-consumer-free-helm-value-surface.md`: add a dated banner
+  recording the partial supersession of §(c)'s pin file by ADR-0030.
+- `decisions/index.md`: move ADR-0030 to Accepted and record the partial
+  supersession on both entries.
 - `reference/tasks.md`: drop the `tofu:lint:yaml`, `knowledge:install-cli` and
   `dev:verify-tools` rows; describe `dev:verify-pins` as the lockfile provenance
   check only; state that binary tool versions live in `mise.toml`.
