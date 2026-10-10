@@ -2,7 +2,7 @@
 
 ## 2026-10-10
 
-- `decisions/0028-mise-single-tool-version-source.md`: new decision (proposed) —
+- `decisions/0030-mise-single-tool-version-source.md`: new decision (proposed) —
   `mise.toml` plus `mise.lock` become the sole committed source for every binary
   tool version, `.tool-versions` and `devbox.json` are deleted, CI installs via
   `jdx/mise-action`, the `gitleaks` pre-commit hook and `shellcheck` join the
