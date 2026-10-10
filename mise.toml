@@ -1,0 +1,30 @@
+# Single source of every binary tool version (ADR-0030). CI installs from this
+# file through jdx/mise-action; locally run `mise install`. Bump a version here,
+# then run `mise lock` and commit both files.
+#
+# Not here: envsubst (GNU gettext — the mise envsubst lacks the SHELL-FORMAT
+# argument Taskfile.yml passes), python3 (system; the scripts are stdlib-only),
+# the npm tools (package-lock.json), and the release-only tools in
+# oci-publish.yml / release.yml.
+
+[settings]
+locked = true
+
+[tools]
+"aqua:helm/helm" = "4.2.4"
+"aqua:kubernetes-sigs/kustomize" = "5.8.1"
+"aqua:open-policy-agent/conftest" = "0.69.0"
+"aqua:yannh/kubeconform" = "0.8.0"
+"aqua:mikefarah/yq" = "4.53.6"
+"aqua:opentofu/opentofu" = "1.12.1"
+"aqua:terraform-linters/tflint" = "0.61.0"
+"aqua:go-task/task" = "3.53.1"
+"aqua:siderolabs/talos" = "1.14.2"
+"aqua:gitleaks/gitleaks" = "8.24.3"
+"aqua:vale-cli/vale" = "3.14.2"
+"aqua:koalaman/shellcheck" = "0.11.0"
+"aqua:jqlang/jq" = "1.8.2"
+"aqua:BurntSushi/ripgrep" = "15.2.0"
+"aqua:lycheeverse/lychee" = "0.24.2"
+"github:openknowledge-sh/openknowledge" = "0.12.0"
+node = "22.23.3"

@@ -2,6 +2,14 @@
 
 ## 2026-10-10
 
+- `reference/tasks.md`: drop the `tofu:lint:yaml`, `knowledge:install-cli` and
+  `dev:verify-tools` rows; describe `dev:verify-pins` as the lockfile provenance
+  check only; state that binary tool versions live in `mise.toml`.
+- `reference/manifest-pipeline.md`: name `mise.toml`/`mise.lock` as the home of
+  the render determinism pins and drop the drift step from the `validate` row.
+- `workflows/spec-driven-development.md`: describe the openspec pin as
+  `package.json` + `package-lock.json` only.
+- `rules/talos-base-bundle.md`: the openknowledge pin lives in `mise.toml`.
 - `decisions/0030-mise-single-tool-version-source.md`: new decision (proposed) —
   `mise.toml` plus `mise.lock` become the sole committed source for every binary
   tool version, `.tool-versions` and `devbox.json` are deleted, CI installs via

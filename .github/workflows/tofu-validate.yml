@@ -12,6 +12,8 @@ on:
     paths:
       - 'tofu/**'
       - 'Taskfile.yml'
+      - 'mise.toml'
+      - 'mise.lock'
       - '.github/workflows/tofu-validate.yml'
       - '.ci-oci-tarball-include.txt'
       - '.ci-oci-tarball-expected.txt'
@@ -46,6 +48,8 @@ on:
     paths:
       - 'tofu/**'
       - 'Taskfile.yml'
+      - 'mise.toml'
+      - 'mise.lock'
       - '.github/workflows/tofu-validate.yml'
       - '.ci-oci-tarball-include.txt'
       - '.ci-oci-tarball-expected.txt'
@@ -85,33 +89,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: '1.12.1'
-          tofu_wrapper: false
-
-      - name: Install tflint
-        uses: terraform-linters/setup-tflint@v4
-        with:
-          # Pinned to the devbox-locked version (devbox.lock) so CI and local
-          # `task tofu:ci` use the same tflint; an unrelated ruleset bump can't turn CI red.
-          tflint_version: v0.61.0
-
-      - name: Install go-task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.53.1  # KEEP IN SYNC with the task pin in .tool-versions
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Talos config validator
-        run: |
-          version=$(awk '$1 == "talosctl" { print $2 }' .tool-versions)
-          curl -fsSLO "https://github.com/siderolabs/talos/releases/download/v${version}/talosctl-linux-amd64"
-          curl -fsSLO "https://github.com/siderolabs/talos/releases/download/v${version}/sha256sum.txt"
-          grep ' talosctl-linux-amd64$' sha256sum.txt | sha256sum --check --strict
-          sudo install -m 0755 talosctl-linux-amd64 /usr/local/bin/talosctl
-          rm talosctl-linux-amd64 sha256sum.txt
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
 
       - name: task tofu:ci (fmt-check + validate + lint)
         run: task tofu:ci
@@ -127,17 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: '1.12.1'
-          tofu_wrapper: false
-
-      - name: Install go-task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.53.1  # KEEP IN SYNC with the task pin in .tool-versions
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
 
       # NETWORK: `tofu test` renders the seed charts, so it is deliberately
       # excluded from the offline `task tofu:ci`. This dedicated job is the CI

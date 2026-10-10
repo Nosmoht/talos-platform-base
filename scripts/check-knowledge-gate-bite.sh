@@ -6,7 +6,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 gate="$repo_root/scripts/check-bundle-policy.sh"
 [ -x "$gate" ] || { echo "ERROR: $gate missing or not executable" >&2; exit 2; }
 command -v openknowledge >/dev/null 2>&1 || {
-  echo "ERROR: openknowledge not installed -- run 'task knowledge:install-cli'" >&2; exit 2; }
+  echo "ERROR: openknowledge not installed -- run 'mise install'" >&2; exit 2; }
 export OPENKNOWLEDGE_TELEMETRY=off
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT

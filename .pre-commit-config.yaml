@@ -21,10 +21,11 @@ repos:
         language: system
         files: '\.sh$'
 
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.24.3
-    hooks:
       - id: gitleaks
-        # Pin shared .gitleaks.toml so pre-commit and CI cannot drift
-        # silently across the project lifecycle.
-        args: ["--config=.gitleaks.toml"]
+        name: Detect hardcoded secrets (gitleaks from mise.toml)
+        # Same entry as upstream's hook, run on the mise-pinned binary so
+        # pre-commit and CI scan with one version. --config shares
+        # .gitleaks.toml with the CI scan.
+        entry: gitleaks git --pre-commit --redact --staged --verbose --config=.gitleaks.toml
+        language: system
+        pass_filenames: false

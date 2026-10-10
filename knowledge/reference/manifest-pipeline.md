@@ -3,7 +3,7 @@ type: reference
 title: Manifest Pipeline
 description: How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 tags: [rendered-manifests, validation, ci, conftest]
-generated: { by: human:nosmoht, at: "2026-10-08T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-10T00:00:00Z" }
 sources:
   - resource: scripts/render-component.sh
   - resource: scripts/verify-rendered.sh
@@ -127,8 +127,8 @@ substrate-only ablation, `argocd` is the base's only Helm-based component;
 the pipeline itself is component-generic.
 
 Determinism inputs: helm, kustomize, and yq versions are pinned in
-`.tool-versions` (checked locally by `task dev:verify-tools` and in CI by a
-drift step — see the CI mapping below). yq matters because multi-line block
+`mise.toml` and checksum-locked in `mise.lock`; local `mise install` and CI's
+`jdx/mise-action` install from the same pair. yq matters because multi-line block
 scalar serialization differs across yq versions and would show up as render
 drift.
 
@@ -315,7 +315,7 @@ The workflow runs on every PR and on pushes to `main`, with these jobs:
 
 | Job | What it runs |
 | --- | --- |
-| `validate` | Tool-version drift check (workflow env vs `.tool-versions` for kustomize, conftest, kubeconform, helm, yq) → pinned tool installs → `verify-rendered.sh` (drift gate) → `check-argocd-substrate-invariants.sh` → NetworkPolicy gate bite-check → Cilium reference-values schema check → discovery → safe render → **renderable-set fence** (rendered base-component set must equal the frozen `.ci-renderable-components.txt`) → kubeconform → `run_conftest.sh`; uploads `.work/` diagnostics on failure. |
+| `validate` | Tool install from `mise.toml` → `verify-rendered.sh` (drift gate) → `check-argocd-substrate-invariants.sh` → NetworkPolicy gate bite-check → Cilium reference-values schema check → discovery → safe render → **renderable-set fence** (rendered base-component set must equal the frozen `.ci-renderable-components.txt`) → kubeconform → `run_conftest.sh`; uploads `.work/` diagnostics on failure. |
 | `hardware-features-check` | Layer-C registry schema lint (`scripts/lint-hardware-features.sh`), provisioning-catalog reference check, **cluster.yaml schema lint** (`scripts/lint-cluster-yaml.sh` against `schemas/cluster.schema.json`, targeting `cluster.yaml.example` and the module's worked example `tofu/modules/talos-cluster/examples/complete/cluster.yaml`), and a **red-green fixture step**: `schemas/fixtures/cluster.invalid.yaml` must be rejected with exit 1 specifically — exit 0 (fixture passed) and exit 2 (toolchain error, no schema verdict) both fail, so a broken linter cannot pass vacuously. |
 | `reuse-compliance` | REUSE 3.3 lint — every file carries SPDX metadata; `_rendered/` upstream-chart output is marked `LicenseRef-UpstreamHelm`. |
 | `secret-scan` | gitleaks over the full history with the pinned shared `.gitleaks.toml` — the server-side backstop against local `--no-verify` bypass. |
