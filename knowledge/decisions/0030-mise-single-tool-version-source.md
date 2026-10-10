@@ -251,7 +251,7 @@ checksum vars are deleted.
 Differences from the Decision Outcome:
 
 - The release workflows (`oci-publish.yml`: oras, cosign, syft; `release.yml`:
-  node) keep their own installers and move in a follow-up. The cosign pin is
+  node) keep their own installers and move in #304. The cosign pin is
   declared in the publish workflow, and the `oci-supply-chain` spec says so.
 - Not adopted: the `mise which` resolution assertion, the lock and
   gitleaks-hook bite-checks, and the expected-set gates. `OK_GUARD` compares
