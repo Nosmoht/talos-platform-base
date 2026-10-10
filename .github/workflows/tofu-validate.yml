@@ -90,6 +90,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          install_args: aqua:opentofu/opentofu aqua:terraform-linters/tflint aqua:go-task/task aqua:siderolabs/talos aqua:helm/helm aqua:mikefarah/yq aqua:jqlang/jq
 
       - name: task tofu:ci (fmt-check + validate + lint)
         run: task tofu:ci
@@ -106,6 +108,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
+        with:
+          install_args: aqua:opentofu/opentofu aqua:go-task/task
 
       # NETWORK: `tofu test` renders the seed charts, so it is deliberately
       # excluded from the offline `task tofu:ci`. This dedicated job is the CI
