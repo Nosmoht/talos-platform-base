@@ -2,7 +2,7 @@
 
 For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 
-## Unreleased (next PATCH) — argo-cd chart `10.6.0` → `10.10.1`, Argo CD `v3.5.2` → `v3.5.4` (security fix; action required only under `controlplane_apply_mode = "reboot"`)
+## `v15.0.2` — argo-cd chart `10.6.0` → `10.10.1`, Argo CD `v3.5.2` → `v3.5.4` (PATCH — security fix; action required only under `controlplane_apply_mode = "reboot"`)
 
 Argo CD `v3.5.2` is affected by the critical advisory
 [GHSA-fmxq-cgp8-87wp](https://github.com/argoproj/argo-cd/security/advisories/GHSA-fmxq-cgp8-87wp)
@@ -61,7 +61,7 @@ together. That rollback has the same effects as the upgrade, in reverse:
 - Every controlplane receives another machine-configuration apply through the
   namespace label, with the same `controlplane_apply_mode` caveats as step 3.
 
-## Native Talos 1.14 support (provider 0.12.0 stable)
+## `v15.0.0` — native Talos 1.14 support, provider 0.12.0 stable (MAJOR — action required for every consumer)
 
 This section supersedes the beta-provider guidance below for this release.
 The base now supports native **Talos 1.14.2** configurations while preserving
@@ -164,7 +164,7 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
-## Unreleased (next MAJOR) — the Cilium floor sets `rollOutCiliumPods: true` (action required for consumers who self-manage Cilium)
+## `v14.0.0` — the Cilium floor sets `rollOutCiliumPods: true` (MAJOR — action required for consumers who self-manage Cilium)
 
 **Type:** MAJOR. `tofu/modules/talos-cluster/helm/cilium-values.yaml` gains one
 key, `rollOutCiliumPods: true`, and the same key is added to the Day-2 reference
@@ -279,7 +279,7 @@ the restart stays **mandatory**. There the operator has already applied a
 corrected chart by hand, mid-outage, possibly from a render predating this tag —
 so the ConfigMap did change while no checksum moved.
 
-## Unreleased (next MAJOR) — `cilium_values_override` reaches Day-2, and three Helm keys move to typed inputs (action required for consumers who override those keys, or who self-manage Cilium)
+## `v13.0.0` — `cilium_values_override` reaches Day-2, and three Helm keys move to typed inputs (MAJOR — action required for consumers who override those keys, or who self-manage Cilium)
 
 The heading takes the tag when the release is cut. Two independent changes ship
 here; read §1 even if you never self-manage Cilium.
@@ -681,11 +681,7 @@ seed-to-GitOps takeover behaviour §3 describes.
 
 ---
 
-## Unreleased (next MAJOR) — the `siderolabs/talos` provider becomes an exact prerelease pin (every consumer inherits it; most roots need no edit)
-
-The heading takes the tag by hand once the release is cut — see
-[`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md)
-§Release notes and `UPGRADING.md`. Until then, find this section by its title.
+## `v12.0.0` — the `siderolabs/talos` provider becomes an exact prerelease pin (MAJOR — every consumer inherits it; most roots need no edit)
 
 **What changed.** The module pinned `siderolabs/talos` to `>= 0.7.0, < 1.0.0`,
 which resolves to `0.11.0`. That provider's bundled Talos machinery predates
