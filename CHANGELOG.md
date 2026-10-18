@@ -7,12 +7,6 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Pending release
 
-- **Changed — the example and fixture versions now track Talos v1.14.4**
-  (was v1.14.2); Kubernetes stays at v1.37.1. The base pins no Talos version:
-  this moves the values a consumer copies for a new cluster, the fixtures, and
-  the `talosctl` that validates rendered configuration. Existing clusters are
-  unaffected; an OS upgrade still bumps `talos.install_version`. No consumer
-  action. (#305)
 - **Changed — the PR title alone sets the version.** Pull requests are
   squash-merged with the title as subject and an empty body, so a branch-commit
   footer no longer affects the release. The path-based MAJOR-bump guard and its
