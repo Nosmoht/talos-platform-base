@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-18
+
+- `reference/tasks.md`: the `knowledge:validate` row no longer lists bite
+  checks before its three gates.
+
 ## 2026-10-10
 
 - `decisions/0030-mise-single-tool-version-source.md`: accepted; append
