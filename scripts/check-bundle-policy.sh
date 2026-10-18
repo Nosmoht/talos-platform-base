@@ -23,7 +23,7 @@ err="$(mktemp)"; raw="$(mktemp)"
 trap 'rm -f "$err" "$raw"' EXIT
 
 st=0
-openknowledge validate "${spec[@]}" --format json "$bundle" >"$raw" 2>"$err" || st=$?
+openknowledge validate ${spec[@]+"${spec[@]}"} --format json "$bundle" >"$raw" 2>"$err" || st=$?
 # Exit 1 reports content findings; this check only verifies policy loading.
 if [ "$st" -gt 1 ]; then
   echo "FAIL: openknowledge could not run (exit $st). Its own report:"
