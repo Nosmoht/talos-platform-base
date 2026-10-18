@@ -141,7 +141,7 @@ tasks:
     cmd: scripts/check-argocd-gate-bites.sh
 
   tofu:check:kubeconfig-endpoint-regen:
-    desc: "CI fence: talos_cluster_kubeconfig.this keeps replace_triggered_by wired to terraform_data.kubeconfig_endpoint_marker (input = var.cluster_endpoint)"
+    desc: "CI fence: talos_cluster_kubeconfig.this keeps replace_triggered_by wired to terraform_data.kubeconfig_endpoint_marker"
     cmd: scripts/check-kubeconfig-endpoint-regen.sh
 
   tofu:check:node-projection-wiring:
