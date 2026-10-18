@@ -71,7 +71,7 @@ body:
         - ⚠️ **Ask first** — actions that require confirmation before proceeding.
         - 🚫 **Never** — actions explicitly forbidden in this scope.
       placeholder: |
-        ✅ Always: edit `kubernetes/base/infrastructure/cert-approver/`, regenerate `_rendered/`, update CHANGELOG.
+        ✅ Always: edit `kubernetes/base/infrastructure/cert-approver/`, regenerate `_rendered/`, add an UPGRADING.md section when consumers must act.
         ⚠️ Ask first: bump the upstream chart version, modify policies/.
         🚫 Never: edit the OCI publish workflow, change AGENTS.md §Hard Constraints, bypass pre-commit hooks.
     validations:

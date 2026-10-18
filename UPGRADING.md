@@ -107,7 +107,7 @@ patch contents. Network-interface patches should be reviewed against the
 
 ## How to use this file
 
-- Per-release notes live in [`CHANGELOG.md`](CHANGELOG.md).
+- Per-release notes are on each tag's GitHub Release.
 - This file documents **cumulative migration steps** for every release
   that requires consumer action or carries an upgrade note, whatever its class.
 - Every section heading added from now on names its release class — MAJOR,
@@ -683,10 +683,9 @@ seed-to-GitOps takeover behaviour §3 describes.
 
 ## Unreleased (next MAJOR) — the `siderolabs/talos` provider becomes an exact prerelease pin (every consumer inherits it; most roots need no edit)
 
-The heading takes the tag when the release is cut, in the same by-hand pass that
-cuts `CHANGELOG.md`'s `[Unreleased]` block — see
+The heading takes the tag by hand once the release is cut — see
 [`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md)
-§CHANGELOG contract. Until then, find this section by its title.
+§Release notes and `UPGRADING.md`. Until then, find this section by its title.
 
 **What changed.** The module pinned `siderolabs/talos` to `>= 0.7.0, < 1.0.0`,
 which resolves to `0.11.0`. That provider's bundled Talos machinery predates
@@ -3418,7 +3417,6 @@ MINOR or PATCH — using the format below:
 
 ## See also
 
-- [`CHANGELOG.md`](CHANGELOG.md) — per-release notes
 - [`SECURITY.md`](SECURITY.md) — supported versions
 - [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md) — verify before vendoring
 - [`knowledge/decisions/0004-substrate-only-base.md`](knowledge/decisions/0004-substrate-only-base.md) — substrate-only scope; PNI dissolution

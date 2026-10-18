@@ -3,7 +3,7 @@ type: workflow
 title: Release Process
 description: How a release moves from the PR title through the automated semantic-release flow to a signed OCI artifact on ghcr.io.
 tags: [release, semantic-release, oci, supply-chain]
-generated: { by: human:nosmoht, at: "2026-10-09T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-19T00:00:00Z" }
 sources:
   - resource: .github/workflows/release.yml
   - resource: scripts/preflight-checks.sh
@@ -11,7 +11,7 @@ sources:
   - resource: .github/workflows/oci-publish.yml
   - resource: .releaserc.json
   - resource: package.json
-  - resource: CHANGELOG.md
+  - resource: UPGRADING.md
   - resource: CONTRIBUTING.md
 ---
 
@@ -125,9 +125,7 @@ token matters: tags pushed with the default `GITHUB_TOKEN` do not trigger other
 workflows, so the App token is what makes the `v*` tag push fire
 `oci-publish.yml` while preserving its signing identity. semantic-release does
 **not** commit anything back to `main`, and it no longer creates the GitHub
-Release either — it tags, and `oci-publish.yml` owns the release object;
-`CHANGELOG.md` is cut by hand in the releasing PR (automating that cut is
-tracked as a follow-up).
+Release either — it tags, and `oci-publish.yml` owns the release object.
 
 ## When the release is blocked
 
@@ -149,54 +147,20 @@ edit the merged PR's title: the subject on `main` is what counted.
   titled by its own effect on the released state as ADR-0029 §Planned: cutover
   and reverts says — reverting a released rename or removal can itself be MAJOR.
   Then re-land the change under a `!` title with an `UPGRADING.md` note.
-- **A MAJOR that breaks nothing, or a missed MINOR or PATCH:** nothing to undo;
-  record the misclassification in the next release's `CHANGELOG.md` entry.
+- **A MAJOR that breaks nothing, or a missed MINOR or PATCH:** nothing to undo.
 
-## CHANGELOG contract
+## Release notes and `UPGRADING.md`
 
-`CHANGELOG.md` is **hand-maintained** (Keep a Changelog sections under
-`## Unreleased`); semantic-release ships no changelog plugin here.
+The base keeps no `CHANGELOG.md`. `oci-publish.yml` creates every GitHub
+Release with `gh release create --generate-notes`, so the notes list the
+squash-merged PR titles in the tag's range. What a consumer must do to adopt a
+tag lives in `UPGRADING.md`, one section per tag that needs an action.
 
-The same by-hand pass renames any `## Unreleased (next <CLASS>)` heading in
-`UPGRADING.md` to the tag being cut. `<CLASS>` is MAJOR, MINOR or PATCH: the
-unreleased heading names the class the section is expected to ship in, and the
-renamed heading carries the class of the tag actually cut. That file's own §How
-to use this file tells consumers to locate sections by their tag heading, so a
-section authored before the version is known carries the unreleased form until
-the cut and is renamed here — nothing automates it.
-
-`## [Unreleased]` carries two blocks with different lifetimes. `### Pending
-release` holds entries awaiting the next tag: the by-hand cut moves **that block
-only** under the new `## vX.Y.Z — DATE` heading. The historical-backfill block
-below it documents entries that shipped in `v7.0.0`–`v9.0.0` without a CHANGELOG
-section (tracked in #233) and stays where it is across every cut until that
-backfill lands. Released
-sections use the exact header form (illustrative example):
-
-```markdown
-## v2.0.0 — 2026-06-22
-```
-
-`oci-publish.yml` extracts release notes with an awk exact-prefix match on
-`## <tag>` followed by a single space (the body runs until the next `##`
-heading). If no matching section exists, the workflow **silently falls back**
-to `gh release create --generate-notes` — a renamed or malformed header
-degrades release notes without failing the release.
-
-Note the interaction with `release.yml`: nothing there creates a GitHub
-Release, so the CHANGELOG-extraction path runs on **every** release, automated
-or manually tagged. A renamed or malformed version header therefore degrades
-the notes of a normal release, not just a hand-pushed one — and the degrade is
-the current norm rather than an edge case: the newest cut section is
-`## v9.1.0`, so every tag since has taken the `--generate-notes` fallback
-(#233 tracks the backlog).
-
-Where the new `## vX.Y.Z — DATE` heading goes matters for the same reason. The
-extractor prints everything from that heading to the next second-level
-heading, and third-level sub-headings do not stop it. Put the heading **below** the historical-backfill
-block that stays inside `[Unreleased]`, so the section it opens contains only
-the moved `### Pending release` entries; placed above the backfill it would
-swallow all of it into one patch release's notes, and the awk cannot tell.
+A section authored before the version is known carries the heading
+`## Unreleased (next <CLASS>)`, where `<CLASS>` is MAJOR, MINOR or PATCH. After
+the tag is cut, rename that heading to the tag by hand, with the class of the
+tag actually cut: that file's own §How to use this file tells consumers to
+locate sections by their tag heading, and nothing automates the rename.
 
 ## Publish — `.github/workflows/oci-publish.yml`
 
@@ -219,8 +183,7 @@ Triggered on `push` of tags `v*` (job `publish`):
    via `cosign attest --type cyclonedx`.
 7. **`:latest` tag** — skipped for any hyphenated tag (SemVer pre-release
    identifiers must not become the default consumers pin).
-8. **GitHub Release** — created as a **draft** with notes from the matching
-   CHANGELOG section (or auto-generated on mismatch) and `--prerelease` for
+8. **GitHub Release** — created as a **draft** with generated notes and `--prerelease` for
    hyphenated tags, the three assets attached to that draft (the tarball,
    `checksums.txt`, and the CycloneDX SBOM), **the draft's assets verified**,
    and only then flipped to published with `make_latest=legacy`. The order is
@@ -286,8 +249,8 @@ carries the mtimes of a fresh checkout. So a re-run:
 Consumers who pinned the digest (which
 [verify-release](./verify-release.md) tells them to do, for exactly this
 reason) keep resolving the first artifact and must re-pin deliberately; anyone
-resolving the tag silently moves. Say so in the release notes or `UPGRADING.md`
-when a re-run happens after consumers could already have vendored the tag.
+resolving the tag silently moves. Say so in `UPGRADING.md` when a re-run
+happens after consumers could already have vendored the tag.
 
 ## Publishing the draft the job built
 
@@ -385,8 +348,8 @@ as unbounded rather than as the sub-second one that happened to be observed.
 ## End-to-end summary
 
 1. The PR title carries the release class (ADR-0029 §Classification) and is
-   linted by `lint-pr-title`; the reviewer checks the class. CHANGELOG
-   `[Unreleased]` is cut by hand in the same PR.
+   linted by `lint-pr-title`; the reviewer checks the class. A change that
+   needs a consumer action adds an `UPGRADING.md` section in the same PR.
 2. Squash merge to `main` → `plan` computes the next version from the PR
    titles in the range into the job summary.
 3. `release` runs unattended (no approval) → semantic-release
@@ -408,8 +371,7 @@ manual gate). The model is **forward-fix plus new tag**:
    never does this by itself:
    `oras tag ghcr.io/nosmoht/talos-platform-base:v<fixed> latest`.
 3. Leave the bad tag in place (immutable history; consumers pin exact tags
-   and verify cosign identity), but note it in `CHANGELOG.md` and, when a
-   consumer action is needed, in `UPGRADING.md`.
+   and verify cosign identity), and note it in `UPGRADING.md`.
 4. Consumers that already adopted the bad tag roll their pin forward to the
    fixed tag — never backward past a MAJOR/layout boundary without applying
    the paired consumer-side reverts documented in the relevant `UPGRADING.md`

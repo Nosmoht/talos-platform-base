@@ -21,7 +21,7 @@
 # default, so a changed default moves this file — which is the point.
 #
 # When it fails: a byte moved. Decide DELIBERATELY whether that is a
-# consumer-visible manifest change (then it belongs in CHANGELOG/UPGRADING, with
+# consumer-visible manifest change (then it belongs in UPGRADING.md, with
 # the release class ADR-0029 assigns) before refreshing the fixture. Do not regenerate it to get
 # green — the same rule as tests/fixtures/cilium-config-keys.txt.
 "apiVersion": "argoproj.io/v1alpha1"

@@ -342,3 +342,16 @@ Accepted trade-offs:
   artifacts are intact, so the `oras pull` path is unaffected for them, and
   two (`v9.1.2`, `v9.2.0`) that failed upstream of the push and have no
   published artifact at all, which must not be pinned.
+
+## Amendment (2026-10-19)
+
+`CHANGELOG.md` is removed. Every GitHub Release now takes its notes from
+`gh release create --generate-notes`, the squash-merged PR titles in the tag's
+range; `oci-publish.yml` no longer extracts a CHANGELOG section, and the file
+leaves `CODEOWNERS`. This supersedes the trade-off above that made the hand-cut
+section the release body: no section had been cut since `v9.1.0`, so the
+generated notes were already the path every release since then took, and a
+hand-written entry for a change with no consumer action repeated the PR title.
+What a consumer must do to adopt a tag stays in `UPGRADING.md`. #233, the
+backlog of uncut sections, (#311) is closed with it; the removed file's content stays
+in git history.

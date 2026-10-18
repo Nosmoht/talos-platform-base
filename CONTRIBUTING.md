@@ -175,12 +175,15 @@ If your change touches the public API
 ([ADR-0029 §Public API](knowledge/decisions/0029-public-api-and-major-rule.md#public-api)),
 a Helm-value default, or a hard constraint, update **at minimum**:
 
-- `CHANGELOG.md` (Unreleased section — Added / Changed / Deprecated / Removed / Fixed / Security).
+- `UPGRADING.md`, when a consumer must act to adopt the change.
 - Either a decision record (decision-grade, `knowledge/decisions/`) or the
   matching `knowledge/` concept.
 - The owning OpenSpec spec (`openspec/specs/`) when the change alters
   platform behavior — as a spec delta via `openspec/changes/`; see
   [`knowledge/workflows/spec-driven-development.md`](knowledge/workflows/spec-driven-development.md).
+
+A security fix names its CVE or GHSA identifier in the PR title: the title is
+the release note.
 
 The bundle's own authoring conventions — the closed `type` vocabulary, the
 `generated.at`/`sources[].resource` staleness contract, the link rule, and the `log.md`

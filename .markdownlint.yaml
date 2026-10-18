@@ -16,10 +16,10 @@ MD034: false
 MD055:
   style: leading_and_trailing
 
-# Don't force "first line is h1" — some docs (CHANGELOG) lead with a comment.
+# Don't force "first line is h1" — some docs lead with a comment.
 MD041: false
 
-# Multiple top-level headers in CHANGELOG-style docs are normal.
+# Multiple top-level headers are allowed.
 MD025: false
 
 # Heading-style: ATX-style (#, ##) only.
@@ -46,7 +46,7 @@ MD004:
   style: dash
 
 # Duplicate-heading: only flag duplicates within the same parent
-# section. UPGRADING.md and CHANGELOG.md repeat sub-headings like
+# section. UPGRADING.md repeats sub-headings like
 # "Why the rename" / "Breaking changes" / "Migration on a live cluster"
 # under each version section by design — that's the per-release
 # structure, not accidental duplication.

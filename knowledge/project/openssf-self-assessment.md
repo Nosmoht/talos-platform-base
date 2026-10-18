@@ -3,7 +3,7 @@ type: project
 title: OpenSSF Best Practices Self-Assessment
 description: Self-assessment against the OpenSSF Best Practices Passing-level criteria, serving as the source of truth for the external enrolment answers.
 tags: [project, supply-chain]
-generated: { by: human:nosmoht, at: "2026-10-09T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-19T00:00:00Z" }
 migrated_from: docs/openssf-best-practices.md (deleted in the OKF migration; see git history)
 sources:
   - resource: .github/workflows/gitops-validate.yml
@@ -12,6 +12,7 @@ sources:
   - resource: SECURITY.md
   - resource: MAINTAINERS.md
   - resource: CONTRIBUTING.md
+  - resource: .github/workflows/oci-publish.yml
   - resource: Taskfile.yml
 ---
 
@@ -56,8 +57,8 @@ source of truth for the answers that get submitted.
 | --- | --- | --- |
 | Public repository | met | `github.com/Nosmoht/talos-platform-base` (public) |
 | Unique version numbers | met | SemVer 2.0 (`UPGRADING.md` documents migration steps for every release that requires consumer action); git tags created by semantic-release; OCI consumption pins by digest ([verify-release](../workflows/verify-release.md)) — ghcr tags are mutable by default |
-| Release notes | met | `CHANGELOG.md` (Keep-a-Changelog 1.1.0); GitHub Releases exist for `v2.0.0` and `v3.0.0`. Caveat: `CHANGELOG.md` currently lacks a `v3.0.0` section (jumps Unreleased → v2.0.0); the v3.0.0 Release notes were auto-generated — tracked as a follow-up |
-| Release notes vulnerabilities | met | `SECURITY.md` §"Supported versions" lists which streams receive backports |
+| Release notes | met (contestable) | GitHub Releases since `v10.0.0` carry notes generated from the PR titles merged in the tag's range. A PR title is also the squash commit subject, so the list holds the same text as `git log --format=%s` for the range; the claim rests on those titles being linted, reader-facing summaries rather than on a separately written summary. What a consumer must do to adopt a release is in `UPGRADING.md` |
+| Release notes vulnerabilities | met | A security fix names its CVE or GHSA in the PR title (`CONTRIBUTING.md`), and that title becomes the release note, as in #287 |
 
 > [2026-07-11 verification] Two corrections: (1) tags are no longer
 > "annotated" — `git cat-file -t v2.0.0`/`v3.0.0` both return `commit`

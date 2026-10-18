@@ -203,7 +203,6 @@ export CREATED_FLAG="$WORK/created" LAG_SEEN="$WORK/lag-seen"
 export SLEEP_LOG="$WORK/slept" FAIL_SEEN="$WORK/fail-seen"
 
 cd "$WORK/repo"
-printf '# Changelog\n\n## v9.9.9 — 2026-01-01\n\nthe section for this tag\n\n## v9.9.8 — 2025-12-01\n\nolder\n' > CHANGELOG.md
 
 call_order() {
   awk '
@@ -248,9 +247,9 @@ if run_create none v9.9.9; then
   grep -q 'talos-platform-base-v9.9.9.cdx.json' "$LOG" \
     && ok "all three assets reach the create call" \
     || note "the SBOM asset did not reach the create call"
-  grep -q -- '--notes-file' "$LOG" \
-    && ok "notes come from the matching CHANGELOG section" \
-    || note "the CHANGELOG section for the tag was not used for the notes"
+  grep -q -- '--generate-notes' "$LOG" \
+    && ok "the notes are generated from the merged pull requests" \
+    || note "the release was not created with --generate-notes"
   grep -q 'make_latest=legacy' "$LOG" \
     && ok "a release tag publishes with make_latest=legacy, not a last-writer-wins flag" \
     || note "a release tag did not publish with make_latest=legacy"
@@ -419,9 +418,6 @@ if run_create none v9.9.9-rc.1; then
   grep -q 'make_latest=false' "$LOG" \
     && ok "a hyphenated tag does not become the latest release" \
     || note "a hyphenated tag would be published as the latest release"
-  grep -q -- '--generate-notes' "$LOG" \
-    && ok "a tag with no CHANGELOG section falls back to generated notes" \
-    || note "the notes fallback did not fire for a tag with no CHANGELOG section"
 else
   note "the create step failed on a pre-release tag: $(cat "$WORK/out")"
 fi

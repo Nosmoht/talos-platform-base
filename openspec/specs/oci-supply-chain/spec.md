@@ -166,8 +166,8 @@ SemVer pre-release tag (`v*-*`) SHALL leave `:latest` untouched.
 
 Each published tag SHALL carry a GitHub Release whose assets mirror the OCI
 layers plus the SBOM (tarball, `checksums.txt`, CycloneDX JSON), with notes
-taken from the matching CHANGELOG section when present and auto-generated
-otherwise, and hyphenated tags marked pre-release. The assets SHALL be
+generated from the pull requests merged in the tag's range, and hyphenated tags
+marked pre-release. The assets SHALL be
 attached while the release is still a draft and the release SHALL be published
 only afterwards, so that release immutability — which takes effect at publish
 time — never intercepts an asset upload. The publish pipeline SHALL be the

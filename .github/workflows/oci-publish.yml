@@ -249,8 +249,7 @@ jobs:
         # one. A published one nothing can amend, and that case exits non-zero
         # instead of emitting three 422s.
         #
-        # Notes come from the matching CHANGELOG section when present; otherwise
-        # `gh` auto-generates them from the commit range. Hyphenated SemVer tags
+        # `gh` generates the notes from the merged PR titles. Hyphenated SemVer tags
         # are marked pre-release, consistent with the `:latest` skip above.
         # Artifacts attached here mirror the OCI layers — ghcr.io remains the
         # authoritative, signed consumption path.
@@ -265,28 +264,6 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          mkdir -p .work
-          NOTES_FILE=".work/release-notes.md"
-
-          # Extract the CHANGELOG section for this tag. Header form:
-          # "## <tag> — <date>"; the body runs until the next "## " heading.
-          # index($0,p)==1 is an exact prefix match (no regex, so dots in the
-          # version are literal).
-          awk -v p="## ${TAG} " '
-            index($0, p) == 1 { found = 1; next }
-            found && /^## / { exit }
-            found { print }
-          ' CHANGELOG.md > "$NOTES_FILE" || true
-
-          notes_args=()
-          if [ -s "$NOTES_FILE" ]; then
-            echo "Using CHANGELOG section for ${TAG}"
-            notes_args=(--notes-file "$NOTES_FILE")
-          else
-            echo "No CHANGELOG section for ${TAG}; auto-generating release notes"
-            notes_args=(--generate-notes)
-          fi
-
           prerelease_args=()
           make_latest=legacy
           case "$TAG" in
@@ -359,7 +336,7 @@ jobs:
           CREATE_URL="$(gh release create "$TAG" \
             --draft \
             --title "$TAG" \
-            "${notes_args[@]}" \
+            --generate-notes \
             "${prerelease_args[@]}" \
             "${assets[@]}")"
           export CREATE_URL

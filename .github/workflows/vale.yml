@@ -53,5 +53,4 @@ jobs:
             CONTRIBUTING.md \
             SECURITY.md \
             MAINTAINERS.md \
-            UPGRADING.md \
-            CHANGELOG.md
+            UPGRADING.md

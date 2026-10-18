@@ -236,7 +236,6 @@ the base, not application developers or end-users.
 | [`knowledge/workflows/first-consumer-cluster.md`](knowledge/workflows/first-consumer-cluster.md) | Bootstrap a second cluster from scratch |
 | [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md) | Verify a release before vendoring |
 | [`UPGRADING.md`](UPGRADING.md) | Apply a version bump |
-| [`CHANGELOG.md`](CHANGELOG.md) | Read per-release notes |
 | [`SECURITY.md`](SECURITY.md) | Report a vulnerability |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Open a PR |
 | [`AGENTS.md`](AGENTS.md) | Configure an agentic tool against the repo |

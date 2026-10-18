@@ -163,7 +163,7 @@ if ! out="$(probe "${TALOS_PIN}" '')"; then
   fail "case E: the pinned provider could not render an unpatched ${TALOS_PIN} configuration at all. That is a boundary move, not an environment fault — the probe reaches no network once init has run."
 fi
 document SecurityProfileConfig | grep -q 'workloadIsolation: true' ||
-  fail "case E: a ${TALOS_PIN} pin no longer generates SecurityProfileConfig with workloadIsolation enabled. The security posture the module README and CHANGELOG promise for a fresh 1.14 cluster is gone. Rendered:
+  fail "case E: a ${TALOS_PIN} pin no longer generates SecurityProfileConfig with workloadIsolation enabled. The security posture the module README promises for a fresh 1.14 cluster is gone. Rendered:
 $(document SecurityProfileConfig)"
 document FilesystemTrimConfig | grep -q 'interval: 168h0m0s' ||
   fail "case E: a ${TALOS_PIN} pin no longer generates FilesystemTrimConfig with a 168h interval. Rendered:
