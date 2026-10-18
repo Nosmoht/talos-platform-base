@@ -3,7 +3,7 @@ type: architecture
 title: Capability Composition
 description: How per-node hardware capabilities compose Layer-C atoms, the base-owned provisioning-profile catalog, deduplicated schematics, and node labels in the talos-cluster module.
 tags: [layer-c, hardware-capabilities, talos, opentofu]
-generated: { by: human:nosmoht, at: "2026-10-09T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-18T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-14T00:00:00Z" }
 sources:
@@ -227,7 +227,7 @@ runs:
   rejection of a reserved `hardware-feature.*` `emits_label`.
 - `tofu/modules/talos-cluster/tests/live/image-factory.tftest.hcl` — the one
   check against the live Image Factory: every catalog extension resolves at
-  Talos 1.13.9 and 1.14.2, and the run fails when a catalog profile is missing
+  Talos 1.13.9 and 1.14.4, and the run fails when a catalog profile is missing
   from it. Run via `task tofu:test:image-factory` and the advisory
   `image-factory-live.yml` workflow (weekly, and on PRs touching the catalog,
   the composition, the Factory lookup, the provider lock or `Taskfile.yml`).
