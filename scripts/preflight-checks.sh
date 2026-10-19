@@ -52,7 +52,8 @@ else
               "GitOps Validate / validate|validate" \
               "GitOps Validate / Secret Scan (gitleaks)|Secret Scan (gitleaks)" \
               "docs-lint / docs-lint|docs-lint" \
-              "Commit Lint / lint-pr-title|lint-pr-title"; do
+              "Commit Lint / lint-pr-title|lint-pr-title" \
+              "GitOps Validate / bash 3.2 floor|bash 3.2 floor"; do
     qualified="${line%|*}"
     bare="${line#*|}"
     if printf '%s\n' "$CONTEXTS" | grep -Fxq "$qualified"; then
