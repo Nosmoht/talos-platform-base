@@ -8,7 +8,7 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "${ROOT}"
 
-TALOS_PIN="${1:-v1.14.2}"
+TALOS_PIN="${1:-v1.14.4}"
 K8S_PIN="${3:-v1.37.1}"
 TALOS_PREV_PIN="${2:-v1.13.10}"
 

@@ -24,7 +24,7 @@ locals {
 }
 output "validation_checks" {
   value = {
-    installer = try([for doc in local.validation_documents : doc if try(doc.kind, "") == "UnattendedInstallConfig"][0].installer.image, local.legacy.machine.install.image, "") == "factory.talos.dev/metal-installer/fixture:v1.14.2"
+    installer = try([for doc in local.validation_documents : doc if try(doc.kind, "") == "UnattendedInstallConfig"][0].installer.image, local.legacy.machine.install.image, "") == "factory.talos.dev/metal-installer/fixture:v1.14.4"
     disk_selection = local.native ? try([for doc in local.validation_documents : doc if try(doc.kind, "") == "UnattendedInstallConfig"][0].provisioning.diskSelector.match == "disk.dev_path == \"/dev/vda\"", false) : true
     hostname = try([for doc in local.validation_documents : doc if try(doc.kind, "") == "HostnameConfig"][0].hostname, "") == (var.machine_type == "controlplane" ? "cp" : "worker")
     substrate_seeds = alltrue([for name in ["cilium", "argocd", "argocd-sops-age-key"] : local.native ? contains([for doc in local.validation_documents : try(doc.name, "") if try(doc.kind, "") == "KubeInlineManifestConfig"], name) == (var.machine_type == "controlplane") : contains([for manifest in try(local.legacy.cluster.inlineManifests, []) : manifest.name], name) == (var.machine_type == "controlplane")])
@@ -46,7 +46,7 @@ EOF
 tofu -chdir="${WORK}/render" init -input=false -no-color >"${WORK}/render-init.log" 2>&1 || { cat "${WORK}/render-init.log"; exit 2; }
 cat >"${WORK}/validation_override.tf" <<'EOF'
 locals {
-  node_installer_images = { for name in keys(var.nodes) : name => "factory.talos.dev/metal-installer/fixture:v1.14.2" }
+  node_installer_images = { for name in keys(var.nodes) : name => "factory.talos.dev/metal-installer/fixture:v1.14.4" }
 }
 resource "terraform_data" "argocd_render" {
   input = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: argocd-seed-fixture\n  namespace: argocd\n"
@@ -57,9 +57,9 @@ resource "terraform_data" "cilium_render" {
 EOF
 cp -R "${ROOT}/tofu/modules/talos-cluster/helm" "${ROOT}/tofu/modules/talos-cluster/manifests" "${WORK}/"
 tofu -chdir="${WORK}" init -input=false -no-color >"${WORK}/init.log" 2>&1 || { cat "${WORK}/init.log"; exit 2; }
-for schema in v1.13.10 v1.14.2; do
+for schema in v1.13.10 v1.14.4; do
   kubernetes=v1.36.4
-  if [[ "${schema}" == v1.14.2 ]]; then kubernetes=v1.37.1; fi
+  if [[ "${schema}" == v1.14.4 ]]; then kubernetes=v1.37.1; fi
   for scheduling in false true; do
     cat >"${WORK}/probe.auto.tfvars" <<EOF
 cluster_name = "validation"
@@ -77,7 +77,7 @@ nodes = {
   worker = { ip = "192.0.2.12", role = "worker", image = "intel", hardware_capabilities = ["storage"] }
 }
 EOF
-    if [[ "${schema}" == v1.14.2 ]]; then
+    if [[ "${schema}" == v1.14.4 ]]; then
       cat >>"${WORK}/probe.auto.tfvars" <<'EOF'
 config_patches = ["apiVersion: v1alpha1\nkind: UnattendedInstallConfig\nprovisioning:\n  diskSelector:\n    match: disk.dev_path == \"/dev/vda\"\n"]
 EOF
