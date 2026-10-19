@@ -5,9 +5,11 @@ For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 ## argo-cd chart `10.10.1` → `10.10.5`, Argo CD `v3.5.4` → `v3.5.5` (PATCH — action required only under `controlplane_apply_mode = "reboot"`)
 
 Argo CD `v3.5.5` is an upstream bug-fix release. Both base pins move together:
-`chart.lock.yaml` and the module's `argocd_chart_version` default. The rendered
-manifests change only in the Argo CD image tag and the chart and version labels;
-the three CRD templates are byte-identical between the two charts.
+`chart.lock.yaml` and the module's `argocd_chart_version` default. With the
+base values, the rendered manifests change only in the Argo CD image tag and the
+chart and version labels; the three CRD templates are byte-identical between the
+two charts. A PDB `maxUnavailable: 0` set through `argocd_values_override` now
+renders instead of being dropped, and then blocks evictions on a fresh seed.
 
 1. **Adopt both halves.** Move `.base-version` and the module `ref=` to the new
    tag together, and leave `substrate.argocd.chart_version` unset in
@@ -19,7 +21,10 @@ the three CRD templates are byte-identical between the two charts.
    `argocd` namespace carries `app.kubernetes.io/version` from
    `argocd_chart_version`. The apply-mode consequences are those of step 3 in
    the `v3.5.4` section below: no action under `"auto"` or `"no_reboot"`; under
-   `"reboot"`, switch to `"auto"` before adopting the tag.
+   `"staged"`, reboot the controlplanes one at a time; under `"reboot"`, switch
+   to `"auto"` before adopting the tag. The plan also replaces
+   `terraform_data.argocd_crds_render`; the CRD bytes are unchanged, so the CRD
+   apply does not re-run.
 
 Back-out: move `.base-version` and the module `ref=` back together; the effects
 mirror the upgrade.
