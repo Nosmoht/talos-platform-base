@@ -255,3 +255,11 @@ are byte-identical between the two charts, every directive still interpolates
 no `.Capabilities` and no `.Release`, and the render is byte-identical under
 `--kube-version` 1.31.0, 1.35.0, 1.36.3 and 1.37.1. The decision, its residual
 and the trigger are unchanged.
+
+## Addendum — revisit trigger discharged at chart 10.10.5 (2026-10-19)
+
+Run again for `10.10.1` → `10.10.5`. It holds: the three `templates/crds/` files
+are byte-identical between the two charts, so they still interpolate only
+`.Values.crds.*`, and the render is byte-identical under `--kube-version` 1.31.0,
+1.35.0, 1.36.3 and 1.37.1. The decision, its residual and the trigger are
+unchanged.
