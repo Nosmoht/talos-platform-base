@@ -10,10 +10,10 @@ bundle="${1:?usage: check-bundle-policy.sh <bundle-dir> [--spec <v>] <rule=sever
 shift
 [ -d "$bundle" ] || { echo "ERROR: $bundle is not a directory" >&2; exit 2; }
 
-spec=()
+spec=
 if [ "${1:-}" = "--spec" ]; then
   [ -n "${2:-}" ] || { echo "ERROR: --spec needs a value" >&2; exit 2; }
-  spec=(--spec "$2"); shift 2
+  spec="$2"; shift 2
 fi
 
 command -v python3 >/dev/null 2>&1 || {
@@ -23,7 +23,7 @@ err="$(mktemp)"; raw="$(mktemp)"
 trap 'rm -f "$err" "$raw"' EXIT
 
 st=0
-openknowledge validate ${spec[@]+"${spec[@]}"} --format json "$bundle" >"$raw" 2>"$err" || st=$?
+openknowledge validate ${spec:+--spec "$spec"} --format json "$bundle" >"$raw" 2>"$err" || st=$?
 # Exit 1 reports content findings; this check only verifies policy loading.
 if [ "$st" -gt 1 ]; then
   echo "FAIL: openknowledge could not run (exit $st). Its own report:"
