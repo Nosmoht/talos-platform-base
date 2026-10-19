@@ -2,6 +2,31 @@
 
 For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 
+## `hashicorp/helm` provider `>= 3.0.0`, kubelet-csr-approver `v1.2.15` (MAJOR — action required for every consumer root)
+
+The module's `hashicorp/helm` constraint moves from `>= 2.12, < 3.0.0` to
+`>= 3.0.0, < 4.0.0`; the module lock selects 3.3.0. The seeded
+kubelet-csr-approver moves from `v1.2.14` to `v1.2.15`, digest-pinned. Its
+controller code is unchanged; the release moved dependencies only.
+
+1. **Refresh your root's lock.** A root whose `.terraform.lock.hcl` records
+   helm 2.x fails `tofu init` with "locked provider … does not match";
+   run `tofu init -upgrade`. If your root declares its own helm constraint,
+   it must admit 3.x.
+2. **Every controlplane gets a machine-configuration apply**, because the
+   approver manifest is part of it. Under `controlplane_apply_mode = "auto"` or
+   `"no_reboot"` nothing else is needed; under `"staged"`, reboot the
+   controlplanes one at a time; under `"reboot"`, switch to `"auto"` first.
+3. **The running approver stays on `v1.2.14`.** Talos creates missing
+   inline-manifest objects but never updates existing ones. The next
+   `talosctl upgrade-k8s` re-applies the inline manifests and rolls the
+   approver to `v1.2.15`; it also prunes objects removed from them.
+4. **Gateway API:** the example URL in `cilium_gateway_api_crds_url` names
+   `v1.6.3`. The default stays empty, and a URL you set is unchanged.
+
+Back-out: move `.base-version` and the module `ref=` back together and run
+`tofu init -upgrade` again, since a helm 3 lock does not satisfy `< 3.0.0`.
+
 ## Cilium chart `1.20.0` → `1.20.3` (PATCH — action required for consumers who self-manage Cilium or use a chart or image mirror)
 
 Cilium `1.20.3` is an upstream patch release; `1.20.2` and `1.20.3` carry

@@ -442,7 +442,7 @@ rather than leaving it to be inferred.
 
 The module SHALL require OpenTofu/Terraform `>= 1.9.0` and constrain its
 providers to `siderolabs/talos` `>= 0.12.0, < 0.13.0-0`, `hashicorp/helm`
-`>= 2.12, < 3.0.0` (local template rendering only — no Helm release or
+`>= 3.0.0, < 4.0.0` (local template rendering only — no Helm release or
 apply), and `hashicorp/local` `>= 2.4` plus `hashicorp/null` `>= 3.2` (used
 only for the ArgoCD CRD apply path). The talos constraint SHALL take the form
 ADR-0029 §Provider constraints sets: its floor, 0.12.0, is the oldest version
@@ -508,6 +508,13 @@ land in state.
 - **WHEN** a consumer root carries a dependency lock recording
   `siderolabs/talos` 0.12.0
 - **THEN** a plain initialization succeeds and keeps that selection
+
+#### Scenario: A caller root's helm lock below 3.0.0 must be upgraded
+
+- **WHEN** a consumer root carries a dependency lock recording a
+  `hashicorp/helm` selection below 3.0.0
+- **THEN** a plain initialization fails on that locked selection and the lock
+  must be refreshed before a version in the range is installed
 
 ### Requirement: Image kernel-argument input validation
 

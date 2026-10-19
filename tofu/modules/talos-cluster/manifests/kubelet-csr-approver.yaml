@@ -1,11 +1,11 @@
 # kubelet-csr-approver — VENDORED, chart-rendered + templated (substrate seed).
 #
 # Source : github.com/postfinance/kubelet-csr-approver
-#          Helm chart kubelet-csr-approver, version 1.2.14 (appVersion v1.2.14)
+#          Helm chart kubelet-csr-approver, version 1.2.15 (appVersion v1.2.15)
 #          repo https://postfinance.github.io/kubelet-csr-approver
-# Chart tarball SHA256 (kubelet-csr-approver-1.2.14.tgz):
-#          4bd637228cd354c1fd8b8e44a0a1c9d7bc9074c01d3eb43c82d39ef11430a090
-# Vendored: 2026-07-17. Seeded as a controlplane cluster.inlineManifest by
+# Chart tarball SHA256 (kubelet-csr-approver-1.2.15.tgz):
+#          a8697589fadc4aedb68f01a66f2cf50a780d9648ad3f463d041722902091e32f
+# Vendored: 2026-10-19. Seeded as a controlplane cluster.inlineManifest by
 #           tofu/modules/talos-cluster (local.cert_approver_manifest), rendered
 #           via templatefile() — NOT read raw. Replaces the retired
 #           alex1989hu/kubelet-serving-cert-approver seed (ADR-0019 supersedes
@@ -13,7 +13,7 @@
 #
 # Rendered with:
 #   helm template kubelet-csr-approver kubelet-csr-approver/kubelet-csr-approver \
-#     --version 1.2.14 -n kubelet-csr-approver -f <values>
+#     --version 1.2.15 -n kubelet-csr-approver -f <values>
 # where <values> set: fullnameOverride=kubelet-csr-approver,
 #   image.repository/pullPolicy, bypassDnsResolution=true, control-plane
 #   tolerations, priorityClassName=system-cluster-critical. providerRegex /
@@ -48,7 +48,7 @@
 #      included — this header deliberately avoids the literal dollar-brace /
 #      percent-brace sequences.
 #   7. The upstream ALLOWED_DNS_NAMES env var (chart maxSans / -max-sans flag)
-#      is REMOVED: in v1.2.14 the controller never reads the parsed value (dead
+#      is REMOVED: in v1.2.15 the controller never reads the parsed value (dead
 #      config — verified in internal/controller/csr_controller.go), and the
 #      kubelet builds serving-cert CSRs from NodeHostName + NodeInternalDNS +
 #      NodeExternalDNS, so a node legitimately carries 2+ DNS SANs. Shipping a
@@ -73,7 +73,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kubelet-csr-approver
     app.kubernetes.io/instance: kubelet-csr-approver
-    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/version: v1.2.15
     app.kubernetes.io/component: cert-approver
     app.kubernetes.io/part-of: talos-platform-base
     app.kubernetes.io/managed-by: opentofu
@@ -85,7 +85,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kubelet-csr-approver
     app.kubernetes.io/instance: kubelet-csr-approver
-    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/version: v1.2.15
     app.kubernetes.io/component: cert-approver
     app.kubernetes.io/part-of: talos-platform-base
     app.kubernetes.io/managed-by: opentofu
@@ -120,7 +120,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kubelet-csr-approver
     app.kubernetes.io/instance: kubelet-csr-approver
-    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/version: v1.2.15
     app.kubernetes.io/component: cert-approver
     app.kubernetes.io/part-of: talos-platform-base
     app.kubernetes.io/managed-by: opentofu
@@ -146,7 +146,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kubelet-csr-approver
     app.kubernetes.io/instance: kubelet-csr-approver
-    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/version: v1.2.15
     app.kubernetes.io/component: cert-approver
     app.kubernetes.io/part-of: talos-platform-base
     app.kubernetes.io/managed-by: opentofu
@@ -174,7 +174,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kubelet-csr-approver
     app.kubernetes.io/instance: kubelet-csr-approver
-    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/version: v1.2.15
     app.kubernetes.io/component: cert-approver
     app.kubernetes.io/part-of: talos-platform-base
     app.kubernetes.io/managed-by: opentofu
@@ -196,7 +196,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kubelet-csr-approver
     app.kubernetes.io/instance: kubelet-csr-approver
-    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/version: v1.2.15
     app.kubernetes.io/component: cert-approver
     app.kubernetes.io/part-of: talos-platform-base
     app.kubernetes.io/managed-by: opentofu
@@ -222,7 +222,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kubelet-csr-approver
     app.kubernetes.io/instance: kubelet-csr-approver
-    app.kubernetes.io/version: v1.2.14
+    app.kubernetes.io/version: v1.2.15
     app.kubernetes.io/component: cert-approver
     app.kubernetes.io/part-of: talos-platform-base
     app.kubernetes.io/managed-by: opentofu
@@ -237,7 +237,7 @@ spec:
       labels:
         app.kubernetes.io/name: kubelet-csr-approver
         app.kubernetes.io/instance: kubelet-csr-approver
-        app.kubernetes.io/version: v1.2.14
+        app.kubernetes.io/version: v1.2.15
         app.kubernetes.io/component: cert-approver
         app.kubernetes.io/part-of: talos-platform-base
         app.kubernetes.io/managed-by: opentofu
@@ -248,7 +248,7 @@ spec:
       securityContext: {}
       containers:
       - name: kubelet-csr-approver
-        image: ghcr.io/postfinance/kubelet-csr-approver:v1.2.14@sha256:c0f6aa1abdc225a32f9a29992fd97f711e78e2df21434f9ce7bc60981f96a5f8
+        image: ghcr.io/postfinance/kubelet-csr-approver:v1.2.15@sha256:6469ef517d2b6d3cb108fce8a913483533a48b1cd78b5d4af307fa09e04a7818
         imagePullPolicy: IfNotPresent
         args:
         - -metrics-bind-address

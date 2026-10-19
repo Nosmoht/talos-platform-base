@@ -301,7 +301,7 @@ run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
     }]
     error_message = "adr-0019 §Security: exactly one ClusterRoleBinding (approver SA → the scoped ClusterRole) must exist; got ${jsonencode(output.cert_approver_clusterrolebinding_targets)}"
   }
-  # ALLOWED_DNS_NAMES / -max-sans is dead config in postfinance v1.2.14; the seed omits it.
+  # ALLOWED_DNS_NAMES / -max-sans is dead config in postfinance v1.2.15; the seed omits it.
   assert {
     condition     = !contains(keys(output.cert_approver_env), "ALLOWED_DNS_NAMES")
     error_message = "adr-0019: ALLOWED_DNS_NAMES must not be shipped (dead+misleading config); got '${try(output.cert_approver_env["ALLOWED_DNS_NAMES"], "<absent>")}'"
