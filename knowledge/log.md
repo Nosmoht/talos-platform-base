@@ -13,6 +13,8 @@
 - `project/vision.md`: drop the `CHANGELOG.md` source and pointers.
 - `architecture/substrate.md`: drop `CHANGELOG` from the root-file list.
 - `rules/talos-base-bundle.md`: consumer actions belong in `UPGRADING.md`.
+- `workflows/release-process.md`: `UPGRADING.md` headings name no version;
+  consumers read the file's diff between two tags.
 
 ## 2026-10-18
 

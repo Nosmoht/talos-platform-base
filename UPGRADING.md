@@ -2,7 +2,7 @@
 
 For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 
-## Unreleased (next PATCH) — argo-cd chart `10.6.0` → `10.10.1`, Argo CD `v3.5.2` → `v3.5.4` (security fix; action required only under `controlplane_apply_mode = "reboot"`)
+## `v15.0.2` — argo-cd chart `10.6.0` → `10.10.1`, Argo CD `v3.5.2` → `v3.5.4` (PATCH — security fix; action required only under `controlplane_apply_mode = "reboot"`)
 
 Argo CD `v3.5.2` is affected by the critical advisory
 [GHSA-fmxq-cgp8-87wp](https://github.com/argoproj/argo-cd/security/advisories/GHSA-fmxq-cgp8-87wp)
@@ -61,7 +61,7 @@ together. That rollback has the same effects as the upgrade, in reverse:
 - Every controlplane receives another machine-configuration apply through the
   namespace label, with the same `controlplane_apply_mode` caveats as step 3.
 
-## Native Talos 1.14 support (provider 0.12.0 stable)
+## `v15.0.0` — native Talos 1.14 support, provider 0.12.0 stable (MAJOR — action required for every consumer)
 
 This section supersedes the beta-provider guidance below for this release.
 The base now supports native **Talos 1.14.2** configurations while preserving
@@ -72,7 +72,7 @@ native module patches and must align their own patches before applying.
 1. Update a consumer's provider constraint to admit `0.12.0`, run
    `tofu init -upgrade`, review and commit the lockfile.
 2. For an existing cluster, retain `talos.version` (the bootstrap schema pin).
-   Set `talos.install_version: v1.14.4` for an OS upgrade and use the existing
+   Set `talos.install_version: v1.14.2` for an OS upgrade and use the existing
    sequential, health-gated OS-upgrade procedure. A base update or config apply
    alone does not upgrade the operating system.
 3. New 1.14 clusters use the updated example. Consumers already pinned to a
@@ -110,16 +110,15 @@ patch contents. Network-interface patches should be reviewed against the
 - Per-release notes are on each tag's GitHub Release.
 - This file documents **cumulative migration steps** for every release
   that requires consumer action or carries an upgrade note, whatever its class.
-- Every section heading added from now on names its release class — MAJOR,
+- Every section heading names the release class of the change — MAJOR,
   MINOR or PATCH under
-  [`knowledge/decisions/0029-public-api-and-major-rule.md`](knowledge/decisions/0029-public-api-and-major-rule.md)
-  — and that class is the class of the release (tag) the section shipped in, as
-  in the `v10.0.0` heading. Headings written before that record are not
-  relabeled.
-- Read every section between the version you currently pin and the
-  version you want to adopt, oldest tag first. Sections are not stored in
-  version order and one tag may own more than one of them — locate every
-  section carrying a tag in your range by its heading, not by position.
+  [`knowledge/decisions/0029-public-api-and-major-rule.md`](knowledge/decisions/0029-public-api-and-major-rule.md).
+  A heading added from now on names no version.
+- To find what you must do between the tag you pin and the tag you adopt,
+  read this file's diff between them:
+  `git diff <pinned-tag> <target-tag> -- UPGRADING.md`, or the
+  "Full Changelog" compare link in the target tag's GitHub Release. Apply the
+  added sections oldest first.
 - Always verify the new artifact (cosign + provenance) before vendoring
   — see [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
 - Vendor through `oras pull`, as the workflow below does, not through the
@@ -164,7 +163,7 @@ diff -u /tmp/before.yaml vendor/base/kubernetes/substrate/argocd/_rendered/manif
 
 ---
 
-## Unreleased (next MAJOR) — the Cilium floor sets `rollOutCiliumPods: true` (action required for consumers who self-manage Cilium)
+## `v14.0.0` — the Cilium floor sets `rollOutCiliumPods: true` (MAJOR — action required for consumers who self-manage Cilium)
 
 **Type:** MAJOR. `tofu/modules/talos-cluster/helm/cilium-values.yaml` gains one
 key, `rollOutCiliumPods: true`, and the same key is added to the Day-2 reference
@@ -279,7 +278,7 @@ the restart stays **mandatory**. There the operator has already applied a
 corrected chart by hand, mid-outage, possibly from a render predating this tag —
 so the ConfigMap did change while no checksum moved.
 
-## Unreleased (next MAJOR) — `cilium_values_override` reaches Day-2, and three Helm keys move to typed inputs (action required for consumers who override those keys, or who self-manage Cilium)
+## `v13.0.0` — `cilium_values_override` reaches Day-2, and three Helm keys move to typed inputs (MAJOR — action required for consumers who override those keys, or who self-manage Cilium)
 
 The heading takes the tag when the release is cut. Two independent changes ship
 here; read §1 even if you never self-manage Cilium.
@@ -681,11 +680,7 @@ seed-to-GitOps takeover behaviour §3 describes.
 
 ---
 
-## Unreleased (next MAJOR) — the `siderolabs/talos` provider becomes an exact prerelease pin (every consumer inherits it; most roots need no edit)
-
-The heading takes the tag by hand once the release is cut — see
-[`knowledge/workflows/release-process.md`](knowledge/workflows/release-process.md)
-§Release notes and `UPGRADING.md`. Until then, find this section by its title.
+## `v12.0.0` — the `siderolabs/talos` provider becomes an exact prerelease pin (MAJOR — every consumer inherits it; most roots need no edit)
 
 **What changed.** The module pinned `siderolabs/talos` to `>= 0.7.0, < 1.0.0`,
 which resolves to `0.11.0`. That provider's bundled Talos machinery predates

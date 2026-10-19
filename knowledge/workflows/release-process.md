@@ -154,13 +154,11 @@ edit the merged PR's title: the subject on `main` is what counted.
 The base keeps no `CHANGELOG.md`. `oci-publish.yml` creates every GitHub
 Release with `gh release create --generate-notes`, so the notes list the
 squash-merged PR titles in the tag's range. What a consumer must do to adopt a
-tag lives in `UPGRADING.md`, one section per tag that needs an action.
+tag lives in `UPGRADING.md`, one section per change that needs an action.
 
-A section authored before the version is known carries the heading
-`## Unreleased (next <CLASS>)`, where `<CLASS>` is MAJOR, MINOR or PATCH. After
-the tag is cut, rename that heading to the tag by hand, with the class of the
-tag actually cut: that file's own §How to use this file tells consumers to
-locate sections by their tag heading, and nothing automates the rename.
+A section heading names the change's release class and no version: which tag
+carries a section is what git records, and a consumer reads the file's diff
+between two tags.
 
 ## Publish — `.github/workflows/oci-publish.yml`
 
