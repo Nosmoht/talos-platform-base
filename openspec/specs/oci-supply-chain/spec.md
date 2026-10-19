@@ -85,13 +85,6 @@ steady-state ArgoCD component's consumable files SHALL be in the payload:
 `kubernetes/substrate/argocd/kustomization.yaml` appear in
 `.ci-oci-tarball-include.txt`.
 
-`kustomization.yaml` is a consumable, not an authoring input: it is what makes
-the other three a buildable unit, and without it the component's own
-"consumable as a single kustomization" requirement holds in the repository only.
-The remaining authoring inputs (`values.yaml`, `chart.lock.yaml`,
-`_rendered-overlay/`) stay outside the payload — consumers receive the render
-and the means to build it, not the render pipeline.
-
 #### Scenario: Consumer can source the steady-state render from the artifact
 
 - **WHEN** the published tarball's contents are listed
@@ -107,6 +100,21 @@ and the means to build it, not the render pipeline.
   `kustomization.yaml` entry in `.ci-oci-tarball-include.txt`
 - **THEN** `scripts/check-substrate-consumability.sh` fails, naming the
   component
+
+#### Scenario: The kustomization ships as a consumable
+
+- **WHEN** a consumer extracts the steady-state ArgoCD component
+- **THEN** `kustomization.yaml` is present as a consumable, not an authoring
+  input, making the other three files a buildable unit
+- **AND** the component's own "consumable as a single kustomization"
+  requirement holds for the artifact, not only in the repository
+
+#### Scenario: Authoring inputs stay outside the payload
+
+- **WHEN** the published tarball's contents are listed
+- **THEN** the remaining authoring inputs (`values.yaml`, `chart.lock.yaml`,
+  `_rendered-overlay/`) are absent — consumers receive the render and the
+  means to build it, not the render pipeline
 
 ### Requirement: Keyless signature keyed to the digest
 
@@ -126,10 +134,7 @@ tag. A failure to capture the digest SHALL fail the publication.
 The version of every tool the publish workflow installs to produce or push a
 release artifact SHALL be declared in that workflow AND passed explicitly to
 the action that installs it. A tool an action bundles is pinned by the
-action's commit SHA instead. An installer action invoked without a version input resolves its
-own default, so the declared pin is decorative and the tool that actually signs
-is whatever that action happens to ship — a floating tool version on the
-supply-chain path, invisible to any drift check.
+action's commit SHA instead.
 
 #### Scenario: The declared cosign version is the one that signs
 
@@ -166,32 +171,10 @@ SemVer pre-release tag (`v*-*`) SHALL leave `:latest` untouched.
 
 Each published tag SHALL carry a GitHub Release whose assets mirror the OCI
 layers plus the SBOM (tarball, `checksums.txt`, CycloneDX JSON), with notes
-generated from the pull requests merged in the tag's range, and hyphenated tags
-marked pre-release. The assets SHALL be
-attached while the release is still a draft and the release SHALL be published
-only afterwards, so that release immutability — which takes effect at publish
-time — never intercepts an asset upload. The publish pipeline SHALL be the
-only producer of the release object, and SHALL fail rather than attempt to
-amend a release that is already published. After publishing, the pipeline
-SHALL read the release back and fail when its asset set is not exactly the
-three expected files. The registry artifact remains the authoritative, signed
+generated from the pull requests merged in the tag's range, and hyphenated
+tags marked pre-release. The publish pipeline SHALL be the only producer of
+the release object. The registry artifact remains the authoritative, signed
 consumption path.
-
-The pipeline SHALL address the release it publishes by the identity
-`gh release create` returned for that release, never by its tag: a tag names a
-SET of releases, and the listing that resolves that set is eventually
-consistent with the creation. A listing that does not yet report the release
-this run created — including one that cannot be read at all — SHALL be retried
-within a bounded, backing-off number of attempts rather than failing the run:
-by that point the artifact, its signature, its attestations and `:latest` are
-already in place, and the documented recovery for the resulting half-released
-tag is a non-idempotent re-run that remaps the tag to a new digest. Exhausting
-the retry SHALL fail without publishing anything.
-
-A release for the tag that is already PUBLISHED, and a SECOND draft beside the
-one this run created, SHALL each fail on first sight rather than be retried.
-Waiting improves neither, and re-sampling a set lets an inconsistent listing
-act on the wrong member of it.
 
 #### Scenario: Release object exists with mirrored assets
 
@@ -232,6 +215,67 @@ act on the wrong member of it.
   whether or not the listing has reported this run's own draft yet
 - **THEN** the pipeline publishes no release other than the one it created,
   and refuses outright once both drafts are visible
+
+### Requirement: Release assets are attached to a draft before publication
+
+The pipeline SHALL attach the assets while the release is still a draft and
+SHALL publish the release only afterwards, so that release immutability —
+which takes effect at publish time — never intercepts an asset upload. It
+SHALL fail rather than attempt to amend a release that is already published,
+and after publishing SHALL read the release back and fail when its asset set
+is not exactly the three expected files.
+
+#### Scenario: Draft-first publication with a read-back check
+
+- **WHEN** the pipeline publishes the GitHub Release for a tag
+- **THEN** the three assets were attached while it was a draft, before it
+  was published
+- **AND** the pipeline reads the published release back and fails when its
+  asset set is not exactly the three expected files
+
+### Requirement: The release is addressed by its creation identity
+
+The pipeline SHALL address the release it publishes by the identity
+`gh release create` returned for that release, never by its tag: a tag names
+a SET of releases, and the listing that resolves that set is eventually
+consistent with the creation.
+
+#### Scenario: Publication targets the created release, not the tag
+
+- **WHEN** the pipeline publishes the draft it created
+- **THEN** it addresses that release by the identity `gh release create`
+  returned, never by the tag
+
+### Requirement: A lagging release listing is retried with bounded backoff
+
+A listing that does not yet report the release this run created — including
+one that cannot be read at all — SHALL be retried within a bounded,
+backing-off number of attempts rather than failing the run. Exhausting the
+retry SHALL fail without publishing anything.
+
+#### Scenario: Retrying avoids a non-idempotent recovery
+
+- **WHEN** the listing lags at the point where the artifact, its signature,
+  its attestations and `:latest` are already in place
+- **THEN** the pipeline retries rather than fails, because the documented
+  recovery for the resulting half-released tag is a non-idempotent re-run
+  that remaps the tag to a new digest
+- **AND** once the bounded retries are exhausted it fails without publishing
+  anything
+
+### Requirement: A published release or a second draft fails on first sight
+
+A release for the tag that is already PUBLISHED, and a SECOND draft beside
+the one this run created, SHALL each fail on first sight rather than be
+retried.
+
+#### Scenario: No retry for a published release or a foreign draft
+
+- **WHEN** the listing shows the tag's release already PUBLISHED, or a
+  SECOND draft beside the one this run created
+- **THEN** the pipeline fails on first sight without retrying, because
+  waiting improves neither and re-sampling a set lets an inconsistent
+  listing act on the wrong member of it
 
 ### Requirement: Complete vendored Talos cluster module
 

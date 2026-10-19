@@ -53,17 +53,6 @@ set `cluster.proxy.disabled` in the same patch when
 `cilium_kube_proxy_replacement` is enabled, keeping the Talos side and the
 Cilium-side kube-proxy replacement in sync.
 
-The Cilium side of that pairing is `kubeProxyReplacement` plus the API-server
-endpoint Cilium reaches before the CNI is up, and the module SHALL emit all
-three from its computed values layer — never from the shipped floor file — so
-both delivery paths carry the same values. The endpoint's host and port SHALL
-be typed inputs defaulting to Talos KubePrism rather than hardcoded literals:
-Cilium documents these values as derived from the reachable API-server
-endpoint, so a cluster where KubePrism is not that endpoint must be able to say
-so. Their being typed inputs is also what makes `module-interface-contract`'s
-override joint-key rejection cost no capability — the value stays reachable,
-just not through a layer that would set one half without the other.
-
 #### Scenario: Default CNI cannot resurface via caller patches
 
 - **WHEN** `deploy_cilium = true` and a caller patch carries a `cni` stanza
@@ -90,6 +79,37 @@ just not through a layer that would set one half without the other.
   a key the chart consumes from one it silently discards, and this endpoint is
   what Cilium reaches the API server through before the CNI is up
 
+### Requirement: Cilium-side kube-proxy pairing emitted from the computed layer
+
+The Cilium side of the kube-proxy replacement pairing is
+`kubeProxyReplacement` plus the API-server endpoint host and port Cilium
+reaches before the CNI is up. The module SHALL
+emit all three from its computed values layer — never from the shipped floor
+file — so both delivery paths carry the same values, and the endpoint's host
+and port SHALL be typed inputs defaulting to Talos KubePrism rather than
+hardcoded literals.
+
+#### Scenario: The pairing keys never come from the floor file
+
+- **WHEN** either delivery path carries `kubeProxyReplacement`,
+  `k8sServiceHost` or `k8sServicePort`
+- **THEN** the value comes from the module's computed values layer, and the
+  shipped floor file carries none of the three
+
+#### Scenario: A cluster whose API-server endpoint is not KubePrism says so
+
+- **WHEN** the reachable API-server endpoint of a cluster is not Talos
+  KubePrism — Cilium documents these values as derived from that endpoint
+- **THEN** the consumer can set the typed host and port inputs instead of
+  the KubePrism defaults, with no hardcoded literal to override
+
+#### Scenario: The override joint-key rejection costs no capability
+
+- **WHEN** `module-interface-contract`'s override joint-key rejection refuses
+  these keys in `cilium_values_override`
+- **THEN** the endpoint stays reachable through the typed inputs — just not
+  through a layer that would set one half without the other
+
 ### Requirement: Seed render frozen against non-deterministic re-renders
 
 The module SHALL consume the Cilium render through a state-frozen resource
@@ -106,22 +126,12 @@ deliberate re-seed requires an explicit resource replacement.
 
 ### Requirement: Seed configuration surface is pinned
 
-The seed bypasses the kustomize/conftest render gate, so a chart bump can move a
-datapath- or security-relevant default into the create-only controlplane machine
-configuration with nothing failing. The repo SHALL therefore pin the seed's
-rendered `cilium-config` surface at two levels: its full KEY SET against a
-committed fixture, so a bump that adds or removes any key fails until the fixture
-is refreshed deliberately; and the VALUES of a curated set of datapath- and
-security-relevant keys, because a key set alone cannot catch a default that
-changed under an unchanged key. A refresh SHALL be a deliberate act that answers
-the consumer-facing question in `UPGRADING.md`, never a silent regeneration.
-
-The curated value set is intentionally open: it starts from the keys whose flip
-would break the cluster silently or widen its exposure, and grows as bumps reveal
-more. Its purpose is not exhaustive coverage but to make the class of regression
-visible — the Cilium 1.20 bump moved `bpf-lb-algorithm-annotation` from `"false"`
-to `"true"`, turning a previously inert `service.cilium.io/lb-algorithm` Service
-annotation live, and nothing in the suite noticed.
+The repo SHALL pin the seed's rendered `cilium-config` surface at two levels:
+its full KEY SET against a committed fixture, so a bump that adds or removes
+any key fails until the fixture is refreshed deliberately; and the VALUES of a
+curated set of datapath- and security-relevant keys. A refresh SHALL be a
+deliberate act that answers the consumer-facing question in `UPGRADING.md`,
+never a silent regeneration.
 
 #### Scenario: A chart bump that changes the seed's config surface fails the suite
 
@@ -130,58 +140,39 @@ annotation live, and nothing in the suite noticed.
 - **THEN** the module's test target fails, naming the divergence, rather than
   freezing the new default into the machine configuration unnoticed
 
+#### Scenario: A default changed under an unchanged key is caught by the value pins
+
+- **WHEN** a chart bump changes the default of a curated key while the key set
+  still matches the committed fixture
+- **THEN** the curated value pin fails, because a key set alone cannot catch a
+  default that changed under an unchanged key
+- **AND** this suite is what catches it: the seed bypasses the
+  kustomize/conftest render gate, so the create-only controlplane machine
+  configuration would otherwise take the new default with nothing failing
+
+### Requirement: Curated value pins grow as bumps reveal regressions
+
+The curated value set SHALL start from the keys whose flip would break the
+cluster silently or widen its exposure, and SHALL grow as chart bumps reveal
+more. It is intentionally open: its purpose is to make the class of
+regression visible, not exhaustive coverage.
+
+#### Scenario: A bump reveals a datapath-relevant flip outside the curated set
+
+- **WHEN** a chart bump flips the default of a key outside the curated set
+  whose flip would break the cluster silently or widen its exposure — as the
+  Cilium 1.20 bump moved `bpf-lb-algorithm-annotation` from `"false"` to
+  `"true"`, turning a previously inert `service.cilium.io/lb-algorithm`
+  Service annotation live while nothing in the suite noticed
+- **THEN** that key joins the curated value set
+
 ### Requirement: Cluster-agnostic floor values with layered configuration
 
 The module SHALL render the seed from three value layers, later layer
 winning per Helm merge semantics: the shipped floor
-`tofu/modules/talos-cluster/helm/cilium-values.yaml` (Talos invariants:
-cgroup auto-mount disabled, `SYS_MODULE` absent from the agent capability
-set, `cni.exclusive: false`, Hubble disabled for a deterministic render,
-a single operator replica as the single-node-correct boundary condition,
-and `rollOutCiliumPods: true`),
-then module-computed values derived from typed inputs (routing mode,
-kube-proxy replacement, native-routing CIDR, Gateway API, MTU, encryption,
-the operator replica count — pinned by its own typed input, or derived from
-the node set — and Cilium agent and operator Prometheus metrics, Hubble
-enablement/metrics/observer-API-TLS, the agent metric-delta list and the
-Hubble OpenMetrics exposition flag), then the consumer's
-`cilium_values_override`. The module-computed layer is computed once, in
-`tofu/modules/talos-cluster/cilium-values.tf`, and feeds BOTH this seed
-render and the opt-in emitted self-management Application (see the ADDED
-requirement below) — a single observability data-flow, no divergent
-computation between the two delivery paths.
-
-Within that computed layer, a parent key written by more than one typed
-input SHALL be assembled as a single merge term. The computed layer is a
-shallow `merge()` over conditional maps, so two terms writing the same
-top-level key do not combine — the later replaces the earlier wholesale,
-silently dropping the earlier input's effect. This is a distinct collision
-level from the floor-versus-computed one the emitted Application's bounded
-merge resolves, and both SHALL carry an explicit sub-merge plus a
-preservation assertion that fails when either contributor is lost.
-
-The floor SHALL carry `rollOutCiliumPods: true`. It is the one floor key that
-is not a Talos or CNI invariant, and it is admitted because the property it
-fixes holds on every cluster: most Cilium settings render only into the
-`cilium-config` ConfigMap, so without the chart's pod-template checksum a
-delivered values change leaves the agent DaemonSet untouched and the running
-agents on the previous configuration while the sync reports success. It belongs
-to the floor rather than the computed layer because no typed input derives it.
-The floor's own header SHALL state this exception, so the membership rule the
-file declares matches the file.
-
-A computed key that supersedes a floor key SHALL be emitted only on the
-shapes where it actually supersedes it. Emitting it unconditionally makes
-the floor a non-contributor for that parent, which retires the preservation
-assertion protecting the parent's sub-merge: the mutation it exists to catch
-becomes equivalent and the gate passes silently.
-
-A value the module computes into a Helm values layer SHALL additionally be
-asserted at the RENDER layer wherever the rendered object exposes it. Helm
-merges values without `--strict`, so a key the chart does not recognise —
-a typo, a wrong nesting level, a key the chart renamed in a later version —
-is discarded without error: every assertion on the values map stays green
-while the rendered object silently keeps the chart's own default.
+`tofu/modules/talos-cluster/helm/cilium-values.yaml`, then module-computed
+values derived from typed inputs, then the consumer's
+`cilium_values_override`.
 
 #### Scenario: Consumer override wins over the floor
 
@@ -303,6 +294,122 @@ while the rendered object silently keeps the chart's own default.
 - **THEN** the computed layer carries both `operator.replicas` and
   `operator.prometheus.enabled` — neither contributor displaces the other
 
+### Requirement: Floor values carry the Talos invariants
+
+The shipped floor `tofu/modules/talos-cluster/helm/cilium-values.yaml` SHALL
+carry the Talos invariants: cgroup auto-mount disabled, `SYS_MODULE` absent
+from the agent capability set, `cni.exclusive: false`, Hubble disabled for a
+deterministic render, a single operator replica as the single-node-correct
+boundary condition, and `rollOutCiliumPods: true`.
+
+#### Scenario: The floor file carries each invariant
+
+- **WHEN** the shipped floor values file is read
+- **THEN** it disables cgroup auto-mount, omits `SYS_MODULE` from the agent
+  capability set, and sets `cni.exclusive: false`
+- **AND** it disables Hubble, sets a single operator replica, and sets
+  `rollOutCiliumPods: true`
+
+### Requirement: Computed layer derived from typed inputs
+
+The module-computed layer SHALL derive from typed inputs the routing mode,
+kube-proxy replacement, native-routing CIDR, Gateway API, MTU, encryption,
+the operator replica count — pinned by its own typed input, or derived from
+the node set — and Cilium agent and operator Prometheus metrics, Hubble
+enablement/metrics/observer-API-TLS, the agent metric-delta list and the
+Hubble OpenMetrics exposition flag.
+
+#### Scenario: Each computed value traces to a typed input
+
+- **WHEN** the module plans with Cilium delivered
+- **THEN** every key of the computed layer is derived from the module's typed
+  inputs or, for the operator replica count, from its own typed input or the
+  node set
+
+### Requirement: Computed layer shared by both delivery paths
+
+The module-computed layer SHALL be computed once, in
+`tofu/modules/talos-cluster/cilium-values.tf`, and SHALL feed BOTH the seed
+render and the opt-in emitted self-management Application (see Requirement
+"Opt-in emitted self-management Application for Day-2 delivery") — a single
+observability data-flow, with no divergent computation between the two
+delivery paths.
+
+#### Scenario: Seed and emitted Application share one computation
+
+- **WHEN** the module produces both the seed render and the emitted
+  self-management Application
+- **THEN** both take their module-computed values from the single computation
+  in `tofu/modules/talos-cluster/cilium-values.tf`
+
+### Requirement: Multi-input parent keys assembled as one merge term
+
+Within the computed layer, a parent key written by more than one typed input
+SHALL be assembled as a single merge term. This collision level and the
+distinct floor-versus-computed one the emitted Application's bounded merge
+resolves SHALL both carry an explicit sub-merge plus a preservation assertion
+that fails when either contributor is lost.
+
+#### Scenario: Two inputs writing one parent key both survive
+
+- **WHEN** two typed inputs write the same top-level key of the computed
+  layer, which is a shallow `merge()` over conditional maps
+- **THEN** they are assembled as one merge term, so the later does not replace
+  the earlier wholesale and silently drop the earlier input's effect
+- **AND** a preservation assertion fails if either contributor is lost
+
+### Requirement: rollOutCiliumPods is the floor's one non-invariant key
+
+The floor SHALL carry `rollOutCiliumPods: true`, its one key that is not a
+Talos or CNI invariant; it belongs to the floor rather than the computed
+layer because no typed input derives it. The floor's own header SHALL state
+this exception, so the membership rule the file declares matches the file.
+
+#### Scenario: The floor header states the exception
+
+- **WHEN** the header of `tofu/modules/talos-cluster/helm/cilium-values.yaml`
+  is read
+- **THEN** it names `rollOutCiliumPods: true` as the exception to the file's
+  Talos-or-CNI-invariant membership rule
+
+#### Scenario: The property the key fixes holds on every cluster
+
+- **WHEN** a delivered values change renders only into the `cilium-config`
+  ConfigMap, as most Cilium settings do
+- **THEN** the chart's pod-template checksum rolls the agent DaemonSet, where
+  without it the DaemonSet stays untouched and the running agents keep the
+  previous configuration while the sync reports success
+
+### Requirement: Superseding computed keys emitted only where they supersede
+
+A computed key that supersedes a floor key SHALL be emitted only on the
+shapes where it actually supersedes it.
+
+#### Scenario: The floor stays a contributor where the computed key would not supersede it
+
+- **WHEN** the cluster shape is one where a computed key would not supersede
+  its floor key
+- **THEN** the computed layer omits that key, so the floor stays a
+  contributor for that parent and the preservation assertion protecting the
+  parent's sub-merge can still fail
+- **AND** emitting the key unconditionally would make the floor a
+  non-contributor, the mutation that assertion exists to catch equivalent,
+  and the gate pass silently
+
+### Requirement: Computed values asserted at the render layer
+
+A value the module computes into a Helm values layer SHALL additionally be
+asserted at the RENDER layer wherever the rendered object exposes it.
+
+#### Scenario: A key the chart does not recognise fails the render assertion
+
+- **WHEN** a computed key is one the chart does not recognise — a typo, a
+  wrong nesting level, a key the chart renamed in a later version
+- **THEN** Helm, merging values without `--strict`, discards it without error
+  and every assertion on the values map stays green while the rendered object
+  silently keeps the chart's own default
+- **AND** the render-layer assertion is what detects the divergence
+
 ### Requirement: Reference values for optional Day-2 self-management
 
 The repo SHALL retain `kubernetes/bootstrap/cilium/values.yaml` as a
@@ -311,35 +418,7 @@ it is not consumed by the module's seed render — and SHALL ship
 `kubernetes/bootstrap/cilium/extras.yaml` providing the `cilium`
 GatewayClass that the Helm chart does not generate, consistent with the
 platform's Gateway-API-only stance (normative: AGENTS.md §Hard Constraints —
-Gateway API only). Because the file is offered to consumers as copy-ready
-input for a self-managed Application, a `cilium_chart_version` bump SHALL
-reconcile this file against the newly pinned chart for its **datapath- and
-security-critical** values, covering both failure modes: a value spelling the
-chart has **removed** (Helm merges without `--strict`, so it is dropped
-silently rather than rejected), and a value whose **default or enforcement
-behavior the chart has changed** under a spelling that still parses. In either
-case the consumer's cluster is misconfigured or newly failing with no error at
-render or apply time, so the bump SHALL either fix the file or document the
-consequence in `UPGRADING.md`. The removed-spelling half SHALL be enforced
-mechanically rather than by review: a check SHALL validate every value path in the
-file against the pinned chart's own `values.schema.json` and fail on a path the
-chart does not declare, running from the same script locally and in CI so a local
-pass means what a CI pass means. Because it needs the chart registry, the check
-SHALL skip loudly rather than fail when the registry is unreachable — an outage
-must not block unrelated merges — which leaves one stated hole: during an outage a
-removed spelling can merge. The changed-default half stays reviewer-enforced, since
-no schema can express it. Known exception: a full audit of every value in
-the file against the pinned chart is out of scope for a version bump, so the
-file MAY still carry a value the chart does not recognize. Such a value is inert
-rather than harmful — Helm drops it, and removing it leaves the rendered output
-byte-identical — but it misleads a consumer copying the file, so a value found to
-be unrecognized by the pinned chart SHALL be removed.
-
-The file SHALL carry `rollOutCiliumPods: true` alongside the floor. It is
-offered as copy-ready input for a self-managed Application — the very delivery
-path the key exists for — so omitting it would hand a consumer following the
-documented copy path the defect the floor closes, with the schema-path check
-unable to report it (it validates spellings present, never a key absent).
+Gateway API only).
 
 #### Scenario: Reference values are marked as non-live
 
@@ -373,6 +452,87 @@ unable to report it (it validates spellings present, never a key absent).
   `encryption-strict-egress-allow-remote-node-identities` — they are not
   silently dropped as unknown keys
 
+### Requirement: Reference values reconciled on every chart bump
+
+Because `kubernetes/bootstrap/cilium/values.yaml` is offered to consumers as
+copy-ready input for a self-managed Application, a `cilium_chart_version`
+bump SHALL reconcile it against the newly pinned chart for its **datapath-
+and security-critical** values, covering both failure modes in the scenarios
+below, and SHALL either fix the file or document the consequence in
+`UPGRADING.md`.
+
+#### Scenario: The chart removed a value spelling the file uses
+
+- **WHEN** the newly pinned chart has **removed** a value spelling the file
+  uses
+- **THEN** Helm, merging without `--strict`, drops it silently rather than
+  rejecting it, so the consumer's cluster is misconfigured or newly failing
+  with no error at render or apply time
+- **AND** the bump fixes the file or documents the consequence in
+  `UPGRADING.md`
+
+#### Scenario: The chart changed a default under a spelling that still parses
+
+- **WHEN** the newly pinned chart has changed the **default or enforcement
+  behavior** of a value under a spelling that still parses
+- **THEN** the consumer's cluster is misconfigured or newly failing with no
+  error at render or apply time
+- **AND** the bump fixes the file or documents the consequence in
+  `UPGRADING.md`
+
+### Requirement: Removed reference-value spellings fail a schema-path check
+
+The removed-spelling failure mode SHALL be enforced mechanically rather than
+by review: a check SHALL validate every value path in
+`kubernetes/bootstrap/cilium/values.yaml` against the pinned chart's own
+`values.schema.json` and fail on a path the chart does not declare, running
+from the same script locally and in CI so a local pass means what a CI pass
+means.
+
+#### Scenario: The chart registry is unreachable
+
+- **WHEN** the check cannot reach the chart registry it needs
+- **THEN** it SHALL skip loudly rather than fail, so an outage does not block
+  unrelated merges
+- **AND** this leaves one stated hole: during an outage a removed spelling
+  can merge
+
+#### Scenario: A changed default is outside the check's reach
+
+- **WHEN** a chart bump changes a default under a spelling that still parses
+- **THEN** the schema-path check does not report it — no schema can express
+  it — and that failure mode stays reviewer-enforced
+
+### Requirement: Unrecognized reference values are removed
+
+A value in `kubernetes/bootstrap/cilium/values.yaml` found to be
+unrecognized by the pinned chart SHALL be removed. Known exception: a full
+audit of every value in the file against the pinned chart is out of scope
+for a version bump, so the file MAY still carry a value the chart does not
+recognize.
+
+#### Scenario: An unrecognized value is found
+
+- **WHEN** a value in the file is found to be unrecognized by the pinned chart
+- **THEN** it is removed — it is inert rather than harmful, since Helm drops
+  it and removing it leaves the rendered output byte-identical, but it
+  misleads a consumer copying the file
+
+### Requirement: Reference values carry rollOutCiliumPods
+
+`kubernetes/bootstrap/cilium/values.yaml` SHALL carry
+`rollOutCiliumPods: true` alongside the floor.
+
+#### Scenario: A consumer copies the reference values
+
+- **WHEN** a consumer follows the documented copy path into a self-managed
+  Application — the very delivery path the key exists for
+- **THEN** the copied values carry `rollOutCiliumPods: true`, so the consumer
+  is not handed the defect the floor closes
+- **AND** this is a file-content obligation, because the schema-path check
+  validates spellings present, never a key absent, and so cannot report its
+  omission
+
 ### Requirement: Opt-in emitted self-management Application for Day-2 delivery
 
 The module SHALL, when `cilium_self_management = true` (guarded by the
@@ -380,68 +540,7 @@ The module SHALL, when `cilium_self_management = true` (guarded by the
 `argoproj.io/v1alpha1` `Application` manifest — via the
 `cilium_self_management_app` output, never applied by the module — as the
 Day-2 delivery path for a Cilium config change (including the observability
-inputs) on an already-bootstrapped cluster, complementing the frozen
-create-only bootstrap seed above and the pre-existing static
-`kubernetes/bootstrap/cilium/values.yaml` reference file.
-
-The emitted Application SHALL take one of two shapes, selected by
-`cilium_self_management_values_source`:
-
-**Single-source (values source unset, the default).**
-`spec.source.helm.valuesObject` SHALL be the bounded, module-controlled merge
-of the floor and computed-values layers only, and `cilium_values_override` SHALL
-NOT reach it. Configuring or not configuring a values source SHALL NOT move this
-document AT ONE BASE REVISION. It is not a promise across revisions: a floor or
-computed-layer change moves it for every consumer on this arm, deliberately.
-Such a change is consumer-visible on this arm and SHALL carry an `UPGRADING.md`
-note and a deliberate golden refresh; its release class follows ADR-0029 —
-row 12, MINOR with that note although this arm has no opt-out, and the higher
-class only if row 9 applies.
-
-**Multi-source (values source set).** `spec.sources` SHALL carry exactly two
-entries: a `ref`-only source for the consumer's values repository (no `path`,
-no `chart` — it generates no manifests and exists so `$values/<path>`
-resolves at all), and the Cilium chart source whose
-`helm.valueFiles` SHALL be the module-set layer FIRST and
-`cilium_values_override` SECOND, with `helm.ignoreMissingValueFiles`
-explicitly `false`. The ORDER of that list is the precedence mechanism: Helm
-merges later files over earlier ones at arbitrary depth, which is why the
-merge belongs to Helm and not to the module — the override is an opaque YAML
-document and HCL has no generic recursive merge. The override entry SHALL be
-absent when the override is empty. The module SHALL NOT place the override in
-`valuesObject`: that slot is applied after every `valueFiles` entry, and it
-is where the module re-asserts its own keys.
-
-`helm.valuesObject` on the multi-source shape SHALL carry the joint keys of
-`module-interface-contract`'s override joint-key guard — `kubeProxyReplacement`
-always, plus `k8sServiceHost` and `k8sServicePort` when
-`cilium_kube_proxy_replacement` is true — and nothing else. Those keys are
-produced by the computed layer alone, never by the floor file, so on this
-shape they live only in a file the consumer commits; any state in which that
-file resolves empty would otherwise render a Cilium that does not replace
-kube-proxy while Talos already carries `cluster.proxy.disabled`, leaving a
-running cluster with no ClusterIP datapath and no cluster DNS that the
-create-only seed cannot repair. Re-asserting them as the last layer SHALL NOT
-constitute the module overwriting a consumer value, because the override is
-forbidden to name them.
-
-The module SHALL additionally expose the module-set layer as
-`cilium_self_management_values`, a YAML document for the consumer to commit at
-the values source's `values_path`, empty on the single-source shape. The
-emitted Application SHALL carry a
-`talos-platform-base.io/values-digest` annotation over that layer, matching a
-digest recorded in the document's own header, so a stale committed values file
-is detectable — the two artifacts are committed independently and ArgoCD
-compares neither. The annotation SHALL be absent on the single-source shape,
-which has no such file.
-
-The Application SHALL carry `spec.project = var.cilium_self_management_project`
-(default `"default"`, the base's sole permissive AppProject; a scoped
-consumer-created project is recommended hardening and, on the multi-source
-shape, MUST list both the values repository and the chart repository in
-`sourceRepos`) and SHALL carry no `syncPolicy`, so the consumer controls sync
-timing for the graceful-restart-gated DaemonSet roll that enabling Hubble
-triggers.
+inputs) on an already-bootstrapped cluster.
 
 #### Scenario: Emitted Application carries the module-set values only
 
@@ -505,3 +604,140 @@ triggers.
   rejection covers the `cilium_values_override` INPUT and cannot cover a file
   the module never reads, so the generated values document's own header SHALL
   disclose the precedence and name the typed inputs that set both halves
+
+#### Scenario: The Day-2 path complements the seed and the reference file
+
+- **WHEN** a Cilium config change targets an already-bootstrapped cluster
+- **THEN** the emitted Application is its delivery path, complementing the
+  frozen create-only bootstrap seed and the pre-existing static
+  `kubernetes/bootstrap/cilium/values.yaml` reference file
+
+### Requirement: Emitted Application shape selected by the values source
+
+The emitted Application SHALL take one of two shapes, selected by
+`cilium_self_management_values_source`: single-source when it is unset (the
+default), multi-source when it is set.
+
+#### Scenario: The values source selects the shape
+
+- **WHEN** `cilium_self_management_values_source` is unset
+- **THEN** the emitted Application is single-source; and when it is set, the
+  emitted Application is multi-source
+
+### Requirement: Single-source Application carries the bounded merge only
+
+On the single-source shape, `spec.source.helm.valuesObject` SHALL be the
+bounded, module-controlled merge of the floor and computed-values layers
+only, and `cilium_values_override` SHALL NOT reach it. Configuring or not
+configuring a values source SHALL NOT move this document AT ONE BASE
+REVISION.
+
+#### Scenario: The override does not reach the single-source document
+
+- **WHEN** `cilium_values_override` is non-empty and the values source is
+  unset
+- **THEN** the emitted `spec.source.helm.valuesObject` is the floor ⊕
+  computed-values merge alone
+
+### Requirement: Single-source document changes across base revisions are announced
+
+The single-source document's stability is not a promise across revisions: a
+floor or computed-layer change moves it for every consumer on this arm,
+deliberately. Such a change is consumer-visible on this arm and SHALL carry
+an `UPGRADING.md` note and a deliberate golden refresh.
+
+#### Scenario: A base revision moves the single-source document
+
+- **WHEN** a floor or computed-layer change moves the single-source document
+- **THEN** the change carries an `UPGRADING.md` note and a deliberate golden
+  refresh
+- **AND** its release class follows ADR-0029 — row 12, MINOR with that note
+  although this arm has no opt-out, and the higher class only if row 9
+  applies
+
+### Requirement: Multi-source Application carries ordered values files
+
+On the multi-source shape, `spec.sources` SHALL carry exactly two entries: a
+`ref`-only source for the consumer's values repository (no `path`, no
+`chart`), and the Cilium chart source whose `helm.valueFiles` SHALL be the
+module-set layer FIRST and `cilium_values_override` SECOND, with
+`helm.ignoreMissingValueFiles` explicitly `false`. The override entry SHALL
+be absent when the override is empty.
+
+#### Scenario: The ref-only source exists for value resolution
+
+- **WHEN** the emitted Application is multi-source
+- **THEN** its `ref`-only source generates no manifests and exists so
+  `$values/<path>` resolves at all
+
+#### Scenario: The list order is the precedence mechanism
+
+- **WHEN** Helm renders the chart source's `helm.valueFiles`
+- **THEN** it merges later files over earlier ones at arbitrary depth, so the
+  override wins over the module-set layer
+- **AND** the merge belongs to Helm and not to the module, because the
+  override is an opaque YAML document and HCL has no generic recursive merge
+
+### Requirement: Multi-source valuesObject carries only the joint keys
+
+The module SHALL NOT place the override in `helm.valuesObject`, which is
+applied after every `valueFiles` entry and is where the module re-asserts its
+own keys. On the multi-source shape `helm.valuesObject` SHALL carry the joint
+keys of `module-interface-contract`'s override joint-key guard —
+`kubeProxyReplacement` always, plus `k8sServiceHost` and `k8sServicePort`
+when `cilium_kube_proxy_replacement` is true — and nothing else.
+
+#### Scenario: The joint keys guard against an empty values file
+
+- **WHEN** the committed module-set values file resolves empty on the
+  multi-source shape — the joint keys are produced by the computed layer
+  alone, never by the floor file, so on this shape they otherwise live only
+  in a file the consumer commits
+- **THEN** `valuesObject` still carries them, so the render is not a Cilium
+  that does not replace kube-proxy while Talos already carries
+  `cluster.proxy.disabled`
+- **AND** the running cluster is not left with no ClusterIP datapath and no
+  cluster DNS, a state the create-only seed cannot repair
+
+#### Scenario: Re-asserting the joint keys overwrites no consumer value
+
+- **WHEN** the module re-asserts the joint keys as the last layer
+- **THEN** this SHALL NOT constitute the module overwriting a consumer value,
+  because the override is forbidden to name them
+
+### Requirement: Module-set values document and digest annotation
+
+The module SHALL expose the module-set layer as
+`cilium_self_management_values`, a YAML document for the consumer to commit
+at the values source's `values_path`, empty on the single-source shape. The
+emitted Application SHALL carry a `talos-platform-base.io/values-digest`
+annotation over that layer, matching a digest recorded in the document's own
+header; the annotation SHALL be absent on the single-source shape.
+
+#### Scenario: A stale committed values file is detectable
+
+- **WHEN** the committed values file was produced from an earlier
+  module-set layer than the one the Application was emitted from
+- **THEN** the Application's `talos-platform-base.io/values-digest`
+  annotation differs from the digest in the file's header — the two
+  artifacts are committed independently and ArgoCD compares neither
+
+#### Scenario: No digest annotation without a values file
+
+- **WHEN** the emitted Application is single-source, which has no such file
+- **THEN** it carries no `talos-platform-base.io/values-digest` annotation
+
+### Requirement: Emitted Application project and sync policy
+
+The Application SHALL carry
+`spec.project = var.cilium_self_management_project` (default `"default"`,
+the base's sole permissive AppProject) and SHALL carry no `syncPolicy`, so
+the consumer controls sync timing for the graceful-restart-gated DaemonSet
+roll that enabling Hubble triggers.
+
+#### Scenario: A scoped project lists both repositories
+
+- **WHEN** a consumer creates a scoped project — the recommended
+  hardening — for the multi-source shape
+- **THEN** that project MUST list both the values repository and the chart
+  repository in `sourceRepos`

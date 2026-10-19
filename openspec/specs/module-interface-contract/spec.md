@@ -33,73 +33,12 @@ arguments in the module implementation consume.
 ### Requirement: Grouped typed input surface
 
 The module SHALL expose its inputs as typed variable groups: cluster
-identity (`cluster_name`, `cluster_endpoint`); versions (`talos_version`
-as the machine-config schema pin fixed at bootstrap,
-`talos_install_version` as the installer pin defaulting to the schema
-pin, `kubernetes_version`); topology (`nodes`, `images`,
-`hardware_capabilities`); machine-config patches (all-nodes, per-role and
-per-node lists); substrate delivery (the ArgoCD and Cilium toggles with
-their chart-version, namespace, values-override and secret-material
-knobs, plus a chart-repository knob for Cilium only — the ArgoCD chart
-repository is hardcoded in `argocd-seed.tf` — together with the always-on
-cert-approver seed's three tuning knobs: `cert_approver_provider_regex`
-(default `".*"`), `cert_approver_provider_ip_prefixes` (default
-`["0.0.0.0/0", "::/0"]`, non-empty), and `cert_approver_replicas` (default
-`1`); the seed itself has no disable toggle; and the Cilium observability +
-self-management group: `cilium_agent_metrics`, `cilium_operator_metrics`
-(independent Prometheus toggles, default `false`), `cilium_hubble_enabled`
-(default `false`; forces the observer-API server TLS off in the computed
-values — metrics-only scope), `cilium_hubble_metrics` (a string list,
-default `[]`), `cilium_agent_metric_overrides` (a string list, default `[]`,
-format-validated — the chart's add/remove delta against its default metric
-set, not a replacement for it), `cilium_hubble_open_metrics` (default
-`false`, the OpenMetrics exposition format), `cilium_self_management`
-(default `false`, guarded by the cross-variable validations below), and
-`cilium_self_management_project`
-(default `"default"`)); cluster network (`pod_cidr`, `service_cidr`,
-`dual_stack`, `allow_scheduling_on_controlplanes`); the machine-config apply mode
-(`controlplane_apply_mode` and `worker_apply_mode`, both defaulting to `auto` —
-see the `cluster-bootstrap-lifecycle` spec for the behaviour they select); and the
-cluster health timeout. Because `deploy_argocd` defaults to true and a plan-time
-precondition requires `sops_age_key` to be a valid age private key
-whenever ArgoCD is deployed, `sops_age_key` is de-facto required under the
-default toggles.
-
-The two metric-set inputs SHALL declare `nullable = false`: the shipped
-example shim reads `cluster.yaml` through `try()`, which does not catch a
-key written with an empty value, so a bare key would otherwise deliver
-`null` into conditions that cannot accept it.
-
-`cilium_gateway_api_crds_url` carries a cross-component version coupling the
-module cannot validate at plan time: Cilium's Gateway API support requires a
-minimum Gateway API CRD bundle version that changes across Cilium minors, and
-the input is an opaque URL that Talos applies verbatim. Its documentation
-SHALL therefore state the Gateway-API CRD floor required by the Cilium chart
-version currently pinned by `cilium_chart_version`, together with the channel
-(standard vs experimental) that satisfies the platform's Gateway-API-only
-Hard Constraint — in every copy that documents it, the module README's Inputs
-row included. No mechanical gate enforces this: `spec:check-staleness` proves
-only that the owning spec was touched, `check-module-readme-parity.sh` checks
-row presence and not prose, and no check compares the CRD version literal
-against the chart pin. It is therefore a **reviewer-enforced** obligation on
-every `cilium_chart_version` bump, and a mechanical coupling remains desirable
-and unbuilt.
-
-The two chart-version inputs (`cilium_chart_version`, `argocd_chart_version`)
-SHALL declare `nullable = false` alongside their default, which makes the
-module's declared default the SINGLE source of truth for the pinned chart
-version: a caller MAY pass `null` to mean "take the base's pin", and OpenTofu
-substitutes the default. This is a per-input contract, NOT a module-wide
-convention — no other input promises null-means-default, and a `null` passed to
-an input that does not declare `nullable = false` stays `null` rather than
-falling back. The convention exists so a consumer who omits the corresponding
-`cluster.yaml` key inherits a base chart bump instead of freezing whatever
-literal their copied shim carried: the shipped example shim SHALL therefore pass
-`try(local.<component>.chart_version, null)`, and the shipped `cluster.yaml`
-examples SHALL leave the key commented out, with a setting explained as a
-deliberate pin against the base rather than as the normal case. A consumer that
-does set the key keeps full control; the value simply wins over the default as
-any other input does.
+identity (`cluster_name`, `cluster_endpoint`); versions; topology (`nodes`,
+`images`, `hardware_capabilities`); machine-config patches (all-nodes,
+per-role and per-node lists); substrate delivery; the Cilium observability +
+self-management group; cluster network; the machine-config apply mode; and the
+cluster health timeout. Each group's members are stated by the requirements
+that follow.
 
 #### Scenario: Optional groups fall back to documented defaults
 
@@ -129,6 +68,177 @@ any other input does.
   emitted self-management Application's `spec.source.targetRevision` carries a
   chart version rather than `null`
 
+### Requirement: Version input group
+
+The version group SHALL consist of `talos_version`, the machine-config schema
+pin fixed at bootstrap; `talos_install_version`, the installer pin, defaulting
+to the schema pin; and `kubernetes_version`.
+
+#### Scenario: The installer pin defaults to the schema pin
+
+- **WHEN** a caller sets `talos_version` and leaves `talos_install_version`
+  unset
+- **THEN** the effective installer version is `talos_version`
+
+### Requirement: Substrate delivery input group
+
+The substrate delivery group SHALL carry the ArgoCD and Cilium toggles with
+their chart-version, namespace, values-override and secret-material knobs,
+plus a chart-repository knob for Cilium only; the ArgoCD chart repository is
+hardcoded in `argocd-seed.tf`.
+
+#### Scenario: Only Cilium exposes a chart repository input
+
+- **WHEN** a caller looks for a chart-repository input
+- **THEN** one exists for Cilium, and none exists for ArgoCD, whose chart
+  repository is the one hardcoded in `argocd-seed.tf`
+
+### Requirement: Cert-approver seed tuning inputs
+
+The substrate delivery group SHALL carry the always-on cert-approver seed's
+three tuning knobs: `cert_approver_provider_regex` (default `".*"`),
+`cert_approver_provider_ip_prefixes` (default `["0.0.0.0/0", "::/0"]`,
+non-empty), and `cert_approver_replicas` (default `1`). The seed itself SHALL
+have no disable toggle.
+
+#### Scenario: The cert-approver seed cannot be switched off
+
+- **WHEN** a caller supplies none of the three cert-approver knobs
+- **THEN** the seed is delivered with the documented defaults, and no input
+  exists that disables it
+
+### Requirement: Cilium observability inputs
+
+The module SHALL accept `cilium_agent_metrics` and `cilium_operator_metrics`
+as independent Prometheus toggles, `cilium_hubble_enabled`, and
+`cilium_hubble_open_metrics` (the OpenMetrics exposition format), each
+defaulting to `false`, and `cilium_hubble_metrics` and
+`cilium_agent_metric_overrides` as string lists defaulting to `[]`.
+
+#### Scenario: Hubble enablement is metrics-only
+
+- **WHEN** `cilium_hubble_enabled = true`
+- **THEN** the computed values force the observer-API server TLS off — the
+  scope is metrics-only
+
+#### Scenario: Metric overrides are a delta
+
+- **WHEN** `cilium_agent_metric_overrides` is set
+- **THEN** it is format-validated and applied as the chart's add/remove delta
+  against its default metric set, not as a replacement for it
+
+### Requirement: Cilium self-management inputs
+
+The module SHALL accept `cilium_self_management` (default `false`, guarded by
+the cross-variable validations of the Cilium self-management guard
+requirement below) and `cilium_self_management_project` (default
+`"default"`).
+
+#### Scenario: Self-management defaults to off
+
+- **WHEN** neither self-management input is set
+- **THEN** `cilium_self_management` is `false` and
+  `cilium_self_management_project` is `"default"`
+
+### Requirement: Cluster network and apply-mode inputs
+
+The cluster network group SHALL consist of `pod_cidr`, `service_cidr`,
+`dual_stack` and `allow_scheduling_on_controlplanes`; the apply-mode group of
+`controlplane_apply_mode` and `worker_apply_mode`, both defaulting to `auto` —
+see the `cluster-bootstrap-lifecycle` spec for the behaviour they select.
+
+#### Scenario: Apply modes default to auto
+
+- **WHEN** neither apply-mode input is set
+- **THEN** both `controlplane_apply_mode` and `worker_apply_mode` are `auto`
+
+### Requirement: SOPS age key under the default toggles
+
+A plan-time precondition SHALL require `sops_age_key` to be a valid age
+private key whenever ArgoCD is deployed. Because `deploy_argocd` defaults to
+true, `sops_age_key` is de-facto required under the default toggles.
+
+#### Scenario: Default toggles without a valid age key fail
+
+- **WHEN** `deploy_argocd` is left at its default and `sops_age_key` is not a
+  valid age private key
+- **THEN** the plan fails on the precondition
+
+### Requirement: Non-nullable metric-set inputs
+
+The two metric-set inputs (`cilium_hubble_metrics`,
+`cilium_agent_metric_overrides`) SHALL declare `nullable = false`: the shipped
+example shim reads `cluster.yaml` through `try()`, which does not catch a key
+written with an empty value, so a bare key would otherwise deliver `null` into
+conditions that cannot accept it.
+
+#### Scenario: A bare metric-set key does not deliver null
+
+- **WHEN** `cluster.yaml` carries a metric-set key written with an empty value
+  and is read through the shipped example shim
+- **THEN** the module's conditions never receive `null` for that input
+
+### Requirement: Gateway API CRD floor documentation
+
+The documentation of `cilium_gateway_api_crds_url`, an opaque URL Talos
+applies verbatim, SHALL state the Gateway-API CRD floor required by the Cilium
+chart version pinned by `cilium_chart_version`, and the channel (standard vs
+experimental) that satisfies the Gateway-API-only Hard Constraint — in every
+copy that documents it, the module README's Inputs row included.
+
+#### Scenario: Every documented copy carries the floor
+
+- **WHEN** the module README's Inputs row for `cilium_gateway_api_crds_url` is
+  read
+- **THEN** it states the same CRD floor and channel as the variable's own
+  documentation
+
+### Requirement: Gateway API CRD floor is reviewer-enforced
+
+Every `cilium_chart_version` bump SHALL be reviewed for the Gateway API CRD
+floor, because the module cannot validate the coupling at plan time and no
+mechanical gate enforces it: `spec:check-staleness` proves only that the
+owning spec was touched, `check-module-readme-parity.sh` checks row presence
+and not prose, and no check compares the CRD version literal against the chart pin.
+
+#### Scenario: A chart bump with a stale CRD floor passes the gates
+
+- **WHEN** `cilium_chart_version` is bumped to a Cilium minor that requires a
+  newer Gateway API CRD bundle and the documented floor is not updated
+- **THEN** no mechanical check fails, so only review catches it — a mechanical
+  coupling remains desirable and unbuilt
+
+### Requirement: Null-means-default chart-version inputs
+
+`cilium_chart_version` and `argocd_chart_version` SHALL declare
+`nullable = false` alongside their default, making the declared default the
+single source of truth for the pinned chart version: a caller MAY pass `null`
+to mean "take the base's pin", and OpenTofu substitutes the default. This is a
+per-input contract, NOT a module-wide convention.
+
+#### Scenario: Null on another input stays null
+
+- **WHEN** a caller passes `null` to an input that does not declare
+  `nullable = false`
+- **THEN** the value stays `null` rather than falling back to the default — no
+  other input promises null-means-default
+
+### Requirement: Shipped examples inherit the chart pin
+
+The shipped example shim SHALL pass
+`try(local.<component>.chart_version, null)`, and the shipped `cluster.yaml`
+examples SHALL leave the chart-version key commented out, with a setting
+explained as a deliberate pin against the base rather than as the normal case.
+
+#### Scenario: Omitting the key inherits a base chart bump
+
+- **WHEN** a consumer using the shipped shim omits the chart-version key from
+  `cluster.yaml`
+- **THEN** a base chart bump reaches it instead of a literal frozen in its
+  copied shim
+- **AND** a consumer that does set the key keeps full control: the value wins
+  over the default as any other input does
+
 ### Requirement: Identity and version input validation
 
 The module SHALL reject at plan time a `cluster_name` that is not a
@@ -136,9 +246,7 @@ lowercase RFC-1123 label, a `cluster_endpoint` that is not an `https://`
 URL, and any of `talos_version`, `kubernetes_version`, or a non-empty
 `talos_install_version` that is not a v-prefixed MAJOR.MINOR.PATCH
 version with at most a hyphen- or plus-introduced pre-release/build
-suffix (the same anchored pattern as `schemas/cluster.schema.json`;
-regex-dialect edge: the schema validator's `$` tolerates one trailing
-newline, the module's does not — no plain YAML scalar carries one).
+suffix (the same anchored pattern as `schemas/cluster.schema.json`).
 
 #### Scenario: Malformed identity input is rejected
 
@@ -151,6 +259,12 @@ newline, the module's does not — no plain YAML scalar carries one).
 - **WHEN** a version input carries trailing text after the PATCH segment
   that is not a `-`/`+`-introduced suffix
 - **THEN** variable validation fails with the variable's error message
+
+#### Scenario: A version with one trailing newline diverges by regex dialect
+
+- **WHEN** a version input ends in exactly one trailing newline
+- **THEN** the module's validation rejects it, while the schema validator's
+  `$` tolerates it — no plain YAML scalar carries one
 
 ### Requirement: Apply-mode input validation
 
@@ -256,47 +370,6 @@ CIDR entry that is not a valid CIDR, a `cilium_routing_mode` outside
 `none`/`wireguard`/`ipsec`, and a non-empty `cilium_ipsec_key` that does
 not begin with a numeric key id.
 
-`cilium_values_override` SHALL be rejected when it is non-empty and does not
-decode to a YAML MAPPING — a comment-only document decodes to null and a
-list-rooted one to a sequence, and either would reach a Helm values slot as a
-non-object — and when its top-level key set names `kubeProxyReplacement`,
-`k8sServiceHost` or `k8sServicePort`. Those three are JOINT keys: the module
-writes their counterpart into the Talos machine config
-(`cluster.proxy.disabled`) or depends on them to reach the API server before
-the CNI is up, so setting one half alone yields a cluster with no ClusterIP
-datapath and no cluster DNS. The rejection SHALL name the typed inputs that
-set both halves together — `cilium_kube_proxy_replacement`,
-`cilium_k8s_service_host`, `cilium_k8s_service_port` — which is what makes it
-cost no capability. It is a footgun guard and SHALL NOT be documented as a
-boundary: the chart's own `extraConfig` passthrough and a caller
-`config_patches` entry both reach the same state around it.
-
-`cilium_values_override` SHALL be marked `sensitive`, because Cilium values
-legitimately carry key material (IPsec keys, Hubble and clustermesh TLS, BGP
-peer passwords) and the string reaches the machine configuration. The
-consequence SHALL be documented rather than mitigated: `tofu plan` no longer
-shows the override's diff, so a datapath-relevant change to it is invisible in
-plan output. Values DERIVED from it that carry no part of it — notably the
-boolean "is the override empty", which decides the emitted Application's shape
-and is already observable in that manifest — MAY be declassified so the
-secret-free outputs stay exportable; the override's CONTENT SHALL NOT be.
-
-`cilium_k8s_service_host` SHALL be constrained to a bare DNS name or IPv4
-literal, or an UNBRACKETED IPv6 literal in CANONICAL form — no scheme, no
-`:port`, no whitespace, no brackets. The IPv6 half SHALL be decided by a parse
-rather than a character class, so a string that merely looks like a literal
-("1:2:3", a nine-group string) is rejected; normalization is part of that
-decision, so a non-canonical or IPv4-embedded spelling is rejected too, as it
-already is for `var.nodes` —
-and `cilium_k8s_service_port` to a decimal port in 1-65535, each conjunct in its
-OWN validation block so a test binding one cannot pass on the other's rejection.
-The measured sink is not the one the raw-render class rule below covers: chart
-1.20.0 renders both into the containers' `KUBERNETES_SERVICE_HOST` /
-`_PORT` env vars, QUOTED, so neither can inject a sibling key. These guards are
-well-formedness rather than injection closure — on the seed path the render is
-frozen into a create-only machine configuration, so a malformed endpoint is a
-bootstrap deadlock no later apply repairs.
-
 #### Scenario: Invalid CIDR entry is rejected
 
 - **WHEN** a `pod_cidr` or `service_cidr` entry is not parseable as a
@@ -344,6 +417,115 @@ bootstrap deadlock no later apply repairs.
 - **THEN** variable validation fails, because the value is rendered raw into
   a ConfigMap baked into a create-only machine configuration
 
+### Requirement: Cilium values override decodes to a mapping
+
+`cilium_values_override` SHALL be rejected when it is non-empty and does not
+decode to a YAML MAPPING — a comment-only document decodes to null and a
+list-rooted one to a sequence, and either would reach a Helm values slot as a
+non-object.
+
+#### Scenario: A comment-only override is rejected
+
+- **WHEN** `cilium_values_override` is non-empty but holds only comments
+- **THEN** variable validation fails, because the document decodes to null
+
+### Requirement: Cilium values override joint keys
+
+`cilium_values_override` SHALL be rejected when its top-level key set names
+`kubeProxyReplacement`, `k8sServiceHost` or `k8sServicePort`, and the
+rejection SHALL name the typed inputs that set both halves together —
+`cilium_kube_proxy_replacement`, `cilium_k8s_service_host`,
+`cilium_k8s_service_port` — which is what makes it cost no capability.
+
+#### Scenario: Setting one half of a joint key is refused
+
+- **WHEN** `cilium_values_override` sets one of the three joint keys
+- **THEN** variable validation fails, because the module writes the
+  counterpart into the Talos machine config (`cluster.proxy.disabled`) or
+  depends on the key to reach the API server before the CNI is up, and one
+  half alone yields a cluster with no ClusterIP datapath and no cluster DNS
+
+### Requirement: The joint-key guard is not a boundary
+
+The joint-key rejection is a footgun guard and SHALL NOT be documented as a
+boundary: the chart's own `extraConfig` passthrough and a caller
+`config_patches` entry both reach the same state around it.
+
+#### Scenario: The guard's documentation names its bypasses
+
+- **WHEN** the joint-key guard is documented
+- **THEN** it is described as a footgun guard, never as a boundary that keeps
+  `extraConfig` or `config_patches` from reaching the same state
+
+### Requirement: Cilium values override is sensitive
+
+`cilium_values_override` SHALL be marked `sensitive`, because Cilium values
+legitimately carry key material (IPsec keys, Hubble and clustermesh TLS, BGP
+peer passwords) and the string reaches the machine configuration. The
+consequence SHALL be documented rather than mitigated.
+
+#### Scenario: An override change is invisible in plan output
+
+- **WHEN** `cilium_values_override` changes between plans
+- **THEN** `tofu plan` does not show the override's diff, so a
+  datapath-relevant change to it is invisible in plan output, and the module
+  documents that consequence
+
+### Requirement: Values derived from the sensitive override
+
+Values DERIVED from `cilium_values_override` that carry no part of it MAY be
+declassified so the secret-free outputs stay exportable; the override's
+CONTENT SHALL NOT be.
+
+#### Scenario: The emptiness boolean may be declassified
+
+- **WHEN** the module derives the boolean "is the override empty", which
+  decides the emitted Application's shape and is already observable in that
+  manifest
+- **THEN** that boolean MAY be non-sensitive, while no output exposes any part
+  of the override's content
+
+### Requirement: API-server endpoint input validation
+
+`cilium_k8s_service_host` SHALL be constrained to a bare DNS name or IPv4
+literal, or an UNBRACKETED IPv6 literal in CANONICAL form — no scheme, no
+`:port`, no whitespace, no brackets — and `cilium_k8s_service_port` to a
+decimal port in 1-65535, each conjunct in its OWN validation block so a test
+binding one cannot pass on the other's rejection.
+
+#### Scenario: A bracketed or ported host is rejected
+
+- **WHEN** `cilium_k8s_service_host` carries brackets, whitespace or a `:port`
+- **THEN** variable validation fails
+
+### Requirement: IPv6 API-server host is decided by a parse
+
+The IPv6 half of the `cilium_k8s_service_host` guard SHALL be decided by a
+parse rather than a character class, with normalization part of that decision,
+as it already is for `var.nodes`.
+
+#### Scenario: A look-alike or non-canonical IPv6 host is rejected
+
+- **WHEN** `cilium_k8s_service_host` merely looks like an IPv6 literal
+  ("1:2:3", a nine-group string), or is a non-canonical or IPv4-embedded
+  spelling
+- **THEN** variable validation fails
+
+### Requirement: API-server endpoint guards are well-formedness guards
+
+The `cilium_k8s_service_host` and `cilium_k8s_service_port` guards SHALL be
+treated as well-formedness rather than injection closure: the measured sink is
+not the one the raw-render class rule below covers — chart 1.20.0 renders both
+into the containers' `KUBERNETES_SERVICE_HOST` / `_PORT` env vars, QUOTED, so
+neither can inject a sibling key.
+
+#### Scenario: A malformed endpoint would deadlock bootstrap
+
+- **WHEN** a malformed endpoint reaches the seed path
+- **THEN** the render is frozen into a create-only machine configuration, so
+  it is a bootstrap deadlock no later apply repairs — which is why the plan
+  rejects it
+
 ### Requirement: Sensitive credential outputs gated on health
 
 The module SHALL mark `kubeconfig`, `talosconfig` and
@@ -382,39 +564,7 @@ The module SHALL expose secret-free audit outputs that bind the composed
 patch lists to tests: the kubelet serving-cert rotation wiring per role
 and the decoded rotation patch content, the cert-approver seed wiring,
 namespace labels, RBAC approve scope and per-object recommended-label
-gaps, the ArgoCD namespace labels, the distinct Kubernetes kinds in the
-manifest the module applies after the health gate
-(`argocd_day0_apply_kinds`, `[]` when `deploy_argocd = false`), a per-node map of the apply mode
-the last apply was written with (`node_apply_mode`) — the only in-module
-signal that a role sits in a staged window, since the cluster stays healthy
-on its previous configuration and the next plan is clean while it does — and a
-boolean asserting the non-sensitive base patch list is a prefix of the
-final controlplane patch list. For the cert-approver seed the module SHALL
-additionally expose,
-parsed from the rendered manifest, `cert_approver_rbac_rules` (the decoded
-ClusterRole rule set, for rule-set-closure assertions),
-`cert_approver_pod_security_context` (the decoded container securityContext,
-for the restricted-PSA guard), `cert_approver_container_args` and
-`cert_approver_env` (the decoded arguments and `PROVIDER_*`/`BYPASS_DNS_RESOLUTION`
-environment, for the config-injection and leader-election checks), and
-`cert_approver_replicas` (the rendered replica count). For the Cilium seed
-the module SHALL additionally expose `cilium_seed_observability_markers`
-— booleans (`agent_metrics`, `agent_metric_overrides`, `operator_metrics`,
-`hubble`, `hubble_metrics`, `hubble_open_metrics`) decoded from the frozen
-seed render's `cilium-config` ConfigMap, `{}` when `deploy_cilium = false` —
-for tests binding the seed render to the observability inputs without
-re-rendering the chart.
-
-Because a marker's value must discriminate the input it reports, a marker
-SHALL test the rendered key's VALUE where the chart emits that key
-unconditionally, and its presence only where the chart gates emission on the
-input. The output's documentation SHALL name any marker that fails to
-discriminate at the render layer.
-
-The markers describe the SEED, not the running cluster. On a cluster that has
-adopted the emitted self-management Application the frozen seed may lag what
-is actually reconciled, so the output's documentation SHALL state that scope
-rather than leaving it to be inferred.
+gaps, and the ArgoCD namespace labels.
 
 #### Scenario: Audit outputs stay secret-free
 
@@ -438,29 +588,93 @@ rather than leaving it to be inferred.
   frozen seed's `cilium-config` ConfigMap matching those inputs, without a
   second chart render
 
+### Requirement: Day-0 apply and patch-order audit outputs
+
+The module SHALL expose `argocd_day0_apply_kinds`, the distinct Kubernetes
+kinds in the manifest the module applies after the health gate (`[]` when
+`deploy_argocd = false`), and a boolean asserting the non-sensitive base patch
+list is a prefix of the final controlplane patch list.
+
+#### Scenario: The base patch list stays a prefix
+
+- **WHEN** the controlplane patch list is composed
+- **THEN** the boolean output reports whether the non-sensitive base patch
+  list is a prefix of the final controlplane patch list
+
+### Requirement: Per-node apply-mode audit output
+
+The module SHALL expose `node_apply_mode`, a per-node map of the apply mode
+the last apply was written with — the only in-module signal that a role sits
+in a staged window.
+
+#### Scenario: A staged window is visible only through the output
+
+- **WHEN** a role's nodes were last applied with the `staged` mode
+- **THEN** `node_apply_mode` reports that mode for each of those nodes, while
+  the cluster stays healthy on its previous configuration and the next plan
+  is clean
+
+### Requirement: Cert-approver seed audit outputs
+
+For the cert-approver seed the module SHALL expose, parsed from the rendered
+manifest, `cert_approver_rbac_rules` (the decoded ClusterRole rule set),
+`cert_approver_pod_security_context` (the decoded container securityContext),
+`cert_approver_container_args` and `cert_approver_env` (the decoded arguments
+and `PROVIDER_*`/`BYPASS_DNS_RESOLUTION` environment), and
+`cert_approver_replicas` (the rendered replica count).
+
+#### Scenario: Cert-approver outputs feed the seed guards
+
+- **WHEN** the seed's tests read the cert-approver audit outputs
+- **THEN** the rule set serves rule-set-closure assertions, the
+  securityContext the restricted-PSA guard, and the arguments and environment
+  the config-injection and leader-election checks
+
+### Requirement: Cilium seed observability markers output
+
+For the Cilium seed the module SHALL expose
+`cilium_seed_observability_markers` — booleans (`agent_metrics`,
+`agent_metric_overrides`, `operator_metrics`, `hubble`, `hubble_metrics`,
+`hubble_open_metrics`) decoded from the frozen seed render's `cilium-config`
+ConfigMap, `{}` when `deploy_cilium = false` — for tests binding the seed
+render to the observability inputs without re-rendering the chart.
+
+#### Scenario: No markers without Cilium delivery
+
+- **WHEN** `deploy_cilium = false`
+- **THEN** `cilium_seed_observability_markers` is `{}`
+
+### Requirement: Observability markers discriminate their input
+
+A marker SHALL test the rendered key's VALUE where the chart emits that key
+unconditionally, and its presence only where the chart gates emission on the
+input, because a marker's value must discriminate the input it reports. The
+output's documentation SHALL name any marker that fails to discriminate at the
+render layer.
+
+#### Scenario: An unconditionally emitted key is tested by value
+
+- **WHEN** the chart emits a marker's key regardless of the input
+- **THEN** the marker reads the key's value, not its presence
+
+### Requirement: Observability markers describe the seed
+
+The markers describe the SEED, not the running cluster, and the output's
+documentation SHALL state that scope rather than leaving it to be inferred.
+
+#### Scenario: An adopted cluster may differ from the markers
+
+- **WHEN** a cluster has adopted the emitted self-management Application
+- **THEN** the frozen seed the markers describe may lag what is actually
+  reconciled
+
 ### Requirement: Version constraints and backend agnosticism
 
 The module SHALL require OpenTofu/Terraform `>= 1.9.0` and constrain its
 providers to `siderolabs/talos` `>= 0.12.0, < 0.13.0-0`, `hashicorp/helm`
 `>= 2.12, < 4.0.0` (local template rendering only — no Helm release or
 apply), and `hashicorp/local` `>= 2.4` plus `hashicorp/null` `>= 3.2` (used
-only for the ArgoCD CRD apply path). The talos constraint SHALL take the form
-ADR-0029 §Provider constraints sets: its floor, 0.12.0, is the oldest version
-the module's code needs (the first stable release with the Talos 1.14
-machinery), and its upper bound excludes the 0.13 line, its prereleases
-included. The committed module lock SHALL select the floor, so the provider
-probe, the configuration validation and the module's tests run against it;
-later admitted 0.12.x releases are not exercised by those gates. A consumer
-root's constraint SHALL admit a version in the range; any constraint
-excluding every admitted version SHALL fail initialization. The `>= 1.9.0`
-floor (raised from `>= 1.7.0`) is required because the
-`cilium_self_management` guard validations below reference OTHER variables in
-their `condition` — a cross-variable `validation` feature OpenTofu introduced
-at 1.9 — and is parsed at module load regardless of any toggle's value, so it
-is a permanent, consumer-visible compatibility floor for one opt-in,
-default-off feature. The module SHALL declare no state backend — the backend
-is the caller's concern and must be encrypted, because the machine secrets
-land in state.
+only for the ArgoCD CRD apply path), and SHALL declare no state backend.
 
 #### Scenario: No backend is imposed on the caller
 
@@ -509,19 +723,75 @@ land in state.
   `siderolabs/talos` 0.12.0
 - **THEN** a plain initialization succeeds and keeps that selection
 
+### Requirement: Talos provider constraint form
+
+The talos provider constraint SHALL take the form ADR-0029 §Provider
+constraints sets: its floor, 0.12.0, is the oldest version the module's code
+needs (the first stable release with the Talos 1.14 machinery), and its upper
+bound excludes the 0.13 line, its prereleases included.
+
+#### Scenario: The constraint admits the 0.12 line only
+
+- **WHEN** the module's `siderolabs/talos` constraint is evaluated
+- **THEN** it admits 0.12.0 and later 0.12.x releases, and excludes every 0.13
+  release and prerelease
+
+### Requirement: Committed module lock selects the provider floor
+
+The committed module lock SHALL select the talos provider floor, so the
+provider probe, the configuration validation and the module's tests run
+against it; later admitted 0.12.x releases are not exercised by those gates.
+
+#### Scenario: The module's gates run at the floor
+
+- **WHEN** the module's provider probe, validation and tests run
+- **THEN** they resolve `siderolabs/talos` 0.12.0 from the committed lock
+
+### Requirement: Caller root provider constraints
+
+A consumer root's constraint SHALL admit a version in the module's range; any
+constraint excluding every admitted version SHALL fail initialization.
+
+#### Scenario: A disjoint caller constraint fails initialization
+
+- **WHEN** a consumer root's `siderolabs/talos` constraint admits no version
+  in the module's range
+- **THEN** initialization fails
+
+### Requirement: OpenTofu 1.9 floor
+
+The `>= 1.9.0` floor (raised from `>= 1.7.0`) SHALL hold because the
+`cilium_self_management` guard validations reference OTHER variables in their
+`condition` — a cross-variable `validation` feature OpenTofu introduced at
+1.9 — which is parsed at module load regardless of any toggle's value.
+
+#### Scenario: The floor binds callers who never opt in
+
+- **WHEN** a caller leaves the opt-in, default-off `cilium_self_management` at
+  `false`
+- **THEN** the `>= 1.9.0` floor still applies — a permanent, consumer-visible
+  compatibility floor for that one feature
+
+### Requirement: Caller-owned encrypted state backend
+
+The state backend SHALL be the caller's concern and SHALL be encrypted,
+because the machine secrets land in state.
+
+#### Scenario: Machine secrets land in the caller's backend
+
+- **WHEN** the module is applied from a caller root
+- **THEN** its state, machine secrets included, is stored in the backend the
+  caller configures, which must be encrypted
+
 ### Requirement: Image kernel-argument input validation
 
 The module SHALL admit an optional per-image `extra_kernel_args` string list
 (default `[]`) on `var.images`, unioned into the node's schematic
 `customization.extraKernelArgs` alongside the selected provisioning profiles'
 kernel arguments. The module SHALL reject at plan time, via a validation
-naming the offending image and element: an element containing whitespace; an
-element whose key begins with `-`; an element with an empty key; and any
-element whose key is `debugfs`, regardless of its value. This module-level
-validation is the enforcement point for every caller, including one wiring
-the module interface by hand; the declarative `cluster.yaml` path is guarded
-in addition by the `cluster-yaml-sot` capability's schema mirror — the module
-validation is not the only enforcement point.
+naming the offending image and element, an element containing whitespace,
+whose key begins with `-`, whose key is empty, or whose key is `debugfs`
+regardless of its value.
 
 #### Scenario: Whitespace-bearing element is rejected
 
@@ -560,33 +830,28 @@ validation is not the only enforcement point.
   non-empty key, no leading `-`, no whitespace, and no `debugfs` key
 - **THEN** the plan proceeds past this validation
 
+### Requirement: Kernel-argument validation binds every caller
+
+The module-level `extra_kernel_args` validation SHALL be the enforcement point
+for every caller, including one wiring the module interface by hand; the
+declarative `cluster.yaml` path is guarded in addition by the
+`cluster-yaml-sot` capability's schema mirror, so the module validation is not
+the only enforcement point.
+
+#### Scenario: A hand-wired caller is still guarded
+
+- **WHEN** a caller bypasses `cluster.yaml` and passes a malformed
+  `extra_kernel_args` element directly to the module
+- **THEN** the plan fails at the module's validation
+
 ### Requirement: Inert typed inputs warn rather than reject
 
 An input whose only failure mode is having no effect SHALL be reported by a
-plan-time `check` block, not by a variable `validation`. The module reserves
-hard rejection for inputs whose misuse causes silent BREAKAGE — a dropped
-datapath override, a fatally-exiting workload, an emitted resource with
-nothing to reconcile — and an input that merely does nothing is a lower tier.
-
-Each such check SHALL model the input's FULL effectiveness condition, not the
-one that reads as obvious. That includes the substrate-delivery toggle (with the
-component undelivered there is neither a seed nor an emitted resource, so every
-one of its inputs is inert) and any downstream chart gate the module can observe
-— a condition that reports an inert input as effective is worse than no check,
-because it converts a silent no-op into an endorsed one. Where the effectiveness
-condition rests on a rendered-chart fact, that fact SHALL be measured against
-the pinned chart and recorded at the condition.
-
-The distinction is load-bearing rather than stylistic: a prerequisite may be
-satisfied through `cilium_values_override`, an opaque string the module cannot
-introspect, so a hard rejection would refuse a configuration that works. The
-warning tier lets that consumer proceed while still surfacing the far more
-common case, where the prerequisite really is missing.
-
-Each such check SHALL be its own block. `expect_failures` matches the checkable
-object, so merging two conditions collapses both test legs onto one predicate
-and leaves either half untested — the same isolation obligation the module's
-cross-variable validations carry.
+plan-time `check` block, not by a variable `validation`; hard rejection is
+reserved for inputs whose misuse causes silent BREAKAGE — a dropped datapath
+override, a fatally-exiting workload, an emitted resource with nothing to
+reconcile. Each such check SHALL be its own block, because `expect_failures`
+matches the checkable object.
 
 #### Scenario: An inert input warns and still plans
 
@@ -601,48 +866,48 @@ cross-variable validations carry.
 - **THEN** exactly one test leg reports a missing expected failure and every
   other leg stays green
 
+### Requirement: Inert-input checks model the full effectiveness condition
+
+Each inert-input check SHALL model the input's FULL effectiveness condition,
+not the one that reads as obvious, including the substrate-delivery toggle —
+with the component undelivered there is neither a seed nor an emitted
+resource, so every one of its inputs is inert — and any downstream chart gate
+the module can observe.
+
+#### Scenario: An undelivered component's inputs are all inert
+
+- **WHEN** an input is set while its component's substrate-delivery toggle is
+  off
+- **THEN** its check reports it as inert, never as effective — a condition
+  that reports an inert input as effective converts a silent no-op into an
+  endorsed one
+
+#### Scenario: A prerequisite satisfied through the override still plans
+
+- **WHEN** a prerequisite is satisfied only inside `cilium_values_override`,
+  an opaque string the module cannot introspect
+- **THEN** the plan still succeeds under the warning tier, where a hard
+  rejection would refuse a configuration that works
+
+### Requirement: Chart-derived effectiveness facts are measured
+
+Where an inert-input check's effectiveness condition rests on a rendered-chart
+fact, that fact SHALL be measured against the pinned chart and recorded at the
+condition.
+
+#### Scenario: A chart gate in a condition carries its measurement
+
+- **WHEN** a check's condition depends on a rendered-chart fact
+- **THEN** the condition records that fact as measured against the pinned
+  chart
+
 ### Requirement: Free-form values reaching the machine config are format-validated
 
 A typed input whose value is rendered verbatim into a resource that becomes
 part of the controlplane machine configuration SHALL constrain its accepted
-character set by variable `validation`, and the module's test suite SHALL
-carry a rejection leg per corruption vector plus a negative-space control
-proving the documented form is still accepted. The obligation is on the input
-CLASS, not on individual inputs: every sibling reaching the same rendered
-document carries it, or the guard documents a boundary it does not hold.
-
-The rule's FORM follows the value space, in three shapes. Where the documented
-form is a narrow token, an allowlist is correct. Where legitimate values carry
-structured punctuation — Hubble's context syntax uses colons, semicolons and
-equals signs — an allowlist would encode a grammar the module does not own and
-would break on the next upstream option; there the rule SHALL instead exclude
-the measured corruption vectors, and the negative-space control SHALL exercise
-the documented structured form so a later copy-paste of the wrong guard shape
-fails loudly. Where the value space is a COMPUTABLE TYPE, the rule SHALL be a
-semantic predicate over that type rather than a lexical rule: it admits exactly
-the shape the input is for, so it rejects every corruption vector without
-enumerating one, and the test suite SHALL carry a leg that a lexical guard
-would pass so the distinction cannot silently degrade.
-
-The schema SHALL mirror each such guard so the declarative path rejects a
-corrupting entry at lint time, and the mirror SHALL account for regex-engine
-divergence between the two validators rather than copying the expression
-verbatim. Where the module's guard is a semantic predicate the mirror SHALL
-constrain the value's SHAPE only, leaving the precise verdict to the module.
-
-Five inputs are in the class, all reaching the `cilium-config` ConfigMap that
-the module bakes into a create-only `inlineManifest`. The Cilium agent
-metric-delta list and the Hubble metric list are rendered raw and unquoted as
-list entries: an entry containing a newline with matching indentation escapes
-the surrounding scalar and injects arbitrary ConfigMap keys; an entry
-containing a document separator splits the rendered manifest and blanks the
-seed-marker output that parses it. The native-routing CIDR is rendered raw as a
-scalar value and carries the same newline vector, and so do
-`cilium_k8s_service_host` and `cilium_k8s_service_port` — the API-server
-endpoint the kube-proxy replacement needs, whose guards are stated with the
-rest of the Cilium input validation above and whose form is an allowlist,
-because a bare host and a decimal port are narrow tokens rather than a
-structured grammar the module does not own.
+character set by variable `validation`. The obligation is on the input CLASS,
+not on individual inputs: every sibling reaching the same rendered document
+carries it, or the guard documents a boundary it does not hold.
 
 #### Scenario: A corrupting entry is rejected at plan time
 
@@ -669,6 +934,92 @@ structured grammar the module does not own.
 - **THEN** the plan succeeds, and the empty form keeps deriving the value from
   the first IPv4 pod CIDR entry
 
+### Requirement: Format guards carry rejection and control test legs
+
+For each format-validated input the module's test suite SHALL carry a
+rejection leg per corruption vector plus a negative-space control proving the
+documented form is still accepted.
+
+#### Scenario: Every vector and the documented form are bound
+
+- **WHEN** a format-validated input's test suite runs
+- **THEN** each corruption vector has its own rejection leg, and a control leg
+  passes the documented form
+
+### Requirement: Format guard shape follows the value space
+
+Where the documented form is a narrow token, the format guard SHALL be an
+allowlist. Where legitimate values carry structured punctuation, the guard
+SHALL instead exclude the measured corruption vectors, and the negative-space
+control SHALL exercise the documented structured form.
+
+#### Scenario: Structured values are guarded by exclusion
+
+- **WHEN** an input's legitimate values carry structured punctuation, as
+  Hubble's context syntax does with colons, semicolons and equals signs
+- **THEN** the guard excludes the measured corruption vectors rather than
+  allowlisting a grammar the module does not own and that would break on the
+  next upstream option, and a later copy-paste of the wrong guard shape fails
+  the negative-space control loudly
+
+### Requirement: Computable-type format guards are semantic predicates
+
+Where the value space is a COMPUTABLE TYPE, the format guard SHALL be a
+semantic predicate over that type rather than a lexical rule, admitting
+exactly the shape the input is for, and the test suite SHALL carry a leg that
+a lexical guard would pass so the distinction cannot silently degrade.
+
+#### Scenario: A semantic predicate rejects without enumerating vectors
+
+- **WHEN** a computable-type input carries any corruption vector
+- **THEN** the semantic predicate rejects it without enumerating that vector
+
+### Requirement: The schema mirrors each format guard
+
+The schema SHALL mirror each format guard so the declarative path rejects a
+corrupting entry at lint time, and the mirror SHALL account for regex-engine
+divergence between the two validators rather than copying the expression
+verbatim. Where the module's guard is a semantic predicate the mirror SHALL
+constrain the value's SHAPE only, leaving the precise verdict to the module.
+
+#### Scenario: A corrupting entry fails at lint time
+
+- **WHEN** a `cluster.yaml` entry carries a corruption vector a module format
+  guard rejects
+- **THEN** the schema rejects it at lint time, before any plan
+
+### Requirement: Inputs in the format-validated class
+
+Five inputs SHALL be in the format-validated class, all reaching the
+`cilium-config` ConfigMap that the module bakes into a create-only
+`inlineManifest`: the Cilium agent metric-delta list, the Hubble metric list,
+the native-routing CIDR, `cilium_k8s_service_host` and
+`cilium_k8s_service_port`.
+
+#### Scenario: Metric list entries can inject or split
+
+- **WHEN** an entry of the agent metric-delta list or the Hubble metric list,
+  both rendered raw and unquoted as list entries, contains a newline with
+  matching indentation, or a document separator
+- **THEN** unguarded, the newline would escape the surrounding scalar and
+  inject arbitrary ConfigMap keys, and the separator would split the rendered
+  manifest and blank the seed-marker output that parses it
+
+#### Scenario: Scalar inputs carry the newline vector
+
+- **WHEN** the native-routing CIDR, which is rendered raw as a scalar value,
+  carries a newline
+- **THEN** unguarded, it carries the same newline vector as the metric lists,
+  and so do `cilium_k8s_service_host` and `cilium_k8s_service_port`
+
+#### Scenario: The API-server endpoint guards are allowlists
+
+- **WHEN** the `cilium_k8s_service_host` and `cilium_k8s_service_port` guards
+  are classified
+- **THEN** their form is an allowlist, stated with the rest of the Cilium
+  input validation above, because a bare host and a decimal port are narrow
+  tokens rather than a structured grammar the module does not own
+
 ### Requirement: Cilium self-management guard validations
 
 The module SHALL reject at plan time, via separate cross-variable
@@ -677,26 +1028,7 @@ The module SHALL reject at plan time, via separate cross-variable
 hands the Day-2 config off from the module-delivered Cilium seed to the
 consumer's ArgoCD, so both must be present; and (2) enabling it with a
 non-empty `cilium_values_override` and no
-`cilium_self_management_values_source` — without a values source the emitted
-Application is single-source and its `valuesObject` carries no override term
-(see `cilium-cni-delivery`), so a seed-active datapath override would be
-silently dropped on ArgoCD adoption.
-
-The module SHALL further reject, via separate `validation` blocks on
-`cilium_self_management_values_source`: a values source missing any of
-`repo_url`, `revision` or `values_path`; a `values_path` or `override_path`
-that is absolute or contains a `..` segment, because both are interpolated
-into a `$values/<path>` reference the repo-server resolves against the ref
-source's checkout root and a malformed one stops all Cilium reconciliation
-with no plan-time signal; and a missing `override_path` while
-`cilium_values_override` is non-empty, which is the same silent drop one layer
-down.
-
-Every guard SHALL remain its own `validation` block rather than being combined
-into one `condition`, so each is independently exercisable by a dedicated
-`expect_failures` test leg — an `expect_failures` check proves only that SOME
-validation on the named variable fired, so a merged condition would leave half
-a predicate vacuously green.
+`cilium_self_management_values_source`.
 
 #### Scenario: Self-management without ArgoCD or Cilium is rejected
 
@@ -727,51 +1059,58 @@ a predicate vacuously green.
 - **THEN** variable validation fails, because the emitted Application would
   otherwise render from the module-set layer alone
 
+#### Scenario: Without a values source the override would be dropped
+
+- **WHEN** guard (2) would be bypassed — self-management on, a non-empty
+  `cilium_values_override`, no `cilium_self_management_values_source`
+- **THEN** the emitted Application would be single-source and its
+  `valuesObject` would carry no override term (see `cilium-cni-delivery`), so
+  a seed-active datapath override would be silently dropped on ArgoCD adoption
+
+### Requirement: Cilium self-management values-source guards
+
+The module SHALL further reject, via separate `validation` blocks on
+`cilium_self_management_values_source`: a values source missing any of
+`repo_url`, `revision` or `values_path`; a `values_path` or `override_path`
+that is absolute or contains a `..` segment; and a missing `override_path`
+while `cilium_values_override` is non-empty.
+
+#### Scenario: A values source missing a required field is rejected
+
+- **WHEN** `cilium_self_management_values_source` omits `repo_url`,
+  `revision` or `values_path`
+- **THEN** variable validation fails
+
+#### Scenario: A malformed override path is rejected
+
+- **WHEN** `override_path` is absolute or contains a `..` segment
+- **THEN** variable validation fails: both paths are interpolated into a
+  `$values/<path>` reference the repo-server resolves against the ref source's
+  checkout root, and a malformed one stops all Cilium reconciliation with no
+  plan-time signal
+- **AND** a missing `override_path` under a non-empty override is the same
+  silent drop as guard (2), one layer down
+
+### Requirement: Self-management guards stay separate blocks
+
+Every self-management guard SHALL remain its own `validation` block rather
+than being combined into one `condition`, so each is independently
+exercisable by a dedicated `expect_failures` test leg.
+
+#### Scenario: A merged condition would leave a half untested
+
+- **WHEN** an `expect_failures` leg names a guarded variable
+- **THEN** it proves only that SOME validation on that variable fired, so each
+  guard has its own block and leg rather than a merged condition that would
+  leave half a predicate vacuously green
+
 ### Requirement: Opt-in Cilium self-management output
 
 The module SHALL expose `cilium_self_management_app` — a YAML-encoded
 `argoproj.io/v1alpha1` `Application` manifest string — as `""` when
 `cilium_self_management = false` (the default), and as the rendered
-Application when `true`, with `precondition`s rejecting both an unexpectedly
-empty render while the toggle is on and a multi-source render whose first
-`valueFiles` entry is not a non-empty `$values/<path>` reference — the
-addressing predicate, not a list-length one, since the first entry is appended
-unconditionally on that arm and a length check could therefore never fail. The
-module SHALL NOT apply this
-manifest itself — it is an output only, for the consumer's own GitOps to
-commit and reconcile.
-
-With `cilium_self_management_values_source` set, the manifest is no longer the
-sole deliverable: the module SHALL additionally expose
-`cilium_self_management_values`, the module-set values layer as a YAML
-document for the consumer to commit at that source's `values_path`, non-empty
-exactly when self-management and a values source are both configured. Neither
-output SHALL be marked `sensitive`, and both SHALL be secret-free by
-construction — the module SHALL NOT place `cilium_values_override` (which IS
-sensitive) into either, referencing it only as a `$values/<path>` string
-pointing at a file the consumer authors and commits themselves. Keeping the
-override out of the emitted manifest is an integrity property, NOT a
-confidentiality one: Argo CD reads that file as a plain Helm values document and
-decrypts nothing, so the module SHALL document key material at `override_path`
-as plaintext in git rather than as protected by the consumer's secret tooling.
-
-The module SHALL additionally expose `cilium_values_override_digest` — the
-SHA-256 of `cilium_values_override`, `""` when empty, and NOT `sensitive` — as
-the plan-time change detector the input's `sensitive` marking removes.
-
-Configuring or not configuring `cilium_self_management_values_source` SHALL NOT
-move the single-source document at one base revision, and that promise SHALL be
-bound by a whole-document comparison against a committed golden, since presence
-and absence assertions cannot observe a field added, renamed or reordered
-elsewhere in the manifest. The golden detects MOVEMENT and certifies no key's
-correctness — it reports only that a byte moved, and a deliberate refresh
-silences it — so the facts a reader depends on SHALL additionally carry named
-per-key assertions that a refresh cannot silence. The promise does not extend across revisions: a
-floor or computed-layer change moves this document for every consumer on this
-arm. Such a change is consumer-visible on this arm and SHALL carry an
-`UPGRADING.md` note and a deliberate golden refresh; its release class follows
-ADR-0029 — row 12, MINOR with that note although this arm has no opt-out, and
-the higher class only if row 9 applies.
+Application when `true`. The module SHALL NOT apply this manifest itself — it
+is an output only, for the consumer's own GitOps to commit and reconcile.
 
 #### Scenario: Output is empty by default
 
@@ -806,26 +1145,123 @@ the higher class only if row 9 applies.
   floor and the computed layer; and with either unset it is the empty string,
   so a stray file can no more ship than a missing one
 
+### Requirement: Self-management output preconditions
+
+`cilium_self_management_app` SHALL carry `precondition`s rejecting both an
+unexpectedly empty render while the toggle is on and a multi-source render
+whose first `valueFiles` entry is not a non-empty `$values/<path>` reference —
+the addressing predicate, not a list-length one.
+
+#### Scenario: A mis-addressed first values file fails the plan
+
+- **WHEN** a multi-source render's first `valueFiles` entry is not a
+  non-empty `$values/<path>` reference
+- **THEN** the plan fails on the output's precondition — a length check could
+  never fail there, since the first entry is appended unconditionally on that
+  arm
+
+### Requirement: Self-management values output
+
+With `cilium_self_management_values_source` set, the module SHALL additionally
+expose `cilium_self_management_values`, the module-set values layer as a YAML
+document for the consumer to commit at that source's `values_path`, non-empty
+exactly when self-management and a values source are both configured.
+
+#### Scenario: The manifest is no longer the sole deliverable
+
+- **WHEN** a values source is configured with self-management on
+- **THEN** the consumer commits both the Application and the
+  `cilium_self_management_values` document at that source's `values_path`
+
+### Requirement: Self-management outputs are secret-free
+
+Neither `cilium_self_management_app` nor `cilium_self_management_values` SHALL
+be marked `sensitive`, and both SHALL be secret-free by construction: the
+module SHALL NOT place `cilium_values_override` (which IS sensitive) into
+either, referencing it only as a `$values/<path>` string pointing at a file
+the consumer authors and commits themselves.
+
+#### Scenario: The override reaches the Application only by reference
+
+- **WHEN** self-management and a values source are configured with a
+  non-empty override
+- **THEN** neither output contains the override's content, only a
+  `$values/<path>` reference to the consumer's file
+
+### Requirement: The override file is plaintext in git
+
+Keeping the override out of the emitted manifest is an integrity property,
+NOT a confidentiality one, so the module SHALL document key material at
+`override_path` as plaintext in git rather than as protected by the
+consumer's secret tooling.
+
+#### Scenario: Argo CD reads the override file unencrypted
+
+- **WHEN** Argo CD renders the Application
+- **THEN** it reads the `override_path` file as a plain Helm values document
+  and decrypts nothing
+
+### Requirement: Override digest output
+
+The module SHALL expose `cilium_values_override_digest` — the SHA-256 of
+`cilium_values_override`, `""` when empty, and NOT `sensitive` — as the
+plan-time change detector the input's `sensitive` marking removes.
+
+#### Scenario: An override change shows in the plan through its digest
+
+- **WHEN** `cilium_values_override` changes between plans
+- **THEN** `cilium_values_override_digest` changes visibly in plan output,
+  although the override itself is hidden
+
+### Requirement: Values source does not move the single-source document
+
+Configuring or not configuring `cilium_self_management_values_source` SHALL
+NOT move the single-source document at one base revision, and that promise
+SHALL be bound by a whole-document comparison against a committed golden,
+since presence and absence assertions cannot observe a field added, renamed
+or reordered elsewhere in the manifest.
+
+#### Scenario: A field change elsewhere trips the golden
+
+- **WHEN** a change adds, renames or reorders a field anywhere in the
+  single-source document
+- **THEN** the whole-document comparison against the committed golden fails
+
+### Requirement: Named per-key assertions back the golden
+
+The golden detects MOVEMENT and certifies no key's correctness — it reports
+only that a byte moved, and a deliberate refresh silences it — so the facts a
+reader depends on SHALL additionally carry named per-key assertions that a
+refresh cannot silence.
+
+#### Scenario: A golden refresh leaves per-key facts bound
+
+- **WHEN** the golden is deliberately refreshed
+- **THEN** the named per-key assertions still check the facts a reader
+  depends on
+
+### Requirement: Single-source document movement across revisions
+
+The no-movement promise does not extend across revisions: a floor or
+computed-layer change moves this document for every consumer on this arm, so
+such a change SHALL carry an `UPGRADING.md` note and a deliberate golden
+refresh; its release class follows ADR-0029 — row 12, MINOR with that note
+although this arm has no opt-out, and the higher class only if row 9 applies.
+
+#### Scenario: A floor change is a noted, consumer-visible change
+
+- **WHEN** a change moves the floor or computed layer of the single-source
+  document
+- **THEN** it carries an `UPGRADING.md` note and a deliberate golden refresh
+
 ### Requirement: Operator replica count input and provenance output
 
 The module SHALL accept an optional Cilium operator replica count and SHALL
 reject a value that is not an integer of at least 1, or that exceeds the number
 of declared nodes. The over-count rejection sits on the REJECT side of the
-inert-input tier rule rather than the warn side, on three grounds: the declared
-node set is not an estimate of the environment but the cluster the module
-builds, so the predicate is decidable from the module's own state; the operator's
-`podAntiAffinity` is `requiredDuringScheduling` on `kubernetes.io/hostname`, so
-the surplus can never place; and the value is baked into a create-only
-`inlineManifest`, so the bootstrap that carries it cannot be corrected by a later
-apply. Each conjunct SHALL be its own validation block, per the guard-isolation
-obligation the module's other cross-variable validations carry.
-
-The module SHALL additionally expose a secret-free plan-time output reporting
-the resolved count together with the mechanism that produced it — the explicit
-pin, the node-count derivation, or the shipped floor — so an operator debugging
-a live Deployment can attribute the number without reading module internals.
-This is a different kind of audit surface from the seed markers: those report
-what was baked in, this reports which rule decided it.
+inert-input tier rule rather than the warn side. Each conjunct SHALL be its
+own validation block, per the guard-isolation obligation the module's other
+cross-variable validations carry.
 
 #### Scenario: A replica count below one or fractional is rejected
 
@@ -853,31 +1289,37 @@ what was baked in, this reports which rule decided it.
   the three origins — pin, node-count derivation, or floor — and its shape
   and value types do not vary with the delivery toggle
 
+#### Scenario: The over-count rejection rests on three grounds
+
+- **WHEN** the over-count rule is classified against the inert-input tier rule
+- **THEN** it rejects rather than warns, because the declared node set is not
+  an estimate of the environment but the cluster the module builds, so the
+  predicate is decidable from the module's own state
+- **AND** the operator's `podAntiAffinity` is `requiredDuringScheduling` on
+  `kubernetes.io/hostname`, so the surplus can never place
+- **AND** the value is baked into a create-only `inlineManifest`, so the
+  bootstrap that carries it cannot be corrected by a later apply
+
+### Requirement: Operator replica count provenance output
+
+The module SHALL expose a secret-free plan-time output reporting the resolved
+operator replica count together with the mechanism that produced it — the
+explicit pin, the node-count derivation, or the shipped floor — so an operator
+debugging a live Deployment can attribute the number without reading module
+internals.
+
+#### Scenario: An explicit pin reports itself as the origin
+
+- **WHEN** the operator replica count is set explicitly with Cilium delivered
+- **THEN** the output reports that count with the explicit pin as its origin
+
 ### Requirement: Chart-version default bumps carry their render-side delta
 
-Because a chart-version input's declared default is the single source of truth
-for the pinned chart and the shipped examples leave the key unset, moving that
-default is a **consumer-visible change**, not a version literal. What it reaches,
-stated precisely, because the seed renders are frozen: a **fresh bootstrap** and
-a **deliberate replacement** of the frozen render seed whatever the new chart
-emits, including defaults the base does not override. An already-bootstrapped
-consumer is not re-seeded, because `terraform_data.{argocd,cilium}_render`
-ignore input changes and the machine config consumes their frozen outputs. For
-`cilium_chart_version` the machine configuration therefore does NOT change. For
-`argocd_chart_version` it does: the seeded `argocd` namespace manifest carries
-the input as its `app.kubernetes.io/version` label outside the frozen render, so
-every controlplane receives a machine-configuration apply under its
-`controlplane_apply_mode`, which Talos' create-only inline-manifest controller
-does not carry into the running namespace. The separately live-reconciled paths
-— the steady-state component a consumer syncs, and the CRD apply whose
-`triggers_replace` carries the chart version — are what reach a running cluster.
-
-A change moving one of those defaults SHALL therefore carry the behavioural delta
-on the capability that describes what the pin delivers — the render or seed
-capability, not this one, which owns only the input's presence, its
-`nullable = false` contract and its validation. This spec cannot host that delta:
-the file describing the seed's contents is not the file a version bump touches, so
-the staleness gate cannot reach the render-side spec on its own.
+Moving a chart-version input's declared default SHALL be treated as a
+**consumer-visible change**, not a version literal, and SHALL carry the
+behavioural delta on the capability that describes what the pin delivers —
+the render or seed capability, not this one, which owns only the input's
+presence, its `nullable = false` contract and its validation.
 
 #### Scenario: A bump without its render-side delta is not ready
 
@@ -897,3 +1339,42 @@ the staleness gate cannot reach the render-side spec on its own.
   re-push, while a moved `argocd_chart_version` default changes every
   controlplane's machine configuration through the seeded namespace's version
   label only
+
+#### Scenario: The staleness gate cannot route the delta
+
+- **WHEN** a version bump touches only the chart-version default
+- **THEN** the staleness gate does not reach the render-side spec on its own,
+  because the file describing the seed's contents is not the file the bump
+  touches, so the delta is carried by the change itself
+
+### Requirement: Reach of a chart-version default bump
+
+A moved chart-version default SHALL reach a **fresh bootstrap** and a
+**deliberate replacement** of the frozen render, which seed whatever the new
+chart emits, including defaults the base does not override; an
+already-bootstrapped consumer SHALL NOT be re-seeded, because
+`terraform_data.{argocd,cilium}_render` ignore input changes and the machine
+config consumes their frozen outputs.
+
+#### Scenario: Only live-reconciled paths reach a running cluster
+
+- **WHEN** a chart-version default moves under a running cluster
+- **THEN** only the separately live-reconciled paths reach it — the
+  steady-state component a consumer syncs, and the CRD apply whose
+  `triggers_replace` carries the chart version
+
+### Requirement: Machine-config effect of a chart-version default bump
+
+A moved `cilium_chart_version` default SHALL NOT change the machine
+configuration. A moved `argocd_chart_version` default does: the seeded
+`argocd` namespace manifest carries the input as its
+`app.kubernetes.io/version` label outside the frozen render, so every
+controlplane receives a machine-configuration apply under its
+`controlplane_apply_mode`.
+
+#### Scenario: The namespace label change does not reach the running namespace
+
+- **WHEN** a moved `argocd_chart_version` default triggers the controlplane
+  machine-configuration apply
+- **THEN** Talos' create-only inline-manifest controller does not carry the
+  new label into the running `argocd` namespace
