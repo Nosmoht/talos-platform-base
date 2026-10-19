@@ -2,6 +2,8 @@
 
 ## 2026-10-19
 
+- `workflows/verify-release.md`: name attest-build-provenance v4 and
+  sbom-action v0.24.3.
 - `decisions/0019-postfinance-kubelet-csr-approver.md`: append the addendum
   re-vendoring the approver at v1.2.15.
 - `project/openssf-self-assessment.md`: `bash 3.2 floor` joins the required checks.
