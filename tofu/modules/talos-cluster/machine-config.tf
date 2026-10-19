@@ -25,8 +25,7 @@ locals {
 }
 
 locals {
-  # Talos machinery constants.GRPCMaxMessageSize is 32 MiB. This is an API ceiling,
-  # not a guarantee that storage or maintenance mode accepts that much configuration.
+  # Talos machinery constants.GRPCMaxMessageSize.
   talos_grpc_max_message_bytes = 32 * 1024 * 1024
 
   # Reserve 1 MiB for the generated base document, per-node patches and gRPC framing.

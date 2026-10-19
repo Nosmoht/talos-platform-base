@@ -1,12 +1,4 @@
-# Fixture-only outputs (NOT symlinked from the real module's outputs.tf, which
-# would drag in the network-resolving Image-Factory data sources). They expose the
-# composition locals the predicate-only assertions need. `node_effective` lives in
-# the symlinked composition.tf and reads the symlinked REAL profiles.tf, so these
-# bind to the shipped catalog — not to a synthetic stand-in.
-#
-# Deliberately NOT added to the module's own outputs.tf: the catalog's kernel_args
-# are an internal composition detail, and widening the module's public interface to
-# make one assertion possible would be the tail wagging the dog.
+# Fixture outputs; the module outputs.tf is not symlinked because it needs providers.
 
 output "node_kernel_args" {
   description = "Per-node UNIONED effective kernel_args composed from the real catalog."
@@ -30,13 +22,7 @@ output "catalog_profile_provides" {
   value       = { for id, p in local.provisioning_profiles : id => p.provides }
 }
 
-# MIRRORS the module's own outputs.tf:62-65 (`node_schematic_hashes`, "Known at
-# plan time"). The module already exposes this; the fixture re-declares it only
-# because a fixture substitutes outputs.tf WHOLESALE to keep the module's
-# provider-resolving Image-Factory data sources out (versions.tf:1-6 declares no
-# providers). Nothing here widens the module's public interface — local.node_hash
-# lives in the symlinked composition.tf (:119) and is a pure function of the
-# composed extensions/kernel_args/overlay.
+# Copy of the module output: this fixture replaces outputs.tf as a whole.
 output "node_schematic_hashes" {
   value = local.node_hash
 }

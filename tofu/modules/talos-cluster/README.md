@@ -329,7 +329,7 @@ provider "talos" {}
 | `dual_stack` | bool | `false` | IPv4/IPv6 dual-stack (enables Cilium `ipv6`). |
 | `allow_scheduling_on_controlplanes` | bool | `false` | remove the control-plane taint (single-node / edge). |
 | `deploy_cilium` | bool | `true` | deliver Cilium as a controlplane `inlineManifest` seed AND disable the Talos default CNI (`cni.name: none`) + kube-proxy. Opt-out keeps Flannel / a caller-supplied CNI. |
-| `cilium_chart_version` | string | `"1.20.0"` | cilium Helm chart version. **SEED knob** (inlineManifests are create-only), not an upgrade knob. |
+| `cilium_chart_version` | string | `"1.20.3"` | cilium Helm chart version. **SEED knob** (inlineManifests are create-only), not an upgrade knob. |
 | `cilium_chart_repository` | string | `"https://helm.cilium.io"` | Helm repo for the cilium chart (override for a private mirror / air-gap). |
 | `cilium_namespace` | string | `"kube-system"` | namespace Cilium renders into. |
 | `cilium_values_override` | string (sensitive) | `""` | consumer Helm values merged on the floor + computed values (long tail: Hubble, L2/BGP, bpf). Reaches BOTH delivery paths: the seed as the last of three Helm layers, and — with `cilium_self_management_values_source` set — the emitted Day-2 Application as the last `valueFiles` entry. **Rejected** when it names `kubeProxyReplacement`, `k8sServiceHost` or `k8sServicePort` (each has a Talos-side half the module writes; use the typed inputs) or when it is not a YAML mapping. `sensitive` because Cilium values legitimately carry key material — the consequence is that `tofu plan` does not show its diff. |
@@ -725,7 +725,7 @@ the override with the module-set layer while every other guard stays green.
 **A synced values change reaches the running agents, because the floor sets
 `rollOutCiliumPods: true`.** Most Cilium settings land only in the
 `cilium-config` ConfigMap, and on a chart without that key changing one leaves
-the agent pod template untouched — measured on the pinned 1.20.0 chart,
+the agent pod template untouched — measured on the pinned 1.20.3 chart,
 `routingMode: tunnel` and `routingMode: native` render a byte-identical pod
 template, and ArgoCD reports such a sync as successful while the agents keep the
 old configuration. With the key set the chart stamps a `cilium-config` checksum

@@ -3,7 +3,7 @@ type: reference
 title: Helm Value Surface — ArgoCD and Cilium
 description: Which Helm values a consumer cluster can actually set for the two substrate charts, on which of the five delivery paths, in which lifecycle phase — and the three places where the surface closes.
 tags: [argocd, cilium, helm, values, consumer-contract, delivery-paths]
-generated: { by: human:nosmoht, at: "2026-10-08T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-19T00:00:00Z" }
 sources:
   - resource: tofu/modules/talos-cluster/main.tf
   - resource: tofu/modules/talos-cluster/argocd-crds.tf
@@ -232,7 +232,7 @@ from a floor key: the consumer there has no override file at all.
 Cilium settings render only into that ConfigMap, so without the chart's
 pod-template checksum the agent DaemonSet is untouched and the agents keep the
 previous configuration while the sync reports success — measured on the pinned
-1.20.0 chart, `routingMode: tunnel` and `native` render a byte-identical pod
+1.20.3 chart, `routingMode: tunnel` and `native` render a byte-identical pod
 template. CLOSED by issue #270 (2026-09-16): the floor and the Day-2 reference
 values both set `rollOutCiliumPods: true`. The opt-out
 (`rollOutCiliumPods: false` in an override) exists on the seed path and on the
