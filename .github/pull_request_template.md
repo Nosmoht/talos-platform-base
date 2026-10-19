@@ -45,6 +45,7 @@ These run automatically; PR is blocked until all are green.
 - [ ] `docs-lint` — markdownlint + OKF bundle validation + offline link gate + AGENTS.md managed-block drift + the release-step bite check
 - [ ] `lint-pr-title` — Conventional-Commit PR title; it becomes the squash
       subject, the only input to the version bump
+- [ ] `bash 3.2 floor` — the script-driven targets run under bash 3.2, the bash macOS ships
 
 Account policy (branch protection, Actions allowlist, release immutability,
 merge methods) is not checked here: the default token cannot read any of it, so
