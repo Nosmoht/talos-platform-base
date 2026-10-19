@@ -3,11 +3,11 @@ package conftest.argocd
 import rego.v1
 
 # Pragmatic allowlists for known exceptions.
-namespace_optional_apps := {}
+namespace_optional_apps := set()
 retry_exempt_apps := {"root"}
 kube_system_allowed_projects := {"infrastructure"}
-allow_helm_non_exact_revisions := {}
-warn_git_unpinned_exempt_apps := {}
+allow_helm_non_exact_revisions := set()
+warn_git_unpinned_exempt_apps := set()
 enable_git_main_warnings := false
 
 is_application(obj) if {
@@ -85,7 +85,7 @@ deny contains msg if {
 deny contains msg if {
   is_application(input)
   name := app_name(input)
-  not namespace_optional_apps[name]
+  not name in namespace_optional_apps
   spec := object.get(input, "spec", {})
   ns := object.get(object.get(spec, "destination", {}), "namespace", "")
   is_empty_string(ns)
@@ -160,7 +160,7 @@ deny contains msg if {
   not is_empty_string(rev)
   not is_exact_version(rev)
   app := app_name(input)
-  not allow_helm_non_exact_revisions[app]
+  not app in allow_helm_non_exact_revisions
   msg := sprintf("Application %s helm targetRevision %q must be an exact version", [app, rev])
 }
 
@@ -194,7 +194,7 @@ warn contains msg if {
   rev := object.get(src, "targetRevision", "")
   is_mainline_git_ref(rev)
   app := app_name(input)
-  not warn_git_unpinned_exempt_apps[app]
+  not app in warn_git_unpinned_exempt_apps
   msg := sprintf("Application %s uses git targetRevision %q in infrastructure; pin tag or commit SHA for production", [app, rev])
 }
 
