@@ -25,7 +25,6 @@ data "helm_template" "argocd_crds" {
 }
 
 locals {
-  # Read the live render once; freeze the CRD-only projection below.
   argocd_crd_source_docs = var.deploy_argocd ? split("\n---\n", data.helm_template.argocd_crds[0].manifest) : []
 
   argocd_crd_docs = [
@@ -55,8 +54,7 @@ locals {
   ]
 }
 
-# Re-capture only when payload inputs change. Keep triggers_replace complete.
-# The pinned CRD templates do not depend on Kubernetes version; recheck on chart upgrades.
+# Keep triggers_replace complete; kubernetes_version is absent because the CRD templates do not read it.
 resource "terraform_data" "argocd_crds_render" {
   count = var.deploy_argocd ? 1 : 0
   input = local.argocd_crd_manifest

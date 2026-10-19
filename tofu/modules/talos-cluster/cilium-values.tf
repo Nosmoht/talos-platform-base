@@ -14,8 +14,7 @@ locals {
     length(var.cilium_agent_metric_overrides) > 0 ? { metrics = var.cilium_agent_metric_overrides } : {},
   )
 
-  # Use two operators on multiple nodes for rollout availability and a warm instance.
-  # A single node retains the floor value because operator pods require hostname anti-affinity.
+  # A single node keeps the floor value: operator pods use hostname anti-affinity.
   cilium_operator_replicas = var.cilium_operator_replicas != null ? var.cilium_operator_replicas : (
     length(local.nodes_checked) >= 2 ? 2 : null
   )
@@ -91,7 +90,6 @@ locals {
   # Declassify only the presence bit, never override contents.
   cilium_values_override_present = nonsensitive(var.cilium_values_override != "")
 
-  # The digest detects changes but can confirm guessed contents; it is not a secrecy guarantee.
   cilium_values_override_digest = local.cilium_values_override_present ? nonsensitive(sha256(var.cilium_values_override)) : ""
 
   # Provide non-null attributes; boolean operators do not reliably short-circuit on the supported floor.
@@ -102,7 +100,6 @@ locals {
     override_path = ""
   })
 
-  # Consumers must compare this digest with the Application annotation; ArgoCD does not.
   cilium_self_management_values_digest = sha256(yamlencode(local.cilium_effective_values))
 
   cilium_self_management_values_file = var.cilium_self_management && local.cilium_self_management_multi_source ? join("", [

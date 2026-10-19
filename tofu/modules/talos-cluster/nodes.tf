@@ -19,7 +19,6 @@ locals {
   # keys() sorts hostnames, keeping the bootstrap target stable across input ordering.
   first_controlplane = local.controlplanes_by_hostname[keys(local.controlplanes_by_hostname)[0]]
 
-  # Provider arguments accept IP lists; derive them from the hostname-keyed identity model.
   controlplane_ips = [for h, n in local.controlplanes_by_hostname : n.ip]
   worker_ips       = [for h, n in local.workers_by_hostname : n.ip]
   node_ips         = [for h, n in local.nodes_checked : n.ip]

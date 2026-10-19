@@ -1,28 +1,6 @@
-# Day-0 ArgoCD apply scope (#218).
-#
-# The module kubectl-applies the frozen argocd render after the health gate. Its
-# data source renders the chart with NO values block, so the non-CRD half is pure
-# chart defaults — bundled Dex on, argocd-cm/argocd-rbac-cm at upstream values.
-# Applying that half converged the seeded app onto the wrong values and, with
-# --force-conflicts, took field-manager ownership of the ConfigMaps ArgoCD
-# self-management and consumer overlays own.
-#
-# argocd-crds.tf therefore projects the render down to CustomResourceDefinition
-# documents BEFORE the freeze. These runs bind that projection.
-#
-# Red-green: drop the `if try(yamldecode(doc).kind, "") == "CustomResourceDefinition"`
-# filter from local.argocd_crd_docs and the first assert fails (the chart-default
-# workloads and ConfigMaps reappear in the kind set).
-#
-# The projection is asserted through output.argocd_day0_apply_kinds rather than
-# local_file.argocd_crds[0].content, because the frozen terraform_data output is
-# unknown until apply and cannot be evaluated in a plan-only test. Completeness
-# of the CRD set (all three must survive) is carried by the plan-time precondition
-# on terraform_data.argocd_crds_render, not by an assert here.
-#
-# command = plan. deploy_argocd = true renders the argo-cd chart (NETWORK) and
-# needs a prefix-valid age key — so this file belongs to the network-gated
-# `task tofu:test`, not the offline `task tofu:ci`.
+# Network-bound (renders the argo-cd chart): runs under `task tofu:test` only.
+# The frozen render is unknown at plan, so the projection is asserted through
+# output.argocd_day0_apply_kinds.
 
 provider "talos" {}
 provider "helm" {}
@@ -66,8 +44,7 @@ run "day0_apply_manifest_carries_crds_only" {
     error_message = "the Day-0 apply must deliver CustomResourceDefinitions and nothing else; got ${jsonencode(output.argocd_day0_apply_kinds)} — chart-default workloads/ConfigMaps leaked past the projection in argocd-crds.tf (local.argocd_crd_docs) and would be applied over ArgoCD's own state"
   }
 
-  # Kinds alone cannot see a MISSING CRD: distinct() collapses one and three CRDs
-  # to the same value. Assert the set by name.
+  # distinct() collapses one and three CRDs to the same kind set; assert by name.
   assert {
     condition = alltrue([
       for n in ["applications.argoproj.io", "applicationsets.argoproj.io", "appprojects.argoproj.io"] :
@@ -76,8 +53,6 @@ run "day0_apply_manifest_carries_crds_only" {
     error_message = "the Day-0 apply must deliver all three ArgoCD CRDs; got ${jsonencode(output.argocd_day0_apply_crd_names)}"
   }
 
-  # Both oracles are decoded from the applied manifest, so an undecodable
-  # document surfaces here rather than vanishing from the projection.
   assert {
     condition = !(
       contains(output.argocd_day0_apply_kinds, "<unparseable>") ||
@@ -87,16 +62,7 @@ run "day0_apply_manifest_carries_crds_only" {
   }
 }
 
-# triggers_replace deliberately omits kubernetes_version: Helm copies crds/ through
-# verbatim, so the payload cannot depend on it, and keeping it there made a routine
-# k8s upgrade re-fire a kubectl apply against CRDs argocd-controller owns by then.
-#
-# This run binds the STRUCTURAL half of that claim at a Kubernetes version far from
-# the suite default — same three CRDs, same single kind. A chart that starts
-# templating its CRDs on .Capabilities.KubeVersion in a way that adds, drops or
-# retypes a document turns this red. The stronger byte-level claim is measured, not
-# gated — see the deferred note in adr-0025; OpenTofu has no cross-run output
-# reference to compare two renders inside one suite.
+# triggers_replace omits kubernetes_version, so the CRD set must not depend on it.
 run "crd_payload_structure_is_independent_of_kubernetes_version" {
   command = plan
   variables {
@@ -116,8 +82,6 @@ run "crd_payload_structure_is_independent_of_kubernetes_version" {
   }
 }
 
-# deploy_argocd = false must not merely skip the apply — the projection locals
-# must degrade to empty rather than erroring on the absent data source.
 run "no_day0_apply_when_argocd_disabled" {
   command = plan
   variables {

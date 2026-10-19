@@ -1,20 +1,5 @@
-# Provider document-kind probe.
-#
-# The module's four config_patches inputs are opaque YAML, which reads as "any
-# Talos machine-config field is reachable without a module change". That is only
-# true for document kinds the PINNED provider's machinery registry knows: the
-# provider decodes every patch locally before rendering, and an unknown kind is
-# a hard error, not a passthrough. So the reachable surface is bounded by the
-# provider version, not by the Talos version a consumer pins — a coupling
-# nothing else in this repo observes (knowledge/decisions/0026 records the same
-# unbound-mirror problem for apply_mode).
-#
-# Local-only, hence offline: talos_machine_secrets generates its PKI in memory
-# and talos_machine_configuration renders from that, so the probe needs neither
-# a cluster nor the Image Factory and can sit in tofu:test:offline.
-#
-# RFC5737 documentation addresses throughout — the PKI is generated per run and
-# discarded with the test state.
+# Probes which machine-config document kinds the locked talos provider accepts.
+# Offline: the PKI is generated in memory.
 
 variable "talos_version" {
   description = "Machine-config schema pin the probe generates against."
@@ -52,13 +37,8 @@ data "talos_machine_configuration" "probe" {
 }
 
 locals {
-  # The rendered configuration is a multi-document stream, and several of its
-  # documents carry key material: the leading v1alpha1 one (cluster CA key, etcd
-  # CA key, service-account key, bootstrap token) and the generated Kube*CAConfig
-  # / KubeEtcdEncryptionConfig / KubeServiceAccountConfig documents. The probe
-  # therefore never exposes the stream. `documents` is a kind-keyed map narrowed
-  # to an ALLOWLIST: adding a kind to it is a decision that this document carries
-  # no key material, taken once here rather than at each assertion site.
+  # Documents carrying key material never leave this probe; adding a kind to this
+  # allowlist asserts it carries none.
   rendered  = nonsensitive(data.talos_machine_configuration.probe.machine_configuration)
   separator = "\n---\n"
   chunks    = split(local.separator, local.rendered)
@@ -73,9 +53,7 @@ locals {
     "HostnameConfig",
   ]
 
-  # kind -> every document of that kind, joined. A kind the provider emits more
-  # than once therefore reaches an assertion in full, so a negative assertion
-  # cannot pass by reading only the first instance.
+  # All documents of a kind, joined, so a negative assertion sees every instance.
   documents = {
     for kind in local.assertable_kinds :
     kind => join(local.separator, [

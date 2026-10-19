@@ -64,7 +64,6 @@ data "talos_client_configuration" "this" {
   nodes                = local.node_ips
 }
 
-# Do not expose a usable cluster until all nodes, etcd and the API are healthy.
 data "talos_cluster_health" "this" {
   depends_on = [
     talos_machine_configuration_apply.this,
