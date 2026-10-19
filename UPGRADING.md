@@ -11,8 +11,11 @@ controller code is unchanged; the release moved dependencies only.
 
 1. **Refresh your root's lock.** A root whose `.terraform.lock.hcl` records
    helm 2.x fails `tofu init` with "locked provider … does not match";
-   run `tofu init -upgrade`. If your root declares its own helm constraint,
-   it must admit 3.x.
+   run `tofu init -upgrade`. A root resolves one helm version for all its
+   modules, so its own helm constraint and every other module's must admit
+   3.x, and its own helm configuration moves to the 3.x syntax: the
+   provider's `kubernetes` block becomes an attribute, and `set`,
+   `set_list` and `set_sensitive` blocks become list attributes.
 2. **Every controlplane gets a machine-configuration apply**, because the
    approver manifest is part of it. Under `controlplane_apply_mode = "auto"` or
    `"no_reboot"` nothing else is needed; under `"staged"`, reboot the
@@ -24,8 +27,11 @@ controller code is unchanged; the release moved dependencies only.
 4. **Gateway API:** the example URL in `cilium_gateway_api_crds_url` names
    `v1.6.3`. The default stays empty, and a URL you set is unchanged.
 
-Back-out: move `.base-version` and the module `ref=` back together and run
-`tofu init -upgrade` again, since a helm 3 lock does not satisfy `< 3.0.0`.
+Back-out: move `.base-version` and the module `ref=` back together, revert
+the root's helm 3.x syntax and run `tofu init -upgrade` again, since a helm 3
+lock does not satisfy `< 3.0.0`. The controlplane apply mirrors step 2. A
+cluster that already ran `talosctl upgrade-k8s` keeps approver `v1.2.15`
+until the next one.
 
 ## Cilium chart `1.20.0` → `1.20.3` (PATCH — action required for consumers who self-manage Cilium or use a chart or image mirror)
 
