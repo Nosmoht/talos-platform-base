@@ -455,7 +455,7 @@ The module constrains `siderolabs/talos` to **`>= 0.12.0, < 0.13.0-0`**.
 0.12.0 is the first stable release with the Talos 1.14.0 machinery, and the
 `-0` upper bound also excludes 0.13 prereleases a root pins exactly
 ([ADR-0029 §Provider constraints](../../../knowledge/decisions/0029-public-api-and-major-rule.md#provider-constraints)).
-Examples use **Talos 1.14.2 / Kubernetes 1.37.1**.
+Examples use **Talos 1.14.4 / Kubernetes 1.37.1**.
 Run `tofu init -upgrade` in each consumer and commit its refreshed lock.
 The consumer's provider constraints must admit a version in that range;
 `~> 0.11.0` and an exact beta pin do not. See [UPGRADING](../../../UPGRADING.md).
@@ -469,7 +469,7 @@ resolves the newest admitted release.
 The immutable **schema pin** (`talos_version`) chooses the patch format:
 
 - Below 1.14, the module retains its legacy patches. An OS-only upgrade to
-  1.14.2 uses `talos_install_version`; it does not switch the schema.
+  1.14.4 uses `talos_install_version`; it does not switch the schema.
 - From 1.14, module-owned settings use `KubeNetworkConfig`, `KubeletConfig`,
   `KubeNodeConfig`, `UnattendedInstallConfig`, `KernelModuleConfig`,
   `SysctlConfig` and named Kubernetes manifest documents. Cilium removes
@@ -500,7 +500,7 @@ these with `SecurityProfileConfig` and `FilesystemTrimConfig` when required.
 An existing 1.13 schema does not acquire those documents merely by upgrading its OS.
 
 `task tofu:ci` validates both schema lines with the real provider at the locked floor and
-`talosctl 1.14.2 validate --mode metal`; resource tests bind the per-node
+`talosctl 1.14.4 validate --mode metal`; resource tests bind the per-node
 installer URL and override order. These are offline configuration checks, not
 proof of a successful hardware boot or storage-driver compatibility.
 

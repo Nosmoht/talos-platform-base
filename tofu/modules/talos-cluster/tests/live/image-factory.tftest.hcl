@@ -29,7 +29,7 @@ variables {
 run "native_114_factory_catalog" {
   command = plan
   variables {
-    talos_version      = "v1.14.2"
+    talos_version      = "v1.14.4"
     kubernetes_version = "v1.37.1"
   }
   assert {
@@ -40,7 +40,7 @@ run "native_114_factory_catalog" {
     condition = alltrue([for hash, extensions in local.official_extensions_by_schematic :
       alltrue([for requested in local.schematics[hash].extensions : contains(extensions, requested)])
     ])
-    error_message = "Every requested extension must resolve at Talos 1.14.2."
+    error_message = "Every requested extension must resolve at Talos 1.14.4."
   }
 }
 
