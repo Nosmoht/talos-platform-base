@@ -25,7 +25,7 @@ Refs: <!-- #N — issues this PR touches but does not close -->
 - [ ] `test` — test infrastructure
 - [ ] `chore` — repo hygiene
 - [ ] `ci` — pipeline change
-- [ ] **Breaking change** (MAJOR under the [ADR-0029 rule](../knowledge/decisions/0029-public-api-and-major-rule.md#classification)) — described in CHANGELOG `### Removed` or `### Changed` with `BREAKING — …` prefix
+- [ ] **Breaking change** (MAJOR under the [ADR-0029 rule](../knowledge/decisions/0029-public-api-and-major-rule.md#classification)) — PR title carries `!` and `UPGRADING.md` has a section for it
 
 ## Validation locally (required before opening)
 
@@ -58,7 +58,7 @@ Not merge-blocking, but run on every PR and worth reading:
 
 ## Documentation
 
-- [ ] CHANGELOG.md `[Unreleased]` updated (Added / Changed / Deprecated / Removed / Fixed / Security)
+- [ ] `UPGRADING.md` section added if a consumer must act to adopt this change
 - [ ] If the public API ([ADR-0029 §Public API](../knowledge/decisions/0029-public-api-and-major-rule.md#public-api)), a Helm-value default or a hard constraint changed: either a decision record (`knowledge/decisions/`) or the matching `knowledge/` concept updated
 - [ ] If `knowledge/rules/` changed: ran `task knowledge:rules-apply` and committed the regenerated `AGENTS.md` block (never hand-edited)
 
@@ -66,7 +66,7 @@ Not merge-blocking, but run on every PR and worth reading:
 
 If this PR changes the public API
 ([ADR-0029 §Public API](../knowledge/decisions/0029-public-api-and-major-rule.md#public-api)),
-a Helm-value default, a hard constraint or the release notes shape:
+a Helm-value default or a hard constraint:
 
 - [ ] Each known v0.5.x consumer named below with per-PR impact
   (cross-checked against the platform dependency manifest's

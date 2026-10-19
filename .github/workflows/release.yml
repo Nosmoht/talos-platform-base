@@ -15,8 +15,7 @@ name: Release
 # That is why `.releaserc.json` carries no `@semantic-release/github` plugin:
 # the plugin published an asset-less release the moment it tagged, and every
 # later upload was refused with HTTP 422 (#251). semantic-release does NOT
-# commit back to `main`; CHANGELOG.md is cut by hand in the releasing PR
-# (ADR-0020).
+# commit back to `main` (ADR-0020).
 #
 # See knowledge/workflows/release-process.md for the full design and the one-time
 # GitHub App setup.

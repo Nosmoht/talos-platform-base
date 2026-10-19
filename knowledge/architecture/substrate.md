@@ -3,7 +3,7 @@ type: architecture
 title: Substrate Boundary
 description: What talos-platform-base is and ships — the three-pillar substrate, the base/apps/consumer layer model, the tracked repo layout, and the fail-closed OCI artifact allowlist.
 tags: [substrate, layer-model, oci-artifact, boundaries]
-generated: { by: human:nosmoht, at: "2026-10-03T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-19T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-07-17T00:00:00Z" }
@@ -100,7 +100,7 @@ base — see the note below):
 
 ```text
 .                            governance + policy docs (README, AGENTS.md,
-                             ARCHITECTURE, SECURITY, UPGRADING, CHANGELOG, ...)
+                             ARCHITECTURE, SECURITY, UPGRADING, ...)
 .github/workflows/           CI: gitops-validate, hard-constraints-check,
                              tofu-validate, oci-publish, release, lint gates
 contracts/                   primitive-contract.md

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-10-19
+
+- `decisions/0020-automated-release-no-approval-gate.md`: append §Amendment
+  (2026-10-19) recording the removal of `CHANGELOG.md` and generated release
+  notes.
+- `workflows/release-process.md`: replace §CHANGELOG contract with §Release
+  notes and `UPGRADING.md`; drop the CHANGELOG cut from the PR, rollback and
+  recovery steps.
+- `project/openssf-self-assessment.md`: the release-notes rows name the
+  generated GitHub Release notes, `UPGRADING.md` and the CVE-in-title rule.
+- `project/vision.md`: drop the `CHANGELOG.md` source and pointers.
+- `architecture/substrate.md`: drop `CHANGELOG` from the root-file list.
+- `rules/talos-base-bundle.md`: consumer actions belong in `UPGRADING.md`.
+
 ## 2026-10-18
 
 - `architecture/capability-composition.md`: the live Image Factory check

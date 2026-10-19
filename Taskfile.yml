@@ -554,9 +554,9 @@ tasks:
         echo "      datetimes; decision concepts carry 'decided', never 'generated'."
         echo "      The contract: knowledge/rules/talos-base-bundle.md"
         exit 1; }
-      # CHANGELOG.md is excluded by design; the two tofu READMEs are included
-      # because they ship in the OCI tarball and link into knowledge/.
-      lychee --offline --no-progress --exclude-path CHANGELOG.md \
+      # The two tofu READMEs are included because they ship in the OCI tarball
+      # and link into knowledge/.
+      lychee --offline --no-progress \
         'knowledge/**/*.md' './*.md' 'contracts/*.md' \
         'tofu/modules/talos-cluster/README.md' \
         'tofu/modules/talos-cluster/test/README.md'

@@ -9,4 +9,3 @@ scripts/fixtures/openspec-invalid-spec.md
 node_modules/
 .work/
 Plans/
-**/CHANGELOG.md

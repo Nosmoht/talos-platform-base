@@ -3,10 +3,9 @@ type: project
 title: Vision
 description: Forward-looking design anchors the schema was built to accommodate — explicitly not roadmap, commitments, or shipped features.
 tags: [project, vision]
-generated: { by: human:nosmoht, at: "2026-07-11T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-19T00:00:00Z" }
 migrated_from: docs/vision.md (deleted in the OKF migration; see git history)
 sources:
-  - resource: CHANGELOG.md
   - resource: MAINTAINERS.md
   - resource: .github/workflows/oci-publish.yml
 ---
@@ -154,7 +153,7 @@ overstates what is in flight.
 - **Not a commitment.** Any item here can be deprioritised or removed without
   notice; consumers should not plan against it.
 - **Not a feature inventory.** Things in this file are *not built*; refer to
-  `CHANGELOG.md` for what actually shipped.
+  the GitHub Releases for what actually shipped.
 - **Not user-facing.** External adopters considering this base for production
   should pretend this file does not exist and evaluate only the latest tagged
   release (`v3.0.0` at verification time) as it stands.
@@ -172,4 +171,3 @@ overstates what is in flight.
 
 - [Substrate-only base](../decisions/0004-substrate-only-base.md) — why the base ships substrate only
 - [Harness plugin contract](harness-plugin-contract.md) — spec for the not-yet-public plugin repo
-- `CHANGELOG.md` — what actually shipped per tag
