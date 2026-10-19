@@ -20,6 +20,8 @@
   resolves extensions at Talos 1.13.9 and 1.14.4 (was 1.14.2).
 - `reference/tasks.md`: the `tofu:test:image-factory` row names Talos 1.14.4
   (was 1.14.2).
+- `reference/tasks.md`: the `knowledge:validate` row no longer lists bite
+  checks before its three gates.
 
 ## 2026-10-10
 

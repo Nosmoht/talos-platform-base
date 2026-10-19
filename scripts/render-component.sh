@@ -96,10 +96,6 @@ else
   rm -f "${crds_tmp}" "${RENDERED_DIR}/crds.yaml"
 fi
 
-for f in "${RENDERED_DIR}/manifests.yaml" "${RENDERED_DIR}/crds.yaml"; do
-  [ -f "${f}" ] && perl -0pi -e 's/\n*\z/\n/' "${f}"
-done
-
 manifest_lines="$(wc -l < "${RENDERED_DIR}/manifests.yaml" | tr -d ' ')"
 if [ -f "${RENDERED_DIR}/crds.yaml" ]; then
   crd_lines="$(wc -l < "${RENDERED_DIR}/crds.yaml" | tr -d ' ')"
