@@ -774,20 +774,8 @@ run "cilium_hubble_metrics_context_syntax_plans_cleanly" {
 
 # --- The same corruption class on cilium_native_routing_cidr ----------------
 #
-# The third sibling reaching the same rendered cilium-config document, and the
-# one the first pass of this suite left uncovered. Measured against the pinned
-# chart (1.20.3): the chart writes `ipv4-native-routing-cidr: {{ . }}` raw and
-# unquoted, so the value "10.244.0.0/16\n  injected-native-key: pwned" renders
-# `injected-native-key` as a standalone cilium-config key.
-#
-# The guard here is neither an allowlist nor an exclusion rule but a SEMANTIC
-# predicate — can(cidrhost(...)) — because unlike the two metric lists this
-# input's value space is a computable type. It admits exactly the shape the
-# input is for, so every corruption vector is rejected without enumerating one.
-#
-# Red-green for both rejection legs: delete the validation block on
-# var.cilium_native_routing_cidr in variables.tf => both report "Missing
-# expected failure" while the negative-space run below stays green.
+# The chart writes ipv4-native-routing-cidr raw, so an embedded newline would
+# inject a sibling cilium-config key; the validation parses the value as a CIDR.
 
 run "cilium_native_routing_cidr_with_embedded_newline_is_rejected" {
   command = plan
@@ -1318,20 +1306,8 @@ run "cilium_self_management_app_on_shape" {
   }
 }
 
-# A caller passing `null` for a chart-version input must receive the module's
-# DECLARED DEFAULT, not null. This is the mechanism the example shim relies on so
-# a consumer who omits substrate.cilium.chart_version from cluster.yaml inherits
-# every future base pin instead of freezing the literal their shim was copied
-# with (issue #210). It works ONLY because the variable declares
-# `nullable = false`; a passed null otherwise stays null.
-#
-# Red-green: remove `nullable = false` from variable "cilium_chart_version" in
-# variables.tf and re-run `tofu test -filter=tests/input-validation.tftest.hcl`
-# — targetRevision becomes null and the first assert below fails.
-#
-# Deliberately asserts the SHAPE of the substituted value, never the literal
-# version: hard-coding "1.20.3" here would add back the fourth copy of the pin
-# that #210 exists to remove.
+# null must resolve to the declared default (`nullable = false`). Asserts the
+# shape, not the literal, so the pin keeps a single copy.
 run "null_chart_version_falls_back_to_the_declared_default" {
   command = plan
   module { source = "./tests/fixtures/colliding-catalog" }

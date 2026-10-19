@@ -447,44 +447,10 @@ locals {
 
 output "cilium_seed_observability_markers" {
   description = <<-EOT
-    Booleans decoded from the FROZEN bootstrap seed render
-    (terraform_data.cilium_render[0].output — NOT a second data.helm_template.cilium
-    read), filtered by kind=="ConfigMap" && metadata.name=="cilium-config". Marker
-    keys verified against the pinned chart (1.20.3) cilium-configmap.yaml template:
-    `agent_metrics` <- presence of "prometheus-serve-addr" (gated by
-    `{{- if .Values.prometheus.enabled }}`); `hubble` <- the "enable-hubble" value
-    (unconditionally rendered, reflects hubble.enabled directly); `hubble_metrics`
-    <- presence of "hubble-metrics-server" (gated by
-    `{{- if or .Values.hubble.metrics.enabled .Values.hubble.metrics.dynamic.enabled }}`,
-    itself nested under the outer `{{- if .Values.hubble.enabled }}` block).
-    `operator_metrics` <- presence of "operator-prometheus-serve-addr" — CAVEAT
-    (verified by rendering the pinned chart): the upstream chart's OWN default for
-    `operator.prometheus.enabled` is `true` (values.yaml), and neither the floor
-    nor this module's computed layer ever sets it false, so this key is present in
-    the rendered ConfigMap REGARDLESS of var.cilium_operator_metrics — it does NOT
-    discriminate the toggle at the render layer (a pre-existing chart-default fact,
-    not introduced by this change). The offline `cilium_effective_values.operator.
-    prometheus.enabled` assertion (tests/input-validation.tftest.hcl) is what
-    genuinely red-green-binds the operator-metrics leg of AC #1; this field is
-    audit-only for that leg. `agent_metric_overrides` <- presence of the "metrics"
-    key (gated by the same `{{- if .Values.prometheus.enabled }}` block, so it is
-    present only when the delta list actually reached the render).
-    `hubble_open_metrics` <- the "enable-hubble-open-metrics" VALUE, not its
-    presence. Measured: the key sits under the same
-    `{{- if or .Values.hubble.metrics.enabled … }}` gate as `hubble-metrics-server`,
-    so it is absent entirely when the metrics list is empty and present as "false"
-    when the list is non-empty and the flag is off — a presence check would
-    therefore report the metrics list, not the flag. The try() default reads an
-    absent key as off, which is correct in both directions.
-    {} when deploy_cilium = false
-    or the name-filtered ConfigMap list is empty (try()-wrapped, mirroring the
-    cert_approver_env precedent). Secret-free (booleans + one raw string value only).
-
-    SCOPE — this describes the SEED, not the running cluster. On a cluster that
-    has adopted the emitted self-management Application, the frozen seed can be an
-    entire chart minor behind what ArgoCD reconciles (ADR-0022, "§k gains a second
-    dimension"), so these booleans answer "what was baked in at bootstrap", never
-    "what is live now".
+    Booleans decoded from the cilium-config ConfigMap of the frozen bootstrap
+    seed: what was baked in at bootstrap, not what runs now. operator_metrics is
+    true regardless of cilium_operator_metrics, because the chart enables
+    operator metrics by default. {} when deploy_cilium = false.
   EOT
   # Declassify only boolean markers. Fall back to the raw value if the provider did not mark it sensitive.
   value = try(

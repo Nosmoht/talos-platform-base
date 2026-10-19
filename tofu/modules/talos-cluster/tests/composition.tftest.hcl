@@ -586,21 +586,8 @@ run "cilium_seed_render_carries_observability_markers" {
   }
 }
 
-# The negative half of the two marker/spelling oracles above, and the chart-default
-# sentinel for both. Same inputs as that run EXCEPT the two metric-set inputs, which
-# stay at their defaults.
-#
-# Without this run the `agent_metric_overrides` marker (presence of the cilium-config
-# `metrics` key) and the OpenMetrics spelling oracle (`enable-hubble-open-metrics ==
-# "true"`) are only ever observed in their ON state, so neither would notice a chart
-# that started emitting a bare `metrics` key with the scrape endpoint on, or one that
-# flipped the OpenMetrics default to true — the marker would read `true` for every
-# consumer and discriminate nothing, the exact failure already documented for
-# `operator_metrics`.
-#
-# Measured at the pinned chart 1.20.3: with prometheus.enabled=true and no delta
-# list, the rendered cilium-config carries NO `metrics` key; with Hubble on and
-# OpenMetrics unset, `enable-hubble-open-metrics` is "false".
+# Off-state of the two metric markers above: with both metric-set inputs at their
+# defaults, cilium-config has no `metrics` key and OpenMetrics is "false".
 run "cilium_seed_render_metric_inputs_default_off" {
   command = plan
   variables {

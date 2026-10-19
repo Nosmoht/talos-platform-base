@@ -404,16 +404,11 @@ variable "argocd_namespace" {
 
 variable "argocd_chart_version" {
   description = <<-EOT
-    Version of the argo-cd Helm chart (argoproj.github.io/argo-helm). This is a
-    SEED knob, not an upgrade knob: Talos applies inlineManifests once at
-    bootstrap and never re-runs them, so bumping this after bootstrap only
-    re-renders the machine config — it does NOT upgrade a running ArgoCD. Steady-
-    state version is owned by ArgoCD self-management (the app reconciles itself
-    from git). VERIFY the exact current chart version at push.
-
-    As with `cilium_chart_version`, this default is the single source of truth
-    and `nullable = false` lets a caller pass `null` to mean "take the base's
-    pin" — see that variable for why the attribute is load-bearing.
+    argo-cd Helm chart version. Feeds the bootstrap seed, which is frozen at the
+    first apply, the Day-0 CRD apply and the seeded argocd namespace's version
+    label, so changing it applies a new machine config to every controlplane. It
+    does not upgrade a running Argo CD; the argocd component does. null selects
+    this default.
   EOT
   type        = string
   default     = "10.10.5"
@@ -507,18 +502,10 @@ variable "deploy_cilium" {
 
 variable "cilium_chart_version" {
   description = <<-EOT
-    Version of the cilium Helm chart (helm.cilium.io). SEED knob, not an upgrade
-    knob: Talos applies inlineManifests once at bootstrap and never re-runs them,
-    so bumping this after bootstrap only re-renders the machine config — it does
-    NOT upgrade a running Cilium. VERIFY the exact current chart version at push.
-
-    This default is the SINGLE source of truth for the pinned chart version.
-    `nullable = false` is what makes that true: a caller may pass `null` to mean
-    "take the base's pin", and OpenTofu then substitutes this default. Without
-    `nullable = false` a passed `null` stays null. That is the mechanism the
-    example shim relies on, so a consumer who omits
-    `substrate.cilium.chart_version` from `cluster.yaml` inherits every future
-    bump instead of freezing whatever literal their shim was copied with.
+    Cilium Helm chart version. Feeds the bootstrap seed, which is frozen at the
+    first apply, and the targetRevision of the self-management Application.
+    Changing it does not upgrade a running Cilium without self-management.
+    null selects this default.
   EOT
   type        = string
   default     = "1.20.3"
