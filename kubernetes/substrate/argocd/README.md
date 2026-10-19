@@ -5,7 +5,7 @@
 ## Upstream chart source
 
 - **Chart:** [`argo-cd`](https://argoproj.github.io/argo-helm)
-- **Pinned version:** `10.10.1`
+- **Pinned version:** `10.10.5`
 - **Lock file:** [`chart.lock.yaml`](./chart.lock.yaml) — includes `tgz_sha256` for reproducible renders.
 
 ## Namespace

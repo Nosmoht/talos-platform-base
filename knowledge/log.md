@@ -18,6 +18,8 @@
 - `rules/talos-base-bundle.md`: consumer actions belong in `UPGRADING.md`.
 - `workflows/release-process.md`: `UPGRADING.md` headings name no version;
   consumers read the file's diff between two tags.
+- `decisions/0025-argocd-crd-apply-scope.md`: append the addendum discharging
+  the revisit trigger at chart 10.10.5.
 
 ## 2026-10-18
 
