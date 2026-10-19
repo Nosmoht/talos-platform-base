@@ -52,7 +52,7 @@ repo:
 
 # --- Talos / Kubernetes versions ---
 talos:
-  version: v1.14.2 # machine-config SCHEMA pin — fixed at bootstrap, do NOT change later
+  version: v1.14.4 # machine-config SCHEMA pin — fixed at bootstrap, do NOT change later
   install_version: "" # installer-image tag for OS upgrades; "" = matches talos.version
 kubernetes:
   version: v1.37.1
