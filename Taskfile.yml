@@ -963,6 +963,10 @@ tasks:
       uvx pre-commit run --all-files || true
       echo "pre-commit hooks installed. Run 'uvx pre-commit run --all-files' to validate the full repo."
 
+  dev:bash-floor:
+    desc: Run the script-driven CI targets of the committed HEAD under bash 3.2, the bash macOS ships (needs docker or podman)
+    cmd: scripts/check-bash-floor.sh
+
   dev:verify-pins:
     desc: Assert every package-lock.json URL resolves on registry.npmjs.org
     cmd: |

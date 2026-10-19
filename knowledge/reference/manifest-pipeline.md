@@ -3,7 +3,7 @@ type: reference
 title: Manifest Pipeline
 description: How the rendered-manifests pattern is implemented — chart pinning, two-stage render, drift fences, and the gitops:validate pipeline with its CI mapping.
 tags: [rendered-manifests, validation, ci, conftest]
-generated: { by: human:nosmoht, at: "2026-10-10T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-19T00:00:00Z" }
 sources:
   - resource: scripts/render-component.sh
   - resource: scripts/verify-rendered.sh
@@ -321,6 +321,7 @@ The workflow runs on every PR and on pushes to `main`, with these jobs:
 | `secret-scan` | gitleaks over the full history with the pinned shared `.gitleaks.toml` — the server-side backstop against local `--no-verify` bypass. |
 | `oci-allowlist-check` | Same fail-closed tarball diff as `task supply-chain:oci-allowlist`. |
 | `shellcheck` | `shellcheck -S warning` over all tracked `*.sh`. |
+| `bash-floor` | `task dev:bash-floor`: the task targets listed in `scripts/check-bash-floor.sh`, run from the committed HEAD inside the digest-pinned `bash:3.2` image. |
 
 The CI `validate` job and the local `task gitops:validate` differ in
 composition:

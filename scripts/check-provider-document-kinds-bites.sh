@@ -86,13 +86,13 @@ bite "the bound check ties the upper bound to the floor's next line" \
 
 bite "constraint parity anchors the closing quote, so a longer site constraint fails" \
   "constraint site:" \
-  'grep -qF -- "\"${CONSTRAINT}\""' \
-  'grep -qF -- "\"${CONSTRAINT%-0}\""'
+  'grep -F -- "\"${CONSTRAINT}\""' \
+  'grep -F -- "\"${CONSTRAINT%-0}\""'
 
 bite "constraint parity anchors the opening quote, so a longer site constraint fails" \
   "constraint site:" \
-  'grep -qF -- "\"${CONSTRAINT}\""' \
-  'grep -qF -- "\"${CONSTRAINT#>= }\""'
+  'grep -F -- "\"${CONSTRAINT}\""' \
+  'grep -F -- "\"${CONSTRAINT#>= }\""'
 
 bite "the form check catches a truncated extraction" \
   "constraint form:" \

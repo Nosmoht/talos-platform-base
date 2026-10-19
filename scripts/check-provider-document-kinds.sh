@@ -56,7 +56,7 @@ fi
 [ "${CONSTRAINT##*< }" = "${NEXT_LINE}" ] ||
   fail "constraint bound: the upper bound in '${CONSTRAINT}' is not ${NEXT_LINE}, the start of the floor's next breaking line (ADR-0029 §Provider constraints). A wider bound admits a line nothing here tests, and narrowing it once a release there is published is MAJOR."
 for site in "${CONSTRAINT_SITES[@]}"; do
-  grep -A3 -- 'source *= *"siderolabs/talos"' "${site}" | grep -qF -- "\"${CONSTRAINT}\"" ||
+  grep -A3 -- 'source *= *"siderolabs/talos"' "${site}" | grep -F -- "\"${CONSTRAINT}\"" >/dev/null ||
     fail "constraint site: ${site} does not declare siderolabs/talos at \"${CONSTRAINT}\". The README and the example ship to consumers, who copy them into their roots."
 done
 LOCK_CONSTRAINTS="$(

@@ -80,6 +80,7 @@ go-task is the single runner; `task --list` gives the full set.
 - YAML with 2-space indentation; keep keys and list nesting consistent with existing manifests.
 - One component per directory (`.../component/{application.yaml,kustomization.yaml,values.yaml}`).
 - Conventional Commit style with subsystem scope (`fix(cilium): …`, `chore(talos): …`).
+- Shell scripts run under bash 3.2, the bash macOS ships, not only under CI's bash 5. `task dev:bash-floor` (CI job `bash 3.2 floor`) runs the task targets listed in `scripts/check-bash-floor.sh` under it, from the committed HEAD.
 
 ## Testing Guidelines
 
