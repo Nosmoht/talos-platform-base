@@ -20,6 +20,10 @@
   consumers read the file's diff between two tags.
 - `decisions/0025-argocd-crd-apply-scope.md`: append the addendum discharging
   the revisit trigger at chart 10.10.5.
+- `decisions/0022-cilium-observability-and-argocd-self-management.md`: append
+  the addendum re-verifying §Validation at Cilium chart 1.20.3.
+- `reference/helm-values-surface.md`: the pod-template measurement names the
+  pinned chart 1.20.3 (was 1.20.0).
 
 ## 2026-10-18
 

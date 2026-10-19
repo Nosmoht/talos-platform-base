@@ -33,7 +33,7 @@
     "app.kubernetes.io/managed-by": "argocd"
     "app.kubernetes.io/name": "cilium"
     "app.kubernetes.io/part-of": "talos-platform-base"
-    "app.kubernetes.io/version": "1.20.0"
+    "app.kubernetes.io/version": "1.20.3"
   "name": "cilium"
   "namespace": "argocd"
 "spec":
@@ -85,4 +85,4 @@
             - "SYS_ADMIN"
             - "SYS_RESOURCE"
     "repoURL": "https://helm.cilium.io"
-    "targetRevision": "1.20.0"
+    "targetRevision": "1.20.3"

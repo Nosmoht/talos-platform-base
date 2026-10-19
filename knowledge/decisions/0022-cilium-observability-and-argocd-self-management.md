@@ -915,3 +915,14 @@ incidental to load-bearing. It is also what decides whether a manual
 `kubectl -n kube-system scale deploy/cilium-operator --replicas=2` sticks on an
 existing non-self-managing cluster; that has not been measured on a live cluster
 and is therefore not published as remediation.
+
+## Addendum 2026-10-19 — re-verified at the Cilium 1.20.3 bump
+
+Run again for `1.20.0` → `1.20.3`. All §Validation claims hold; nothing in this
+ADR is superseded. `operator.prometheus.enabled` still defaults to `true`, so the
+revisit trigger did not fire and `operator_metrics` stays audit-only. The four
+marker keys are still emitted, `templates/hubble/metrics-service.yaml` is
+byte-identical, and two successive floor renders are byte-identical. The floor
+render differs from 1.20.0 only in the `helm.sh/chart` labels and the Cilium,
+operator and Envoy image references; the `cilium-config` ConfigMap is unchanged
+and the floor-only render stays at 55 950 bytes.

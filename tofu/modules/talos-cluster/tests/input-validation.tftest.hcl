@@ -776,7 +776,7 @@ run "cilium_hubble_metrics_context_syntax_plans_cleanly" {
 #
 # The third sibling reaching the same rendered cilium-config document, and the
 # one the first pass of this suite left uncovered. Measured against the pinned
-# chart (1.20.0): the chart writes `ipv4-native-routing-cidr: {{ . }}` raw and
+# chart (1.20.3): the chart writes `ipv4-native-routing-cidr: {{ . }}` raw and
 # unquoted, so the value "10.244.0.0/16\n  injected-native-key: pwned" renders
 # `injected-native-key` as a standalone cilium-config key.
 #
@@ -1330,7 +1330,7 @@ run "cilium_self_management_app_on_shape" {
 # — targetRevision becomes null and the first assert below fails.
 #
 # Deliberately asserts the SHAPE of the substituted value, never the literal
-# version: hard-coding "1.20.0" here would add back the fourth copy of the pin
+# version: hard-coding "1.20.3" here would add back the fourth copy of the pin
 # that #210 exists to remove.
 run "null_chart_version_falls_back_to_the_declared_default" {
   command = plan

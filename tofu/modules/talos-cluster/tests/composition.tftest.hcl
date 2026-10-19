@@ -598,7 +598,7 @@ run "cilium_seed_render_carries_observability_markers" {
 # consumer and discriminate nothing, the exact failure already documented for
 # `operator_metrics`.
 #
-# Measured at the pinned chart 1.20.0: with prometheus.enabled=true and no delta
+# Measured at the pinned chart 1.20.3: with prometheus.enabled=true and no delta
 # list, the rendered cilium-config carries NO `metrics` key; with Hubble on and
 # OpenMetrics unset, `enable-hubble-open-metrics` is "false".
 run "cilium_seed_render_metric_inputs_default_off" {

@@ -521,7 +521,7 @@ variable "cilium_chart_version" {
     bump instead of freezing whatever literal their shim was copied with.
   EOT
   type        = string
-  default     = "1.20.0"
+  default     = "1.20.3"
   nullable    = false
 }
 
