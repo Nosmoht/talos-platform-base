@@ -515,7 +515,7 @@ as it already is for `var.nodes`.
 
 The `cilium_k8s_service_host` and `cilium_k8s_service_port` guards SHALL be
 treated as well-formedness rather than injection closure: the measured sink is
-not the one the raw-render class rule below covers — chart 1.20.0 renders both
+not the one the raw-render class rule below covers — chart 1.20.3 renders both
 into the containers' `KUBERNETES_SERVICE_HOST` / `_PORT` env vars, QUOTED, so
 neither can inject a sibling key.
 
