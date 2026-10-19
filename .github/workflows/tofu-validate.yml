@@ -22,7 +22,6 @@ on:
       # guard merges without the guard ever running (#218 review).
       - 'scripts/check-render-determinism.sh'
       - 'scripts/check-argocd-day0-apply-shape.sh'
-      - 'scripts/check-argocd-gate-bites.sh'
       - 'scripts/check-kubeconfig-endpoint-regen.sh'
       - 'scripts/check-node-projection-wiring.sh'
       - 'scripts/check-module-readme-parity.sh'
@@ -58,7 +57,6 @@ on:
       # guard merges without the guard ever running (#218 review).
       - 'scripts/check-render-determinism.sh'
       - 'scripts/check-argocd-day0-apply-shape.sh'
-      - 'scripts/check-argocd-gate-bites.sh'
       - 'scripts/check-kubeconfig-endpoint-regen.sh'
       - 'scripts/check-node-projection-wiring.sh'
       - 'scripts/check-module-readme-parity.sh'
