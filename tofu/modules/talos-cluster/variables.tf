@@ -573,7 +573,7 @@ variable "cilium_gateway_api_crds_url" {
   description = <<-EOT
     Optional URL of a Gateway API CRD bundle Talos applies at bootstrap through
     cluster.extraManifests, e.g.
-    https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml.
+    https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.3/standard-install.yaml.
     Use the experimental bundle only if v1alpha2 TLSRoute objects already exist.
     Not digest-pinned, and a failed fetch stalls bootstrap; leave empty to apply
     the CRDs through GitOps instead.
@@ -801,7 +801,7 @@ variable "cert_approver_provider_regex" {
 
   validation {
     condition     = trimspace(var.cert_approver_provider_regex) != ""
-    error_message = "cert_approver_provider_regex must not be empty or whitespace-only — an empty PROVIDER_REGEX makes postfinance/kubelet-csr-approver v1.2.14 exit fatally at startup so the approver never runs, and a whitespace-only regex compiles but matches no DNS SAN, denying every serving-cert CSR. Use \".*\" for no extra pattern constraint."
+    error_message = "cert_approver_provider_regex must not be empty or whitespace-only — an empty PROVIDER_REGEX makes postfinance/kubelet-csr-approver exit fatally at startup so the approver never runs, and a whitespace-only regex compiles but matches no DNS SAN, denying every serving-cert CSR. Use \".*\" for no extra pattern constraint."
   }
   validation {
     condition     = can(regexall(var.cert_approver_provider_regex, ""))

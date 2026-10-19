@@ -322,3 +322,15 @@ value; consumer-settable HA; still zero-wiring at bootstrap.
 - postfinance/kubelet-csr-approver `internal/controller/csr_controller.go`,
   `internal/controller/regex_ip_checks.go` @ v1.2.14 (source of the security
   model above).
+
+## Addendum 2026-10-19 — re-vendored at v1.2.15
+
+The pin moves to chart 1.2.15 and image
+`v1.2.15@sha256:6469ef517d2b6d3cb108fce8a913483533a48b1cd78b5d4af307fa09e04a7818`.
+Between v1.2.14 and v1.2.15 no file under `internal/` or `cmd/` changed; the
+release moved Go dependencies and two chart templates (a ClusterRoleBinding
+namespace the vendored manifest already drops, and an optional NodePort the
+seed does not render). No `PROVIDER_*` env var was renamed and the IP/DNS-check
+semantics are unchanged, so the Wrong-if trigger did not fire and the security
+model above stands. `ALLOWED_DNS_NAMES` stays removed: the controller still
+does not read it.

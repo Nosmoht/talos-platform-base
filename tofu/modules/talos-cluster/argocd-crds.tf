@@ -11,10 +11,7 @@ data "helm_template" "argocd_crds" {
   version      = var.argocd_chart_version
   kube_version = var.kubernetes_version
   include_crds = true
-  set {
-    name  = "crds.install"
-    value = "true"
-  }
+  values       = [yamlencode({ crds = { install = true } })]
 
   lifecycle {
     postcondition {

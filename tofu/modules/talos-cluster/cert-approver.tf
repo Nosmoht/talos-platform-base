@@ -12,7 +12,7 @@ locals {
   cert_approver_namespace_labels = {
     "app.kubernetes.io/name"                     = "kubelet-csr-approver"
     "app.kubernetes.io/instance"                 = "kubelet-csr-approver"
-    "app.kubernetes.io/version"                  = "v1.2.14"
+    "app.kubernetes.io/version"                  = "v1.2.15"
     "app.kubernetes.io/component"                = "cert-approver"
     "app.kubernetes.io/part-of"                  = "talos-platform-base"
     "app.kubernetes.io/managed-by"               = "opentofu"

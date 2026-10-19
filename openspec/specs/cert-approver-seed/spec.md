@@ -80,7 +80,7 @@ Helm chart output is committed at
 `tofu/modules/talos-cluster/manifests/kubelet-csr-approver.yaml` and rendered
 through OpenTofu `templatefile()` into `local.cert_approver_manifest` (not
 read raw via `file()`), with a header recording the upstream repository, the
-chart name and version (`1.2.14`, appVersion `v1.2.14`), the chart tarball
+chart name and version (`1.2.15`, appVersion `v1.2.15`), the chart tarball
 SHA-256, the `helm template` command and values used, and the list of local
 modifications. Only the per-cluster config values and the leader-election
 blocks are re-parameterized as template placeholders; the container image is
@@ -91,7 +91,7 @@ is pure, the seed stays outside the Helm-render-determinism fence.
 
 - **WHEN** the Deployment in the rendered manifest is inspected
 - **THEN** its container image reference is
-  `ghcr.io/postfinance/kubelet-csr-approver:v1.2.14@sha256:c0f6aa1abdc225a32f9a29992fd97f711e78e2df21434f9ce7bc60981f96a5f8`
+  `ghcr.io/postfinance/kubelet-csr-approver:v1.2.15@sha256:6469ef517d2b6d3cb108fce8a913483533a48b1cd78b5d4af307fa09e04a7818`
   with an `@sha256:` digest and `imagePullPolicy: IfNotPresent`
 
 #### Scenario: Provenance recorded for re-vendoring

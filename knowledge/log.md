@@ -2,6 +2,8 @@
 
 ## 2026-10-19
 
+- `decisions/0019-postfinance-kubelet-csr-approver.md`: append the addendum
+  re-vendoring the approver at v1.2.15.
 - `project/openssf-self-assessment.md`: `bash 3.2 floor` joins the required checks.
 - `reference/tasks.md`: add the `dev:bash-floor` row.
 - `reference/manifest-pipeline.md`: add the `bash-floor` job to the `gitops-validate.yml` table.

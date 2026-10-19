@@ -13,7 +13,7 @@ terraform {
     # Local chart rendering only; no Helm release or Kubernetes connection.
     helm = {
       source  = "hashicorp/helm"
-      version = ">= 2.12, < 3.0.0"
+      version = ">= 2.12, < 4.0.0"
     }
     local = {
       source  = "hashicorp/local"
