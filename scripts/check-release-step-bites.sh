@@ -250,6 +250,9 @@ if run_create none v9.9.9; then
   grep -q -- '--generate-notes' "$LOG" \
     && ok "the notes are generated from the merged pull requests" \
     || note "the release was not created with --generate-notes"
+  ! grep -q -- '--prerelease' "$LOG" \
+    && ok "a release tag is not marked pre-release" \
+    || note "a release tag was marked pre-release"
   grep -q 'make_latest=legacy' "$LOG" \
     && ok "a release tag publishes with make_latest=legacy, not a last-writer-wins flag" \
     || note "a release tag did not publish with make_latest=legacy"

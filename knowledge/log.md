@@ -2,6 +2,8 @@
 
 ## 2026-10-19
 
+- `reference/tasks.md`: add the `dev:bash-floor` row.
+- `reference/manifest-pipeline.md`: add the `bash-floor` job to the `gitops-validate.yml` table.
 - `decisions/0020-automated-release-no-approval-gate.md`: append §Amendment
   (2026-10-19) recording the removal of `CHANGELOG.md` and generated release
   notes.

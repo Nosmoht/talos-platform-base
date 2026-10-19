@@ -3,7 +3,7 @@ type: reference
 title: Task Runner Surface
 description: Complete go-task target inventory with per-task purpose, preconditions, and the Makefile deprecation stub behavior.
 tags: [go-task, tooling, validation]
-generated: { by: human:nosmoht, at: "2026-10-18T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-19T00:00:00Z" }
 sources:
   - resource: Taskfile.yml
   - resource: Makefile
@@ -169,6 +169,7 @@ the pinned Taskfile vars above. See the MCP setup workflow
 | Task | Purpose |
 | --- | --- |
 | `dev:install-pre-commit` | `uvx pre-commit install` + one advisory run across the repo. |
+| `dev:bash-floor` | Run the script-driven CI targets of the committed HEAD inside the `bash:3.2` image, the bash macOS ships; needs docker or podman. Run by the `bash 3.2 floor` job in `gitops-validate.yml`. Runs `scripts/check-bash-floor.sh`. |
 | `dev:verify-pins` | Assert that every `package-lock.json`-resolved package points at the official `registry.npmjs.org` (supply-chain provenance guard). Run verbatim by `docs-lint.yml`. |
 
 Deliberately absent from this table: `dev:npm-ci`, declared `internal: true` in `Taskfile.yml` and therefore hidden from `task --list` — the live inventory this page mirrors. It is the shared `npm ci --ignore-scripts` step that `docs:install-cli` and `spec:install-cli` both declare as a dependency (`deps: [dev:npm-ci]`). `Deliberately absent from this table:` is a fixed lead-in marker: the planned inventory-parity fence (issue #200) will read a table's exemption list from a note carrying this exact lead-in, naming the exempt tasks as the backticked task names that follow it in the same paragraph.
