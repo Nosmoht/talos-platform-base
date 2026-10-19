@@ -72,7 +72,7 @@ native module patches and must align their own patches before applying.
 1. Update a consumer's provider constraint to admit `0.12.0`, run
    `tofu init -upgrade`, review and commit the lockfile.
 2. For an existing cluster, retain `talos.version` (the bootstrap schema pin).
-   Set `talos.install_version: v1.14.2` for an OS upgrade and use the existing
+   Set `talos.install_version: v1.14.4` for an OS upgrade and use the existing
    sequential, health-gated OS-upgrade procedure. A base update or config apply
    alone does not upgrade the operating system.
 3. New 1.14 clusters use the updated example. Consumers already pinned to a
