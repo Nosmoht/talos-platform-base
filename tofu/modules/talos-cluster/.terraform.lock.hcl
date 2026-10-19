@@ -3,7 +3,7 @@
 
 provider "registry.opentofu.org/hashicorp/helm" {
   version     = "3.3.0"
-  constraints = ">= 3.0.0, < 4.0.0"
+  constraints = ">= 2.12.0, < 4.0.0"
   hashes = [
     "h1:0zhsz9jzK+UxFNFYNJN904Hq1QYs9VMG4xPSumkKw/4=",
     "h1:3iVzjHzAq+YMymNbTq90zF20PeZu+ds1URRxhnoVRpg=",
