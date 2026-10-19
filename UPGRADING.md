@@ -2,13 +2,15 @@
 
 For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 
-## Cilium chart `1.20.0` → `1.20.3` (PATCH — action required only for consumers who self-manage Cilium)
+## Cilium chart `1.20.0` → `1.20.3` (PATCH — action required for consumers who self-manage Cilium or use a chart or image mirror)
 
 Cilium `1.20.3` is an upstream patch release; `1.20.2` and `1.20.3` carry
 dependency security updates. Only the module's `cilium_chart_version` default
-moves. With the module floor, the render changes only in the `helm.sh/chart`
-labels and the Cilium, operator and Envoy image references (Envoy `1.37.5` →
-`1.38.6`); the `cilium-config` ConfigMap is unchanged.
+moves. Rendered with the module floor plus the values the module computes
+(both routing modes, kube-proxy replacement, Gateway API, metrics, Hubble,
+WireGuard and IPsec), the output changes only in the `helm.sh/chart` labels and
+the Cilium, operator and Envoy image references (Envoy `1.37.5` → `1.38.6`); the
+`cilium-config` ConfigMap is unchanged.
 
 1. **The pin reaches you only if you inherit it.** It applies when
    `substrate.cilium.chart_version` is unset in `cluster.yaml` and the shim
@@ -22,7 +24,15 @@ labels and the Cilium, operator and Envoy image references (Envoy `1.37.5` →
    file if you use multi-source, and commit both. The Application's
    `targetRevision` and version label move to `1.20.3`; the values digest is
    unchanged. The next sync rolls the agents (`maxUnavailable: 2`), the operator
-   and Envoy.
+   and Envoy. Traffic through Envoy (L7 policy, Gateway API) is disrupted on
+   each node while its `cilium-envoy` pod is replaced. Once the rollout is done,
+   `kubectl -n kube-system get ds cilium -o jsonpath='{.spec.template.spec.containers[0].image}'`
+   prints a `quay.io/cilium/cilium:v1.20.3` reference.
+4. **Mirror users stage first.** `data.helm_template.cilium` re-reads the chart
+   on every plan, so a `cilium_chart_repository` mirror must serve chart `1.20.3`
+   before your next plan. A self-manager behind an image mirror or registry
+   allowlist also needs the new `cilium`, `operator-generic` and `cilium-envoy`
+   images before the sync; otherwise the replaced pods fail to pull.
 
 Back-out: move `.base-version` and the module `ref=` back and regenerate the
 same outputs; the effects mirror the upgrade.

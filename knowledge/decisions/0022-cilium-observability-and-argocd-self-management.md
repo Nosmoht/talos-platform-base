@@ -923,6 +923,7 @@ ADR is superseded. `operator.prometheus.enabled` still defaults to `true`, so th
 revisit trigger did not fire and `operator_metrics` stays audit-only. The four
 marker keys are still emitted, `templates/hubble/metrics-service.yaml` is
 byte-identical, and two successive floor renders are byte-identical. The floor
-render differs from 1.20.0 only in the `helm.sh/chart` labels and the Cilium,
-operator and Envoy image references; the `cilium-config` ConfigMap is unchanged
-and the floor-only render stays at 55 950 bytes.
+render, alone and with the module-computed values in both routing modes and
+both encryption types, differs from 1.20.0 only in the `helm.sh/chart` labels
+and the Cilium, operator and Envoy image references; the `cilium-config`
+ConfigMap is unchanged and the floor-only render stays at 55 950 bytes.
