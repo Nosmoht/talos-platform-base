@@ -58,11 +58,9 @@ set
 `app.kubernetes.io/{name,instance,version,component,part-of,managed-by}`
 with `app.kubernetes.io/managed-by: bootstrap` and
 `app.kubernetes.io/version` set to a label-safe form of the pinned
-`target_revision` the root Application tracks — characters outside
-`[A-Za-z0-9_.-]` (a git ref may carry `/`) are replaced, the value is
-truncated to 63 characters with alphanumeric ends, and the render fails
-when nothing label-safe remains; `spec.source.targetRevision` keeps the
-raw revision (normative label set: `AGENTS.md §Hard Constraints`).
+`target_revision` the root Application tracks, while
+`spec.source.targetRevision` keeps the raw revision (normative label set:
+`AGENTS.md §Hard Constraints`).
 
 #### Scenario: Labels present after render
 
@@ -80,6 +78,20 @@ raw revision (normative label set: `AGENTS.md §Hard Constraints`).
   `spec.source.targetRevision` keeps the raw revision, and the rendered
   manifests pass label validation
 
+#### Scenario: The version label is sanitized and bounded
+
+- **WHEN** `cluster.target_revision` is rendered into
+  `app.kubernetes.io/version`
+- **THEN** every character outside `[A-Za-z0-9_.-]` (a git ref may carry `/`)
+  is replaced
+- **AND** the value is truncated to 63 characters with alphanumeric ends
+
+#### Scenario: A revision with no label-safe remainder fails the render
+
+- **WHEN** nothing label-safe remains of `cluster.target_revision` after
+  sanitization
+- **THEN** the render fails
+
 ### Requirement: Bootstrap-identity subset read from cluster.yaml
 
 The bootstrap render SHALL read exactly four fields from the consumer's
@@ -88,19 +100,6 @@ The bootstrap render SHALL read exactly four fields from the consumer's
 invocation (default `cluster.yaml`). `.cluster.target_revision` SHALL default
 to `main` when absent. The other three SHALL fail the render when absent,
 null, empty, or not a string.
-
-This is the narrow half of the SoT contract: the full `cluster.yaml` is read
-by the consumer's OpenTofu root, while the bootstrap path is deliberately
-limited to cluster identity and repo coordinates. Widening the subset widens
-what a bootstrap render depends on.
-
-`.cluster.overlay` is **schema-optional but bootstrap-required**: the document
-schema admits a `cluster.yaml` without it (`cluster-yaml-sot`, Requirement
-"Cluster identity, endpoint, and network shape" — `cluster` requires only
-`name` and `endpoint`), because a consumer may drive the OpenTofu root without
-ever seeding an App-of-Apps root. This path is the consumer that narrows it: a
-`cluster.yaml` can be schema-conformant and still be refused here, and that is
-the intended split rather than a contradiction between the two specs.
 
 #### Scenario: The four identity fields reach the render
 
@@ -128,72 +127,30 @@ the intended split rather than a contradiction between the two specs.
   `.cluster.overlay`
 - **THEN** the render fails and no bootstrap manifest is written or applied
 
+### Requirement: Overlay is schema-optional but bootstrap-required
+
+The bootstrap render SHALL refuse a `cluster.yaml` without `.cluster.overlay`
+even though the document schema admits one (`cluster-yaml-sot`, Requirement
+"Cluster identity, endpoint, and network shape" — `cluster` requires only
+`name` and `endpoint`). A `cluster.yaml` can be schema-conformant and still be
+refused here; that is the intended split, not a contradiction between the two
+specs.
+
+#### Scenario: A schema-conformant file without an overlay is refused
+
+- **WHEN** a `cluster.yaml` that conforms to the document schema omits
+  `.cluster.overlay`
+- **THEN** the bootstrap render fails and no bootstrap manifest is written or
+  applied
+
 ### Requirement: Containment of cluster.yaml values in the rendered manifest
 
 A `cluster.yaml` value SHALL reach a rendered bootstrap manifest as a scalar
 in its own YAML position, meaning in the rendered manifest exactly what it
 means in `cluster.yaml`, and SHALL NOT expand or introduce YAML structure into
-the manifest around it. Escaping syntax is not the whole risk: a value can be
-perfectly well-formed and still be dangerous because of what it *denotes* —
-`overlay: ".."` is a plain string that resolves to a parent directory — so
-`cluster.overlay`, whose sink is a path, additionally SHALL be bound
-positively (below).
-
-The render SHALL reject, before reading any template, any read value that:
-
-1. contains `$` — `envsubst` would otherwise expand it against the render
-   host's environment;
-2. contains a control character — `envsubst` substitutes text, not YAML, so a
-   line break carries the rest of the value out of its scalar position and
-   into sibling keys or list items. Both YAML 1.2 line breaks count (`\n` and
-   a lone `\r`), and the remaining C0 codes are rejected with them: none
-   belongs in a cluster name, repo URL, overlay name or git ref;
-3. is empty — an empty substitution renders a manifest field that is
-   syntactically valid and semantically wrong (an empty overlay names the
-   whole overlay tree);
-4. is not a string — a mapping or sequence serializes its subtree into the
-   value, which is (2) by another route and is not caught by (2) when the
-   node serializes to a single line;
-5. does not survive a YAML round-trip as itself — a value can be a plain,
-   non-empty, `$`-free, control-character-free string and still carry YAML
-   syntax that changes its meaning once substituted: `'*'` parses to `*`
-   (in `sourceRepos`, the wildcard that trusts every repository), a trailing
-   space is stripped, a space-then-hash starts a comment, `&a` is an
-   anchor. Checks 1–4
-   are character classes, and a character class cannot express "means
-   something else to a YAML parser"; round-tripping the value through the
-   same parser that will read the manifest catches the class instead of
-   enumerating its members.
-
-Additionally, `.cluster.overlay` SHALL match
-`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` — a positive bound, because checks 1–5 are
-all negative and its sink is a path. `path: kubernetes/overlays/${OVERLAY}`
-sits on an Application with prune and self-heal enabled, so `overlay: ".."`
-— which passes every check above — resolves to `kubernetes/`, handing that
-Application the whole tree. The document schema carries the same pattern; the
-render re-checks it because the schema does not run on this path.
-
-None of these is observable in the rendered output for well-formed input,
-which is why they are pinned here rather than left to the render's
-implementation. The bounds of the claim, stated so a reader does not infer
-more: the guards constrain the four identity values, and only
-`cluster.overlay` is bound positively. They are not a general YAML-injection
-defense for the templates. They do not make a value *correct* — a well-formed
-repo URL pointing at the wrong repository renders happily, and `repo.url` is
-bounded only by round-trip stability, not by a URL grammar.
-
-Separately, `envsubst` SHALL be invoked with an explicit allowlist of the
-substitution variable names the templates use, so a `$NAME` sequence a
-template carries outside that set stays literal instead of resolving against
-the render host's environment. This constrains the TEMPLATE text, not the
-values: `envsubst` is single-pass and never rescans what it substituted, so a
-`$`-bearing value would render literally with or without the allowlist. The
-two mechanisms cover different surfaces and neither substitutes for the other.
-
-Mechanically asserted for every scenario below by
-`scripts/check-bootstrap-render.sh` (`task bootstrap:check-render`, in the
-`hardware-features-check` CI job, offline — the render is `yq` + `envsubst`
-and contacts no cluster). Removing any single guard turns it red.
+the manifest around it. The render SHALL reject, before reading any template,
+any read value that contains `$` or a control character, is empty, is not a
+string, or does not survive a YAML round-trip as itself.
 
 #### Scenario: A dollar-bearing value fails the render
 
@@ -209,11 +166,24 @@ and contacts no cluster). Removing any single guard turns it red.
 - **THEN** the render fails and no bootstrap manifest is written or applied,
   rather than the trailing text becoming sibling YAML in the manifest
 
+#### Scenario: Any other C0 control character fails the render
+
+- **WHEN** a read `cluster.yaml` value contains any C0 control character, not
+  only one of the YAML 1.2 line breaks `\n` and a lone `\r`
+- **THEN** the render fails and no bootstrap manifest is written or applied
+
 #### Scenario: An empty or non-string value fails the render
 
 - **WHEN** a read `cluster.yaml` value is the empty string, or is a mapping or
   sequence rather than a string
 - **THEN** the render fails and no bootstrap manifest is written or applied
+
+#### Scenario: A single-line mapping or sequence fails the render
+
+- **WHEN** a read `cluster.yaml` value is a mapping or sequence whose node
+  serializes to a single line, so it carries no line break
+- **THEN** the render still fails as a non-string value and no bootstrap
+  manifest is written or applied
 
 #### Scenario: A value carrying YAML syntax fails the render
 
@@ -239,3 +209,90 @@ and contacts no cluster). Removing any single guard turns it red.
   host's environment
 - **THEN** the rendered manifest carries the sequence literally and the host
   value does not appear in it
+
+### Requirement: YAML round-trip guard on cluster.yaml values
+
+The render SHALL round-trip each read value through the same YAML parser that
+will read the manifest and reject the value unless it comes back as itself.
+This SHALL catch the class of plain, non-empty, `$`-free,
+control-character-free strings that carry YAML syntax changing their meaning
+once substituted, which the character-class checks cannot express.
+
+#### Scenario: Each listed YAML-syntax form is caught
+
+- **WHEN** a read value is `'*'` (which parses to `*`, in `sourceRepos` the
+  wildcard that trusts every repository), ends in a trailing space (which is
+  stripped), contains a space-then-hash (which starts a comment), or is an
+  anchor such as `&a`
+- **THEN** the round-trip check rejects it and the render fails
+
+### Requirement: Overlay bound to a plain directory name
+
+The render SHALL additionally require `.cluster.overlay` to match
+`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, a positive bound, because its sink is a
+path and the other value checks are all negative. The document schema carries
+the same pattern; the render SHALL re-check it because the schema does not run
+on this path.
+
+#### Scenario: A parent-directory overlay is refused despite passing the rest
+
+- **WHEN** `cluster.yaml` carries `overlay: ".."`, a plain string that passes
+  every negative value check
+- **THEN** the render fails rather than `path: kubernetes/overlays/${OVERLAY}`
+  on an Application with prune and self-heal enabled resolving to
+  `kubernetes/` and handing that Application the whole tree
+
+### Requirement: Bounds of the value guards
+
+The value guards SHALL constrain the four identity values only, and only
+`cluster.overlay` SHALL be bound positively. They are not a general
+YAML-injection defense for the templates and SHALL NOT be read as making a
+value correct: `repo.url` is bounded only by round-trip stability, not by a
+URL grammar.
+
+#### Scenario: A well-formed wrong repo URL still renders
+
+- **WHEN** `repo.url` is a well-formed URL that points at the wrong repository
+- **THEN** the render succeeds and carries that URL
+
+### Requirement: Allowlisted envsubst substitution
+
+`envsubst` SHALL be invoked with an explicit allowlist of the substitution
+variable names the templates use, so a `$NAME` sequence a template carries
+outside that set stays literal instead of resolving against the render host's
+environment. The allowlist constrains the TEMPLATE text, not the values, and
+neither it nor the `$` value check SHALL substitute for the other.
+
+#### Scenario: A substituted value is never rescanned
+
+- **WHEN** `envsubst` substitutes a value
+- **THEN** it does not rescan the substituted text, being single-pass, so a
+  `$`-bearing value would render literally with or without the allowlist
+
+### Requirement: Value guards asserted offline in CI
+
+`scripts/check-bootstrap-render.sh` (`task bootstrap:check-render`, in the
+`hardware-features-check` CI job) SHALL mechanically assert the value-guard
+scenarios its scenario below names, offline — the render is `yq` +
+`envsubst` and contacts no cluster. Removing any single guard SHALL turn it
+red.
+
+#### Scenario: The check covers the named guard scenarios
+
+- **WHEN** `task bootstrap:check-render` runs
+- **THEN** it asserts the scenarios "A dollar-bearing value fails the render",
+  "A line-break-bearing value fails the render", "An empty or non-string
+  value fails the render", "A value carrying YAML syntax fails the render",
+  "An overlay that is not a plain directory name fails the render" and "Host
+  environment does not leak into a rendered manifest"
+
+#### Scenario: Removing a guard turns the check red
+
+- **WHEN** any single one of those guards is removed from the render
+- **THEN** `task bootstrap:check-render` fails
+
+#### Scenario: The check runs without a cluster
+
+- **WHEN** the `hardware-features-check` CI job runs
+  `task bootstrap:check-render`
+- **THEN** it renders with `yq` + `envsubst` only and contacts no cluster

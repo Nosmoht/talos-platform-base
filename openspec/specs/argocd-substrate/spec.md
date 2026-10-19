@@ -71,26 +71,11 @@ loose manifests they must reassemble by hand.
 ### Requirement: No operator identity in the render
 
 The component SHALL ship no access policy: the rendered `argocd-rbac-cm`
-carries no non-empty `policy.csv`, and `configs.rbac.scopes` is not set. An
-access policy names principals of a specific organisation, which a
-cluster-agnostic substrate cannot know; the consumer owns both keys in their
-own overlay.
-
-The rendered `argocd-rbac-cm` SHALL likewise carry no non-empty
-`policy.default`. That key has a strictly wider blast radius than `policy.csv` —
-a policy binds the subjects it names, while `policy.default` grants its role to
-every authenticated principal with no subject at all — so it is asserted
-separately rather than folded into the policy assertion. The shipped value stays
-`''`, identical to the chart default: an authenticated principal matching no rule
-receives no permission.
-
-Both assertions are on EMPTINESS, not absence — the chart's `argocd-rbac-cm`
-template emits the keys unconditionally, so the shipped state is the empty string
-and a presence check would be satisfied forever.
-
-Consequence, stated so the posture is not misread: until a consumer supplies a
-policy, the local `admin` account is the only working access path, and ArgoCD
-documents it as an unrestricted superuser.
+carries no non-empty `policy.csv` and no non-empty `policy.default`, and
+`configs.rbac.scopes` is not set; the consumer owns `policy.csv` and the
+scopes in their own overlay. `policy.default` SHALL be asserted separately
+from `policy.csv`, and both assertions SHALL test EMPTINESS, not absence,
+because the chart's `argocd-rbac-cm` template emits the keys unconditionally.
 
 #### Scenario: Render ships no principal
 
@@ -104,23 +89,44 @@ documents it as an unrestricted superuser.
 - **THEN** it is empty or whitespace-only, so no role is granted to every
   authenticated principal
 
+#### Scenario: An unmatched principal receives no permission
+
+- **WHEN** an authenticated principal matches no policy rule
+- **THEN** the shipped `policy.default` value `''`, identical to the chart
+  default, grants it no permission
+
+#### Scenario: Only the local admin works until a consumer policy exists
+
+- **WHEN** no consumer has supplied a policy
+- **THEN** the local `admin` account, which ArgoCD documents as an
+  unrestricted superuser, is the only working access path
+
 ### Requirement: No placeholder base URL in the render
 
 The rendered `argocd-cm` SHALL carry no `url` key. The chart derives it from
 `global.domain`, whose default is a placeholder hostname, and ArgoCD derives the
 OIDC redirect URI from `url` — a placeholder therefore fails at the identity
-provider on a human's first login rather than in the cluster. Absent is the
-visible state; the consumer supplies the real value in their overlay.
-
-`argocd-notifications-cm`'s `argocdUrl` is an accepted residual: the chart
-renders it through `default (printf ...)` and Helm's `default` treats `""` as
-unset, so it cannot be cleared without disabling the notifications workload. It
-feeds notification links, never the SSO redirect.
+provider on a human's first login rather than in the cluster. The consumer
+supplies the real value in their overlay.
 
 #### Scenario: Render omits the url key
 
 - **WHEN** the steady-state render's `argocd-cm` ConfigMap data is inspected
 - **THEN** it carries no `url` key
+
+### Requirement: Notifications argocdUrl is an accepted residual
+
+"No placeholder base URL in the render" SHALL NOT extend to the
+chart-derived `argocdUrl` in `argocd-notifications-cm`: the chart renders it
+through `default (printf ...)` and Helm's `default` treats `""` as unset, so
+it cannot be cleared without disabling the notifications workload. It feeds
+notification links, never the SSO redirect.
+
+#### Scenario: The residual argocdUrl does not reach SSO
+
+- **WHEN** the steady-state render's `argocd-notifications-cm` carries a
+  chart-derived `argocdUrl`
+- **THEN** "No placeholder base URL in the render" is not violated by it
 
 ### Requirement: The consumer wiring path is published and mechanically bound
 
@@ -241,10 +247,9 @@ Every container image in the committed render, and in the seed render of the
 module's values against the same pinned chart, SHALL be either the pinned
 chart's Argo CD image — its `global.image.repository` tagged with its
 `appVersion` — or an image from a repository the same chart declares for its
-other components, or the base's own `viaductoss/ksops` init container. The chart
-pin therefore names the Argo CD release the substrate ships, and a chart bump is
-the only way to move it. The requirement binds image references, not the binary
-a container ends up executing.
+other components, or the base's own `viaductoss/ksops` init container. The
+requirement binds image references, not the binary a container ends up
+executing.
 
 #### Scenario: The render ships the pinned release
 
@@ -259,3 +264,16 @@ a container ends up executing.
   another Argo CD tag, an untagged or digest Argo CD reference, or an image from
   a repository the chart does not declare
 - **THEN** the substrate invariant gate fails and names the offending image
+
+### Requirement: The chart pin names the shipped Argo CD release
+
+The chart pin SHALL name the Argo CD release the substrate ships, so a chart
+bump in `kubernetes/substrate/argocd/chart.lock.yaml` is the only way to move
+that release.
+
+#### Scenario: Only a chart bump moves the release
+
+- **WHEN** the Argo CD release the substrate ships is to change
+- **THEN** the chart pinned in `chart.lock.yaml` is bumped, since any other
+  Argo CD tag in either values file or the committed render fails the
+  substrate invariant gate
