@@ -110,16 +110,15 @@ patch contents. Network-interface patches should be reviewed against the
 - Per-release notes are on each tag's GitHub Release.
 - This file documents **cumulative migration steps** for every release
   that requires consumer action or carries an upgrade note, whatever its class.
-- Every section heading added from now on names its release class — MAJOR,
+- Every section heading names the release class of the change — MAJOR,
   MINOR or PATCH under
-  [`knowledge/decisions/0029-public-api-and-major-rule.md`](knowledge/decisions/0029-public-api-and-major-rule.md)
-  — and that class is the class of the release (tag) the section shipped in, as
-  in the `v10.0.0` heading. Headings written before that record are not
-  relabeled.
-- Read every section between the version you currently pin and the
-  version you want to adopt, oldest tag first. Sections are not stored in
-  version order and one tag may own more than one of them — locate every
-  section carrying a tag in your range by its heading, not by position.
+  [`knowledge/decisions/0029-public-api-and-major-rule.md`](knowledge/decisions/0029-public-api-and-major-rule.md).
+  A heading added from now on names no version.
+- To find what you must do between the tag you pin and the tag you adopt,
+  read this file's diff between them:
+  `git diff <pinned-tag> <target-tag> -- UPGRADING.md`, or the
+  "Full Changelog" compare link in the target tag's GitHub Release. Apply the
+  added sections oldest first.
 - Always verify the new artifact (cosign + provenance) before vendoring
   — see [`knowledge/workflows/verify-release.md`](knowledge/workflows/verify-release.md).
 - Vendor through `oras pull`, as the workflow below does, not through the
