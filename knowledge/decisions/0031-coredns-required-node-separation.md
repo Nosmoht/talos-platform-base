@@ -200,7 +200,7 @@ rendering of objects Talos already delivers, it adds no component.
 
 ## Validation
 
-`tests/coredns-seed.tftest.hcl` (56 runs, providers mocked) binds:
+`tests/coredns-seed.tftest.hcl` (60 runs, providers mocked) binds:
 
 - the seed on both schema lines: the object identities, the required term, the
   budget and its digest annotation, `coredns_seed_digest` as the sha256 of the
@@ -210,7 +210,9 @@ rendering of objects Talos already delivers, it adds no component.
   container fields against the v1.14.4 constructor;
 - the ClusterIP for one stack, two stacks and two stacks IPv6-first; the replica
   and image inputs, a `null` image, the version label of a tagged and a
-  digest-only image; and the replica and image validations;
+  digest-only image and of tags with leading, trailing or only punctuation or
+  cut at punctuation, with the image unchanged; and the replica and image
+  validations;
 - each guard finding in its own run, which asserts the exact finding list: on
   the controlplane render the DNS domain and the service subnets in both schema
   forms, the CoreDNS image in the native form and a render that states no

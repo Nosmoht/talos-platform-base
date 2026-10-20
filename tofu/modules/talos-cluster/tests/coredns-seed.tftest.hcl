@@ -297,6 +297,70 @@ run "a_digest_only_image_gets_a_valid_version_label" {
   }
 }
 
+run "a_tag_with_leading_punctuation_gets_a_valid_version_label" {
+  command = apply
+  variables {
+    coredns_node_separation = true
+    coredns_image           = "registry.example.com/coredns:_patched"
+  }
+  assert {
+    condition     = jsonencode(distinct([for o in output.coredns_seed_objects : o.metadata.labels["app.kubernetes.io/version"]])) == jsonencode(["patched"])
+    error_message = "The version label must start with an alphanumeric character; got ${jsonencode(distinct([for o in output.coredns_seed_objects : o.metadata.labels["app.kubernetes.io/version"]]))}"
+  }
+  assert {
+    condition     = one([for o in output.coredns_seed_objects : o.spec.template.spec.containers[0].image if o.kind == "Deployment"]) == "registry.example.com/coredns:_patched"
+    error_message = "Normalising the label must leave coredns_image unchanged."
+  }
+}
+
+run "a_tag_with_trailing_punctuation_gets_a_valid_version_label" {
+  command = apply
+  variables {
+    coredns_node_separation = true
+    coredns_image           = "registry.example.com/coredns:v1.14.7-"
+  }
+  assert {
+    condition     = jsonencode(distinct([for o in output.coredns_seed_objects : o.metadata.labels["app.kubernetes.io/version"]])) == jsonencode(["v1.14.7"])
+    error_message = "The version label must end with an alphanumeric character; got ${jsonencode(distinct([for o in output.coredns_seed_objects : o.metadata.labels["app.kubernetes.io/version"]]))}"
+  }
+  assert {
+    condition     = one([for o in output.coredns_seed_objects : o.spec.template.spec.containers[0].image if o.kind == "Deployment"]) == "registry.example.com/coredns:v1.14.7-"
+    error_message = "Normalising the label must leave coredns_image unchanged."
+  }
+}
+
+run "a_punctuation_only_tag_gets_the_unknown_version_label" {
+  command = apply
+  variables {
+    coredns_node_separation = true
+    coredns_image           = "registry.example.com/coredns:___"
+  }
+  assert {
+    condition     = jsonencode(distinct([for o in output.coredns_seed_objects : o.metadata.labels["app.kubernetes.io/version"]])) == jsonencode(["unknown"])
+    error_message = "A tag with no alphanumeric character must give the label unknown; got ${jsonencode(distinct([for o in output.coredns_seed_objects : o.metadata.labels["app.kubernetes.io/version"]]))}"
+  }
+  assert {
+    condition     = one([for o in output.coredns_seed_objects : o.spec.template.spec.containers[0].image if o.kind == "Deployment"]) == "registry.example.com/coredns:___"
+    error_message = "Normalising the label must leave coredns_image unchanged."
+  }
+}
+
+run "a_long_tag_cut_at_punctuation_gets_a_valid_version_label" {
+  command = apply
+  variables {
+    coredns_node_separation = true
+    coredns_image           = "registry.example.com/coredns:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.build7"
+  }
+  assert {
+    condition     = jsonencode(distinct([for o in output.coredns_seed_objects : o.metadata.labels["app.kubernetes.io/version"]])) == jsonencode(["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"])
+    error_message = "A tag cut at 63 characters must not end in punctuation; got ${jsonencode(distinct([for o in output.coredns_seed_objects : o.metadata.labels["app.kubernetes.io/version"]]))}"
+  }
+  assert {
+    condition     = one([for o in output.coredns_seed_objects : o.spec.template.spec.containers[0].image if o.kind == "Deployment"]) == "registry.example.com/coredns:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.build7"
+    error_message = "Normalising the label must leave coredns_image unchanged."
+  }
+}
+
 run "a_null_image_takes_the_base_pin" {
   command = apply
   variables {

@@ -7,11 +7,15 @@ locals {
   coredns_service_ipv4 = try([for ip in local.coredns_service_ips : ip if !strcontains(ip, ":")][0], "")
   coredns_service_ipv6 = try([for ip in local.coredns_service_ips : ip if strcontains(ip, ":")][0], "")
 
+  # A digest-only reference has no tag; a digest never fits the 63-character label limit.
+  coredns_image_tag = try(regex(":([^:/]+)$", split("@", var.coredns_image)[0])[0], "unknown")
+  # A label value must begin and end with an alphanumeric character; an image tag need not.
+  coredns_version_label = trim(substr(local.coredns_image_tag, 0, 63), "._-")
+
   coredns_labels = {
-    "app.kubernetes.io/name"     = "coredns"
-    "app.kubernetes.io/instance" = "coredns"
-    # A digest-only reference has no tag; a digest never fits the 63-character label limit.
-    "app.kubernetes.io/version"    = substr(try(regex(":([^:/]+)$", split("@", var.coredns_image)[0])[0], "unknown"), 0, 63)
+    "app.kubernetes.io/name"       = "coredns"
+    "app.kubernetes.io/instance"   = "coredns"
+    "app.kubernetes.io/version"    = local.coredns_version_label != "" ? local.coredns_version_label : "unknown"
     "app.kubernetes.io/component"  = "cluster-dns"
     "app.kubernetes.io/part-of"    = "talos-platform-base"
     "app.kubernetes.io/managed-by" = "opentofu"
