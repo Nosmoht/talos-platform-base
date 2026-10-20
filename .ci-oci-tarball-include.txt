@@ -13,6 +13,7 @@ tofu/modules/talos-cluster/cert-approver.tf
 tofu/modules/talos-cluster/cilium-seed.tf
 tofu/modules/talos-cluster/cilium-values.tf
 tofu/modules/talos-cluster/composition.tf
+tofu/modules/talos-cluster/coredns-seed.tf
 tofu/modules/talos-cluster/helm/argocd-values.yaml
 tofu/modules/talos-cluster/helm/cilium-values.yaml
 tofu/modules/talos-cluster/image-factory.tf
