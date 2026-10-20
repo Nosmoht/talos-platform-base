@@ -332,7 +332,9 @@ variable "argocd_values_override" {
 variable "cluster_health_timeout" {
   description = <<-EOT
     Go duration `tofu apply` waits for the new cluster to become healthy
-    (etcd quorum, nodes Ready, API server reachable).
+    (etcd quorum, nodes Ready, API server reachable, every CoreDNS replica
+    Ready). With coredns_node_separation, a replica left Pending for lack of a
+    free node fails this gate on every apply (UPGRADING.md).
   EOT
   type        = string
   default     = "10m"
@@ -845,6 +847,60 @@ variable "cert_approver_replicas" {
   validation {
     condition     = var.cert_approver_replicas >= 1 && floor(var.cert_approver_replicas) == var.cert_approver_replicas
     error_message = "cert_approver_replicas must be an integer >= 1."
+  }
+}
+
+variable "coredns_node_separation" {
+  description = <<-EOT
+    Replace the Talos built-in CoreDNS with a module seed of the same objects whose
+    replicas require separate nodes, plus a PodDisruptionBudget allowing one
+    disruption. The seed keeps the built-in object names and Service ClusterIP. Seed
+    knob: on a running cluster the budget appears when a control plane boots the new
+    configuration, and the other objects change only through `talosctl upgrade-k8s`
+    after its dry-run (UPGRADING.md). Keep it false on a single-node cluster.
+  EOT
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
+variable "coredns_replicas" {
+  description = <<-EOT
+    CoreDNS replicas when coredns_node_separation is true. Must stay below the
+    node count so a drained replica has a free node to move to; taints the seed
+    does not tolerate and cordoned nodes lower that bound further. Seed knob: a
+    change reaches a running cluster only through `talosctl upgrade-k8s` after its
+    dry-run (UPGRADING.md).
+  EOT
+  type        = number
+  default     = 2
+  nullable    = false
+
+  validation {
+    condition     = var.coredns_replicas >= 2 && floor(var.coredns_replicas) == var.coredns_replicas
+    error_message = "coredns_replicas must be an integer >= 2: one replica leaves cluster DNS down during any drain of its node."
+  }
+
+  validation {
+    condition     = !var.coredns_node_separation || var.coredns_replicas < length(var.nodes)
+    error_message = "coredns_replicas must be lower than the number of declared nodes when coredns_node_separation is true: the replicas require separate nodes, so a drained replica needs a node without one."
+  }
+}
+
+variable "coredns_image" {
+  description = <<-EOT
+    CoreDNS container image of the seed. Defaults to the image Talos v1.13 and
+    v1.14 ship; once the seed is on, a Talos upgrade no longer moves it. null
+    selects this default. Seed knob: a change reaches a running cluster only
+    through `talosctl upgrade-k8s` after its dry-run (UPGRADING.md).
+  EOT
+  type        = string
+  default     = "registry.k8s.io/coredns/coredns:v1.14.7"
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^\\S+$", var.coredns_image))
+    error_message = "coredns_image must be a non-empty image reference without whitespace."
   }
 }
 

@@ -12,6 +12,7 @@ sources:
   - resource: tofu/modules/talos-cluster/argocd-crds.tf
   - resource: tofu/modules/talos-cluster/argocd-seed.tf
   - resource: tofu/modules/talos-cluster/cert-approver.tf
+  - resource: tofu/modules/talos-cluster/coredns-seed.tf
   - resource: tofu/modules/talos-cluster/cilium-seed.tf
   - resource: tofu/modules/talos-cluster/image-factory.tf
   - resource: tofu/modules/talos-cluster/machine-config.tf
@@ -45,8 +46,8 @@ cluster gets every seed at bootstrap, a later `tofu apply` lands newly-added
 manifests (this is what makes the renamed cert-approver reach an existing
 cluster), and an in-place edit to an already-seeded resource does not
 propagate — see [ADR-0013](../decisions/0013-kubelet-serving-cert-rotation.md)
-and the upgrade guide (`UPGRADING.md`). The module bakes three seeds into the
-controlplane machine config (workers carry none):
+and the upgrade guide (`UPGRADING.md`). The module bakes three seeds, and a
+fourth on opt-in, into the controlplane machine config (workers carry none):
 
 - **Cilium** (`deploy_cilium`, default `true`) — the `cilium` chart is
   rendered locally via `data.helm_template` (no `helm_release`, no live
@@ -87,6 +88,15 @@ controlplane machine config (workers carry none):
   (rotation default-on + seed model) and
   [0019-postfinance-kubelet-csr-approver](../decisions/0019-postfinance-kubelet-csr-approver.md)
   (the postfinance approver + config surface, superseding 0013 §D2).
+- **CoreDNS** (`coredns_node_separation`, default `false`) — one
+  inlineManifest entry `coredns` carrying the objects of the Talos built-in
+  under the same kinds, names and namespace (ServiceAccount, `system:coredns`
+  RBAC, ConfigMap, Deployment, Service `kube-dns` with the same ClusterIP),
+  plus a required hostname anti-affinity and a PodDisruptionBudget. A patch
+  after every caller patch turns the built-in off. Because the identities are
+  unchanged, the `talosctl upgrade-k8s` manifest sync updates the running
+  objects in place rather than pruning them. Decision:
+  [0031-coredns-required-node-separation](../decisions/0031-coredns-required-node-separation.md).
 
 Two supporting mechanics:
 

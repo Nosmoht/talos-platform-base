@@ -6,6 +6,16 @@
   replica separation and the PodDisruptionBudget at `replicas > 1`.
 - `architecture/day-zero-bootstrap.md`: the cert-approver entry names the
   anti-affinity and PodDisruptionBudget that `replicas > 1` derives.
+- `decisions/0031-coredns-required-node-separation.md`: new ADR — an opt-in
+  module seed replaces the Talos built-in CoreDNS under the same object names,
+  adding a required hostname anti-affinity and a PodDisruptionBudget.
+- `decisions/index.md`: list ADR-0031 under Accepted.
+- `architecture/substrate.md`: describe the opt-in CoreDNS seed as part of the
+  Talos pillar; the OCI artifact ships 31 entries, adding `coredns-seed.tf`.
+- `architecture/day-zero-bootstrap.md`: add the opt-in CoreDNS seed to the
+  controlplane inlineManifest seeds.
+- `reference/tasks.md`: the `tofu:test:offline` row names the CoreDNS seed suite.
+- `reference/tasks.md`: add the `tofu:check:coredns-builtin-parity` row.
 
 ## 2026-10-19
 

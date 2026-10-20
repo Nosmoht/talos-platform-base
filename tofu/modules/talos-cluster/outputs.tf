@@ -409,3 +409,49 @@ output "node_apply_mode" {
   EOT
   value       = local.node_apply_mode
 }
+
+output "coredns_seeded" {
+  description = <<-EOT
+    Whether the CoreDNS seed — the built-in disable plus its inlineManifest — is
+    in the controlplane machine-config patch list.
+  EOT
+  value = length(local.coredns_controlplane_patch) > 0 && alltrue([
+    for patch in local.coredns_controlplane_patch : contains(local.controlplane_base_patches, patch)
+  ])
+}
+
+output "coredns_builtin_setting" {
+  description = <<-EOT
+    The Talos CoreDNS setting the module writes, as { document, enabled }:
+    document is "KubeCoreDNSConfig" on a native schema pin and "cluster.coreDNS"
+    on an earlier one. null when the module writes none and the Talos built-in
+    stays on.
+  EOT
+  value = try(one(concat(
+    [for patch in local.coredns_controlplane_patch : { document = "KubeCoreDNSConfig", enabled = yamldecode(patch).enabled } if try(yamldecode(patch).kind, "") == "KubeCoreDNSConfig"],
+    [for patch in local.coredns_controlplane_patch : { document = "cluster.coreDNS", enabled = !yamldecode(patch).cluster.coreDNS.disabled } if can(yamldecode(patch).cluster.coreDNS)],
+  )), null)
+}
+
+output "coredns_seed_objects" {
+  description = <<-EOT
+    Objects decoded from the CoreDNS seed manifest inside the controlplane patch,
+    in apply order. Empty when coredns_node_separation is false.
+  EOT
+  value = flatten([
+    for patch in local.coredns_controlplane_patch : [
+      for doc in split("\n---\n", try(yamldecode(patch).manifest, yamldecode(patch).cluster.inlineManifests[0].contents, "")) : yamldecode(doc)
+      if doc != ""
+    ]
+  ])
+}
+
+output "coredns_seed_digest" {
+  description = <<-EOT
+    sha256 of the CoreDNS seed objects, which the seed's PodDisruptionBudget carries
+    as the annotation talos-platform-base.io/seed-digest: a control plane runs this
+    seed when its rendered 99-coredns manifest shows the value. null when
+    coredns_node_separation is false.
+  EOT
+  value       = var.coredns_node_separation ? local.coredns_seed_digest : null
+}

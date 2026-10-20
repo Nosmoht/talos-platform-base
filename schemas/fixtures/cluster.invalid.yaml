@@ -1,9 +1,9 @@
 # INTENTIONALLY INVALID cluster.yaml — negative fixture for lint-cluster-yaml.sh
 # (issue #136 Task 3; issue #169 added the four kernel-arg lexical-rule
 # violations; issue #265 added the two endpoint keys and the two values-source
-# paths). Valid in every respect EXCEPT fourteen offending entries binding
-# NINETEEN schema rules red-green — entry 10 breaks two rules at once and entry
-# 13 breaks three, and CI asserts all nineteen are named in the output, one
+# paths). Valid in every respect EXCEPT seventeen offending entries binding
+# TWENTY schema rules red-green — entry 10 breaks two rules at once and entry
+# 13 breaks three, and CI asserts all twenty are named in the output, one
 # needle per rule:
 #   0. nodes key CP_2 — uppercase + underscore; a name Talos ACCEPTS and then
 #      silently rewrites, so the schema rejects what the platform would rewrite.
@@ -46,6 +46,8 @@
 #      the module deliberately does NOT accept: the pinned provider offers it but
 #      resolves it to "auto" on Talos 1.14+, the line the pin exists to reach. The
 #      enum is the only thing keeping it out.
+#  16. substrate.coredns.replicas: 1 — below the schema mirror's `minimum: 2`; one
+#      CoreDNS replica leaves cluster DNS down while its node drains.
 # Relax any rule in schemas/cluster.schema.json and the negative CI step turns
 # red. Not a runnable cluster — RFC5737 documentation IPs; no node references
 # the four new images (check-jsonschema has no cross-reference check).
@@ -128,3 +130,6 @@ substrate:
       values_path: "./evil/../a//module-values.yaml"
       # INVALID: absolute. The charset rule's first character rejects a leading "/".
       override_path: "/etc/cilium/values-override.yaml"
+  coredns:
+    node_separation: true
+    replicas: 1 # INVALID: minimum 2
