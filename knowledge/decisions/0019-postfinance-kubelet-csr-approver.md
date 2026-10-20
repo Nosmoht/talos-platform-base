@@ -334,3 +334,31 @@ seed does not render). No `PROVIDER_*` env var was renamed and the IP/DNS-check
 semantics are unchanged, so the Wrong-if trigger did not fire and the security
 model above stands. `ALLOWED_DNS_NAMES` stays removed: the controller still
 does not read it.
+
+## Addendum 2026-10-20 — replicas above one are separated and budgeted
+
+D4 derived only leader election from `replicas > 1`. Leader election keeps
+two replicas from approving at once, but the scheduler could still place both
+on one node, and a drain could evict both together, so the HA option did not
+survive the node failure or drain it exists for. `replicas > 1` therefore also
+derives:
+
+- a required `kubernetes.io/hostname` pod anti-affinity selecting the
+  approver's own `name` + `instance` labels, with
+  `matchLabelKeys: [pod-template-hash]` so that during a rollout a new pod is
+  separated only from pods of its own ReplicaSet and the rollout does not
+  deadlock on the old ones. `pod-template-hash` is not repeated in the
+  selector, which the API server rejects;
+- a `policy/v1` PodDisruptionBudget with `maxUnavailable: 1` and
+  `unhealthyPodEvictionPolicy: AlwaysAllow`, so a drain evicts one replica at a
+  time and a replica that is not Ready never blocks it.
+
+Options weighed: preferred (soft) anti-affinity, rejected because it still
+lets both replicas share a node when the scheduler finds that cheaper; a
+topology spread with `DoNotSchedule`, equivalent here but less direct for a
+per-node rule; `minAvailable: 1`, rejected because at a higher replica count it
+lets a drain evict all but one at once. The default `replicas: 1` renders
+neither, and its seed is byte-identical, so D4's least-privilege default
+stands. The cost is a scheduling constraint the consumer owns: the approver
+tolerates only the control-plane taint and has no nodeSelector, so the replica
+count must stay below the number of nodes it can schedule on.

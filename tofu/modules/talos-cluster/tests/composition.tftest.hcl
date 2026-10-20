@@ -310,6 +310,10 @@ run "kubelet_serving_cert_rotation_and_cert_approver_seed" {
     condition     = !contains(output.cert_approver_container_args, "-max-sans")
     error_message = "adr-0019: the -max-sans cap flag must not be shipped (dead+misleading, flag form of ALLOWED_DNS_NAMES); got ${jsonencode(output.cert_approver_container_args)}"
   }
+  assert {
+    condition     = output.cert_approver_affinity == {} && length(output.cert_approver_pod_disruption_budgets) == 0
+    error_message = "adr-0019: at replicas:1 the seed must render no affinity and no PodDisruptionBudget; affinity=${jsonencode(output.cert_approver_affinity)}, pdbs=${jsonencode(output.cert_approver_pod_disruption_budgets)}"
+  }
 }
 
 run "cert_approver_ha_and_config_override" {
@@ -347,6 +351,39 @@ run "cert_approver_ha_and_config_override" {
   assert {
     condition     = output.cert_approver_approve_resource_names == ["kubernetes.io/kubelet-serving"]
     error_message = "adr-0019 §Security: the approve verb must stay resourceNames-scoped to [kubernetes.io/kubelet-serving] in HA mode; got ${jsonencode(output.cert_approver_approve_resource_names)}"
+  }
+  # pod-template-hash goes in matchLabelKeys only: the API server rejects a pod
+  # whose matchLabelKeys repeats a key of its labelSelector.
+  assert {
+    condition = try(output.cert_approver_affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution, []) == [{
+      labelSelector = { matchLabels = {
+        "app.kubernetes.io/name"     = "kubelet-csr-approver"
+        "app.kubernetes.io/instance" = "kubelet-csr-approver"
+      } }
+      matchLabelKeys = ["pod-template-hash"]
+      topologyKey    = "kubernetes.io/hostname"
+    }]
+    error_message = "adr-0019 HA: replicas>1 must render exactly one required hostname anti-affinity term selecting the approver's own name+instance labels with matchLabelKeys [pod-template-hash]; got ${jsonencode(output.cert_approver_affinity)}"
+  }
+  assert {
+    condition = output.cert_approver_pod_disruption_budgets == [{
+      api_version = "policy/v1"
+      name        = "kubelet-csr-approver"
+      namespace   = "kubelet-csr-approver"
+      spec = {
+        maxUnavailable = 1
+        selector = { matchLabels = {
+          "app.kubernetes.io/name"     = "kubelet-csr-approver"
+          "app.kubernetes.io/instance" = "kubelet-csr-approver"
+        } }
+        unhealthyPodEvictionPolicy = "AlwaysAllow"
+      }
+    }]
+    error_message = "adr-0019 HA: replicas>1 must render one policy/v1 PodDisruptionBudget kubelet-csr-approver with the Deployment's selector, maxUnavailable 1 and unhealthyPodEvictionPolicy AlwaysAllow; got ${jsonencode(output.cert_approver_pod_disruption_budgets)}"
+  }
+  assert {
+    condition     = length(output.cert_approver_seed_missing_labels) == 0
+    error_message = "AGENTS.md §Hard Constraints: every object in the replicas>1 seed must carry all six app.kubernetes.io/* recommended labels; missing: ${jsonencode(output.cert_approver_seed_missing_labels)}"
   }
 }
 

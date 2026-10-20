@@ -834,8 +834,10 @@ variable "cert_approver_provider_ip_prefixes" {
 variable "cert_approver_replicas" {
   description = <<-EOT
     cert-approver replicas. More than 1 enables leader election and its leases
-    RBAC. Seed knob: on a running cluster, `kubectl scale` adds replicas but not
-    leader election.
+    RBAC, required per-node pod anti-affinity and a PodDisruptionBudget
+    (maxUnavailable 1); keep it below the number of nodes the approver can
+    schedule on. Seed knob: on a running cluster, `kubectl scale` adds replicas
+    but none of these.
   EOT
   type        = number
   default     = 1
