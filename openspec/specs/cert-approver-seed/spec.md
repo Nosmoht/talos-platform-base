@@ -101,6 +101,9 @@ digest-pinned container image.
 - **THEN** it names the upstream repository, the pinned chart version and
   appVersion, the chart tarball SHA-256 checksum, the `helm template`
   invocation, and the list of local modifications applied to the render
+- **AND** a modification that renders only at `cert_approver_replicas > 1`
+  and was added after the header may instead be described by a comment inside
+  its own gated block, so that the default render stays unchanged
 
 #### Scenario: Header pins chart version and render values
 
@@ -112,8 +115,8 @@ digest-pinned container image.
 #### Scenario: Only config values and leader-election are templated
 
 - **WHEN** the vendored manifest's template placeholders are listed
-- **THEN** only the per-cluster config values and the leader-election blocks
-  are re-parameterized as placeholders
+- **THEN** only the per-cluster config values, the leader-election blocks and
+  the replica-separation blocks are re-parameterized as placeholders
 
 #### Scenario: Pure render stays outside the determinism fence
 
@@ -231,3 +234,37 @@ read-only root filesystem, runtime default seccomp).
 - **WHEN** the Deployment's pod spec is inspected
 - **THEN** it sets `runAsNonRoot: true`, drops all capabilities, uses a
   read-only root filesystem, and sets a `RuntimeDefault` seccomp profile
+
+### Requirement: Replicas above one are separated and budgeted
+
+When `cert_approver_replicas > 1` the seed SHALL give the Deployment's pod
+template one required pod anti-affinity term on `kubernetes.io/hostname`
+whose `labelSelector.matchLabels` are the approver's `name` and `instance`
+labels and whose `matchLabelKeys` is `[pod-template-hash]`, and SHALL add a
+`policy/v1` PodDisruptionBudget `kubelet-csr-approver` with the same selector,
+`maxUnavailable: 1` and `unhealthyPodEvictionPolicy: AlwaysAllow`. At the
+default `1` the seed SHALL render neither.
+
+#### Scenario: Default single replica renders no separation
+
+- **WHEN** the seed is rendered with `cert_approver_replicas` at its default
+- **THEN** the Deployment carries no `affinity` and the seed contains no
+  PodDisruptionBudget
+
+#### Scenario: Two replicas never share a node
+
+- **WHEN** the seed is rendered with `cert_approver_replicas = 2`
+- **THEN** the pod template carries exactly one
+  `requiredDuringSchedulingIgnoredDuringExecution` anti-affinity term with
+  `topologyKey: kubernetes.io/hostname`, a `labelSelector` equal to the
+  approver's `name` and `instance` labels, and `matchLabelKeys`
+  `[pod-template-hash]`
+- **AND** `pod-template-hash` does not appear in that `labelSelector`
+
+#### Scenario: A drain evicts one replica at a time
+
+- **WHEN** the seed is rendered with `cert_approver_replicas = 2`
+- **THEN** it contains one `policy/v1` PodDisruptionBudget
+  `kubelet-csr-approver` in namespace `kubelet-csr-approver` carrying the six
+  recommended labels, the Deployment's selector, `maxUnavailable: 1` and
+  `unhealthyPodEvictionPolicy: AlwaysAllow`

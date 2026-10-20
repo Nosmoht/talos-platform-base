@@ -375,7 +375,7 @@
               "minItems": 1
             },
             "replicas": {
-              "description": "cert-approver Deployment replica count. Default 1. Raise (e.g. 2) to opt into HA \u2014 replicas > 1 auto-enables leader-election + the coordination.k8s.io/leases RBAC.",
+              "description": "cert-approver Deployment replica count. Default 1. Raise (e.g. 2) to opt into HA \u2014 replicas > 1 auto-enables leader-election + the coordination.k8s.io/leases RBAC, required per-node pod anti-affinity and a maxUnavailable-1 PodDisruptionBudget; keep it below the number of nodes the approver can schedule on.",
               "type": "integer",
               "minimum": 1
             }

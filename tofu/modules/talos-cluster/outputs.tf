@@ -245,6 +245,35 @@ output "cert_approver_replicas" {
   ][0], null)
 }
 
+output "cert_approver_affinity" {
+  description = <<-EOT
+    Pod-template affinity of the cert-approver Deployment, or {} when none
+    renders. Set only when replicas > 1.
+  EOT
+  value = try([
+    for doc in split("---", local.cert_approver_manifest) :
+    yamldecode(doc).spec.template.spec.affinity
+    if try(yamldecode(doc).kind, "") == "Deployment"
+  ][0], {})
+}
+
+output "cert_approver_pod_disruption_budgets" {
+  description = <<-EOT
+    Every PodDisruptionBudget in the cert-approver seed as
+    { api_version, name, namespace, spec }. Empty at replicas = 1.
+  EOT
+  value = [
+    for doc in split("---", local.cert_approver_manifest) :
+    {
+      api_version = try(yamldecode(doc).apiVersion, "")
+      name        = try(yamldecode(doc).metadata.name, "")
+      namespace   = try(yamldecode(doc).metadata.namespace, "")
+      spec        = try(yamldecode(doc).spec, {})
+    }
+    if try(yamldecode(doc).kind, "") == "PodDisruptionBudget"
+  ]
+}
+
 output "cert_approver_env" {
   description = <<-EOT
     Container environment of the cert-approver Deployment as a name => value

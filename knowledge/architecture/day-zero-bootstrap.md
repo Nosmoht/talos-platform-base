@@ -3,7 +3,7 @@ type: architecture
 title: Day-Zero Bootstrap
 description: How a set of Talos maintenance-mode nodes becomes a GitOps-managed cluster — module-seeded inlineManifests, the bootstrap sequence, the App-of-Apps root seed, and the handoff to steady state.
 tags: [bootstrap, day-zero, inline-manifests, argocd]
-generated: { by: human:nosmoht, at: "2026-10-08T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-20T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-08-12T00:00:00Z" }
@@ -75,7 +75,9 @@ controlplane machine config (workers carry none):
   manifest is the postfinance Helm chart rendered at pin time and committed,
   then `templatefile()`-parameterized with the three per-cluster
   `substrate.cert_approver` knobs — `provider_regex` / `provider_ip_prefixes`
-  (SAN allowlists) and `replicas` (`> 1` derives leader-election + leases RBAC).
+  (SAN allowlists) and `replicas` (`> 1` derives leader-election + leases RBAC,
+  required per-node pod anti-affinity and a `maxUnavailable: 1`
+  PodDisruptionBudget).
   Because `templatefile()` is pure, this seed stays outside the
   `data.helm_template` freeze pattern Cilium and ArgoCD use. It pairs with the
   all-nodes kubelet patch `serverTLSBootstrap: true`; the cluster-scoped approver

@@ -2,6 +2,45 @@
 
 For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 
+## kubelet-csr-approver replica separation at `cert_approver_replicas > 1` (MINOR — action required only where `cert_approver_replicas > 1`)
+
+At `cert_approver_replicas > 1` the approver seed now also renders a required
+`kubernetes.io/hostname` pod anti-affinity on the approver's own labels
+(`matchLabelKeys: [pod-template-hash]`) and a `policy/v1` PodDisruptionBudget
+`kubelet-csr-approver` (`maxUnavailable: 1`,
+`unhealthyPodEvictionPolicy: AlwaysAllow`). Two replicas no longer share a node,
+and a drain evicts one at a time. At the default `1` the rendered seed is
+byte-identical, so a consumer on the default sees no machine-configuration
+change. The module adds two outputs, `cert_approver_affinity` and
+`cert_approver_pod_disruption_budgets`.
+
+The approver tolerates the control-plane taint and has no nodeSelector, so every
+node whose only `NoSchedule` or `NoExecute` taints are the control-plane ones is
+eligible. Keep the replica count below the number of eligible nodes: a replica
+beyond it stays Pending, and with exactly as many replicas as eligible nodes a
+drained node's replica has nowhere to go until the node returns.
+`matchLabelKeys` in pod affinity is locked on from Kubernetes v1.33. Where an
+older cluster runs with the `MatchLabelKeysInPodAffinity` feature gate off, the
+API server drops the field; the anti-affinity then also separates a rollout's
+new pod from the old ones, and a rollout with as many replicas as eligible nodes
+cannot place its surge pod.
+
+1. **Opt in** by setting `substrate.cert_approver.replicas` (the module's
+   `cert_approver_replicas`) to `2`.
+2. **Every controlplane gets a machine-configuration apply**, because the
+   approver manifest is part of it; apply modes behave as for any controlplane
+   apply. Talos creates the missing PodDisruptionBudget, but it never updates the
+   existing Deployment.
+3. **Run `talosctl upgrade-k8s`** to re-apply the inline manifests: it rolls the
+   Deployment to the new replica count, leader election and anti-affinity.
+
+A consumer already at `cert_approver_replicas > 1` gets the same apply in step 2
+and needs step 3 for the anti-affinity to reach its Deployment.
+
+Back-out: move `.base-version` and the module `ref=` back together, or set the
+count back to `1`; then apply the controlplanes and run `talosctl upgrade-k8s`,
+which prunes the PodDisruptionBudget and removes the anti-affinity.
+
 ## kubelet-csr-approver `v1.2.15`, `hashicorp/helm` provider `< 4.0.0` (PATCH — action required for every controlplane)
 
 The seeded kubelet-csr-approver moves from `v1.2.14` to `v1.2.15`,

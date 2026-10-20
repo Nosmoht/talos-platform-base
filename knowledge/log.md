@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-20
+
+- `decisions/0019-postfinance-kubelet-csr-approver.md`: append the addendum on
+  replica separation and the PodDisruptionBudget at `replicas > 1`.
+- `architecture/day-zero-bootstrap.md`: the cert-approver entry names the
+  anti-affinity and PodDisruptionBudget that `replicas > 1` derives.
+
 ## 2026-10-19
 
 - `workflows/verify-release.md`: name attest-build-provenance v4 and

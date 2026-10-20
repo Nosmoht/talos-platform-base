@@ -246,6 +246,21 @@ spec:
       automountServiceAccountToken: true
       priorityClassName: system-cluster-critical
       securityContext: {}
+%{ if replicas > 1 ~}
+      # Not from the chart; renders only when replicas > 1. Two replicas never
+      # share a node. pod-template-hash stays out of labelSelector: the API
+      # server rejects a matchLabelKeys key that labelSelector also names.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: kubelet-csr-approver
+                app.kubernetes.io/instance: kubelet-csr-approver
+            matchLabelKeys:
+            - pod-template-hash
+            topologyKey: kubernetes.io/hostname
+%{ endif ~}
       containers:
       - name: kubelet-csr-approver
         image: ghcr.io/postfinance/kubelet-csr-approver:v1.2.15@sha256:6469ef517d2b6d3cb108fce8a913483533a48b1cd78b5d4af307fa09e04a7818
@@ -299,3 +314,28 @@ spec:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master
         operator: Exists
+%{ if replicas > 1 ~}
+---
+# Not from the chart; renders only when replicas > 1, so a drain evicts one
+# replica at a time. AlwaysAllow lets a drain evict a replica that is not Ready
+# instead of blocking on it.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kubelet-csr-approver
+  namespace: kubelet-csr-approver
+  labels:
+    app.kubernetes.io/name: kubelet-csr-approver
+    app.kubernetes.io/instance: kubelet-csr-approver
+    app.kubernetes.io/version: v1.2.15
+    app.kubernetes.io/component: cert-approver
+    app.kubernetes.io/part-of: talos-platform-base
+    app.kubernetes.io/managed-by: opentofu
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubelet-csr-approver
+      app.kubernetes.io/instance: kubelet-csr-approver
+  unhealthyPodEvictionPolicy: AlwaysAllow
+%{ endif ~}

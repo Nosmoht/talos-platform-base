@@ -197,7 +197,7 @@ substrate:
     # Defaults boot + approve out-of-the-box AND carry the always-on per-node DNS-SAN bind.
     provider_regex: ".*" # cluster-wide extra gate on SAN DNS names; tighten e.g. "^node-.*$" for your naming
     provider_ip_prefixes: ["0.0.0.0/0", "::/0"] # SAN IP allow-set; MUST be non-empty (empty denies all IP-SAN CSRs). Tighten to your node subnets, e.g. ["<node-subnet>/24"]
-    replicas: 1 # raise to 2 for HA (auto-enables leader-election + leases RBAC)
+    replicas: 1 # raise to 2 for HA (auto-enables leader-election + leases RBAC, per-node anti-affinity + PDB)
 
 # --- Secrets (NEVER in this file — the schema has no slot for them) ---
 # sops_age_key     (ArgoCD ksops)         -> TF_VAR_sops_age_key / tfvars / SOPS
