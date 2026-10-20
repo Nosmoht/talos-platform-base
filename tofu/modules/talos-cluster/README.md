@@ -25,6 +25,7 @@ All `.tf` files belong to the same module; file boundaries do not change state a
 | `argocd-crds.tf` | CRD projection and bootstrap apply |
 | `cilium-seed.tf` | CNI patches and Cilium bootstrap seed |
 | `cert-approver.tf` | Serving-certificate approver seed |
+| `coredns-seed.tf` | Opt-in CoreDNS seed that replaces the Talos built-in |
 
 ## Scope
 
@@ -37,6 +38,7 @@ In scope:
 - **Wait until the cluster is healthy** (etcd quorum, nodes Ready, apiserver reachable) before returning.
 - **Deliver Cilium** as the CNI: disable the Talos default CNI (`cni.name: none`) + kube-proxy, then bake a locally-rendered Cilium chart into the controlplane `cluster.inlineManifests` as a bootstrap seed (Layer-1 substrate) — opt-out via `deploy_cilium = false`. So a fresh cluster comes up on Cilium, **not Flannel**.
 - **Deliver ArgoCD** as a Talos `cluster.inlineManifest` (Layer-1 substrate, C4 layer model) — opt-out via `deploy_argocd = false`.
+- **Optionally replace the Talos built-in CoreDNS** (`coredns_node_separation`, default off) with a seed of the same objects whose replicas require separate nodes — see [§CoreDNS node separation](#coredns-node-separation).
 - Output `kubeconfig` and `talosconfig`.
 
 Out of scope (caller / elsewhere):
@@ -361,6 +363,9 @@ provider "talos" {}
 | `cert_approver_provider_regex` | string | `".*"` | `postfinance/kubelet-csr-approver` `PROVIDER_REGEX` — regex every kubelet-serving CSR's **SAN DNS name** must additionally match. Match the **full DNS SAN string**, which may be an FQDN (e.g. `node-1.internal.example.com`), not just the bare node name — a pattern too restrictive to match the actual SAN (e.g. `^node-[0-9]+$` against an FQDN SAN) denies those CSRs. `^node-.*$` is a safe permissive form. **SEED knob** (create-only). The always-on per-node DNS-SAN hostname-prefix binding applies regardless. Validated: non-empty/non-whitespace (empty crashes the approver; whitespace-only denies all), compiles, no `---`, no newline (protects the split-based audit outputs). |
 | `cert_approver_provider_ip_prefixes` | list(string) | `["0.0.0.0/0", "::/0"]` | `PROVIDER_IP_PREFIXES` — CIDRs a CSR's IP SANs must fall within. Default is the **safe floor** (all IPs); **never `[]`** (an empty set denies every serving CSR). Tighten to node subnets for an IP-SAN-to-subnet binding. **SEED knob.** Every entry must be a valid CIDR. |
 | `cert_approver_replicas` | number | `1` | approver Deployment replica count (`>= 1`). `> 1` derives leader-election + a namespaced `coordination.k8s.io/leases` Role/RoleBinding, a required `kubernetes.io/hostname` pod anti-affinity on the approver's own labels (`matchLabelKeys: [pod-template-hash]`) and a `policy/v1` PodDisruptionBudget (`maxUnavailable: 1`, `unhealthyPodEvictionPolicy: AlwaysAllow`), so the HA config is coherent; `1` keeps least privilege and renders none of them. The approver tolerates the control-plane taint and has no nodeSelector, so every node whose only `NoSchedule` or `NoExecute` taints are the control-plane ones is eligible; keep the count below the eligible node count, or a surplus replica stays Pending and a drain of a hosting node strands its replica. `matchLabelKeys` in pod affinity is locked on from Kubernetes v1.33; where an older cluster runs with the `MatchLabelKeysInPodAffinity` feature gate off, the API server drops the field, and a rollout with as many replicas as eligible nodes cannot place its surge pod. **SEED knob.** |
+| `coredns_node_separation` | bool | `false` | replace the Talos built-in CoreDNS with a module seed of the same objects (`kube-system` Service `kube-dns` with the same ClusterIP, Deployment and ConfigMap `coredns`, ServiceAccount, `system:coredns` RBAC) whose replicas carry a **required** hostname pod anti-affinity, plus a PodDisruptionBudget `coredns-node-separation` (`maxUnavailable: 1`, `unhealthyPodEvictionPolicy: AlwaysAllow`). Disables the built-in (`KubeCoreDNSConfig.enabled: false`, or `cluster.coreDNS.disabled: true` before 1.14). Keep `false` on a single-node cluster. **SEED knob:** on a running cluster the budget appears when a control plane boots the new configuration; every other object changes only through `talosctl upgrade-k8s` after its dry-run ([`UPGRADING.md`](../../../UPGRADING.md) §Separate the CoreDNS replicas). See [§CoreDNS node separation](#coredns-node-separation). |
+| `coredns_replicas` | number | `2` | CoreDNS replicas with the seed on (integer `>= 2`). Must be **lower than the node count**, so a drained replica has a free node; the module cannot see taints or cordons, which lower that bound further. **SEED knob:** a change reaches a running cluster only through `talosctl upgrade-k8s` after its dry-run (`UPGRADING.md`). |
+| `coredns_image` | string | `"registry.k8s.io/coredns/coredns:v1.14.7"` | CoreDNS image of the seed; the default is the one Talos v1.13 and v1.14 ship, and `null` selects it. With the seed on, a Talos upgrade no longer moves the image — bump it here. **SEED knob:** a change reaches a running cluster only through `talosctl upgrade-k8s` after its dry-run (`UPGRADING.md`). |
 | `controlplane_apply_mode` | string | `auto` | apply_mode for the controlplane machine-config apply: `auto`, `reboot`, `no_reboot` or `staged`. `auto` is the only Day-0-safe value — the first apply to a maintenance-mode node IS the install. `staged` opens a Day-2 window: the config is written for the next boot and the reboot becomes an **out-of-band, health-gated operator step**. `reboot` forces a simultaneous reboot of every controlplane (etcd quorum loss); `no_reboot` fails the apply when the change needs a reboot. |
 | `worker_apply_mode` | string | `auto` | Same accepted set and same out-of-band reboot obligation, for the worker applies. Separate input because the roles roll under different gates (etcd quorum vs. workload/storage replication); a stateful worker set uses `staged` and reboots one node at a time. |
 
@@ -432,7 +437,65 @@ read. Full semantics live in each output's `description` in
 | `cert_approver_replicas` | no | decoded replica count of the rendered approver Deployment — binds the consumer-settable `replicas` knob (default 1) |
 | `cert_approver_affinity` | no | decoded pod-template affinity of the rendered approver — `{}` at `replicas:1`; at `replicas > 1` the one required hostname anti-affinity term |
 | `cert_approver_pod_disruption_budgets` | no | every PodDisruptionBudget in the seed as `{api_version, name, namespace, spec}` — empty at `replicas:1`; at `replicas > 1` the one `maxUnavailable: 1` budget |
+| `coredns_seeded` | no | red-green binding: the CoreDNS built-in disable and seed manifest are in the controlplane patch list |
+| `coredns_builtin_setting` | no | the Talos CoreDNS setting the module writes, `{document, enabled}`; `null` when the built-in stays on |
+| `coredns_seed_objects` | no | objects decoded from the CoreDNS seed manifest inside the controlplane patch, in apply order; `[]` with the seed off |
+| `coredns_seed_digest` | no | sha256 of the CoreDNS seed objects, carried by the seed's budget as the annotation `talos-platform-base.io/seed-digest`; a control plane runs this seed when its rendered `99-coredns` manifest shows it. `null` with the seed off |
 | `controlplane_base_is_prefix_of_final` | no | asserts the sensitive argocd/cilium seeds are only appended after the non-sensitive base patch list, never reordered before it |
+
+## CoreDNS node separation
+
+Talos ships CoreDNS as a built-in bootstrap manifest whose two replicas carry
+only a *preferred* hostname anti-affinity, and its machine config offers no
+setting to change that. `coredns_node_separation = true` turns the built-in off
+and seeds, as a controlplane inline manifest, the same objects under the same
+kinds, names and namespace, with three differences: a **required** hostname
+pod anti-affinity on `k8s-app: kube-dns` with `matchLabelKeys:
+[pod-template-hash]`, a PodDisruptionBudget allowing one disruption, and the
+recommended labels. The budget also carries `coredns_seed_digest` as an
+annotation. The Corefile and the `kube-dns` ClusterIP (the tenth address of each
+`service_cidr` entry) equal what Talos renders. The plan fails when a caller
+patch — generation-pass, worker or per-node — changes the DNS domain or the
+service subnets underneath them, deletes them or a parent with a `$patch`
+directive, or sets another CoreDNS image; when a per-node patch replaces the
+seed (an inline manifest named `coredns`, a `$patch` on
+`cluster.inlineManifests`, or a JSON6902 operation on it); when a rendered role
+configuration states no `serviceSubnets`; and when it cannot read one of those
+patch documents. The disable is reasserted after each control plane's own
+patches. The seed follows the v1.14 built-in, so on a v1.13 line it also adds
+the built-in's node affinity on `kubernetes.io/os` and `kubernetes.io/arch`. The
+cutover sync re-applies every bootstrap seed, so read `UPGRADING.md` before
+running it.
+
+`task tofu:check:coredns-builtin-parity` resolves the newest release of each
+line in `scripts/fixtures/talos-supported-lines.txt`. It fails when the
+release's CoreDNS sources leave the recorded baseline (identities, RBAC,
+Corefile, the Service and Deployment constructors, the node affinity and the DNS
+service address derivation), and when the seed's rendered objects differ from
+the release's golden CoreDNS objects in any field the seed copies. Left out of
+that comparison, as seed-owned, are the recommended labels, the pod
+anti-affinity, the budget, the image (compared with the Talos default image
+instead), the IPv6 test address of the golden dual-stack Service (the address
+derivation is compared instead), and, on a v1.13 line, the added node affinity.
+
+A budget holds a drain only while the drain waits for the eviction API:
+`kubectl drain` does, machined's own drain behind `talosctl shutdown` and
+`talosctl reset` proceeds after five minutes, and `talosctl reboot` without
+`--drain` evicts nothing. While two budgets select the CoreDNS pods, the
+eviction API refuses each eviction with an error rather than a retryable
+refusal: every drain stops at once, and machined's proceeds at once. Run
+`kubectl drain` before any Talos lifecycle operation on a node; with a CoreDNS
+replica Pending, the Ready one would otherwise go too.
+
+Because the identities match, the Kubernetes-upgrade manifest sync updates the
+objects in place rather than pruning them; a seed under any other name would
+let that sync delete the `kube-dns` Service and release its ClusterIP. On a
+running cluster the budget appears when a control plane boots the new
+configuration, and the other objects change only through that sync — the
+cutover is in
+[`UPGRADING.md`](../../../UPGRADING.md) §Separate the CoreDNS replicas.
+Decision and alternatives:
+[ADR-0031](../../../knowledge/decisions/0031-coredns-required-node-separation.md).
 
 ## Versions: schema-pin vs install-pin (Day-2 pattern)
 

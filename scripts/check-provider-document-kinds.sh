@@ -8,9 +8,28 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "${ROOT}"
 
-TALOS_PIN="${1:-v1.14.4}"
-K8S_PIN="${3:-v1.37.1}"
-TALOS_PREV_PIN="${2:-v1.13.10}"
+LINES_FILE="scripts/fixtures/talos-supported-lines.txt"
+[ -f "${LINES_FILE}" ] || { echo "::error::check-provider-document-kinds: ${LINES_FILE} not found" >&2; exit 2; }
+ROWS="$(awk '/^[[:space:]]*(#|$)/ {next} !/^v[0-9]+\.[0-9]+ v[0-9]+\.[0-9]+\.[0-9]+ v[0-9]+\.[0-9]+\.[0-9]+$/ || index($2, $1 ".") != 1 {print "unsupported row " NR ": " $0 > "/dev/stderr"; bad = 1; next} {print} END {exit bad}' "${LINES_FILE}")" || {
+  echo "::error::check-provider-document-kinds: every row of ${LINES_FILE} must read '<vMAJOR.MINOR> <a Talos release of that line> <a Kubernetes release>'" >&2; exit 1;
+}
+# The cases below probe the native boundary: the newest native line (v1.14 and later, as the
+# module's native_config_documents) against the newest legacy line, chosen by version.
+is_native() { [[ "$1" =~ ^v([0-9]+)\.([0-9]+)\. ]] && { (( BASH_REMATCH[1] > 1 )) || (( BASH_REMATCH[2] >= 14 )); }; }
+NEWEST_PIN="" NEWEST_K8S="" PREV_PIN=""
+while read -r _ pin k8s; do
+  if is_native "${pin}"; then
+    NEWEST_PIN="${pin}" NEWEST_K8S="${k8s}"
+  else
+    PREV_PIN="${pin}"
+  fi
+done < <(printf '%s\n' "${ROWS}" | sort -V -k2,2)
+if [ -z "${NEWEST_PIN}" ] || [ -z "${PREV_PIN}" ]; then
+  echo "::error::check-provider-document-kinds: ${LINES_FILE} must carry a native line (v1.14 or later) and a legacy one; found native '${NEWEST_PIN}', legacy '${PREV_PIN}'" >&2; exit 1
+fi
+TALOS_PIN="${1:-${NEWEST_PIN}}"
+K8S_PIN="${3:-${NEWEST_K8S}}"
+TALOS_PREV_PIN="${2:-${PREV_PIN}}"
 
 FIXTURE="tofu/modules/talos-cluster/tests/fixtures/provider-document-kinds"
 LOCK="tofu/modules/talos-cluster/.terraform.lock.hcl"

@@ -1,0 +1,41 @@
+name: coredns-parity-live
+
+# Kept out of tofu-validate.yml so a GitHub raw-content outage reds this
+# workflow only. Advisory; not a required check.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'tofu/modules/talos-cluster/coredns-seed.tf'
+      - 'tofu/modules/talos-cluster/variables.tf'
+      - 'scripts/check-coredns-builtin-parity.sh'
+      - 'scripts/fixtures/coredns-builtin-parity.txt'
+      - 'scripts/fixtures/talos-supported-lines.txt'
+      - 'tofu/modules/talos-cluster/tests/coredns-seed.tftest.hcl'
+      - '.github/workflows/coredns-parity-live.yml'
+      - 'Taskfile.yml'
+      - 'mise.toml'
+
+permissions:
+  contents: read
+
+jobs:
+  coredns-builtin-parity:
+    name: coredns-builtin-parity (live siderolabs/talos sources)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+        with:
+          version: 2026.10.3
+          install_args: aqua:go-task/task aqua:opentofu/opentofu aqua:mikefarah/yq aqua:jqlang/jq
+
+      - name: task tofu:check:coredns-builtin-parity
+        run: task tofu:check:coredns-builtin-parity

@@ -198,6 +198,10 @@ substrate:
     provider_regex: ".*" # cluster-wide extra gate on SAN DNS names; tighten e.g. "^node-.*$" for your naming
     provider_ip_prefixes: ["0.0.0.0/0", "::/0"] # SAN IP allow-set; MUST be non-empty (empty denies all IP-SAN CSRs). Tighten to your node subnets, e.g. ["<node-subnet>/24"]
     replicas: 1 # raise to 2 for HA (auto-enables leader-election + leases RBAC, per-node anti-affinity + PDB)
+  coredns: # opt-in: replace the Talos built-in CoreDNS with a seed whose replicas require separate nodes
+    node_separation: false # true needs more nodes than replicas; keep false on a single-node cluster
+    replicas: 2
+    # image: omitted on purpose — see the cilium block above. With the seed on, a Talos upgrade no longer moves it.
 
 # --- Secrets (NEVER in this file — the schema has no slot for them) ---
 # sops_age_key     (ArgoCD ksops)         -> TF_VAR_sops_age_key / tfvars / SOPS

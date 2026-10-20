@@ -184,7 +184,7 @@ tasks:
     # local.node_hash, a pure plan-time function, so they need no network
     # either) are checked by the offline chain rather than only by the
     # network-dependent one.
-    desc: "tofu test — the offline suites only (predicate-only catalog contract + conflict guards + input validation + image kernel-args). No network; part of tofu:ci."
+    desc: "tofu test — the offline suites only (predicate-only catalog contract + conflict guards + input validation + image kernel-args + the mocked-provider suites). No network; part of tofu:ci."
     cmd: |
       cd tofu/modules/talos-cluster && tofu init -input=false >/dev/null && tofu test \
         -filter=tests/profile-predicate-only.tftest.hcl \
@@ -193,7 +193,12 @@ tasks:
         -filter=tests/image-kernel-args.tftest.hcl \
         -filter=tests/kubeconfig-endpoint-marker.tftest.hcl \
         -filter=tests/apply-mode.tftest.hcl \
-        -filter=tests/talos-native-config.tftest.hcl
+        -filter=tests/talos-native-config.tftest.hcl \
+        -filter=tests/coredns-seed.tftest.hcl
+
+  tofu:check:coredns-builtin-parity:
+    desc: "NETWORK: fail when the newest Talos release of a line in scripts/fixtures/talos-supported-lines.txt leaves the baseline the CoreDNS seed copies, or when its golden CoreDNS objects differ from the seed's objects in a copied field. Not part of tofu:ci."
+    cmd: scripts/check-coredns-builtin-parity.sh
 
   tofu:check:talos-config-validation:
     desc: "Render module patches with the locked provider and validate both schema lines with talosctl 1.14.4 (no cluster)"

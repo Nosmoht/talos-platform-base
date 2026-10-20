@@ -3,7 +3,7 @@ type: architecture
 title: Substrate Boundary
 description: What talos-platform-base is and ships — the three-pillar substrate, the base/apps/consumer layer model, the tracked repo layout, and the fail-closed OCI artifact allowlist.
 tags: [substrate, layer-model, oci-artifact, boundaries]
-generated: { by: human:nosmoht, at: "2026-10-19T00:00:00Z" }
+generated: { by: human:nosmoht, at: "2026-10-20T00:00:00Z" }
 verified:
   - { by: human:nosmoht, at: "2026-08-28T00:00:00Z" }
   - { by: human:nosmoht, at: "2026-07-17T00:00:00Z" }
@@ -17,6 +17,7 @@ sources:
   - resource: tofu/modules/talos-cluster/argocd-crds.tf
   - resource: tofu/modules/talos-cluster/argocd-seed.tf
   - resource: tofu/modules/talos-cluster/cert-approver.tf
+  - resource: tofu/modules/talos-cluster/coredns-seed.tf
   - resource: tofu/modules/talos-cluster/cilium-seed.tf
   - resource: tofu/modules/talos-cluster/image-factory.tf
   - resource: tofu/modules/talos-cluster/machine-config.tf
@@ -74,6 +75,15 @@ Decisions:
 (rotation default-on + seed model) and
 [0019-postfinance-kubelet-csr-approver](../decisions/0019-postfinance-kubelet-csr-approver.md)
 (the postfinance approver + config surface, superseding 0013 §D2).
+
+CoreDNS stays the Talos built-in by default. With `coredns_node_separation`
+(`substrate.coredns.node_separation`, default `false`) the module turns the
+built-in off and seeds the same objects under the same names
+(`tofu/modules/talos-cluster/coredns-seed.tf`), adding a required hostname
+anti-affinity and a PodDisruptionBudget. This is no added component: the seed
+takes over rendering of objects Talos already delivers, so it belongs to the
+Talos pillar. Decision:
+[0031-coredns-required-node-separation](../decisions/0031-coredns-required-node-separation.md).
 
 ## The base / apps / consumer layer model
 
@@ -152,7 +162,7 @@ fails the publish. The same check runs locally via
 `task supply-chain:oci-allowlist`. The allowlist is the authoritative record
 of what ships; prose "what ships" summaries elsewhere are non-normative.
 
-The 30 shipped entries:
+The 31 shipped entries:
 
 ```text
 kubernetes/bootstrap/cilium/extras.yaml
@@ -170,6 +180,7 @@ tofu/modules/talos-cluster/cert-approver.tf
 tofu/modules/talos-cluster/cilium-seed.tf
 tofu/modules/talos-cluster/cilium-values.tf
 tofu/modules/talos-cluster/composition.tf
+tofu/modules/talos-cluster/coredns-seed.tf
 tofu/modules/talos-cluster/helm/argocd-values.yaml
 tofu/modules/talos-cluster/helm/cilium-values.yaml
 tofu/modules/talos-cluster/image-factory.tf

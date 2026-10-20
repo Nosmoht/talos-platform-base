@@ -31,6 +31,7 @@ on:
       - 'scripts/check-talos-config-validation.sh'
       - 'scripts/check-provider-document-kinds.sh'
       - 'scripts/check-provider-document-kinds-bites.sh'
+      - 'scripts/fixtures/talos-supported-lines.txt'
       - 'scripts/check-substrate-consumability.sh'
       # tofu:ci carries check:shim-key-parity, which reads the schema. Without
       # this entry a schema-only widening — the exact diff shape that leaves a
@@ -66,6 +67,7 @@ on:
       - 'scripts/check-talos-config-validation.sh'
       - 'scripts/check-provider-document-kinds.sh'
       - 'scripts/check-provider-document-kinds-bites.sh'
+      - 'scripts/fixtures/talos-supported-lines.txt'
       - 'scripts/check-substrate-consumability.sh'
       # tofu:ci carries check:shim-key-parity, which reads the schema. Without
       # this entry a schema-only widening — the exact diff shape that leaves a

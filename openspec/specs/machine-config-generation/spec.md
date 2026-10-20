@@ -61,8 +61,9 @@ patch; the controlplane list additionally appends its seed patches.
 #### Scenario: Controlplane list appends the seed patches last
 
 - **WHEN** the controlplane generation-pass patch list is composed
-- **THEN** it additionally appends the opt-in Gateway API CRDs patch and
-  the cert-approver seed patch, in that listed order
+- **THEN** it additionally appends the opt-in Gateway API CRDs patch, the
+  cert-approver seed patch and the opt-in CoreDNS seed patch, in that listed
+  order
 - **AND** last, the ArgoCD and Cilium inline-manifest seed patches
 
 ### Requirement: Apply-pass per-node patch order
@@ -71,14 +72,15 @@ The module SHALL layer a second, per-node patch pass at configuration
 apply, in this order: the module install-image patch, a `HostnameConfig`
 document setting the node's static hostname (deleting the
 provider-generated `auto` field), the module-generated capability patch,
-the node's own `config_patches`, and the CNI patch re-applied last.
+the node's own `config_patches`, the CNI patch re-applied, and on a control
+plane with the CoreDNS seed on, the built-in CoreDNS disable last.
 
 #### Scenario: Per-node patch overrides generated capability values
 
 - **WHEN** a node declares a raw config patch that sets a value also
   produced by the module-generated capability patch
 - **THEN** the node patch wins because it is applied after the generated
-  patch, while the CNI patch still applies last
+  patch, while the CNI patch and the CoreDNS disable still apply after it
 
 ### Requirement: Kubelet serving-cert rotation default
 

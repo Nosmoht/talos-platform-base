@@ -183,7 +183,7 @@ jobs:
             printf '%s\n' "$out" >&2
             exit 1
           fi
-          # Bind all NINETEEN schema rules individually (fourteen fixture entries —
+          # Bind all TWENTY schema rules individually (seventeen fixture entries —
           # operator_replicas: 0.5 breaks two at once and values_path breaks the
           # three path-normalization sub-rules): relaxing the role
           # enum, the node-key pattern (issue #204 — a key Talos would ACCEPT and
@@ -209,14 +209,15 @@ jobs:
             "'title': 'no-dot-segment'" \
             "'title': 'no-doubled-separator'" \
             '$.substrate.cilium.self_management_values_source.override_path' \
-            "\$.cluster.worker_apply_mode: 'staged_if_needing_reboot' is not one of"; do
+            "\$.cluster.worker_apply_mode: 'staged_if_needing_reboot' is not one of" \
+            "\$.substrate.coredns.replicas: 1 is less than the minimum"; do
             if ! printf '%s\n' "$out" | grep -qF "$v"; then
               echo "FAIL: expected schema violation on $v was not reported — that rule no longer bites" >&2
               printf '%s\n' "$out" >&2
               exit 1
             fi
           done
-          echo "OK: malformed cluster.yaml fixture rejected with all nineteen expected violations (role enum + node-key pattern + anchored version pattern + four kernel-arg lexical rules + three Cilium raw-render corruption rules + both operator_replicas numeric bounds + both API-server endpoint patterns + the three values_path normalization sub-rules + the override_path charset rule)"
+          echo "OK: malformed cluster.yaml fixture rejected with all twenty expected violations (role enum + node-key pattern + anchored version pattern + four kernel-arg lexical rules + three Cilium raw-render corruption rules + both operator_replicas numeric bounds + both API-server endpoint patterns + the three values_path normalization sub-rules + the override_path charset rule + the CoreDNS replica floor)"
 
       - name: task bootstrap:check-render (bootstrap render ↔ argocd-day-zero-bootstrap spec)
         # The mechanical binding for the render's spec scenarios: the subset it

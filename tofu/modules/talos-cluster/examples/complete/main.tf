@@ -15,6 +15,7 @@ locals {
   cilium        = try(local.cfg.substrate.cilium, {})
   argocd        = try(local.cfg.substrate.argocd, {})
   cert_approver = try(local.cfg.substrate.cert_approver, {})
+  coredns       = try(local.cfg.substrate.coredns, {})
 
   # Talos machine-config patches are DECLARED as structured YAML maps in
   # cluster.yaml; the module's interface takes YAML strings. yamlencode bridges
@@ -127,6 +128,11 @@ module "complete" {
   cert_approver_provider_ip_prefixes = try(local.cert_approver.provider_ip_prefixes, ["0.0.0.0/0", "::/0"])
   cert_approver_replicas             = try(local.cert_approver.replicas, 1)
   sops_age_key                       = var.sops_age_key # secret — tfvar/env, never cluster.yaml
+
+  # Off by default: the Talos built-in CoreDNS stays in place.
+  coredns_node_separation = try(local.coredns.node_separation, false)
+  coredns_replicas        = try(local.coredns.replicas, 2)
+  coredns_image           = try(local.coredns.image, null) # null = take the base pin
 }
 
 output "node_apply_mode" {

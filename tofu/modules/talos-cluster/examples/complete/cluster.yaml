@@ -170,3 +170,7 @@ substrate:
     provider_regex: ".*" # cluster-wide extra gate on SAN DNS names ("^node-.*$" to tighten)
     provider_ip_prefixes: ["0.0.0.0/0", "::/0"] # SAN IP allow-set; MUST be non-empty. Tighten to node subnets.
     # replicas: 2 # opt into HA (auto-enables leader-election + leases RBAC); default 1
+  coredns: # opt-in CoreDNS seed with required node separation (UPGRADING.md for a running cluster)
+    node_separation: false
+    replicas: 2 # must stay below the node count
+    # image: omitted on purpose — see the cilium block above.

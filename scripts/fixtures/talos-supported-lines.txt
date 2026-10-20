@@ -1,0 +1,11 @@
+# The Talos release lines the offline render checks and the CoreDNS parity check cover,
+# oldest first. Row contract: `<vMAJOR.MINOR> <a Talos release of that line> <a Kubernetes
+# release>`; every reader rejects another shape. A line from v1.14 on renders native
+# documents, as the module's native_config_documents decides.
+# Read by scripts/check-talos-config-validation.sh (renders each row's Talos and Kubernetes
+# release), scripts/check-provider-document-kinds.sh (probes the newest native row against the
+# newest legacy row) and scripts/check-coredns-builtin-parity.sh (compares each line's
+# newest release, resolved at run time, and requires the CoreDNS test oracles to cite the
+# release of the last row).
+v1.13 v1.13.10 v1.36.4
+v1.14 v1.14.4 v1.37.1

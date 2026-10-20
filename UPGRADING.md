@@ -2,6 +2,354 @@
 
 For consumer-cluster repos vendoring `talos-platform-base` via OCI.
 
+## Separate the CoreDNS replicas (MINOR — action required only to opt in)
+
+A new input, `coredns_node_separation` (`substrate.coredns.node_separation` in
+`cluster.yaml`), replaces the Talos built-in CoreDNS with a module seed of the
+same objects whose replicas require separate nodes, plus a PodDisruptionBudget
+`kube-system/coredns-node-separation` allowing one disruption. It defaults to
+`false`: a consumer who does not set it gets no change. Background:
+[ADR-0031](knowledge/decisions/0031-coredns-required-node-separation.md).
+
+Source references below name Talos v1.14.4 and v1.13.10, the pins of
+`scripts/fixtures/talos-supported-lines.txt`; each cited Talos file behaves the
+same on both lines unless a step says otherwise. Kubernetes references name
+`kubernetes/kubernetes` v1.37.1, whose `k8s.io/kubectl` v0.37.1 drain library
+Talos v1.14.4 builds with.
+
+**Which drains a CoreDNS budget holds.** With one budget, the eviction API
+refuses an eviction the budget forbids with HTTP 429; what happens next depends
+on the caller:
+
+- `kubectl drain` retries the eviction until its `--timeout` (no limit by
+  default) and evicts nothing the budget forbids.
+- `talosctl upgrade` (which drains by default) and `talosctl reboot --drain`
+  drain from the client with the kubectl drain library, retry until
+  `--drain-timeout` (default five minutes), then stop with an error before
+  rebooting (`cmd/talosctl/pkg/talos/nodedrain/nodedrain.go`, and
+  `kubernetes/nodedrain/nodedrain.go` of `github.com/siderolabs/go-kubernetes`
+  v0.2.41).
+- `talosctl shutdown`, `talosctl reset` and `talosctl upgrade --legacy` drain
+  inside machined: it retries a refused eviction every five seconds, gives up
+  after five minutes, logs a warning and proceeds with the operation
+  (`pkg/kubernetes/kubernetes.go`, `Drain` and `evict`; siderolabs/talos#9882).
+  The budget does not hold.
+- `talosctl reboot` without `--drain` evicts nothing; machined stops every pod
+  on the node (`internal/app/machined/pkg/runtime/v1alpha1/v1alpha1_sequencer.go`,
+  `Reboot`).
+
+**Two budgets hold nothing.** While two budgets select a CoreDNS pod, the
+eviction API answers every eviction of that pod with HTTP 500, "This pod has
+more than one PodDisruptionBudget, which the eviction subresource does not
+support" (`pkg/registry/core/pod/storage/eviction.go`). The kubectl drain
+library treats that answer as a failure rather than retrying it, so `kubectl drain`, `talosctl upgrade` and
+`talosctl reboot --drain` fail at once on the first CoreDNS pod
+(`staging/src/k8s.io/kubectl/pkg/drain/drain.go`, `evictPods`); machined's own
+drain logs the failed eviction as a warning and proceeds at once, without the
+five-minute wait (`evict` returns the error, `Drain` logs it). So while two
+budgets exist, run no drain and no Talos lifecycle operation on a node that
+runs a CoreDNS replica.
+
+With a Pending replica, or while two budgets exist, a Talos lifecycle operation
+on the node of the last Ready replica takes cluster DNS to zero. Before every
+Talos lifecycle operation on a node, run `kubectl drain` on it first, and start
+the Talos operation only after that drain completed. If `kubectl drain` waits on
+or fails at a CoreDNS pod, stop and fix the cause instead of using a Talos drain.
+
+Before opting in, check these:
+
+- **Schedulable nodes.** More nodes than `coredns_replicas` (default `2`) must
+  accept CoreDNS. It tolerates only the control-plane and `uninitialized`
+  taints; the module counts declared nodes and cannot see other taints or
+  cordons. With too few, one replica stays Pending, the budget allows no
+  disruption, `kubectl drain` of the other replica's node waits for ever, and the
+  module's cluster health gate fails (see the recovery below). On a cluster with
+  exactly one node more than replicas, add a replacement node before removing an
+  old one — the plan rejects the smaller node set.
+- **No caller CoreDNS settings.** No caller or per-node patch may change the DNS
+  domain, the service subnets or the CoreDNS image, or delete them or a parent
+  with a `$patch` directive; no per-node patch may carry an inline manifest named
+  `coredns` or a `$patch` on `cluster.inlineManifests`; and no JSON6902 patch may
+  touch those paths or a parent. The plan fails if one does, and also when a
+  patch document cannot be read. Move an image override to `coredns_image`.
+- **Settled seeds.** The cutover runs a full `talosctl upgrade-k8s` manifest
+  sync, which re-applies every bootstrap seed — Cilium, Argo CD, the
+  cert-approver and the Talos built-ins included — and prunes what left them.
+  The cutover's stop rules accept a change to CoreDNS objects only, so settle
+  the rest first, with the base release that brings this input and the input
+  still off:
+  1. Finish the `UPGRADING.md` entries between your current base version and
+     this one, and apply the control planes.
+  2. Run `talosctl upgrade-k8s --to <your current Kubernetes version> --dry-run`
+     and read every manifest line (the format is described below).
+  3. For a line other than `< unchanged`: if it is a Cilium or Argo CD object
+     that self-management moved past its seed, the seed is behind the live
+     object — bring the seed inputs (chart version, values) in line with the
+     live release, apply the control planes, and dry-run again; running the sync
+     would roll that object back. Any other line — an entry above that moves a
+     seed, or a Talos built-in that changed with a Talos upgrade no sync
+     followed — is cleared by running the sync without `--dry-run` once its diff
+     is what you expect.
+  4. Repeat from 2 until every manifest line is `< unchanged`. Only then set
+     the input.
+- **Your own CoreDNS disruption budget, if you have one, stays for now.** It is
+  removed in step 3, after the module's budget exists, so CoreDNS is never
+  without one; until then two budgets exist (see above).
+
+A single-node cluster keeps the input off.
+
+**What Talos does with the seed at boot, and at the sync.** At boot, machined
+server-side applies each manifest object that does not exist yet, as field
+manager `talos`, and records it in the inventory
+`talos-bootstrap-manifests-inventory`; an object that already exists it records
+in the inventory without changing it, and an object already in the inventory it
+skips (`internal/app/machined/pkg/controllers/k8s/manifest_apply.go`). The
+`talosctl upgrade-k8s` sync then server-side applies every rendered object as
+the same field manager `talos` and prunes each inventoried object that is no
+longer rendered (`pkg/cluster/kubernetes/talos_managed.go`,
+`syncManifestsSSA`). Because boot and sync write as one field manager, a field
+the seed added and the next applied manifest omits is removed, unless another
+field manager also owns it. The sync migrates no ownership: it passes no
+managed-fields cleanup to the apply (`kubernetes/ssa/apply.go` of
+`github.com/siderolabs/go-kubernetes` v0.2.41 calls `ApplyAllStaged` without
+`Cleanup`, and `cleanupMetadata` in `ssa/manager_apply.go` of
+`github.com/fluxcd/pkg` ssa v0.77.0 rewrites only the managers listed there),
+so a field owned by an `Update` entry — including one under the manager name
+`talos` — keeps that owner.
+
+**What the dry-run prints.** `talosctl upgrade-k8s --to <your current
+Kubernetes version> --dry-run` prints `updating manifests (dry run)` and then
+one line per object: a space, then `< <action> <subject>`. The quoted lines below
+leave out that leading space. The action is `created`,
+`configured`, `unchanged` or `Pruned`; the subject is
+`<Kind>/<namespace>/<name>`, or `<Kind>/<name>` for a cluster-scoped object.
+After each `created`, `configured` and `Pruned` line it prints a unified diff of
+the object; an `unchanged` line has none (`syncManifestsSSA`, and
+`ssa.Manager.Diff` in `kubernetes/ssa/diff.go` of
+`github.com/siderolabs/go-kubernetes` — v0.2.41 on v1.14.4, v0.2.38 on
+v1.13.10, the same file). The other upgrade phases print their own lines; the
+stop rules below read only the manifest lines.
+
+The CoreDNS subjects are `ServiceAccount/kube-system/coredns`,
+`ClusterRole/system:coredns`, `ClusterRoleBinding/system:coredns`,
+`ConfigMap/kube-system/coredns`, `Deployment/kube-system/coredns`,
+`Service/kube-system/kube-dns` and
+`PodDisruptionBudget/kube-system/coredns-node-separation`.
+
+1. **Set the input and apply.** Set `node_separation: true` (or
+   `coredns_node_separation = true`), then `tofu plan`: only the controlplane
+   machine configurations change. Apply them, then make sure every control plane
+   runs the new configuration (the check closes this step). Under
+   `controlplane_apply_mode = "staged"` the configuration waits for each
+   node's next boot, and the reboots are ordered so that no drain runs under two
+   budgets or evicts two replicas at once:
+   1. Pick the first control plane. Without a CoreDNS budget of your own, this
+      drain runs under no budget, so pick one that runs at most one CoreDNS
+      replica: `kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide`
+      shows each replica's node. If every control plane runs both, delete one
+      of the two pods, wait until its replacement is Ready on another node, and
+      look again. Then `kubectl drain` it, reboot it, and uncordon it when it is
+      Ready. It is the only node to boot before the module's budget exists.
+   2. Check step 2 below, then do step 3 below before draining anything else.
+   3. Reboot the remaining control planes one at a time, each after a completed
+      `kubectl drain`.
+
+   Every control plane has converged when, on each of them,
+   `talosctl -n <node> get manifests` lists `99-coredns` and no `11-core-dns`
+   (the built-in renders as `11-core-dns`, an inline manifest as `99-<name>`:
+   `internal/app/machined/pkg/controllers/k8s/manifest.go` and
+   `control_plane.go`), and
+   `talosctl -n <node> get manifests 99-coredns -o yaml | grep -cF '<digest>'`
+   prints `1`, where `<digest>` is the module output `coredns_seed_digest`. The
+   digest is the budget's annotation `talos-platform-base.io/seed-digest` and
+   covers every seed object, so it tells that the node renders this seed rather
+   than an earlier one. If an apply failed part-way, re-run `tofu apply` until it
+   succeeds; do not continue to step 4 before every control plane converged,
+   because the sync reads the manifests of the first control plane Kubernetes
+   lists.
+2. **Only the budget appears.** The built-in objects carry the seed's names and
+   already exist, so the running CoreDNS is unchanged; the budget is the one new
+   object, and `kubectl -n kube-system get pdb coredns-node-separation` shows it.
+3. **Remove your own CoreDNS budget**, if you have one: delete it from git and
+   let Argo CD prune it, or delete it by hand. Until it is gone, run no drain and
+   no Talos lifecycle operation.
+4. **Dry-run the manifest sync** and read every manifest line. It must show:
+   - `< configured Deployment/kube-system/coredns`, whose diff adds the
+     recommended labels to the object and its pod template, adds one
+     `requiredDuringSchedulingIgnoredDuringExecution` pod anti-affinity term,
+     removes the `preferredDuringSchedulingIgnoredDuringExecution` term, and —
+     on a v1.13 line only — adds the node affinity on `kubernetes.io/os` and
+     `kubernetes.io/arch` that the v1.14 built-in carries. When another field
+     manager, or an `Update` entry under any manager name, co-owns the preferred
+     term, the sync cannot remove it and the diff keeps it; continue, and remove
+     it in step 6;
+   - `< configured` for the ServiceAccount, the ClusterRole, the
+     ClusterRoleBinding, the ConfigMap and the Service, each diff adding labels
+     only, or `< unchanged`; the budget shows `< unchanged`;
+   - `< unchanged` for every object that is not CoreDNS.
+
+   **Stop on any of these:** a `< Pruned` line, which would delete that
+   object — for `Service/kube-system/kube-dns` it releases the ClusterIP every
+   pod resolves through; a `< created` line, which means an object is missing;
+   a CoreDNS diff that changes anything else, above all the `kube-dns` Service's
+   `spec`; or a line other than `< unchanged` for an object that is not
+   CoreDNS, which means a seed was not settled (see the check above).
+5. **Run the sync** without `--dry-run`. The Deployment rolls one replica at a
+   time onto separate nodes.
+6. **Verify the result:**
+   - `kubectl -n kube-system get deploy coredns -o jsonpath='{.spec.template.spec.affinity.podAntiAffinity}'`
+     shows one `requiredDuringSchedulingIgnoredDuringExecution` term and no
+     `preferredDuringSchedulingIgnoredDuringExecution` term. If a preferred term
+     remains, `kubectl -n kube-system get deploy coredns --show-managed-fields -o yaml`
+     names its owner. An owner with `operation: Update` — under `talos` or any
+     other manager name — wrote the term with an ordinary update and nothing
+     rewrites it; an `Apply` owner other than `talos`, or a controller, keeps
+     writing it: stop that writer first (an admission policy, a controller, a
+     Day-2 manifest). Then remove the term with
+     `kubectl -n kube-system patch deploy coredns --type=json -p '[{"op":"remove","path":"/spec/template/spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution"}]'`.
+   - `kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide` shows every
+     replica Running, each on its own node. The `kube-dns` ClusterIP is the one
+     it had before, and a lookup from a pod still resolves.
+   - `kubectl -n kube-system get pdb` lists exactly one budget selecting
+     `k8s-app=kube-dns`, `coredns-node-separation`, with one allowed disruption,
+     and its `talos-platform-base.io/seed-digest` annotation equals
+     `coredns_seed_digest`.
+   - A second dry-run shows every CoreDNS subject as `< unchanged`: a sync no
+     longer brings the built-in back.
+   - `kubectl drain` one node that runs a CoreDNS replica, after your pre-drain
+     checks: the other replica keeps answering lookups, and the evicted replica
+     becomes Ready on a node that ran none. Then uncordon the node.
+
+**Stopping during the cutover.** A stop at step 4 leaves the cluster in this
+state: every control plane renders the seed, the CoreDNS objects are the
+built-in's and unchanged (two replicas, the preferred term only), the module's
+budget `coredns-node-separation` exists, and your own budget is gone. One budget
+selects the replicas, so drains behave as before the cutover; the state can be
+kept while you investigate. Leave it one of two ways: fix the cause of the stop
+and repeat step 4, or back out below, whose dry-run covers the case that no sync
+ran.
+
+**A replica stays Pending.** Too few nodes accept CoreDNS. The budget then
+allows no disruption: `kubectl drain` of the node running the Ready replica
+waits, and a Talos lifecycle operation on that node would evict or stop it
+anyway (see above), so run none there. The health gate of this module waits for
+every CoreDNS replica to be Ready — Talos's default cluster checks include
+`coredns to report ready` (`pkg/cluster/check/default.go`), which
+`talos_cluster_health` runs — so each later `tofu apply` fails after
+`cluster_health_timeout`, and `talosctl health` fails too. Remove the blocking
+taint or cordon, or add a node; otherwise back out.
+
+With the input on, the module pins the CoreDNS image (`coredns_image`, default
+`registry.k8s.io/coredns/coredns:v1.14.7`); a Talos upgrade no longer moves it.
+A changed `coredns_image` or `coredns_replicas` reaches the cluster the same way
+as the cutover: apply the control planes, check their convergence with the new
+`coredns_seed_digest` (step 1), then dry-run (step 4, where the diff changes only
+that field and the budget's annotation) and run the sync.
+
+Back-out:
+
+Keep the base release that brings the input until the back-out has passed step 5
+below; revert the base pin only afterwards. A pin change in the same sync would
+move other seeds too, and the stop rules below accept changes to CoreDNS objects
+only.
+
+1. **Set the input back to `false` and apply** the controlplane configurations,
+   and converge every control plane: each lists `11-core-dns` and no
+   `99-coredns` in `talosctl -n <node> get manifests`. Under `staged`, reboot
+   them one at a time, each after a completed `kubectl drain`. With every
+   replica Ready, the module's budget lets a drain evict one replica, and the
+   next drain waits until the evicted replica is Ready elsewhere. With a replica
+   Pending, the budget allows no disruption, and the drain of the node running
+   the Ready replica never completes: drain and reboot first the control planes
+   that run no Ready CoreDNS replica (`kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide`),
+   then make the Pending replica schedulable — remove the taint or cordon that
+   keeps it Pending, or add a node — and drain the last node only after every
+   replica is Ready, so one replica keeps serving throughout. If the Pending
+   cause cannot be removed, follow **Back-out while a replica cannot become
+   Ready** below instead of draining the last node. If a replica is Pending, the
+   apply fails at the health gate after the configurations are written; re-run
+   it until every control plane converged.
+2. **Restore your own CoreDNS budget** now, if you removed one in cutover step
+   3. Until step 4 below prunes the module's budget, two budgets exist: run no
+   drain and no Talos lifecycle operation.
+3. **Dry-run the manifest sync** and read every manifest line. It must show
+   `< Pruned PodDisruptionBudget/kube-system/coredns-node-separation`, which
+   boot recorded in the inventory even when no sync ran in between, and
+   `< unchanged` for every object that is not CoreDNS. For the other CoreDNS
+   subjects it depends on whether the cutover sync ran:
+   - **After cutover step 5:** `< configured Deployment/kube-system/coredns`,
+     whose diff removes the recommended labels and the required pod
+     anti-affinity term, restores the preferred term and, on a v1.13 line,
+     removes the node affinity; `< configured` with label removals only, or
+     `< unchanged`, for the others.
+   - **When the cutover stopped before step 5:** `< unchanged` for every other
+     CoreDNS subject, because the objects are still the built-in's.
+
+   **Stop on any other `< Pruned` line** — a pruned
+   `Service/kube-system/kube-dns` releases the ClusterIP — on a `< created`
+   line, on a CoreDNS diff that changes anything else, or on a line other than
+   `< unchanged` for an object that is not CoreDNS.
+4. **Run the sync** without `--dry-run`.
+5. **Verify the result:**
+   - `kubectl -n kube-system get deploy coredns -o jsonpath='{.spec.template.spec.affinity.podAntiAffinity}'`
+     shows the preferred term and no `requiredDuringSchedulingIgnoredDuringExecution`
+     term. A required term that remains is co-owned by another field manager;
+     find it with `--show-managed-fields` as in cutover step 6, stop what writes
+     it, and remove the term with the same `kubectl patch`, path
+     `/spec/template/spec/affinity/podAntiAffinity/requiredDuringSchedulingIgnoredDuringExecution`.
+   - `kubectl -n kube-system get pods -l k8s-app=kube-dns -o wide` shows every
+     replica Running, the `kube-dns` ClusterIP is unchanged, and a lookup from a
+     pod still resolves.
+   - `kubectl -n kube-system get pdb coredns-node-separation` reports it absent,
+     and `kubectl -n kube-system get pdb` lists exactly one budget selecting
+     `k8s-app=kube-dns` — your own — or none if you never had one.
+   - A second dry-run shows every CoreDNS subject as `< unchanged`.
+
+**Back-out while a replica cannot become Ready.** When too few nodes accept
+CoreDNS and none can be added, the last control plane — the one running the
+Ready replica — cannot be drained under the seed, because the budget allows no
+disruption. Run the back-out sync first, from a control plane that already
+converged, and reboot that node last:
+
+1. Converge every other control plane as in back-out step 1. Do not restore your
+   own budget yet.
+2. Make sure the sync reads a converged node. It takes its manifests from one
+   control plane only. On v1.14.4 that is the first control-plane Node the
+   Kubernetes API lists, the first line of
+   `kubectl get nodes -l node-role.kubernetes.io/control-plane`
+   (`pkg/cluster/kubernetes/talos_managed.go`: `UpgradeTalosManaged` syncs from
+   `controlPlaneNodes[0]`, which `NodeIPs` in `pkg/kubernetes/kubernetes.go`
+   fills in list order). On v1.13.10 it is the first node `talosctl` targets, so
+   pass `-n <a converged control plane>` (`getManifests` in the same file). That
+   node must list `11-core-dns` and no `99-coredns`. If on v1.14.4 the first
+   listed control plane is the one running the Ready replica, the sync would
+   read the seed again: instead remove the required term by hand with
+   `kubectl -n kube-system patch deploy coredns --type=json -p '[{"op":"remove","path":"/spec/template/spec/affinity/podAntiAffinity/requiredDuringSchedulingIgnoredDuringExecution"}]'`.
+   The rollout replaces the Pending replica first and starts the new pods
+   beside the Ready one, so a replica keeps serving; once every replica is
+   Ready the budget allows one disruption. Continue with step 5, and run the
+   sync of step 3 after it.
+3. Dry-run as in back-out step 3, with the same expectations and stop rules,
+   then run the sync. The Deployment returns to the built-in's preferred term,
+   the Pending replica schedules, and the module's budget is pruned and leaves
+   the inventory.
+4. Until the last control plane reboots, it still renders the seed. Its manifest
+   controller runs on every change of its inputs — the manifests, the etcd
+   service, the Kubernetes secrets — not only at boot; it skips an inventoried
+   object and creates one that is neither inventoried nor present
+   (`internal/app/machined/pkg/controllers/k8s/manifest_apply.go`), so it can
+   create the module's budget again. It changes no other CoreDNS object, which
+   stay inventoried. With every replica Ready, such a budget allows one
+   disruption.
+5. Wait until every replica is Ready, then `kubectl drain` the last control
+   plane, reboot it, uncordon it when it is Ready, and check that it lists
+   `11-core-dns` and no `99-coredns`.
+6. Dry-run again. It shows `< Pruned PodDisruptionBudget/kube-system/coredns-node-separation`
+   if step 4 re-created the budget, or the expectations of back-out step 3 if
+   the sync of step 3 has not run yet, and `< unchanged` for every other
+   object. Run the sync, restore your own budget, and verify as in back-out
+   step 5.
+
 ## kubelet-csr-approver replica separation at `cert_approver_replicas > 1` (MINOR — action required only where `cert_approver_replicas > 1`)
 
 At `cert_approver_replicas > 1` the approver seed now also renders a required

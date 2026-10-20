@@ -45,6 +45,7 @@ locals {
     local.base_cni_patch,
     local.gateway_api_patch,
     local.cert_approver_controlplane_patch,
+    local.coredns_controlplane_patch,
   )
   controlplane_machine_config_patches = concat(
     local.controlplane_base_patches,
@@ -74,7 +75,7 @@ data "talos_machine_configuration" "controlplane" {
     # Bound the combined seeds, not each seed separately; per-node overlays are outside this sum.
     precondition {
       condition     = sum([for p in local.controlplane_machine_config_patches : length(p)]) <= local.controlplane_payload_ceiling_bytes
-      error_message = "controlplane config patches sum to ${sum([for p in local.controlplane_machine_config_patches : length(p)])} bytes, over the ${local.controlplane_payload_ceiling_bytes}-byte ceiling (Talos API gRPC limit ${local.talos_grpc_max_message_bytes} bytes, minus headroom for the generated base document and the pass-2 per-node overlays). Enabled inlineManifest seeds: cert-approver (always on), argocd=${var.deploy_argocd}, cilium=${var.deploy_cilium}. Shrink a seed, move manifests to cluster.extraManifests, or disable a substrate component."
+      error_message = "controlplane config patches sum to ${sum([for p in local.controlplane_machine_config_patches : length(p)])} bytes, over the ${local.controlplane_payload_ceiling_bytes}-byte ceiling (Talos API gRPC limit ${local.talos_grpc_max_message_bytes} bytes, minus headroom for the generated base document and the pass-2 per-node overlays). Enabled inlineManifest seeds: cert-approver (always on), argocd=${var.deploy_argocd}, cilium=${var.deploy_cilium}, coredns=${var.coredns_node_separation}. Shrink a seed, move manifests to cluster.extraManifests, or disable a substrate component."
     }
   }
 }
@@ -87,6 +88,7 @@ data "talos_machine_configuration" "worker" {
   kubernetes_version = var.kubernetes_version
   talos_version      = var.talos_version
   config_patches     = local.worker_machine_config_patches
+
 }
 
 locals {
@@ -132,6 +134,7 @@ locals {
       n.config_patches,
       # Reassert CNI invariants after node patches. Native workers carry no cluster CNI documents.
       local.native_config_documents && n.role == "worker" ? [] : local.base_cni_patch,
+      n.role == "controlplane" ? local.coredns_builtin_disable_patch : [],
     )
   }
 }
@@ -149,4 +152,11 @@ resource "talos_machine_configuration_apply" "this" {
   apply_mode = local.node_apply_mode[each.key]
 
   config_patches = local.node_config_patches[each.key]
+
+  lifecycle {
+    precondition {
+      condition     = length(local.coredns_guard_violations) == 0
+      error_message = "coredns_node_separation renders the CoreDNS Corefile for the DNS domain \"${local.coredns_cluster_domain}\", the kube-dns ClusterIP from service_cidr and the image coredns_image, and checks every rendered role configuration and per-node patch for a different value. Findings: ${join("; ", local.coredns_guard_violations)}. A JSON6902 patch on one of these fields, on cluster.inlineManifests or on a parent, a $patch directive on cluster, cluster.network or a KubeNetworkConfig, a per-node inline manifest named \"coredns\", a rendered configuration that states no serviceSubnets, and a document the check cannot read each count as a finding. Set service_cidr instead of patching serviceSubnets, set coredns_image instead of the Talos CoreDNS image, keep the default DNS domain, or set coredns_node_separation = false."
+    }
+  }
 }

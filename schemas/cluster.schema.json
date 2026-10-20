@@ -176,7 +176,7 @@
       }
     },
     "substrate": {
-      "description": "Layer-1 substrate delivery. Cilium, ArgoCD and cert-approver are the cluster.yaml-configurable substrate tools \u2014 the consumer yamldecode shim reads substrate.cilium, substrate.argocd and substrate.cert_approver. cert-approver is always-on substrate (a controlplane inlineManifest seed, adr-0019 supersedes adr-0013 \u00a7D2); its substrate.cert_approver keys tune the SAN-to-node binding + replicas but cannot disable the seed. Closed (additionalProperties:false) so a typo'd sibling key (e.g. argo_cd:) is caught at lint time instead of being silently dropped by the shim. The per-tool inner long tail (values_override, encryption, \u2026) stays loosely typed. A future configurable substrate tool ships a schema update in the same base OCI tag.",
+      "description": "Layer-1 substrate delivery. Cilium, ArgoCD, cert-approver and the opt-in CoreDNS seed are the cluster.yaml-configurable substrate tools \u2014 the consumer yamldecode shim reads substrate.cilium, substrate.argocd, substrate.cert_approver and substrate.coredns. cert-approver is always-on substrate (a controlplane inlineManifest seed, adr-0019 supersedes adr-0013 \u00a7D2); its substrate.cert_approver keys tune the SAN-to-node binding + replicas but cannot disable the seed. Closed (additionalProperties:false) so a typo'd sibling key (e.g. argo_cd:) is caught at lint time instead of being silently dropped by the shim. The per-tool inner long tail (values_override, encryption, \u2026) stays loosely typed. A future configurable substrate tool ships a schema update in the same base OCI tag.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -378,6 +378,27 @@
               "description": "cert-approver Deployment replica count. Default 1. Raise (e.g. 2) to opt into HA \u2014 replicas > 1 auto-enables leader-election + the coordination.k8s.io/leases RBAC, required per-node pod anti-affinity and a maxUnavailable-1 PodDisruptionBudget; keep it below the number of nodes the approver can schedule on.",
               "type": "integer",
               "minimum": 1
+            }
+          }
+        },
+        "coredns": {
+          "description": "Opt-in replacement of the Talos built-in CoreDNS by a module seed of the same objects whose replicas require separate nodes, plus a PodDisruptionBudget allowing one disruption (adr-0031). Closed so a typo'd key fails lint rather than leaving the built-in silently in place. On a running cluster the seed takes effect at the next Kubernetes-upgrade manifest sync \u2014 see UPGRADING.md.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "node_separation": {
+              "description": "Replace the Talos built-in CoreDNS with the module seed. Default false. Keep false on a single-node cluster.",
+              "type": "boolean"
+            },
+            "replicas": {
+              "description": "CoreDNS replica count with node_separation true. Default 2. Must be lower than the node count \u2014 a relational bound the module rejects at plan time.",
+              "type": "integer",
+              "minimum": 2
+            },
+            "image": {
+              "description": "CoreDNS image of the seed. Default registry.k8s.io/coredns/coredns:v1.14.7, the image Talos v1.13 and v1.14 ship; with the seed on, a Talos upgrade no longer moves it.",
+              "type": "string",
+              "pattern": "^\\S+$"
             }
           }
         }

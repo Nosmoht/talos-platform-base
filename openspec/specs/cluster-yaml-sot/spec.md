@@ -224,7 +224,7 @@ SHALL admit the optional `requires_features` (Layer-C atom ids) and
 The schema SHALL admit `config_patches`, `controlplane_config_patches`,
 `worker_config_patches`, and per-node `config_patches` as arrays of
 free-form YAML maps without content validation, SHALL close the `substrate`
-section to exactly the `cilium`, `argocd`, and `cert_approver` keys, and
+section to exactly the `cilium`, `argocd`, `cert_approver` and `coredns` keys, and
 SHALL provide no field for secret material — neither `sops_age_key` nor
 `cilium_ipsec_key` has a schema slot (normative:
 knowledge/decisions/0007-cluster-yaml-sot.md).
@@ -232,7 +232,7 @@ knowledge/decisions/0007-cluster-yaml-sot.md).
 #### Scenario: Mistyped substrate key is rejected
 
 - **WHEN** a `cluster.yaml` declares a `substrate` child key other than
-  `cilium`, `argocd`, or `cert_approver`
+  `cilium`, `argocd`, `cert_approver` or `coredns`
 - **THEN** schema validation reports the additional property instead of the
   key being silently dropped downstream
 
@@ -526,3 +526,22 @@ The canonical example SHALL use Talos 1.14.4 and Kubernetes 1.37.1 with caller p
 
 - **WHEN** a consumer copies the example
 - **THEN** its version pins and example patches target the native Talos 1.14 schema
+
+### Requirement: Closed CoreDNS substrate object
+
+`substrate.coredns` SHALL be closed (`additionalProperties: false`) and admit
+only `node_separation` (boolean), `replicas` (integer, `minimum: 2`) and
+`image` (a string without whitespace), mirroring the module's three CoreDNS
+seed inputs; the shipped shim SHALL read each key.
+
+#### Scenario: A single CoreDNS replica fails at lint time
+
+- **WHEN** `substrate.coredns.replicas` is `1`
+- **THEN** schema validation fails on the `minimum: 2` constraint
+
+#### Scenario: The node-count bound stays a plan-time rejection
+
+- **WHEN** `substrate.coredns.replicas` is not lower than the number of
+  declared nodes
+- **THEN** the schema does not reject it, because the bound is relational, and
+  the module rejects it at plan time
